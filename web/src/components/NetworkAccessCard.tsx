@@ -43,19 +43,42 @@ async function copy(text: string): Promise<void> {
 
 /**
  * What to check when devices cannot connect. The app cannot see a firewall
- * block from this machine (connections to itself skip the firewall).
+ * block from this machine (connections to itself skip the firewall). A
+ * command is kept apart from the sentence, so it shows as a code line.
  */
-export function firewallHint(os: OS, port: number): string | null {
+export function firewallHint(os: OS, port: number): { text: string; commands: string[] } | null {
   if (os === 'windows') {
-    return 'If devices can\u2019t connect, make sure this Wi-Fi is set to a Private network in Windows settings; the OpenAgentd firewall rule only covers Private networks.'
+    return { text: 'If devices can\u2019t connect, make sure this Wi-Fi is set to a Private network in Windows settings; the OpenAgentd firewall rule only covers Private networks.', commands: [] }
   }
   if (os === 'linux') {
-    return `If devices can\u2019t connect, open the port in your firewall, for example \`sudo ufw allow ${port}/tcp\` or \`sudo firewall-cmd --add-port=${port}/tcp\`.`
+    return {
+      text: 'If devices can\u2019t connect, open the port in your firewall (ufw or firewalld):',
+      commands: [`sudo ufw allow ${port}/tcp`, `sudo firewall-cmd --add-port=${port}/tcp`],
+    }
   }
   if (os === 'macos') {
-    return 'If devices can\u2019t connect and the macOS firewall is on, allow incoming connections for openagentd in System Settings \u203a Network \u203a Firewall.'
+    return { text: 'If devices can\u2019t connect and the macOS firewall is on, allow incoming connections for openagentd in System Settings \u203a Network \u203a Firewall.', commands: [] }
   }
   return null
+}
+
+/** The firewall hint: its sentence, then each command as a code line with Copy. */
+export function FirewallHint({ os, port }: { os: OS; port: number }) {
+  const hint = firewallHint(os, port)
+  if (!hint) return null
+  return (
+    <div className="space-y-1.5">
+      <p>{hint.text}</p>
+      {hint.commands.map((command) => (
+        <div key={command} className="flex items-center gap-2">
+          <code className={CODE_BOX}>{command}</code>
+          <Button type="button" variant="subtle" size="sm" onClick={() => void copy(command)} aria-label={`Copy ${command}`}>
+            Copy
+          </Button>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function NetworkAccessCard({ title = 'Network access' }: {
@@ -173,21 +196,21 @@ export function NetworkAccessCard({ title = 'Network access' }: {
   const listening = status?.listening ?? false
   const sidecarRunning = status?.sidecar_running ?? false
   const switchOn = enabled || listening
-  const hint = listening && status?.port ? firewallHint(getPlatform().os, status.port) : null
+  const hintPort = listening && status?.port ? status.port : null
 
   return (
     <div className="space-y-8">
       <PanelSection
         title={title}
-        description="Let phones and other computers on your local network use the built-in server."
+        description="Let phones and other computers on your local network use this computer."
         flush
       >
         <PanelRow
           label="Allow devices on your network to connect"
           labelId="network-access-label"
           description={sidecarRunning
-            ? 'Phones and other computers connect to the built-in server with the access key below.'
-            : 'Start the built-in server first.'}
+            ? 'Phones and other computers connect to this computer with the access key below.'
+            : 'Start OpenAgentd on this computer first.'}
         >
           <Switch
             aria-labelledby="network-access-label"
@@ -328,7 +351,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
 
       <Callout tone="warning" title="Before you share access">
         <div className="space-y-2">
-          {hint ? <p>{hint}</p> : null}
+          {hintPort ? <FirewallHint os={getPlatform().os} port={hintPort} /> : null}
           <p>
             Anyone with the key controls this computer&apos;s agents, and traffic is plain HTTP: use it only on
             networks you trust. Access ends when the app quits.

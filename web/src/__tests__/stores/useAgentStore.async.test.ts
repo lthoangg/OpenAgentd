@@ -266,6 +266,21 @@ describe("sendMessage", () => {
     expect(leadBlocks[0].extra?.model).toBe("openai:gpt-5.5")
   })
 
+  it("leaves the model off an optimistic block while the lead still has the placeholder a new install starts with", async () => {
+    // A model connected a moment ago has not reached this store yet; the
+    // placeholder must not be shown as the model the prompt ran with.
+    useAgentStore.setState({
+      leadName: "lead",
+      sessionModel: null,
+      agentStreams: { lead: makeStream({ model: "__PROVIDER_MODEL__" }) },
+    })
+
+    await useAgentStore.getState().sendMessage("hello team", undefined, { workspace: "/repo/app" })
+
+    const leadBlocks = useAgentStore.getState().agentStreams["lead"].currentBlocks
+    expect(leadBlocks[0].extra?.model).toBeUndefined()
+  })
+
   it("patches the optimistic user block's id to the server-issued message_id once the POST resolves", async () => {
     // The backend now returns the persisted user message's id even on the
     // immediate (non-queued) send path. Adopting it lets later reconciliation
@@ -357,7 +372,7 @@ describe("sendMessage", () => {
     mockPostAgentChat.mockImplementation(() => Promise.reject("unknown"))
     useAgentStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     await useAgentStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
-    expect(useAgentStore.getState().error).toBe("Failed to send message")
+    expect(useAgentStore.getState().error).toBe("Couldn't send message")
   })
 
   it("does not call connectStream when postAgentChat throws", async () => {
@@ -1312,7 +1327,7 @@ describe("stopAgent", () => {
     expect(useAgentStore.getState()._workspace).toBe("/repo/a")
   })
 
-  it("asks the server to keep the goal when stopping for Stop & send", async () => {
+  it("asks the server to keep the goal when stopping for Stop and send", async () => {
     useAgentStore.setState({ sessionId: "session-a", isAgentWorking: true, _workspace: "/repo/a" })
 
     await useAgentStore.getState().stopAgent({ keepGoal: true })
@@ -2094,7 +2109,7 @@ describe("loadAgentStatus", () => {
   it("sets fallback error for non-Error throws", async () => {
     mockAgentStatus.mockImplementation(() => Promise.reject("unknown"))
     await useAgentStore.getState().loadAgentStatus()
-    expect(useAgentStore.getState().error).toBe("Failed to load agent status")
+    expect(useAgentStore.getState().error).toBe("Couldn't load agent status")
   })
 
   it("does nothing when agentStatus returns null", async () => {
@@ -2626,7 +2641,7 @@ describe("loadSession", () => {
   it("sets fallback error for non-Error throws", async () => {
     mockSessionHistory.mockImplementation(() => Promise.reject("timeout"))
     await useAgentStore.getState().loadSession("sess-1")
-    expect(useAgentStore.getState().error).toBe("Failed to load session")
+    expect(useAgentStore.getState().error).toBe("Couldn't load session")
   })
 
   // Coming back to the phone app: the real store and the real toast store,

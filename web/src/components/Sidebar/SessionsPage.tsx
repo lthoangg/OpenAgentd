@@ -14,7 +14,7 @@ import { NEXT_THEME, THEME_OPTIONS } from '@/components/theme-options'
 import { usePressSlide } from '@/hooks/use-press-slide'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { apiBaseUrl } from '@/api/base-url'
-import { formatBackendConnectionLabel } from '@/lib/app-backend'
+import { connectionDisplayName, formatBackendConnectionLabel } from '@/lib/app-backend'
 import { mediumHapticFeedback, selectionHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
@@ -44,7 +44,7 @@ export function SessionsPageBar({
       )}
     >
       <div className="flex min-w-0 justify-start">
-        {onOpenServers ? <PhoneBackButton label="Servers" onBack={onOpenServers} /> : <HealthDot labeled chip />}
+        {onOpenServers ? <PhoneBackButton label="Computers" onBack={onOpenServers} /> : <HealthDot labeled chip />}
       </div>
       {/* The large title is the heading; this one only echoes it. */}
       <span
@@ -60,25 +60,25 @@ export function SessionsPageBar({
 
 /**
  * The server the list belongs to, under the large title: its dot (green
- * connected, red not reachable, grey connecting) and name. With ‹ Servers
- * in the bar instead of the server chip, this keeps the server in sight; a
- * tap goes down to Servers too.
+ * connected, red not reachable, grey connecting) and name. With ‹ Computers
+ * in the bar instead of the chip, this keeps the computer in sight; a
+ * tap goes down to Computers too.
  */
 function SessionsServerLine({ onOpenServers }: { onOpenServers: () => void }) {
   const health = useHealthQuery()
   const backendStatus = useBackendStatusQuery()
   const label = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
-  // In a browser there is no app shell to report a status, and the Servers
+  // In a browser there is no app shell to report a status, and the Computers
   // screen calls the page's own server "This server"; say the same here.
   const inBrowser = backendStatus.isSuccess && backendStatus.data === null
-  const name = inBrowser && label === 'built-in' ? 'This server' : label === 'built-in' ? 'Built-in server' : label
+  const name = connectionDisplayName(label, inBrowser)
   const state = health.isSuccess ? 'connected' : health.isError ? 'not reachable' : 'connecting…'
   return (
     <button
       type="button"
       onClick={onOpenServers}
       data-sessions-server=""
-      aria-label={`${name}, ${state}. Show servers`}
+      aria-label={`${name}, ${state}. Show computers`}
       className="relative touch-hit -mt-0.5 mb-2 flex max-w-full items-center gap-1.5 rounded-sm text-left text-subhead text-(--color-text-muted) transition-opacity active:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
     >
       <span

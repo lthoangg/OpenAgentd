@@ -18,6 +18,9 @@ import {
   phoneCloudApproveReject,
   phoneCloudCancel,
   phoneCloudConfirmRecovery,
+  phoneCloudMakeApprover,
+  phoneCloudRecover,
+  phoneCloudRecoveredAck,
   phoneCloudPushRegister,
   phoneCloudRemoveDevice,
   phoneCloudSignIn,
@@ -147,6 +150,14 @@ function useStatusMutation<V = void>(mutationFn: (variables: V) => Promise<Phone
 export const usePhoneSignIn = () => useStatusMutation(phoneCloudSignIn)
 export const usePhoneCancel = () => useStatusMutation(phoneCloudCancel)
 export const usePhoneSignOut = () => useStatusMutation(phoneCloudSignOut)
+export const usePhoneRecover = () => useStatusMutation((code: string) => phoneCloudRecover(code))
+export const usePhoneRecoveredAck = () => useStatusMutation(phoneCloudRecoveredAck)
+/** A refusal may mean the device left the account (the shell says so): the lists are read again either way. */
+export const usePhoneMakeApprover = () =>
+  useStatusMutation((deviceId: string) => phoneCloudMakeApprover(deviceId).catch((error: unknown) => {
+    refreshLists()
+    throw error
+  }))
 export const usePhoneRemoveDevice = () => useStatusMutation((deviceId: string) => phoneCloudRemoveDevice(deviceId))
 export const usePhoneConfirmRecovery = () =>
   useStatusMutation(({ first, second }: { first: string; second: string }) => phoneCloudConfirmRecovery(first, second))

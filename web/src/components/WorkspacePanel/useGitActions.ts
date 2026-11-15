@@ -47,13 +47,13 @@ export function useGitActions({ workspace, onCommitChanged, onWorkingTreeChanged
   const handleUndoCommit = () => void runCommitAction(
     () => undoCodingWorkspaceLastCommit(workspace),
     { title: 'Commit undone', description: 'The last commit was undone. Changes have been kept in your working copy.' },
-    'Failed to undo commit',
+    "Couldn't undo commit",
   )
 
   const handleRevertCommit = (sha: string, shortSha: string) => void runCommitAction(
     () => revertCodingWorkspaceCommit(workspace, sha),
     { title: 'Commit reverted', description: `Successfully created revert commit for ${shortSha}.` },
-    'Failed to revert commit',
+    "Couldn't revert commit",
   )
 
   const handleConfirmDiscard = async () => {
@@ -73,7 +73,7 @@ export function useGitActions({ workspace, onCommitChanged, onWorkingTreeChanged
       outcomeHapticFeedback('error')
       pushToast({
         tone: 'error',
-        title: 'Failed to discard changes',
+        title: "Couldn't discard changes",
         description: err instanceof Error ? err.message : String(err),
       })
     } finally {

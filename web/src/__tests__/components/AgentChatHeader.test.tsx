@@ -436,7 +436,7 @@ describe('AgentChatHeader', () => {
   })
 
   it('shows the live goal as a ring on the Tasks button, and nothing without one', () => {
-    const goalState = { tone: 'wait' as const, text: 'Goal · Waiting for your answer' }
+    const goalState = { tone: 'wait' as const, text: 'Goal · Needs you · a question' }
     const { unmount } = renderHeader({ isMobile: false, goalState })
     expect(screen.getByRole('button', { name: 'Tasks' }).querySelector('[data-goal-ring="wait"]')).not.toBeNull()
     unmount()

@@ -1,7 +1,7 @@
 /**
  * An `mcp` call refused because its server waits on sign-in offers Sign in
  * right under the call (desktop), instead of leaving the user to find
- * Settings → MCP from the agent's sentence.
+ * Settings → Connectors from the agent's sentence.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -21,7 +21,7 @@ const { ToolCall } = await import('@/components/ToolCall')
 const { mcpSignInServer } = await import('@/components/ToolCall/mcpSignIn')
 const { useSettingsStore } = await import('@/stores/useSettingsStore')
 
-const REFUSED = "Error: MCP server 'excalidraw' is not ready (needs sign-in: connect it in Settings → MCP)"
+const REFUSED = "Error: MCP server 'excalidraw' is not ready (needs sign-in: connect it in Settings → Connectors)"
 const CALL = JSON.stringify({ action: 'call', server: 'excalidraw', tool: 'create_view' })
 
 beforeEach(() => {
@@ -36,6 +36,10 @@ describe('mcpSignInServer', () => {
   it('names the server of a call refused for sign-in', () => {
     expect(mcpSignInServer(REFUSED)).toBe('excalidraw')
     expect(mcpSignInServer(`${REFUSED}: token expired`)).toBe('excalidraw')
+  })
+
+  it('reads the sentence under the page\'s old name too, as stored sessions have it', () => {
+    expect(mcpSignInServer(REFUSED.replace('→ Connectors', '→ MCP'))).toBe('excalidraw')
   })
 
   it('ignores every other answer', () => {

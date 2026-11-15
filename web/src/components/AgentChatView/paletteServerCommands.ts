@@ -48,7 +48,7 @@ export interface ServerCommandHandlers {
 const HEALTH_LABEL: Record<ServerHealth, string> = {
   checking: 'Checking…',
   online: 'Online',
-  offline: 'Offline',
+  offline: "Can't reach",
 }
 
 export function buildServerCommands(input: ServerCommandsInput, handlers: ServerCommandHandlers): Command[] {
@@ -62,13 +62,13 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
     const current = !onExternal
     rows.push({
       id: 'server:bundled',
-      label: 'Built-in Server',
+      label: 'This Computer',
       description: current
         ? 'Current · runs inside this app'
         : status.sidecar_running
           ? 'Runs inside this app'
           : 'Stopped · starts when selected',
-      keywords: 'builtin bundled local sidecar',
+      keywords: 'builtin built-in server bundled local sidecar',
       // Already on it: nothing to do (selecting just closes the palette).
       action: current ? () => {} : handlers.useBundled,
     })
@@ -78,7 +78,7 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
       id: `server:computer:${computer.device_id}`,
       label: computer.label,
       description: computer.line,
-      keywords: 'account computer remote relay',
+      keywords: 'account computer server remote relay',
       action: computer.current || !handlers.useComputer ? () => {} : () => handlers.useComputer?.(computer),
     })
   }
@@ -92,15 +92,15 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
       // address is a keyword, so typing it still finds the row.
       label: savedServerTitle({ ...server, base_url: base }, status.computer_names),
       description: `${current ? 'Current · ' : ''}${state}`,
-      keywords: `remote saved ${base}`,
+      keywords: `remote saved server ${base}`,
       action: current ? () => {} : () => handlers.useExternal(server),
     })
   }
   rows.push({
     id: 'server:manage',
-    label: 'Add or manage servers…',
-    description: 'Settings → Connection',
-    keywords: 'add edit remove new',
+    label: 'Add or manage computers…',
+    description: 'Settings → Server',
+    keywords: 'add edit remove new servers',
     browseOnly: true,
     action: handlers.manage,
   })
@@ -108,10 +108,10 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
   return [{
     id: SERVER_COMMAND_ID,
     group: 'Navigation',
-    label: 'Switch Server…',
-    description: 'Connect to the built-in server or a saved remote server',
-    keywords: 'backend remote builtin sidecar connection connect',
-    page: { placeholder: 'Search servers…', commands: rows },
+    label: 'Switch Computer…',
+    description: 'Use this computer or another one',
+    keywords: 'server servers backend remote builtin built-in sidecar connection connect',
+    page: { placeholder: 'Search computers…', commands: rows },
     onOpenPage: handlers.checkHealth,
     action: () => {},
   }]

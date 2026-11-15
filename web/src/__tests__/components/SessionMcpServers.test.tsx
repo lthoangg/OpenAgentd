@@ -323,7 +323,7 @@ describe('SessionMcpServers', () => {
 
     renderSection({ agentServers: ['github'] })
 
-    expect(await screen.findByRole('status', { name: /loading mcp servers/i })).toBeTruthy()
+    expect(await screen.findByRole('status', { name: 'Loading connectors' })).toBeTruthy()
   })
 
   it('explains the empty case when the agent declares no servers', async () => {
@@ -331,7 +331,7 @@ describe('SessionMcpServers', () => {
 
     renderSection({ agentServers: [] })
 
-    expect(await screen.findByText(/no mcp servers/i)).toBeTruthy()
+    expect(await screen.findByText(/^No connectors for this agent\./)).toBeTruthy()
   })
 
   it('reports a failure to load the server list', async () => {
@@ -343,7 +343,7 @@ describe('SessionMcpServers', () => {
 
     renderSection({ agentServers: ['github'] })
 
-    expect(await screen.findByText(/couldn't load mcp servers/i)).toBeTruthy()
+    expect(await screen.findByText("Couldn't load connectors.")).toBeTruthy()
   })
 
   it('marks only the row being toggled as busy', async () => {

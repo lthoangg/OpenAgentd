@@ -127,9 +127,7 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
         eprintln!("{}", footer(&session_id, crate::ui::color_allowed_on_stderr()));
     }
     match terminal_error {
-        Some(e) if not_configured => {
-            Err(crate::ui::hinted(e, "connect a model provider in the app (Settings → Providers), or import keys with `agentd credentials import <.env>`"))
-        }
+        Some(e) if not_configured => Err(crate::ui::hinted(e, "connect a model provider in the app (Settings → Models), or import keys with `agentd credentials import <.env>`")),
         Some(e) => Err(anyhow!(e)),
         None => Ok(()),
     }

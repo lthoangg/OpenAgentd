@@ -16,6 +16,7 @@
  * (ranked results) its name trails the row. A search still matches the whole
  * ``provider:model`` id, so ``openai:`` lists that provider's models.
  */
+import { failureSentence } from '@/lib/failure-toast'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, RotateCcw, Search } from 'lucide-react'
@@ -80,10 +81,15 @@ export interface RunPickerProps {
   touch?: boolean
 }
 
+/** The "Default" segment's value: no level set, the model's own applies. */
+const DEFAULT_LEVEL = ''
+
 export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerProps) {
   const setRun = useAgentStore((s) => s.setSessionRunSettings)
   const pushToast = useToastStore((s) => s.push)
   const [query, setQuery] = useState('')
+  // With no session level, the agent's applies on its own model; anywhere else the model decides.
+  const modelDecidesByDefault = !settings.thinkingLevel || !(settings.model === settings.agentModel && settings.agentThinkingLevel)
   // Read once per opening: a pick is remembered for next time, but the list
   // does not reorder under the pointer while it is open.
   const rows = useMemo(() => rowsFor(settings, query), [settings, query])
@@ -170,7 +176,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   }
 
   const pickLevel = (level: string) => {
-    void save({ thinkingLevel: level })
+    void save({ thinkingLevel: level === DEFAULT_LEVEL ? null : level })
   }
 
   const pickAccount = (id: string) => {
@@ -200,7 +206,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       pushToast({
         tone: 'error',
         title: "Couldn't save the default",
-        description: err instanceof Error ? err.message : String(err),
+        description: failureSentence(err),
         action: { label: 'Retry', onAction: () => void makeDefault() },
       })
     }
@@ -316,13 +322,18 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
             <span className="shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
             <SegmentedControl
               label="Thinking level"
-              value={settings.thinkingLevel ?? ''}
+              value={settings.thinkingLevel ?? DEFAULT_LEVEL}
               onChange={pickLevel}
-              options={settings.thinkingLevels.map((level) => {
-                const short = thinkingLevelShortLabel(level)
-                const full = thinkingLevelLabel(level)
-                return { value: level, label: short, ariaLabel: short === full ? undefined : full, tooltip: short === full ? undefined : full }
-              })}
+              options={[
+                // No level from the session or the agent: the model decides, and a lit
+                // segment says so. While the agent sets one, that level is the default.
+                ...(modelDecidesByDefault ? [{ value: DEFAULT_LEVEL, label: 'Default', ariaLabel: "Default: the model's own level", tooltip: "The model's own level" }] : []),
+                ...settings.thinkingLevels.map((level) => {
+                  const short = thinkingLevelShortLabel(level)
+                  const full = thinkingLevelLabel(level)
+                  return { value: level, label: short, ariaLabel: short === full ? undefined : full, tooltip: short === full ? undefined : full }
+                }),
+              ]}
               // ``sm`` stays 28px on touch (it is the toolbar size), so a
               // tablet's popover takes the default, 36px there.
               size={touch || !hasFinePointer() ? 'default' : 'sm'}
@@ -330,11 +341,6 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
               className="min-w-0 flex-1"
             />
           </div>
-          {/* Neither the session nor the agent sets a level: no segment is
-              lit, so say what happens instead of leaving it a puzzle. */}
-          {!settings.thinkingLevel && (
-            <p className="mt-1.5 text-meta text-(--color-text-muted)">Not set: the model's own default applies.</p>
-          )}
         </div>
       )}
 
@@ -401,7 +407,7 @@ function AccountList({
   onPick: (id: string) => void
   /** Enter on an account: pick it and close, as Enter on a model does. */
   onPickAndClose: (id: string) => void
-  /** Sign a signed-out account back in (Settings → Providers). */
+  /** Sign a signed-out account back in (Settings → Models). */
   onReconnect: () => void
   rowClass: string
 }) {
@@ -459,7 +465,7 @@ const QUOTA_TONE_CLASS = {
 } as const
 
 /**
- * Each of the account's limits, in % used as Settings → Providers shows
+ * Each of the account's limits, in % used as Settings → Models shows
  * them (`5h 12% · 7d 100%`), the one it hit in red; reset times and other
  * models' limits are in the tooltip. A signed-out account says Reconnect; a
  * cooling account says so until its numbers are known.

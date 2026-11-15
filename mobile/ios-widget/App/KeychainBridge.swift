@@ -123,6 +123,20 @@ public func openagentdKeychainDelete(_ item: Int32) -> Int32 {
     return status == errSecItemNotFound ? 0 : status
 }
 
+/// Whether this device has a passcode. The `sign` item can only be stored
+/// while one is set (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`),
+/// so the Rust side refuses to start an account without it. Asks nothing.
+@_cdecl("openagentd_device_has_passcode")
+public func openagentdDeviceHasPasscode() -> Bool {
+    var error: NSError?
+    if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+        return true
+    }
+    // Only "no passcode" refuses; anything else (locked out after failed
+    // tries, for example) is decided by the Keychain when it is used.
+    return (error as? LAError)?.code != .passcodeNotSet
+}
+
 /// Writes (or, given nil, deletes) `cloud-push.json` in the App Group: the
 /// account id, this phone's device id and its computers' public box keys,
 /// which the Notification Service Extension needs to open letters. Not

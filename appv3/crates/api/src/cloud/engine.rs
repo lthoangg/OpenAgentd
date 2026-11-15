@@ -5,7 +5,9 @@
 //! sign-in step), or by invitation link (`POST /api/cloud/join`,
 //! `agentd cloud join`). An empty account ends in [`Outcome::EmptyAccount`]
 //! with the session unspent: the caller shows the recovery code and runs
-//! genesis (spec 4.1), so any computer can be the first device.
+//! genesis (spec 4.1), so any computer can be the first device. With the
+//! account's recovery code a computer takes the account over when no device
+//! that approves is left (`POST /api/cloud/recover`, `agentd cloud recover`).
 
 use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::{Cloud, DeviceCode, Refusal};
@@ -61,6 +63,7 @@ pub fn notice(e: &FlowError) -> Notice {
         FlowError::CommitMismatch => Notice::CommitMismatch,
         FlowError::ConfirmMismatch => Notice::ConfirmMismatch,
         FlowError::WrongNumber => Notice::WrongNumber,
+        FlowError::WrongRecoveryCode => Notice::WrongRecoveryCode,
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::EmptyAccount => Notice::EmptyAccount,
         FlowError::Roles => Notice::Roles,
@@ -103,6 +106,7 @@ pub fn message(e: &FlowError) -> Option<String> {
         Notice::DeviceLimit => "Your account has 10 devices; remove one first.".to_string(),
         Notice::DeviceExists => "This device is already in your account or waiting to join. Sign in again to start over.".to_string(),
         Notice::Unreachable => "Could not reach OpenAgentd. Check your network and try again.".to_string(),
+        Notice::WrongRecoveryCode => "That is not the recovery code of the account you signed in to. Nothing was changed.".to_string(),
         _ => return None,
     })
 }
@@ -165,6 +169,32 @@ async fn join_signed_in(cloud: Cloud, session: Session, fingerprint: &str, on: &
         Err(e) => return Err(e),
     };
     Ok(Outcome::Joined(identity_of(&member, &roster)))
+}
+
+/// Signs in a fresh device identity in the browser, then recovers the
+/// account with its recovery `code` (spec 4.4): this device becomes the
+/// account's only device, one that approves, and the others are signed
+/// out. No scan code: a phone of the account would only add this device,
+/// and the person is here because none is left. A code that is not this
+/// account's ends in [`FlowError::WrongRecoveryCode`] with nothing changed;
+/// an account with no devices yet in [`Outcome::EmptyAccount`]. The code
+/// is never logged or kept.
+pub async fn recover(endpoints: Endpoints, http: reqwest::Client, roles: Roles, code: &str, mut on: impl FnMut(Event<'_>)) -> Result<Outcome, FlowError> {
+    // The shape first: a mistyped code needs no sign-in.
+    if openagentd_cloud::recovery::decode(code).is_err() {
+        return Err(FlowError::WrongRecoveryCode);
+    }
+    let mut cloud = Cloud::new(http, endpoints, DeviceKeys::generate(), None);
+    cloud.roles = roles;
+    let device = cloud.device_code().await?;
+    on(Event::Code { code: &device, add_link: None });
+    let session = flows::wait_for_session(&cloud, &device).await?;
+    let mut member = Member::new(cloud, None);
+    match flows::recover(&mut member, &session, code).await {
+        Ok(roster) => Ok(Outcome::Joined(identity_of(&member, &roster))),
+        Err(FlowError::EmptyAccount) => Ok(Outcome::EmptyAccount { member: Box::new(member), session }),
+        Err(e) => Err(e),
+    }
 }
 
 /// A phone scanned the code (spec 4.3.1): claim its invitation, wait to be
@@ -293,6 +323,9 @@ mod tests {
         assert_eq!(notice(&FlowError::Problem(AccountProblem::Unavailable)), Notice::AccountUnavailable);
         assert_eq!(notice(&refused(400, "invalid_request", None)), Notice::Failed);
         assert_eq!(message(&refused(400, "invalid_request", None)), None);
+        assert_eq!(notice(&FlowError::WrongRecoveryCode), Notice::WrongRecoveryCode);
+        let wrong = message(&FlowError::WrongRecoveryCode).unwrap();
+        assert!(wrong.contains("recovery code") && !wrong.contains('\u{2014}') && !wrong.contains('\u{2013}'), "{wrong}");
     }
 
     #[test]

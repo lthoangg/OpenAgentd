@@ -28,7 +28,8 @@ export function useVisibleSettingsSections(): readonly SettingsSectionDef[] {
   )
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+/** "4 skills"; nothing for none, where a "0 …" would only add a word to read. */
+const counted = (n: number | undefined, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : null)
 
 /**
  * What sits beside a section's nav entry, in words ("4 skills",
@@ -44,8 +45,8 @@ export function useSettingsSectionCounts(): Partial<Record<TopLevelSection, stri
   const skills = skillsQ.data?.skills.length
   const rules = deniedPathsQ.data?.denied_patterns.length
   return {
-    skills: skills === undefined ? null : plural(skills, 'skill', 'skills'),
-    mcp: servers === undefined ? null : signIn > 0 ? `${signIn} needs sign-in` : plural(servers.length, 'server', 'servers'),
-    denied_paths: rules === undefined ? null : plural(rules, 'rule', 'rules'),
+    skills: counted(skills, 'skill', 'skills'),
+    mcp: signIn > 0 ? `${signIn} needs sign-in` : counted(servers?.length, 'connector', 'connectors'),
+    denied_paths: counted(rules, 'rule', 'rules'),
   }
 }

@@ -20,6 +20,11 @@ export interface AppBackendBootstrap {
   ready: boolean
   unavailable: boolean
   failed: boolean
+  /**
+   * What the shell said when its own start-up failed. Not for the screen
+   * (the recovery screen says it in plain words); for Copy details.
+   */
+  failureMessage: string | null
   retrying: boolean
   retry: () => void
 }
@@ -50,7 +55,7 @@ function isBootstrapReady(status: AppBackendStatus | null, isTauri: boolean): bo
 
 async function listenWebviewBackendEvents(callbacks: {
   onReady: (payload: { base_url: string; token?: string | null }) => void
-  onError: () => void
+  onError: (message: string | null) => void
 }): Promise<() => void> {
   const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow')
   const currentWindow = getCurrentWebviewWindow()
@@ -60,8 +65,8 @@ async function listenWebviewBackendEvents(callbacks: {
       callbacks.onReady(event.payload)
     },
   )
-  const unlistenError = await currentWindow.listen<{ message: string }>('backend-error', () => {
-    callbacks.onError()
+  const unlistenError = await currentWindow.listen<{ message: string }>('backend-error', (event) => {
+    callbacks.onError(typeof event.payload?.message === 'string' ? event.payload.message : null)
   })
   return () => {
     unlistenReady()
@@ -74,6 +79,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
   const [retryKey, setRetryKey] = useState(0)
   const [unavailable, setUnavailable] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [failureMessage, setFailureMessage] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   const retry = useCallback(() => {
     if (retrying) return
@@ -91,6 +97,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
       .finally(() => {
         setRetrying(false)
         setFailed(false)
+        setFailureMessage(null)
         setUnavailable(false)
         setRetryKey((key) => key + 1)
       })
@@ -182,13 +189,15 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
           if (!cancelled) setUnavailable(true)
         })
       },
-      onError: () => {
+      onError: (message) => {
         // Do not wait out the generic startup timeout when native startup has
         // already failed, and leave a running UI when the bundled backend
         // died and could not be restarted. The shell's detailed error
-        // remains in its log; the recovery UI exposes only generic copy.
+        // remains in its log; the recovery UI shows only generic copy and
+        // hands the message to Copy details.
         if (!cancelled) {
           setReady(false)
+          setFailureMessage(message)
           setFailed(true)
           setUnavailable(true)
         }
@@ -213,5 +222,5 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     }
   }, [retryKey])
 
-  return { ready, unavailable, failed, retrying, retry }
+  return { ready, unavailable, failed, failureMessage, retrying, retry }
 }

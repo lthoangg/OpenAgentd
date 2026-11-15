@@ -91,16 +91,22 @@ describe("ToolResult — web_search", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolResult — shell", () => {
-  it("shows [Succeeded] status in green", () => {
+  it("shows a successful command as exit 0, in green, not the protocol's [Succeeded]", () => {
     render(<ToolResult toolName="shell" result={"[Succeeded]\n\nhello world"} />)
-    const status = screen.getByText(/\[Succeeded\]/)
+    const status = screen.getByText("exit 0")
     expect(status.className).toContain("accent-green-text")
+    expect(screen.queryByText(/\[Succeeded\]/)).toBeNull()
   })
 
-  it("shows [Failed] status in the error color", () => {
+  it("shows a failed command as its exit code, in the error color", () => {
     render(<ToolResult toolName="shell" result={"[Failed — exit code 1]\n\nerror output"} />)
-    const status = screen.getByText(/\[Failed/)
+    const status = screen.getByText("exit 1")
     expect(status.className).toContain("color-error")
+  })
+
+  it("says a command timed out in words", () => {
+    render(<ToolResult toolName="shell" result={"[Timed out after 30s]\n\npartial"} />)
+    expect(screen.getByText("Timed out after 30s").className).toContain("color-error")
   })
 
   it("renders stdout body text", () => {
@@ -110,7 +116,7 @@ describe("ToolResult — shell", () => {
 
   it("renders nothing extra when no body after status line", () => {
     render(<ToolResult toolName="shell" result="[Succeeded]" />)
-    expect(screen.getByText(/\[Succeeded\]/)).toBeTruthy()
+    expect(screen.getByText("exit 0")).toBeTruthy()
     // No pre block for empty body
     const pres = document.querySelectorAll("pre")
     expect(pres.length).toBe(0)
@@ -460,7 +466,7 @@ describe("ToolResult — todo_manage", () => {
     render(<ToolResult toolName="todo_manage" result={boardResult} />)
     const meta = screen.getByText("task_2").parentElement as HTMLElement
     expect(Array.from(meta.children).map((node) => node.textContent)).toEqual([
-      "pending",
+      "To do",
       "medium",
       "executor#2",
       "after task_1",
@@ -476,7 +482,7 @@ describe("ToolResult — todo_manage", () => {
 
   it("renders the empty board as an inline empty state: sentence case, no trailing period", () => {
     render(<ToolResult toolName="todo_manage" result="No todos." />)
-    const title = screen.getByText("No todos")
+    const title = screen.getByText("No tasks")
     expect(title.tagName).toBe("H2")
     // Inline (``fill={false}``): it does not stretch to fill the parent.
     expect(title.closest("[class*='h-full']")).toBeNull()
@@ -541,7 +547,7 @@ describe("ToolResult — team tools", () => {
       member_id: "explorer#1",
       output: "Audit finished: 5 endpoints found.",
     })
-    render(<ToolResult toolName="team_spawn" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     // The member is a row: its handle in mono, its state in words as a quiet chip
     const row = screen.getByText("explorer#1").closest("[data-subagent-row]")
     expect(row).toBeTruthy()
@@ -553,7 +559,7 @@ describe("ToolResult — team tools", () => {
 
   it("labels a spawned subagent as running", () => {
     const res = JSON.stringify({ status: "spawned", member_id: "explorer#3" })
-    render(<ToolResult toolName="team_spawn" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     const status = screen.getByText("Running").closest('[data-slot="chip"]')
     expect(status?.getAttribute("data-tone")).toBe("info")
     expect(screen.queryByText("spawned")).toBeNull()
@@ -568,7 +574,7 @@ describe("ToolResult — team tools", () => {
         options: ["yes", "no"],
       },
     })
-    render(<ToolResult toolName="team_send" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     expect(screen.getByText("explorer#2")).toBeTruthy()
     const status = screen.getByText("Needs you").closest('[data-slot="chip"]')
     expect(status?.getAttribute("data-tone")).toBe("warning")
@@ -583,7 +589,7 @@ describe("ToolResult — team tools", () => {
     expect(screen.queryByRole("button")).toBeNull()
   })
 
-  it("renders multi-member results for team_wait", () => {
+  it("renders a result with several members", () => {
     const res = JSON.stringify({
       status: "completed",
       results: {
@@ -591,14 +597,14 @@ describe("ToolResult — team tools", () => {
         "researcher#1": { status: "completed", output: "Fetched docs" },
       },
     })
-    render(<ToolResult toolName="team_wait" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     expect(screen.getByText("explorer#1")).toBeTruthy()
     expect(screen.getByText("researcher#1")).toBeTruthy()
     expect(screen.getByText(/Found 3 files/)).toBeTruthy()
     expect(screen.getByText(/Fetched docs/)).toBeTruthy()
   })
 
-  it("renders roster list for team_list and team_manage", () => {
+  it("renders the roster list", () => {
     const res = JSON.stringify({
       available_profiles: [{ name: "explorer" }],
       live_members: [
@@ -606,7 +612,7 @@ describe("ToolResult — team tools", () => {
         { member_id: "researcher#1", status: "completed" },
       ],
     })
-    render(<ToolResult toolName="team_manage" result={res} />)
+    render(<ToolResult toolName="team" result={res} />)
     expect(screen.getByText("Subagents")).toBeTruthy()
     expect(screen.queryByText("Subagent Roster")).toBeNull()
     expect(screen.getByText("explorer#1")).toBeTruthy()

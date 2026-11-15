@@ -38,6 +38,7 @@ mock.module('@tauri-apps/api/core', () => ({
   invoke: async (cmd: string) => {
     updaterCalls.push(cmd)
     if (cmd === 'updater_check') return checkResult
+    if (cmd === 'updater_download') return { ...checkResult, status: 'downloaded' }
     if (cmd === 'app_backend_status') return { base_url: 'http://10.0.0.2:8000' }
     return undefined
   },
@@ -136,6 +137,18 @@ describe('AboutSettingsPage — desktop updates card', () => {
       expect(screen.queryByText(/install the newer \.deb/i)).toBeNull()
       unmount()
     }
+  })
+
+  it('downloads a found update on its own on the desktop, leaving one decision: the restart', async () => {
+    checkResult = { status: 'available', version: '1.3.0', current_version: '1.2.3' }
+    renderHub({ status: 'ok', version: '1.2.3' })
+
+    fireEvent.click(screen.getByRole('button', { name: /check for updates?/i }))
+
+    expect(await screen.findByRole('button', { name: 'Restart to update…' })).toBeInTheDocument()
+    expect(updaterCalls).toContain('updater_download')
+    expect(screen.queryByRole('button', { name: /^download$/i })).toBeNull()
+    expect(screen.getByText('OpenAgentd 1.3.0 is ready. It installs when the app restarts.')).toBeInTheDocument()
   })
 
   it('downloads, then asks before installing the APK on Android', async () => {

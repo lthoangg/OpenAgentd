@@ -8,7 +8,10 @@
 //!
 //! It is text a computer says about itself: capped, stripped of control
 //! and text-direction characters, shown as plain text, and never used to
-//! decide trust (the device key is).
+//! decide trust (the device key is). The rule is the cloud client's
+//! (`openagentd_cloud::names`), so the account accepts every name kept here.
+//! A signed-in computer also tells the account its new name, in the
+//! background ([`crate::cloud::push_own_name`]).
 
 use crate::error::{ApiError, ApiResult};
 use crate::util::{body_value, json};
@@ -21,26 +24,16 @@ use bytes::Bytes;
 use serde_json::json as j;
 
 /// The longest name kept, in characters.
-pub const NAME_MAX_CHARS: usize = 40;
+pub const NAME_MAX_CHARS: usize = openagentd_cloud::names::NAME_MAX_CHARS;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/name", get(get_name).put(put_name))
 }
 
-/// Characters that change the direction of the text after them. An app
-/// shows a key right after a name, and a name must not reorder it.
-fn is_direction_control(c: char) -> bool {
-    matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
-}
-
 /// One line of plain text: no control or text-direction characters, single
 /// spaces, at most [`NAME_MAX_CHARS`]. `None` when nothing is left.
 pub fn clean_name(raw: &str) -> Option<String> {
-    let raw: String = raw.chars().filter(|c| !is_direction_control(*c)).collect();
-    let words: Vec<&str> = raw.split(|c: char| c.is_whitespace() || c.is_control()).filter(|w| !w.is_empty()).collect();
-    let name: String = words.join(" ").chars().take(NAME_MAX_CHARS).collect();
-    let name = name.trim_end().to_string();
-    (!name.is_empty()).then_some(name)
+    openagentd_cloud::names::clean(raw)
 }
 
 /// The host name without its domain ("studio-mini", not "studio-mini.local").
@@ -87,10 +80,19 @@ async fn get_name() -> ApiResult<Response> {
 async fn put_name(raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let name = v.get("name").and_then(|n| n.as_str()).ok_or_else(|| ApiError::unprocessable("name must be a string"))?;
-    let mut cfg = rs::load_runtime_settings().map_err(ApiError::internal)?;
-    cfg.computer_name = clean_name(name);
-    rs::save_runtime_settings(&cfg).map_err(ApiError::internal)?;
-    Ok(json(body(cfg.computer_name)))
+    let custom = clean_name(name);
+    store_custom_name(custom.clone()).map_err(ApiError::internal)?;
+    // The account keeps the name too; the cloud never fails a rename here.
+    tokio::spawn(crate::cloud::push_own_name());
+    Ok(json(body(custom)))
+}
+
+/// Keeps `custom` as this computer's own name (`None`: use the host name).
+pub fn store_custom_name(custom: Option<String>) -> anyhow::Result<()> {
+    let mut cfg = rs::load_runtime_settings()?;
+    cfg.computer_name = custom;
+    rs::save_runtime_settings(&cfg)?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -39,6 +39,20 @@ export function formatFullDateTime(date: Date, now: Date = new Date()): string {
   return dayAndTime(date, now, 'HH:mm:ss')
 }
 
+/**
+ * A duration in words, to one whole unit: "8 seconds", "18 minutes", "2 hours".
+ * For sentences; rows of numbers use the short forms ("8s", "18m").
+ */
+export function formatDurationWords(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000))
+  const [count, unit] = seconds < 60
+    ? [seconds, 'second']
+    : seconds < 3570
+      ? [Math.round(seconds / 60), 'minute']
+      : [Math.round(seconds / 3600), 'hour']
+  return `${count} ${unit}${count === 1 ? '' : 's'}`
+}
+
 /** Human-readable byte size — "523 B", "12.4 KB", "3.1 MB". */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`

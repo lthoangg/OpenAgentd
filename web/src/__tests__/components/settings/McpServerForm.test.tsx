@@ -105,92 +105,91 @@ describe('McpServerForm — Identity section', () => {
   })
 })
 
-// ── Transport tabs ───────────────────────────────────────────────────────────
+// ── How it connects ──────────────────────────────────────────────────────────
 
-describe('McpServerForm — Transport tabs', () => {
-  it('renders both stdio and http tabs', () => {
-    const draft = emptyDraft()
-    const onChange = mock(() => {})
-    renderForm(draft, onChange)
-    expect(screen.getByRole('radio', { name: /stdio/i })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: /http/i })).toBeTruthy()
-  })
+describe('McpServerForm — how it connects', () => {
+  const how = (name: string) => screen.getByRole('radio', { name })
 
-  it('shows stdio section when transport is stdio', () => {
-    const draft = { ...emptyDraft(), transport: 'stdio' as const }
-    const onChange = mock(() => {})
-    renderForm(draft, onChange)
-    expect(screen.getByText(/Runs a local process and talks to it over stdin and stdout/i)).toBeTruthy()
-    expect(screen.getByPlaceholderText('npx')).toBeTruthy()
-  })
-
-  it('shows http section when transport is http', () => {
-    const draft = { ...emptyDraft(), transport: 'http' as const }
-    const onChange = mock(() => {})
-    renderForm(draft, onChange)
-    expect(screen.getByText(/Connects to a URL \(Streamable HTTP\)/i)).toBeTruthy()
-    expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
-  })
-
-  it('offers the legacy SSE transport next to HTTP', () => {
+  it('asks the question in words, with two answers', () => {
     renderForm(emptyDraft(), mock(() => {}))
-    expect(screen.getByRole('radio', { name: /sse/i })).toBeTruthy()
+    const group = screen.getByRole('radiogroup', { name: 'How does it connect?' })
+    expect(group.querySelectorAll('[role="radio"]').length).toBe(2)
+    expect(how('A web address')).toBeTruthy()
+    expect(how('A program on this computer')).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: /stdio|http/i })).toBeNull()
   })
 
-  it('shows the same URL, header and sign-in fields for sse as for http', () => {
-    const draft = { ...emptyDraft(), transport: 'sse' as const }
-    renderForm(draft, mock(() => {}))
-    expect(screen.getByText(/HTTP \+ SSE, the legacy transport/i)).toBeTruthy()
+  it('shows only the program fields for a program', () => {
+    renderForm({ ...emptyDraft(), transport: 'stdio' as const }, mock(() => {}))
+    expect(how('A program on this computer').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByPlaceholderText('npx')).toBeTruthy()
+    expect(screen.getByText('Environment variables')).toBeTruthy()
+    expect(screen.queryByPlaceholderText('https://mcp.example.com/v1')).toBeNull()
+    expect(screen.queryByText('Headers')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Needs sign-in' })).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: 'Protocol' })).toBeNull()
+  })
+
+  it('shows only the address fields for a web address', () => {
+    renderForm({ ...emptyDraft(), transport: 'http' as const }, mock(() => {}))
+    expect(how('A web address').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
+    expect(screen.getByRole('switch', { name: 'Needs sign-in' })).toBeTruthy()
+    expect(screen.getByText('Headers')).toBeTruthy()
+    expect(screen.queryByPlaceholderText('npx')).toBeNull()
+    expect(screen.queryByText('Environment variables')).toBeNull()
+  })
+
+  it('counts an SSE-only connector as a web address, with the same fields', () => {
+    renderForm({ ...emptyDraft(), transport: 'sse' as const }, mock(() => {}))
+    expect(how('A web address').getAttribute('aria-checked')).toBe('true')
     expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
     expect(screen.getByText('Headers')).toBeTruthy()
-    expect(screen.getByRole('radiogroup', { name: /sign-in method/i })).toBeTruthy()
-    expect(screen.queryByPlaceholderText('npx')).toBeNull()
+    expect(screen.getByRole('radio', { name: 'SSE only' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText('Uses only the older SSE protocol.')).toBeTruthy()
   })
 
-  it('picks sse when the SSE tab is clicked', async () => {
+  it('keeps the older SSE protocol as a choice under Options', async () => {
     const user = userEvent.setup()
     const onChange = mock(((_next: McpServerDraft) => {}) as (...args: unknown[]) => unknown)
     renderForm({ ...emptyDraft(), transport: 'http' as const }, onChange)
-    await user.click(screen.getByRole('radio', { name: /sse/i }))
-    expect(onChange).toHaveBeenCalled()
+    expect(screen.getByText('Tries the current protocol first, then the older SSE one.')).toBeTruthy()
+    await user.click(screen.getByRole('radio', { name: 'SSE only' }))
     expect((onChange.mock.calls[0] as unknown as [McpServerDraft])[0].transport).toBe('sse')
   })
 
-  it('switches to http tab when http tab is clicked', async () => {
+  it('switches to a web address', async () => {
     const user = userEvent.setup()
-    const draft = { ...emptyDraft(), transport: 'stdio' as const }
-    const onChange = mock(() => {})
-    renderForm(draft, onChange)
-    const httpTab = screen.getByRole('radio', { name: /http/i })
-    await user.click(httpTab)
-    expect(onChange).toHaveBeenCalled()
+    const onChange = mock(((_next: McpServerDraft) => {}) as (...args: unknown[]) => unknown)
+    renderForm({ ...emptyDraft(), transport: 'stdio' as const }, onChange)
+    await user.click(how('A web address'))
+    expect((onChange.mock.calls[0] as unknown as [McpServerDraft])[0].transport).toBe('http')
   })
 
-  it('switches to stdio tab when stdio tab is clicked', async () => {
+  it('switches to a program, keeping what was typed for the address', async () => {
     const user = userEvent.setup()
-    const draft = { ...emptyDraft(), transport: 'http' as const }
-    const onChange = mock(() => {})
-    renderForm(draft, onChange)
-    const stdioTab = screen.getByRole('radio', { name: /stdio/i })
-    await user.click(stdioTab)
-    expect(onChange).toHaveBeenCalled()
+    const onChange = mock(((_next: McpServerDraft) => {}) as (...args: unknown[]) => unknown)
+    renderForm({ ...emptyDraft(), transport: 'http' as const, url: 'https://example.com', command: 'npx' }, onChange)
+    await user.click(how('A program on this computer'))
+    const next = (onChange.mock.calls[0] as unknown as [McpServerDraft])[0]
+    expect(next.transport).toBe('stdio')
+    expect(next.url).toBe('https://example.com')
+    expect(next.command).toBe('npx')
   })
 
-  it('preserves both transports fields when switching tabs', async () => {
+  it('turns sign-in on and off with a switch', async () => {
     const user = userEvent.setup()
-    let draft: McpServerDraft = {
-      ...emptyDraft(),
-      transport: 'stdio' as const,
-      command: 'npx',
-      url: 'https://example.com',
-    }
-    const onChange = mock(((next: McpServerDraft) => {
-      draft = next
-    }) as (...args: unknown[]) => unknown)
-    renderForm(draft, onChange)
-    const httpTab = screen.getByRole('radio', { name: /http/i })
-    await user.click(httpTab)
-    expect(onChange).toHaveBeenCalled()
+    const onChange = mock(((_next: McpServerDraft) => {}) as (...args: unknown[]) => unknown)
+    renderForm({ ...emptyDraft(), transport: 'http' as const, oauthEnabled: false }, onChange)
+    expect(screen.queryByText('Client ID')).toBeNull()
+    await user.click(screen.getByRole('switch', { name: 'Needs sign-in' }))
+    expect((onChange.mock.calls[0] as unknown as [McpServerDraft])[0].oauthEnabled).toBe(true)
+  })
+
+  it('offers app credentials only while sign-in is on', () => {
+    renderForm({ ...emptyDraft(), transport: 'http' as const, oauthEnabled: true }, mock(() => {}))
+    expect(screen.getByRole('textbox', { name: 'Client ID' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Client secret' })).toBeTruthy()
   })
 })
 
@@ -293,9 +292,9 @@ describe('McpServerForm — HTTP section', () => {
   it('associates the URL control with its authoritative error', () => {
     const draft = { ...emptyDraft(), transport: 'http' as const }
     const onChange = mock(() => {})
-    renderForm(draft, onChange, { errors: { url: 'URL is required.' } })
+    renderForm(draft, onChange, { errors: { url: 'Address is required.' } })
     const input = screen.getByPlaceholderText(/https:\/\/mcp/) as HTMLInputElement
-    const error = screen.getByText('URL is required.')
+    const error = screen.getByText('Address is required.')
     expect(input.getAttribute('aria-invalid')).toBe('true')
     expect(input.getAttribute('aria-describedby')).toBe(error.id)
     expect(error.id).toBeTruthy()
@@ -305,7 +304,7 @@ describe('McpServerForm — HTTP section', () => {
     const draft = { ...emptyDraft(), transport: 'http' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    expect(screen.getByText(/Headers/i)).toBeTruthy()
+    expect(screen.getByText('Headers')).toBeTruthy()
   })
 
   it('associates header inputs with their authoritative error', () => {

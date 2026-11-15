@@ -1,13 +1,14 @@
 /**
  * TaskDetailView — the task's own pane: header actions (Run now and Edit task
  * in words, the rest in a ⋯ menu with Delete last), state tiles, and the
- * Schedule / Delivery / History sections.
+ * Runs in / Schedule / Dates sections.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { TaskDetailView } from '@/components/SchedulerPanel/TaskDetailView'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import '@testing-library/jest-dom'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -36,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
   if (originalFetch) globalThis.fetch = originalFetch
 })
 
@@ -77,6 +79,17 @@ describe('TaskDetailView header', () => {
     const slug = screen.getByText('daily-standup').closest('[data-slot="chip"]')
     expect(slug).toBeTruthy()
     expect(slug?.className).toContain('font-mono')
+  })
+
+  it('leaves the slug out with the Detail setting on Simple', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      renderDetail()
+      expect(screen.getByRole('heading', { name: 'Daily standup' })).toBeInTheDocument()
+      expect(screen.queryByText('daily-standup')).toBeNull()
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
   })
 
   it('has Run now (not Trigger now) and Edit task as labelled buttons, then a ⋯ menu last', () => {
@@ -133,7 +146,7 @@ describe('TaskDetailView header', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete task…' }))
-    expect(screen.getByRole('dialog', { name: 'Delete scheduled task' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Delete this task?' })).toBeInTheDocument()
     expect(requests).toHaveLength(0)
     // A confirm: no ×; Cancel dismisses; the action is "Delete task".
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
@@ -190,34 +203,66 @@ describe('TaskDetailView tiles', () => {
 })
 
 describe('TaskDetailView schedule', () => {
-  it('describes a repeating task as "Repeats" with its interval and the seconds', () => {
+  it('says a repeating task in one line, without a type or a number of seconds', () => {
     renderDetail()
-    expect(within(row('Type')).getByText('Repeats')).toBeInTheDocument()
-    expect(row('Every').textContent).toBe('Every3 min (180 s)')
-    expect(screen.queryByText('Means')).toBeNull()
+    expect(row('When').textContent).toBe('WhenEvery 3 min')
+    expect(screen.queryByText('Type')).toBeNull()
+    expect(screen.queryByText(/180 s/)).toBeNull()
+    // An interval has no time zone to show.
+    expect(screen.queryByText('Time zone')).toBeNull()
   })
 
-  it('describes a cron task with its expression and what it means', () => {
+  it('says a weekday schedule in words with its next run, and keeps the expression for Full detail', () => {
     renderDetail({ schedule_type: 'cron', every_seconds: null, cron_expression: '0 9 * * 1-5' })
-    expect(within(row('Type')).getByText('Cron')).toBeInTheDocument()
+    expect(row('When').textContent).toMatch(/^WhenWeekdays at 09:00 · next: \w{3} \w{3} \d+, 09:00$/)
     expect(within(row('Expression')).getByText('0 9 * * 1-5')).toBeInTheDocument()
-    expect(row('Means').textContent).toContain('Weekdays at 09:00')
-    expect(row('Means').textContent).toContain(' · next ')
-    expect(screen.queryByText('Every', { selector: 'span' })).toBeNull()
+    expect(within(row('Time zone')).getByText('UTC')).toBeInTheDocument()
+
+    cleanup()
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    renderDetail({ schedule_type: 'cron', every_seconds: null, cron_expression: '0 9 * * 1-5' })
+    expect(row('When').textContent).toContain('Weekdays at 09:00')
+    expect(screen.queryByText('Expression')).toBeNull()
   })
 
-  it('describes a one-off task as "Once" with its date', () => {
+  it('shows the expression in Simple detail too when it has no short description', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    renderDetail({ schedule_type: 'cron', every_seconds: null, cron_expression: '0 9 1 6 *' })
+    expect(row('When').textContent).toContain('Custom schedule')
+    expect(within(row('Expression')).getByText('0 9 1 6 *')).toBeInTheDocument()
+  })
+
+  it('says a one-off task as "Once at" its date', () => {
     renderDetail({ schedule_type: 'at', every_seconds: null, at_datetime: '2024-10-24T09:00:00Z' })
-    expect(within(row('Type')).getByText('Once')).toBeInTheDocument()
-    expect(within(row('Date and time')).getByText('Oct 24, 2024, 09:00')).toBeInTheDocument()
+    expect(row('When').textContent).toBe('WhenOnce at Oct 24, 2024, 09:00')
   })
 })
 
-describe('TaskDetailView history', () => {
-  it('calls the dates section "History", with only Created and Updated', () => {
+describe('TaskDetailView "Runs in"', () => {
+  it('names the workspace by its folder and says where replies go', () => {
+    renderDetail({ workspace: '/Users/me/code/linkly', session_id: 'auto' })
+    expect(screen.getByText('Runs in')).toBeInTheDocument()
+    expect(screen.queryByText('Delivery')).toBeNull()
+    expect(screen.queryByText('Coding agent')).toBeNull()
+    expect(row('Workspace').textContent).toContain('linkly')
+    expect(within(row('Replies go to')).getByText('The same session every time')).toBeInTheDocument()
+  })
+
+  it('says a new session each time for a task with no session, and shows a specific ID as it is', () => {
+    renderDetail({ session_id: null })
+    expect(within(row('Replies go to')).getByText('A new session each time')).toBeInTheDocument()
+
+    cleanup()
+    renderDetail({ session_id: '123e4567-e89b-12d3-a456-426614174000' })
+    expect(within(row('Replies go to')).getByText('123e4567-e89b-12d3-a456-426614174000')).toBeInTheDocument()
+  })
+})
+
+describe('TaskDetailView dates', () => {
+  it('calls the dates section "Dates", with only Created and Updated', () => {
     renderDetail()
-    expect(screen.getByText('History')).toBeInTheDocument()
-    expect(screen.queryByText('Runs', { selector: 'h3, h2, h4' })).toBeNull()
+    expect(screen.getByText('Dates')).toBeInTheDocument()
+    expect(screen.queryByText('History')).toBeNull()
     expect(screen.getByText('Created', { selector: 'span' })).toBeInTheDocument()
     expect(screen.getByText('Updated', { selector: 'span' })).toBeInTheDocument()
   })

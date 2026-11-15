@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 import type { SessionResponse } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
+import { APP_EVENTS } from '@/lib/app-events'
 
 const navigate = mock((..._args: unknown[]) => {})
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
@@ -81,8 +82,22 @@ describe('WorkspaceInfoCard', () => {
     renderCard(null, { chatWorkspace: true, workspace: '/Users/someone' })
 
     expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument()
-    expect(screen.getByText(/runs here, in your home directory/i)).toBeInTheDocument()
+    expect(screen.getByText(/Chat works in your home folder/)).toBeInTheDocument()
     expect(screen.queryByText('/Users/someone')).toBeNull()
     expect(requested).toEqual([])
+  })
+
+  it('says in Chat how to work with Undo, and opens the folder picker from there', async () => {
+    const user = userEvent.setup()
+    let opened = 0
+    const onOpen = () => { opened += 1 }
+    window.addEventListener(APP_EVENTS.openWorkspace, onOpen)
+    renderCard(null, { chatWorkspace: true, workspace: '/Users/someone' })
+
+    expect(screen.getByText(/To have the agent change files with Undo,/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'open a folder' }))
+    window.removeEventListener(APP_EVENTS.openWorkspace, onOpen)
+
+    expect(opened).toBe(1)
   })
 })

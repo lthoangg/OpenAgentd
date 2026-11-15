@@ -27,12 +27,12 @@ export function normalizeServerBaseUrl(value: string): string {
 }
 
 export function validateServerUrl(value: string): string | null {
-  if (!value) return 'Enter a server URL first.'
+  if (!value) return 'Enter an address first.'
   let parsed: URL
   try {
     parsed = new URL(value)
   } catch {
-    return 'Enter a full server URL, including http:// or https://.'
+    return 'Enter a full address, including http:// or https://.'
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return `Unsupported URL scheme: ${parsed.protocol.replace(/:$/, '')}`
@@ -44,12 +44,12 @@ export function connectionFailureMessage(baseUrl: string): string {
   try {
     const host = new URL(baseUrl).hostname
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
-      return 'Server did not respond to /api/health/live. Make sure OpenAgentd is running locally and the port is correct.'
+      return 'Nothing answered at that address. Make sure OpenAgentd is running locally and the port is correct.'
     }
   } catch {
     // validateServerUrl already handles malformed URLs.
   }
-  return 'Server did not respond to /api/health/live. Check that OpenAgentd on that computer allows access from other devices (Settings → Server → Access from other devices in the desktop app, or agentd server start --public), that this device is on the same network, and that the address is that computer’s.'
+  return 'Nothing answered at that address. Check that OpenAgentd on that computer allows access from other devices (Settings → Server → Access from other devices in the desktop app, or agentd server start --public), that this device is on the same network, and that the address is that computer’s.'
 }
 
 export async function refreshBackendQueries(): Promise<void> {
@@ -73,7 +73,7 @@ export function reloadForBackendSwitch(): void {
 
 /** What the switching screen calls the builtin sidecar. */
 export const BUILTIN_SWITCH_TARGET: BackendSwitchTarget = {
-  name: 'the built-in server',
+  name: 'this computer',
   detail: "Running sessions continue once it's up.",
 }
 
@@ -132,7 +132,7 @@ async function switchExternal(target: string, options: Parameters<typeof connect
     const typedKey = options.accessKey?.trim() ?? ''
     const keyForConnect = typedKey || await getStoredAccessKey(target) || ''
     if (!await checkServerAuth(target, keyForConnect)) {
-      return { ok: false, error: 'Server is reachable, but the access key is invalid or missing.' }
+      return { ok: false, error: 'The access key is wrong or missing.' }
     }
     if (typedKey) await setStoredAccessKey(options.accessKey ?? '', target)
     const next = await switchToExternalAppBackend(target, options.name, options.persist)

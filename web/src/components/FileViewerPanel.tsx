@@ -395,6 +395,7 @@ function TextPreview({
       .then((text) => {
         if (!cancelled) {
           setContent(text)
+          setError(null)
           setLoading(false)
         }
       })
@@ -407,7 +408,10 @@ function TextPreview({
     return () => {
       cancelled = true
     }
-  }, [workspace, file.path, tooLarge, deleted, attempt])
+    // ``mtime`` and ``size`` come from the workspace listing, which reloads
+    // when a file changes on disk or the agent edits it: the open file is
+    // read again then, the shown text staying up until the new one arrives.
+  }, [workspace, file.path, file.mtime, file.size, tooLarge, deleted, attempt])
 
   // Highlight the full content, split into per-line HTML strings. Small files
   // highlight synchronously; large ones show plain lines at once and swap in

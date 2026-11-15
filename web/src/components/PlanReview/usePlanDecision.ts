@@ -7,7 +7,7 @@
  * Whenever it is on, the approve label says so and how many turns
  * (``Approve and keep going (10 turns)``): a multi-turn run is never behind
  * a bare "Approve". The tick and the turns are shared by both surfaces for the
- * review's lifetime, starting from Settings → Goals.
+ * review's lifetime, starting from Settings → Sessions.
  */
 import { create } from 'zustand'
 
@@ -86,7 +86,7 @@ export function usePlanDecision({
     error: resolver.error,
     canKeepGoing,
     keepGoing,
-    /** Turns a goal starts with when the reader changes nothing (Settings → Goals). */
+    /** Turns a goal starts with when the reader changes nothing (Settings → Sessions). */
     defaultTurns,
     setKeepGoing: (next: boolean) => choose({ keepGoing: next }),
     turnsText,
@@ -104,7 +104,7 @@ export function usePlanDecision({
     /** ``text`` is the formatted review; empty sends the bare option. */
     requestChanges: (text: string) => resolver.answer([[text.trim() || REQUEST_CHANGES]]),
     keepGoingHint: canKeepGoing
-      ? `The goal is the plan's Done when${goalSettings?.token_budget ? ', with the token budget from Settings → Goals' : ''}. A check confirms it before the goal ends.`
+      ? `The goal is the plan's Done when${goalSettings?.token_budget ? ', with the token budget from Settings → Sessions' : ''}. A check confirms it before the goal ends.`
       : 'Add a Done when to the plan to keep going',
   }
 }

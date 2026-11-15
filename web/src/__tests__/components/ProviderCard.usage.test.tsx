@@ -224,7 +224,7 @@ describe('ProviderCard — usage states', () => {
     const row = rowFor('Personal')
     await within(row).findByText('33% used')
     fireEvent.click(within(row).getByRole('button', { name: /Refresh usage/ }))
-    expect(await within(row).findByText('Could not refresh usage')).toBeTruthy()
+    expect(await within(row).findByText("Couldn't refresh usage")).toBeTruthy()
     expect(within(row).getByText('33% used')).toBeTruthy()
     expect(within(row).getByText(/Last updated/)).toBeTruthy()
   })

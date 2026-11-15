@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteData } from '@tanstack/react-query'
 import { listSessions, deleteSession, updateSessionTitle, listSubagents, listWaiting, setSessionPinned } from '@/api/client'
-import type { SessionPageResponse, SessionResponse } from '@/api/types'
+import type { SessionPageResponse, SessionResponse, WaitingItem } from '@/api/types'
 import { queryKeys } from './keys'
 import { applyOptimisticTitle, applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
@@ -306,6 +306,15 @@ export function sessionWaitingQuery(sessionId: string | null | undefined) {
     staleTime: 5000,
     retry: false,
   } as const
+}
+
+/**
+ * The awaited sessions worth showing: running or stopped on the person. An
+ * idle one owes no work in progress, so the line, its list and the Goal
+ * tab's count all leave it out.
+ */
+export function activeWaiting(items: readonly WaitingItem[] | undefined): WaitingItem[] {
+  return (items ?? []).filter((item) => item.state !== 'idle')
 }
 
 export function useSessionWaitingQuery(sessionId: string | null | undefined, enabled = true) {

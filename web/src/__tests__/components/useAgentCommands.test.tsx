@@ -27,6 +27,7 @@ import { useUIStore } from "@/stores/useUIStore"
 import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import { THEME_STORAGE_KEY } from "@/lib/theme"
 import type { Command } from "@/components/CommandPalette"
+import { useConnectPhoneStore } from "@/lib/connect-phone"
 
 afterEach(cleanup)
 
@@ -75,7 +76,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "agent-info").description).toBe("Model, thinking level and account for the next message")
     expect(byId(result.current, "scheduled-tasks").description).toBe("Create, pause and run scheduled agent tasks")
     expect(byId(result.current, "open-preview").description).toBe("Show a local dev server or HTML file in the Review panel")
-    expect(byId(result.current, "go-settings").description).toBe("Agents, skills, providers and more")
+    expect(byId(result.current, "go-settings").description).toBe("Models, appearance, agents and more")
   })
 
   it("lists Maximize Review Panel only when a dock handler is provided", () => {
@@ -125,10 +126,10 @@ describe("useAgentCommands — shortcut labels", () => {
 
   it("says when the plan is waiting for review", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan: () => {}, hasPlan: true, planAwaitingReview: true })))
-    expect(byId(result.current, "open-plan").description).toMatch(/^Waiting for your review/)
+    expect(byId(result.current, "open-plan").description).toMatch(/^Needs you/)
   })
 
-  it("names Ctrl+D Toggle Review Panel and lists Open Git only for project workspaces", () => {
+  it("names Ctrl+D Toggle Review Panel and lists Open Changes only for project workspaces", () => {
     const noGit = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(noGit.result.current, "workspace-files").label).toBe("Toggle Review Panel")
     expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the Review panel and its open tabs")
@@ -137,7 +138,7 @@ describe("useAgentCommands — shortcut labels", () => {
     const handleOpenGit = mock(() => {})
     const withGit = renderHook(() => useAgentCommands(makeArgs({ handleOpenGit })))
     const cmd = byId(withGit.result.current, "open-git")
-    expect(cmd.label).toBe("Open Git")
+    expect(cmd.label).toBe("Open Changes")
     expect(cmd.shortcut).toBe("Ctrl+Shift+G")
     cmd.action()
     expect(handleOpenGit).toHaveBeenCalledTimes(1)
@@ -278,6 +279,28 @@ describe("useAgentCommands — navigation", () => {
     expect(openSettings).toHaveBeenCalledWith("agents")
   })
 
+  it("offers Connect Your Phone only when the footer would, and starts the sign-in for a guest", () => {
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
+    useConnectPhoneStore.setState({ requested: 0, handled: 0 })
+
+    const none = renderHook(() => useAgentCommands(makeArgs()))
+    expect(none.result.current.some((c) => c.id === "connect-phone")).toBe(false)
+
+    const guest = renderHook(() => useAgentCommands(makeArgs({ connectPhone: { signIn: true } })))
+    const cmd = byId(guest.result.current, "connect-phone")
+    expect(cmd.label).toBe("Connect Your Phone")
+    expect(cmd.group).toBe("Navigation")
+    expect(cmd.keywords).toContain("qr")
+    cmd.action()
+    expect(openSettings).toHaveBeenCalledWith("account")
+    expect(useConnectPhoneStore.getState().requested).toBe(1)
+
+    const signingIn = renderHook(() => useAgentCommands(makeArgs({ connectPhone: { signIn: false } })))
+    byId(signingIn.result.current, "connect-phone").action()
+    expect(useConnectPhoneStore.getState().requested).toBe(1)
+  })
+
   it("go-telemetry opens the Usage overlay", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(result.current, "go-telemetry").label).toBe("Open Usage")
@@ -287,34 +310,46 @@ describe("useAgentCommands — navigation", () => {
     useUIStore.getState().closeTelemetry()
   })
 
-  it("offers each theme in one Theme… list and applies the one chosen", () => {
+  it("offers theme and text size on one Appearance… page, found by the old names", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    expect(result.current.filter((c) => c.id.startsWith("theme-"))).toEqual([])
+    // One command, not two: Theme… and Text Size… are its two groups.
+    expect(result.current.find((c) => c.id === "theme" || c.id === "text-size")).toBeUndefined()
+    expect(result.current.filter((c) => c.id.startsWith("theme-") || c.id.startsWith("text-size-"))).toEqual([])
 
-    const theme = () => byId(result.current, "theme")
-    expect(theme().label).toBe("Theme…")
-    expect(theme().description).toBe("Switch between System, Light and Dark. Now: System")
-    expect(theme().keywords).toContain("dark")
-    expect(theme().page?.commands.map((c) => c.label)).toEqual(["System", "Light", "Dark"])
-    expect(byId(theme().page!.commands, "theme-system").description).toMatch(/· Current$/)
+    const appearance = () => byId(result.current, "appearance")
+    expect(appearance().label).toBe("Appearance…")
+    expect(appearance().description).toBe("Theme and text size. Now: System, Default")
+    for (const word of ["theme", "dark", "text size", "font"]) expect(appearance().keywords).toContain(word)
+    expect(appearance().page?.commands.map((c) => `${c.group}: ${c.label}`)).toEqual([
+      "Theme: System", "Theme: Light", "Theme: Dark",
+      "Text size: Compact", "Text size: Default", "Text size: Large",
+    ])
+  })
 
-    act(() => byId(theme().page!.commands, "theme-dark").action())
+  it("applies the theme chosen on the Appearance page", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const appearance = () => byId(result.current, "appearance")
+    expect(byId(appearance().page!.commands, "theme-system").description).toMatch(/· Current$/)
+
+    act(() => byId(appearance().page!.commands, "theme-dark").action())
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
-    expect(theme().description).toBe("Switch between System, Light and Dark. Now: Dark")
-    expect(byId(theme().page!.commands, "theme-dark").description).toMatch(/· Current$/)
+    expect(appearance().description).toBe("Theme and text size. Now: Dark, Default")
+    expect(byId(appearance().page!.commands, "theme-dark").description).toMatch(/· Current$/)
     localStorage.removeItem(THEME_STORAGE_KEY)
   })
 
-  it("toggles reader mode, saying which mode it is in", () => {
+  it("toggles Simple view, saying which detail it is in, and is still found by its old names", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     const toggle = () => byId(result.current, "toggle-reader-mode")
-    expect(toggle().label).toBe("Toggle Reader Mode")
-    expect(toggle().description).toMatch(/^Fold each turn/)
+    expect(toggle().label).toBe("Toggle Simple View")
+    expect(toggle().description).toBe("Detail is Full · show answers and fold the work")
+    expect(toggle().keywords).toMatch(/reader/)
+    expect(toggle().keywords).toMatch(/detailed/)
 
     act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("reader")
-    expect(toggle().description).toMatch(/^Reader mode is on/)
+    expect(toggle().description).toBe("Detail is Simple · show every step and number again")
 
     act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")
@@ -349,16 +384,15 @@ describe("useAgentCommands — layout", () => {
     expect([split, find].map((fn) => fn.mock.calls.length)).toEqual([1, 1])
   })
 
-  it("sets the text size from its page, marking the current one", () => {
+  it("sets the text size from the Appearance page, marking the current one", () => {
     useDisplayPrefsStore.getState().setTextSize("default")
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    const page = () => byId(result.current, "text-size").page!
-    expect(page().commands.map((c) => c.label)).toEqual(["Compact", "Default", "Large"])
+    const page = () => byId(result.current, "appearance").page!
     expect(byId(page().commands, "text-size-default").description).toBe("Current")
 
     act(() => byId(page().commands, "text-size-large").action())
     expect(useDisplayPrefsStore.getState().textSize).toBe("large")
-    expect(byId(result.current, "text-size").description).toMatch(/Now: Large$/)
+    expect(byId(result.current, "appearance").description).toMatch(/Large$/)
     act(() => useDisplayPrefsStore.getState().setTextSize("default"))
   })
 })

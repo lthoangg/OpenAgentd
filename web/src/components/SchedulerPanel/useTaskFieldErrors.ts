@@ -8,12 +8,12 @@ import { validateTaskValues, type TaskFormErrors, type TaskFormValues } from './
  * re-checked as it changes, so the message leaves the moment it is fixed
  * (and returns if the field breaks again).
  */
-export function useTaskFieldErrors(values: TaskFormValues, requireTitle: boolean) {
+export function useTaskFieldErrors(values: TaskFormValues) {
   const formRef = useRef<HTMLFormElement>(null)
   const [shownKeys, setShownKeys] = useState<ReadonlySet<keyof TaskFormValues>>(() => new Set())
   const [focusRequest, setFocusRequest] = useState(0)
 
-  const live = shownKeys.size ? validateTaskValues(values, requireTitle) : {}
+  const live = shownKeys.size ? validateTaskValues(values) : {}
   const fieldErrors: TaskFormErrors = {}
   for (const key of shownKeys) if (live[key]) fieldErrors[key] = live[key]
 
@@ -24,7 +24,7 @@ export function useTaskFieldErrors(values: TaskFormValues, requireTitle: boolean
 
   /** Validates for a submit; false (and errors shown) when it must not go ahead. */
   const validateForSubmit = (submitValues: TaskFormValues): boolean => {
-    const errors = validateTaskValues(submitValues, requireTitle)
+    const errors = validateTaskValues(submitValues)
     const keys = Object.keys(errors) as (keyof TaskFormValues)[]
     if (!keys.length) return true
     setShownKeys((prev) => new Set([...prev, ...keys]))

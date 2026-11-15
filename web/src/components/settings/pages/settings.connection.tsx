@@ -1,16 +1,16 @@
 /**
- * Settings → Server — which OpenAgentd server this app talks to and, in
- * the desktop app, whether phones and other computers may connect to the
- * built-in one. The Server dialog shows the same panel.
+ * Settings → Server — which computer's OpenAgentd this app talks to and, in
+ * the desktop app, whether phones and other computers may connect to this
+ * one. The Server dialog shows the same panel.
  *
- * In the desktop app, "Your computers" comes first: the other computers of
- * the account this computer is signed in to, each opened in this window
- * with Use (the phone's list, `AccountComputersSection`).
+ * One list, Computers: in the desktop app the other computers of the
+ * account this computer is signed in to are rows of it
+ * (`AccountComputerRows`), each opened in this window with Use.
  */
 import { AppBackendPanel } from '@/components/AppBackendPanel'
 import { DirectSessionsCard } from '@/components/DirectSessionsCard'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
-import { AccountComputersSection, useAccountComputers } from '@/components/phone/AccountComputers'
+import { AccountComputerRows, useAccountComputers } from '@/components/phone/AccountComputers'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { startBundledAppBackend } from '@/lib/app-backend'
 import { isDesktopShell } from '@/lib/desktop-shell'
@@ -18,38 +18,35 @@ import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
-/** The desktop's "Your computers", above its servers. */
-function useDesktopComputers() {
+/** The account's computers, as rows of the desktop's list. */
+function useDesktopComputerRows() {
   const { computers, devices, connected, canOpen, builtinStopped, app, route, reloadApp } = useAccountComputers(true)
   const start = async () => {
     await startBundledAppBackend()
     await reloadApp()
     await queryClient.invalidateQueries({ queryKey: queryKeys.cloud.status() })
   }
-  const shown = builtinStopped || connected
-  return {
-    section: shown ? (
-      <AccountComputersSection
-        computers={computers}
-        loaded={devices !== undefined}
-        app={app}
-        route={route}
-        onOpenSessions={() => useSettingsStore.getState().closeSettings()}
-        builtinStopped={builtinStopped}
-        onStartBuiltin={start}
-        cannotOpen={!canOpen}
-        onRenamed={reloadApp}
-      />
-    ) : null,
-  }
+  if (!builtinStopped && !connected) return null
+  return (
+    <AccountComputerRows
+      computers={computers}
+      loaded={devices !== undefined}
+      app={app}
+      route={route}
+      onOpenSessions={() => useSettingsStore.getState().closeSettings()}
+      builtinStopped={builtinStopped}
+      onStartBuiltin={start}
+      cannotOpen={!canOpen}
+      onRenamed={reloadApp}
+    />
+  )
 }
 
 function DesktopConnectionSettings() {
-  const { section } = useDesktopComputers()
+  const accountRows = useDesktopComputerRows()
   return (
     <>
-      {section}
-      <AppBackendPanel active />
+      <AppBackendPanel active accountRows={accountRows} />
       <DirectSessionsCard />
       <NetworkAccessCard title="Access from other devices" />
     </>
@@ -60,7 +57,7 @@ export function ConnectionSettingsPage() {
   return (
     <SettingsPage
       title="Server"
-      description="Use the built-in server that runs inside this app, or a server you run elsewhere."
+      description="Which computer this app uses, and access from other devices."
     >
       {isDesktopShell() ? <DesktopConnectionSettings /> : <AppBackendPanel active />}
     </SettingsPage>

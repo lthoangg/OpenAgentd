@@ -5,6 +5,7 @@ import {
   draftToServerBody,
   validateDraft,
   draftEquals,
+  nameFromAddress,
   SERVER_NAME_REGEX,
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
@@ -225,7 +226,7 @@ describe('draftToServerBody', () => {
     const result = draftToServerBody(draft)
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.error).toContain('URL is required')
+      expect(result.error).toContain('Address is required')
     }
   })
 
@@ -483,7 +484,7 @@ describe('validateDraft', () => {
       headerPairs: [],
     }
     const errors = validateDraft(draft, { isNew: true })
-    expect(errors?.url).toContain('URL is required')
+    expect(errors?.url).toContain('Address is required')
   })
 
   it('detects duplicate env keys', () => {
@@ -801,6 +802,43 @@ describe('draftEquals', () => {
 })
 
 // ── SERVER_NAME_REGEX ────────────────────────────────────────────────────────
+
+describe('nameFromAddress', () => {
+  it("reads the site's own name", () => {
+    expect(nameFromAddress('https://mcp.notion.com/mcp')).toBe('notion')
+    expect(nameFromAddress('https://mcp.linear.app/sse')).toBe('linear')
+    expect(nameFromAddress('https://api.githubcopilot.com/mcp/')).toBe('githubcopilot')
+    expect(nameFromAddress('  https://example.com  ')).toBe('example')
+  })
+
+  it('skips a shared second-level label', () => {
+    expect(nameFromAddress('https://tools.example.co.uk/mcp')).toBe('example')
+  })
+
+  it('takes a single-label host as it is', () => {
+    expect(nameFromAddress('http://localhost:3000/mcp')).toBe('localhost')
+  })
+
+  it('is empty until the address has a scheme and a host', () => {
+    expect(nameFromAddress('')).toBe('')
+    expect(nameFromAddress('https')).toBe('')
+    expect(nameFromAddress('https://')).toBe('')
+    expect(nameFromAddress('mcp.notion.com/mcp')).toBe('')
+  })
+
+  it('is empty for an IP address', () => {
+    expect(nameFromAddress('http://127.0.0.1:8080/mcp')).toBe('')
+    expect(nameFromAddress('http://[::1]:8080/mcp')).toBe('')
+  })
+
+  it('gives only names the name rule accepts', () => {
+    for (const address of ['https://mcp.notion.com', 'https://9lives.io/mcp', 'https://xn--bcher-kva.example/mcp', 'http://my_host/mcp']) {
+      const name = nameFromAddress(address)
+      expect(name === '' || SERVER_NAME_REGEX.test(name)).toBe(true)
+    }
+    expect(nameFromAddress('https://9lives.io/mcp')).toBe('lives')
+  })
+})
 
 describe('SERVER_NAME_REGEX', () => {
   it('matches valid server names', () => {

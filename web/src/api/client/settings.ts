@@ -8,7 +8,6 @@ import type { SSECallbacks } from '../sse'
 import { parseDetailOrThrow } from './_shared'
 
 export type DeniedPathsSettings = { denied_patterns: string[] }
-export type SandboxSettings = DeniedPathsSettings
 
 export type LspToolsStatus = {
   downloads_enabled: boolean
@@ -51,8 +50,6 @@ export async function updateDeniedPathsSettings(
   return res.json()
 }
 
-export const getSandboxSettings = getDeniedPathsSettings
-export const updateSandboxSettings = updateDeniedPathsSettings
 
 export type SummarizationSettings = {
   /** null = use the auto-computed model-aware threshold */

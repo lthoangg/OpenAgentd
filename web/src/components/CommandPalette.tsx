@@ -57,7 +57,7 @@ export interface Command {
   shortcut?: string
   /** Optional category for grouping */
   group?: string
-  /** Other words it is found by, e.g. "compact" for Reader Mode; not shown. */
+  /** Other words it is found by, e.g. "reader" for Toggle Simple View; not shown. */
   keywords?: string
   /** Opens this list inside the palette; ``action`` is not run. */
   page?: CommandPage
@@ -382,8 +382,8 @@ export function CommandPalette({
   // Build the sections and their flat, arrow-key-ordered rows in one memoised pass.
   //
   // Commands: every query word must match the label, keywords, group, or
-  // description (``commandScore``), so "compact mode" finds Toggle Reader
-  // Mode; matches are ranked label-first and listed flat, best on top. Not
+  // description (``commandScore``), so "reader view" finds Toggle Simple
+  // View; matches are ranked label-first and listed flat, best on top. Not
   // fuzzy — command labels are a small, curated set the user is scanning
   // visually, and fuzzy matching a 20-item list mostly surfaces surprising rows.
   // Sessions are matched by their title the same way; files with fuzzysort.

@@ -2,69 +2,23 @@ import { describe, expect, it } from 'bun:test'
 import { getToolDisplay } from '@/components/ToolCall/display'
 
 describe('ToolCall team tools display', () => {
-  it('formats team_spawn with profile and sync mode', () => {
-    const display = getToolDisplay(
-      'team_spawn',
-      JSON.stringify({ profile: 'explorer', task: 'Find all auth files', wait: true })
-    )
-    expect(display.headerTitle).toBe('explorer')
-    expect(display.formattedArgs).toBe('Find all auth files')
-  })
-
-  it('formats team_spawn with custom name and async mode', () => {
-    const display = getToolDisplay(
-      'team_spawn',
-      JSON.stringify({ profile: 'explorer', name: 'explorer#1', task: 'Search frontend', wait: false })
-    )
-    expect(display.headerTitle).toBe('explorer#1 · in background')
-    expect(display.formattedArgs).toBe('Search frontend')
-  })
-
-  it('formats team_send with target member and message', () => {
-    const display = getToolDisplay(
-      'team_send',
-      JSON.stringify({ member_id: 'explorer#1', message: 'Please focus on JWT only' })
-    )
-    expect(display.headerTitle).toBe('→ explorer#1')
-    expect(display.formattedArgs).toBe('Please focus on JWT only')
-  })
-
-  it('formats team_list header', () => {
-    const display = getToolDisplay('team_list', '{}')
-    expect(display.headerTitle).toBeNull()
-    expect(display.header).toBeNull()
-  })
-
-  it('formats team_wait with target member IDs', () => {
-    const display = getToolDisplay(
-      'team_wait',
-      JSON.stringify({ member_ids: ['explorer#1', 'explorer#2'], timeout: 60 })
-    )
-    expect(display.headerTitle).toBe('explorer#1, explorer#2')
-  })
-
-  it('formats team_stop with member ID', () => {
-    const display = getToolDisplay(
-      'team_stop',
-      JSON.stringify({ member_id: 'explorer#1' })
-    )
-    expect(display.headerTitle).toBe('explorer#1')
-  })
-
-  it('formats send_to_lead for progress vs final report', () => {
-    const progressDisplay = getToolDisplay(
-      'send_to_lead',
-      JSON.stringify({ message: 'Scanned 10 files so far', end_turn: false })
-    )
-    expect(progressDisplay.header).toBe('progress report')
-    expect(progressDisplay.headerTitle).toBe('Progress report to the main agent')
-
-    const finalDisplay = getToolDisplay(
-      'send_to_lead',
-      JSON.stringify({ message: 'Completed audit', end_turn: true })
-    )
-    expect(finalDisplay.header).toBe('final report')
-    expect(finalDisplay.headerTitle).toBe('Final report to the main agent')
+  /** Tools the app no longer has get the ordinary card: name, then the call as JSON. */
+  it('shows a retired team tool as an ordinary tool card', () => {
+    const calls: [string, Record<string, unknown>][] = [
+      ['team_spawn', { profile: 'explorer', task: 'Find all auth files' }],
+      ['team_send', { member_id: 'explorer#1', message: 'Please focus on JWT only' }],
+      ['team_wait', { member_ids: ['explorer#1'] }],
+      ['team_stop', { member_id: 'explorer#1' }],
+      ['team_manage', { action: 'stop', member_id: 'explorer#1' }],
+      ['send_to_lead', { message: 'Completed audit', end_turn: true }],
+    ]
+    for (const [name, args] of calls) {
+      const display = getToolDisplay(name, JSON.stringify(args))
+      expect(display.header).toBeNull()
+      expect(display.headerTitle).toBeNull()
+      expect(display.formattedArgs).toBe(JSON.stringify(args, null, 2))
+    }
+    expect(getToolDisplay('team_list', '{}').formattedArgs).toBeNull()
   })
 
   it('formats ask_lead with question', () => {
@@ -101,17 +55,6 @@ describe('ToolCall team tools display', () => {
 
     const send = getToolDisplay('delegate', JSON.stringify({ action: 'send', target: 'explorer#1', task: 'Use JWT' }))
     expect(send.headerTitle).toBe('send explorer#1')
-  })
-
-  it('formats team_manage for list, wait, and stop actions', () => {
-    const listDisplay = getToolDisplay('team_manage', JSON.stringify({ action: 'list' }))
-    expect(listDisplay.headerTitle).toBe('list')
-
-    const waitDisplay = getToolDisplay('team_manage', JSON.stringify({ action: 'wait', member_ids: ['exp#1'] }))
-    expect(waitDisplay.headerTitle).toBe('wait exp#1')
-
-    const stopDisplay = getToolDisplay('team_manage', JSON.stringify({ action: 'stop', member_id: 'exp#1' }))
-    expect(stopDisplay.headerTitle).toBe('stop exp#1')
   })
 
   /** Old transcripts keep the former names; both render the same card. */

@@ -1,7 +1,7 @@
 /**
  * McpStatusChip — the one mapping from MCP server state to words and a tone.
  *
- * Shared by Settings → MCP servers and the session settings MCP section, so
+ * Shared by Settings → Connectors and the session's Connectors list, so
  * the same server reads the same everywhere. Colour is never the only
  * signal (WCAG 1.4.1): the chip always says the state, and the raw server
  * state (``auth_required``) stays in its tooltip for matching against logs.

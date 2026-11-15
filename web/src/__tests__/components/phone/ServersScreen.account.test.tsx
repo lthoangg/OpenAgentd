@@ -112,39 +112,29 @@ afterEach(() => {
 })
 
 const ran = (command: string) => calls.filter((call) => call.command === command)
-const headings = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+const headings = () => screen.queryAllByRole('heading', { level: 2 }).map((h) => h.textContent)
 const rowOf = (name: string) => screen.getByText(name).closest('[data-server-row]') as HTMLElement
 
 describe('Account section', () => {
-  it('offers a guest the account at the top, before the servers', async () => {
+  it('offers a guest one Sign in row under the one list of computers; the offer itself is in the sheet', async () => {
     shell(GUEST)
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
-    expect(await screen.findByText('Use your computers from anywhere')).toBeTruthy()
-    expect(screen.getByText('Sign in, and the computers in your account show up here. No address or access key to type.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
-    // One scanner for an invitation, in place of "I have an invitation" on a phone.
-    expect(screen.queryByRole('button', { name: 'I have an invitation' })).toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Scan QR code' })).toHaveLength(2)
-    expect(screen.getByRole('button', { name: 'Not now' })).toBeTruthy()
-    await screen.findByText('Home NAS')
-    expect(headings()).toEqual(['Account', 'Your servers'])
-  })
+    const row = await screen.findByRole('button', { name: /Sign in\s*Use your computers from anywhere/ })
+    // The offer shows once: in the sheet, not here too.
+    expect(screen.queryByText('Sign in to use your computers from anywhere.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Scan QR code' })).toHaveLength(1)
+    const nas = await screen.findByText('Home NAS')
+    // The screen's large title heads the list; Account is the only section under it.
+    expect(headings()).toEqual(['Account'])
+    const account = screen.getByRole('heading', { level: 2, name: 'Account' })
+    expect(nas.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
-  it('folds into an Account row after Not now, for good, and the row opens the sheet', async () => {
-    shell(GUEST)
-    const first = render(<ServersScreen active onOpenSessions={() => {}} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
-    expect(screen.queryByText('Use your computers from anywhere')).toBeNull()
-    expect(screen.getByText('Not signed in')).toBeTruthy()
-    first.unmount()
-
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-    const row = await screen.findByRole('button', { name: /Account\s*Not signed in/ })
-    expect(screen.queryByText('Use your computers from anywhere')).toBeNull()
     fireEvent.click(row)
     const sheet = await screen.findByRole('dialog', { name: 'Account' })
-    expect(within(sheet).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(sheet).getByText('Sign in to use your computers from anywhere.')).toBeTruthy()
+    expect(within(sheet).getAllByRole('button', { name: 'Sign in' })).toHaveLength(1)
   })
 
   it('shows the notice that made the phone a guest again', async () => {
@@ -158,7 +148,7 @@ describe('Account section', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
     await screen.findByText('Home NAS')
     await waitFor(() => expect(ran('cloud_status').length).toBeGreaterThan(0))
-    expect(headings()).toEqual(['Your servers'])
+    expect(headings()).toEqual([])
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
   })
 
@@ -166,8 +156,9 @@ describe('Account section', () => {
     const signingIn: PhoneCloudStatus = { state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600 }
     shell(GUEST, { cloud_sign_in: () => { status = signingIn; return signingIn } })
     render(<ServersScreen active onOpenSessions={() => {}} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Sign in\s*Use your computers/ }))
     const sheet = await screen.findByRole('dialog', { name: 'Account' })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Sign in' }))
     expect(await within(sheet).findByText('WXYZ-1234')).toBeTruthy()
   })
 
@@ -204,8 +195,11 @@ describe('Account section', () => {
     shell(CONNECTED, { cloud_devices: () => [ME, MAC, LINUX] })
     render(<ServersScreen active onOpenSessions={() => {}} />)
     expect(await screen.findByText('3 devices')).toBeTruthy()
-    // Copy diagnostics comes last, for the account's connections.
-    expect(headings()).toEqual(['Account', 'Your computers', 'Your servers', 'Connection'])
+    // The account's computers are rows of the one list, with no heading of
+    // their own. Copy diagnostics comes last, for the account's connections.
+    expect(headings()).toEqual(['Account', 'Connection'])
+    const mac = await screen.findByText('macOS · 3F9A 21C4')
+    expect(mac.closest('[data-server-row]')?.parentElement).toBe(screen.getByText('Home NAS').closest('[data-server-row]')?.parentElement ?? null)
   })
 
   it('says when the account is closing or unavailable', async () => {
@@ -238,11 +232,11 @@ describe('Account section', () => {
   })
 })
 
-describe('Your computers', () => {
+describe('the account’s computers, in the one list', () => {
   it('tells a phone with no computer yet how to add one', async () => {
     shell(CONNECTED)
     render(<ServersScreen active onOpenSessions={() => {}} />)
-    expect(await screen.findByText('No computers yet')).toBeTruthy()
+    expect(await screen.findByText('No computers in your account yet')).toBeTruthy()
     expect(screen.getByText('On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.')).toBeTruthy()
   })
 
@@ -251,11 +245,13 @@ describe('Your computers', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
     await screen.findByText('macOS · 3F9A 21C4')
     expect(within(rowOf('macOS · 3F9A 21C4')).getByLabelText('Online')).toBeTruthy()
-    expect(within(rowOf('macOS · 3F9A 21C4')).getByText('Online')).toBeTruthy()
-    expect(within(rowOf('Linux · 9C02 E1B7')).getByLabelText('Offline')).toBeTruthy()
-    expect(within(rowOf('Linux · 9C02 E1B7')).getByText('Offline')).toBeTruthy()
+    expect(within(rowOf('macOS · 3F9A 21C4')).getByText('Online · from your account')).toBeTruthy()
+    expect(within(rowOf('Linux · 9C02 E1B7')).getByLabelText("Can't reach")).toBeTruthy()
+    expect(within(rowOf('Linux · 9C02 E1B7')).getByText("Can't reach · from your account")).toBeTruthy()
     expect(within(rowOf('Windows · 1111 2222')).queryByLabelText(/Online|Offline|Checking/)).toBeNull()
-    expect(within(rowOf('Windows · 1111 2222')).getByText('Your account')).toBeTruthy()
+    expect(within(rowOf('Windows · 1111 2222')).getByText('From your account')).toBeTruthy()
+    // A computer added by address says so the same way.
+    expect(within(rowOf('Home NAS')).getByText(/· added by address$/)).toBeTruthy()
   })
 
   it('still tries to open a computer the account calls offline', async () => {
@@ -276,7 +272,7 @@ describe('Your computers', () => {
     const mac = rowOf('macOS · 3F9A 21C4')
     expect(within(mac).getByText('In use')).toBeTruthy()
     expect(within(rowOf('Linux · 9C02 E1B7')).queryByText('In use')).toBeNull()
-    expect(screen.queryByText('Not in your saved servers')).toBeNull()
+    expect(screen.queryByText('Not saved in this list')).toBeNull()
     expect(screen.queryByText(BRIDGE)).toBeNull()
     fireEvent.click(within(mac).getByRole('button', { name: 'Open sessions on macOS · 3F9A 21C4' }))
     expect(onOpenSessions).toHaveBeenCalledTimes(1)
@@ -381,7 +377,7 @@ describe('the route in use', () => {
   it('never shows a route for a computer not in use, and has no home network button', async () => {
     shell(CONNECTED, { cloud_devices: () => [ME, MAC] })
     render(<ServersScreen active onOpenSessions={() => {}} />)
-    const row = await computerRow('Online')
+    const row = await computerRow('Online · from your account')
     expect(within(row).queryByText(/On your network|Through your account/)).toBeNull()
     expect(within(row).queryByRole('button', { name: /Use home network/ })).toBeNull()
     expect(ran('cloud_link_route')).toHaveLength(0)
@@ -415,23 +411,14 @@ describe('one QR scanner for all three kinds of code', () => {
     // Closing the sheet costs happy-dom a few busy seconds on a loaded machine.
   }, 15_000)
 
-  it('fills the add-server form from a connect code, from either button', async () => {
+  it('fills the add form from a connect code', async () => {
     scanned = 'openagentd://connect?url=http%3A%2F%2F192.168.1.40%3A4082&key=k'
     shell(GUEST)
     render(<ServersScreen active onOpenSessions={() => {}} />)
     await screen.findByText('Home NAS')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[1])
-    expect(await screen.findByText('Scanned from another device. Check the server, then save and use it.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Scan QR code' }))
+    expect(await screen.findByText('Scanned from another device. Check the address, then connect.')).toBeTruthy()
     expect(ran('cloud_join_invite')).toHaveLength(0)
-  })
-
-  it('joins with an invitation scanned under Your servers too', async () => {
-    scanned = INVITE
-    shell(GUEST, { cloud_join_invite: () => { status = INVITED; return INVITED } })
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-    await screen.findByText('Home NAS')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[1])
-    await waitFor(() => expect(ran('cloud_join_invite')).toHaveLength(1))
   })
 
   it('names all three kinds when the code is none of them', async () => {
@@ -463,9 +450,9 @@ describe('one QR scanner for all three kinds of code', () => {
   })
 
   it.each<{ initial: PhoneCloudStatus; message: string }>([
-    { initial: GUEST, message: 'Sign in on this phone before adding a computer' },
     { initial: { ...CONNECTED, signer: false }, message: 'This phone cannot approve devices' },
-  ])('explains why a phone that cannot approve cannot add a computer (%o)', async ({ initial, message }) => {
+    { initial: { ...GUEST, supported: false }, message: 'Adding a computer needs the iPhone app for now.' },
+  ])('explains why this phone cannot add a computer (%o)', async ({ initial, message }) => {
     scanned = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
     shell(initial)
     render(<ServersScreen active onOpenSessions={() => {}} />)
@@ -473,6 +460,83 @@ describe('one QR scanner for all three kinds of code', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
     expect((await screen.findByRole('alert')).textContent).toContain(message)
     expect(ran('cloud_add_scanned')).toHaveLength(0)
+  })
+
+  describe('a phone that is not signed in yet', () => {
+    const ADD = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
+    const addHandlers = {
+      cloud_add_scanned: () => null,
+      cloud_invite_poll: () => ({ state: 'waiting' }),
+      cloud_invite_cancel: () => null,
+    }
+    const signedIn = async (next: PhoneCloudStatus) => {
+      status = next
+      await act(async () => { await queryClient.refetchQueries({ queryKey: ['phone-cloud', 'status'] }) })
+    }
+
+    it('signs in, then adds the computer it scanned without scanning again', async () => {
+      scanned = ADD
+      shell(GUEST, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Use your computers from anywhere')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+
+      const sheet = await screen.findByRole('dialog', { name: 'Account' })
+      expect(within(sheet).getByText('Sign in on this phone. Then it adds the computer you scanned.')).toBeTruthy()
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(ran('cloud_add_scanned')).toHaveLength(0)
+
+      await signedIn(CONNECTED)
+      expect(await screen.findByRole('dialog', { name: 'Add this computer?' })).toBeTruthy()
+      await waitFor(() => expect(ran('cloud_add_scanned')).toHaveLength(1))
+      expect(ran('cloud_add_scanned')[0].args).toEqual({ link: ADD })
+      expect(screen.queryByRole('dialog', { name: 'Account' })).toBeNull()
+    }, 15_000)
+
+    it('carries on from a sign-in already under way', async () => {
+      scanned = ADD
+      shell({ state: 'joining', fingerprint: 'AA11 BB22', code: '418207' }, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Home NAS')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+      expect(await screen.findByRole('dialog', { name: 'Account' })).toBeTruthy()
+
+      await signedIn(CONNECTED)
+      expect(await screen.findByRole('dialog', { name: 'Add this computer?' })).toBeTruthy()
+    }, 15_000)
+
+    it('says why when the phone joined without approving devices', async () => {
+      scanned = ADD
+      shell(GUEST, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Use your computers from anywhere')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+      await screen.findByRole('dialog', { name: 'Account' })
+
+      await signedIn({ ...CONNECTED, signer: false })
+      expect((await screen.findByRole('alert')).textContent).toContain("can't add the computer")
+      expect(screen.queryByRole('dialog', { name: 'Add this computer?' })).toBeNull()
+      expect(ran('cloud_add_scanned')).toHaveLength(0)
+    }, 15_000)
+
+    it('forgets the computer when the sign-in is cancelled', async () => {
+      scanned = ADD
+      shell(GUEST, addHandlers)
+      render(<ServersScreen active onOpenSessions={() => {}} />)
+      await screen.findByText('Use your computers from anywhere')
+      fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[0])
+      await screen.findByRole('dialog', { name: 'Account' })
+
+      // The sign-in starts, then the person cancels it: back to guest.
+      await signedIn({ state: 'signing_in', user_code: 'ABCD-EFGH', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600 })
+      expect(await screen.findByText('ABCD-EFGH')).toBeTruthy()
+      await signedIn(GUEST)
+      await waitFor(() => expect(screen.queryByText('ABCD-EFGH')).toBeNull())
+      await signedIn(CONNECTED)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(screen.queryByRole('dialog', { name: 'Add this computer?' })).toBeNull()
+      expect(ran('cloud_add_scanned')).toHaveLength(0)
+    }, 15_000)
   })
 
   it('does not join a second account from a phone already in one', async () => {

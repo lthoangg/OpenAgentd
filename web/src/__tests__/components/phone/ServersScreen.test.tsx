@@ -46,12 +46,13 @@ afterEach(() => {
 const rowOf = (name: string) => screen.getByText(name).closest('[data-server-row]') as HTMLElement
 
 describe('ServersScreen', () => {
-  it('lists the saved servers under a large Servers title', async () => {
+  it('lists the computers under one large Computers title, with no second heading', async () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Servers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Computers' })).toBeTruthy()
     expect(await screen.findByText('Home Mac')).toBeTruthy()
     expect(screen.getByText('Work server')).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 2, name: 'Your servers' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Servers' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: /servers|computers/i })).toBeNull()
   })
 
   it('opens the Sessions of the server in use; another server keeps Use', async () => {
@@ -67,10 +68,10 @@ describe('ServersScreen', () => {
     expect(within(work).getByRole('button', { name: 'Use Work server' })).toBeTruthy()
   })
 
-  it('has no Sessions › where the panel is not the Servers screen', async () => {
+  it('has no Sessions › where the panel is not the Computers screen', async () => {
     render(<AppBackendPanel active />)
     await screen.findByText('Home Mac')
     expect(screen.queryByRole('button', { name: /Open sessions/ })).toBeNull()
-    expect(screen.getByRole('heading', { level: 2, name: 'Servers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Computers' })).toBeTruthy()
   })
 })

@@ -52,7 +52,7 @@ mock.module('@/stores/useUIStore', () => ({
 }))
 mock.module('@/stores/useSettingsStore', () => ({ useSettingsStore: () => () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null, ChatNote: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
@@ -259,5 +259,12 @@ describe('AgentChatView reactive derived state', () => {
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
     expect(screen.getByTestId('composer-placeholder').textContent).toBe('Ask anything…')
+  })
+
+  it('says in the box what Plan mode does: a plan is written and no file changes', () => {
+    useAgentStore.setState((state) => { state.sessionInteractionMode = 'plan' })
+    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
+
+    expect(screen.getByTestId('composer-placeholder').textContent).toBe('Plan mode: the agent reads and writes a plan. It changes no files.')
   })
 })

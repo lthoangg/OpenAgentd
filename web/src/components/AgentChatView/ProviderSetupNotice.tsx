@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 
-const DEFAULT_MESSAGE = 'Connect a provider once, then OpenAgentd can seed and run your default agent.'
+const DEFAULT_MESSAGE = 'Sign in or add a key once, and every session can use it.'
 
 /**
  * One notice for "chat cannot run until a provider is set up". It covers both
@@ -34,7 +34,7 @@ export function ProviderSetupNotice({
   if (setupMessage === null && hasConfiguredProvider) return null
   const dismissible = setupMessage !== null && hasConfiguredProvider
   const named = !hasConfiguredProvider ? missingProvider : null
-  const title = named ? `Connect ${named.label} to keep chatting` : 'Connect a model provider to start chatting'
+  const title = named ? `Connect ${named.label} to keep chatting` : 'Connect a model to start chatting'
   // A model reads `provider:model` in mono wherever it appears.
   const message = setupMessage ?? (named ? (
     <>This session runs <span className="font-mono">{named.model}</span>, but {named.label} is not connected. Connect it, or choose another model.</>
@@ -48,12 +48,12 @@ export function ProviderSetupNotice({
         title={title}
         action={
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={onOpenProviders}>Open providers</Button>
+            <Button size="sm" onClick={onOpenProviders}>Open Models</Button>
             {named && onChooseModel && (
               <Button type="button" variant="ghost" size="sm" onClick={onChooseModel}>Choose model</Button>
             )}
             {dismissible && (
-              <Button type="button" variant="ghost" size="sm" onClick={onDismiss} aria-label="Dismiss provider setup notice">
+              <Button type="button" variant="ghost" size="sm" onClick={onDismiss} aria-label="Dismiss this notice">
                 Dismiss
               </Button>
             )}

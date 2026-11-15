@@ -245,8 +245,8 @@ export function InviteSheet({ actions, description, onClose, allowLink = true }:
           <ConnectQrCode value={invite.link} size={200} label="Invitation QR code" />
         </div>
         <p>
-          On the new phone, open OpenAgentd and tap Scan QR code on the Servers screen.
-          {allowLink ? ' A computer uses the link instead.' : ' To add a computer, choose Sign in on it, then scan its code from Servers on this phone.'}
+          On the new phone, open OpenAgentd and tap Scan QR code on the Computers screen.
+          {allowLink ? ' A computer uses the link instead.' : ' To add a computer, choose Sign in on it, then scan its code from Computers on this phone.'}
           {' '}It works for 10 minutes, and only while this screen is open.
         </p>
         <div className="flex flex-wrap gap-2">

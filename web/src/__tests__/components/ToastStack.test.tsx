@@ -168,13 +168,13 @@ describe('ToastStack status-message semantics (WCAG 4.1.3)', () => {
   it('keeps an error toast up until the user closes it', () => {
     const timers = useFakeTimers()
     try {
-      useToastStore.getState().push({ tone: 'error', title: 'Could not save' })
+      useToastStore.getState().push({ tone: 'error', title: "Couldn't save" })
       render(<ToastStack />)
       act(() => timers.tick(60_000))
-      expect(screen.getByText('Could not save')).toBeTruthy()
+      expect(screen.getByText("Couldn't save")).toBeTruthy()
 
       fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
-      expect(screen.queryByText('Could not save')).toBeNull()
+      expect(screen.queryByText("Couldn't save")).toBeNull()
     } finally {
       timers.restore()
     }
@@ -195,12 +195,12 @@ describe('ToastStack status-message semantics (WCAG 4.1.3)', () => {
 
   it('runs the toast action and closes the toast', () => {
     const retry = mock(() => {})
-    useToastStore.getState().push({ tone: 'error', title: 'Could not load', action: { label: 'Retry', onAction: retry } })
+    useToastStore.getState().push({ tone: 'error', title: "Couldn't load", action: { label: 'Retry', onAction: retry } })
     render(<ToastStack />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(retry).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Could not load')).toBeNull()
+    expect(screen.queryByText("Couldn't load")).toBeNull()
   })
 
   it('gives an error toast role="alert" and aria-live="assertive" so it interrupts assistive tech', () => {

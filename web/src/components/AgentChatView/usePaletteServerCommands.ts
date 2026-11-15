@@ -68,7 +68,7 @@ export function usePaletteServerCommands(): Command[] {
       {
         useBundled: () => {
           void connectBundledBackend(currentBackendOrigin(status)).then((result) => {
-            if (!finish(result)) fail("Couldn't switch to the built-in server", result.ok ? '' : result.error)
+            if (!finish(result)) fail("Couldn't switch to this computer", result.ok ? '' : result.error)
           })
         },
         useExternal: (server) => {
@@ -80,7 +80,7 @@ export function usePaletteServerCommands(): Command[] {
             currentBaseUrl: currentBackendOrigin(status),
           }).then((result) => {
             if (!result.ok) {
-              fail(`Could not connect to ${label}`, result.error)
+              fail(`Couldn't connect to ${label}`, result.error)
               return
             }
             finish(result)
@@ -95,7 +95,7 @@ export function usePaletteServerCommands(): Command[] {
             currentBaseUrl: currentBackendOrigin(status),
           }).then((result) => {
             if (!result.ok) {
-              fail(`Could not open ${computer.label}`, result.error)
+              fail(`Couldn't open ${computer.label}`, result.error)
               return
             }
             finish(result)

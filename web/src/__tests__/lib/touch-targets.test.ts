@@ -72,7 +72,7 @@ describe('coarse-pointer touch targets', () => {
       // Review panel views (audit R10-R12): scheduler ⋯, preview address, model list controls.
       // ROW_ACTION is 24px and pointer-coarse:size-9 (see list-row.ts).
       ['SchedulerPanel/TaskListItem.tsx', /className=\{ROW_ACTION\}\s*aria-haspopup="menu"\s*aria-label=\{`More actions for/],
-      ['Preview/PreviewTabView.tsx', /aria-label="Preview address"[\s\S]{0,1400}pointer-coarse:h-9/],
+      ['Preview/PreviewAddress.tsx', /aria-label="Preview address"[\s\S]{0,1600}pointer-coarse:h-9/],
       ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-pressed=\{selected\}[\s\S]{0,500}pointer-coarse:h-9/],
       ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-label=\{`Copy \$\{qualifiedId\}`\}\s*className="[^"]*pointer-coarse:size-9/],
     ]
@@ -144,7 +144,7 @@ describe('controls that measured under the size rule', () => {
     for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
   })
 
-  it('grows the Git view tabs and the review tab strip to the phone step, and their bars with them', () => {
+  it('grows the Changes view tabs and the review tab strip to the phone step, and their bars with them', () => {
     expect(src('ui/tabs.tsx')).toMatch(/sm: '[^']*phone:data-\[orientation=horizontal\]:h-\(--phone-control\)'/)
     expect(src('WorkspacePanel/GitViewToolbar.tsx')).toMatch(/h-\(--spacing-toolbar\)[^"]* phone:h-auto phone:py-1"/)
     expect(css).toMatch(/--phone-control: var\(--oa-phone-control\);\s*\/\*[^*]*\*\/\s*--spacing-tab-bar: calc\(var\(--phone-control\) \+ 0\.5625rem\);/)

@@ -7,12 +7,7 @@ import type { OS } from '@/hooks/use-platform'
 import { formatChord } from '@/lib/keyboard/chord'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import type { SendDelivery } from './InputComposer'
-
-const DELIVERIES: ReadonlyArray<{ id: SendDelivery; label: string; hint: string }> = [
-  { id: 'steer', label: 'Steer', hint: 'Send now, read before the next step' },
-  { id: 'after-turn', label: 'Queue until done', hint: 'Sends when this turn ends' },
-  { id: 'interrupt', label: 'Stop & send', hint: 'Stops this turn, then sends' },
-]
+import { DELIVERIES } from './InputComposer.deliveries'
 
 /** The key hint (as the Keyboard Shortcuts sheet spells it) and ``aria-keyshortcuts`` value for each delivery. */
 function deliveryShortcut(delivery: SendDelivery, os: OS): { keys: string; aria: string } {

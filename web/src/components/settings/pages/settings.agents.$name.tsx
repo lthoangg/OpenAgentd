@@ -112,7 +112,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
       setDeleteOpen(false)
       onBack()
     } catch (err) {
-      push({ tone: 'error', title: 'Failed to delete agent', description: errorMessage(err) })
+      push({ tone: 'error', title: "Couldn't delete agent", description: errorMessage(err) })
     }
   }
 

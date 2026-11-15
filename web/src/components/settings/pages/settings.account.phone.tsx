@@ -1,19 +1,22 @@
 /**
  * Settings → Account on the phone. The account belongs to the phone itself
  * and is driven by the app shell's commands (`api/phone-cloud.ts`), not by a
- * server's `/api/cloud`. A guest sees an offer and nothing else: nothing here
- * blocks or nags. The same content serves Settings and the sheet the Servers
- * screen opens (`AccountSheet`), which has no router around it.
+ * server's `/api/cloud`. A guest sees one sentence and **Sign in**, with
+ * the rest under **Other ways to sign in** (an invitation from a device of
+ * the account, scanned or pasted, and the recovery code for an account
+ * whose only approving phone is lost); nothing here blocks or nags. The
+ * same content serves Settings and the sheet the Servers screen opens
+ * (`AccountSheet`), which has no router around it.
  *
- * A device's row is its name and one status line (`DeviceRows`); its
- * system, key and role are under Details.
+ * Signed in: one list of the account's devices (`DeviceRows`), this phone
+ * first with Sign out; key and role are under each device's Details.
  */
 import { useState, type ReactNode } from 'react'
 
-import { deviceLabel, isServer, pendingLabel, type PendingRow } from '@/api/phone-cloud'
-import { DeviceRows } from '@/components/account/DeviceRows'
+import { deviceLabel, isServer, pendingLabel, phoneCloudRenameDevice, type PendingRow } from '@/api/phone-cloud'
+import { DeviceRows, onlyApproverIsMe, type ListedDevice } from '@/components/account/DeviceRows'
+import { RecoveredNote, RecoverWithCode } from '@/components/account/RecoverWithCode'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
-import { PHONE_ROLES, RolesChoice } from '@/components/account/RolesChoice'
 import { AddDeviceSheet } from '@/components/phone/AddDeviceSheet'
 import { ApprovalSheet } from '@/components/phone/ApprovalSheet'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
@@ -24,18 +27,19 @@ import {
   GUEST_DESCRIPTION,
   groupCode,
   noticeCopy,
-  OfferCopy,
   SigningInCopy,
   UnavailableCopy,
 } from '@/components/settings/pages/account-copy'
 import { INVITE_PREFIX, InvitedCopy, JoinWithLink } from '@/components/settings/pages/join-with-link'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
+import { Collapsible } from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
+import { SectionCard } from '@/components/ui/section-card'
 import { useAppStatusWithNames } from '@/lib/account-computers'
-import { renameAccountComputer } from '@/lib/computer-rename'
+import { renameAccountComputer, renameAccountDevice } from '@/lib/computer-rename'
 import { openExternalUrl } from '@/lib/open-external'
 import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import {
@@ -45,35 +49,50 @@ import {
   usePhoneCloudStatus,
   usePhoneConfirmRecovery,
   usePhoneJoinInvite,
+  usePhoneMakeApprover,
+  usePhoneRecover,
+  usePhoneRecoveredAck,
   usePhoneRemoveDevice,
   usePhoneSignIn,
   usePhoneSignOut,
 } from '@/queries/phone-cloud'
 
-/** The account's phone and computers; an approver can add and remove the others. */
-function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () => void }) {
+/** The account's devices, this phone first; an approver adds, removes, and lets another approve. */
+function DevicesSection({ signer, recovered = false, onAdd, onSignOut, busy }: { signer: boolean; recovered?: boolean; onAdd: () => void; onSignOut: () => void; busy: boolean }) {
   const devicesQ = usePhoneCloudDevices(true)
   const remove = usePhoneRemoveDevice()
+  const promote = usePhoneMakeApprover()
   const app = useAppStatusWithNames()
-  const names = app?.computer_names
+  // An older shell does not say what a device is used as: read it by kind.
+  const devices = devicesQ.data?.map((device) => ({ ...device, server: isServer(device), client: device.client ?? !isServer(device) }))
+  const rename = (device: ListedDevice) => {
+    if (device.name !== undefined) {
+      if (!device.me && !signer) return null
+      return (name: string) => renameAccountDevice(app, device, name)
+    }
+    // An older shell: computers only, on the computer itself.
+    return device.server && !device.me ? async (name: string) => { await renameAccountComputer(app ?? null, device.device_id, name) } : null
+  }
   return (
     <>
-      <PanelSection
-        title="Devices"
-        flush
-        actions={onAdd && <Button size="sm" variant="primary" onClick={onAdd}>Add a device</Button>}
-      >
-        {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
-        <DeviceRows
-          // An older shell does not say what a device is used as: read it by kind.
-          devices={(devicesQ.data ?? []).map((device) => ({ ...device, server: isServer(device), client: device.client ?? !isServer(device) }))}
-          names={names}
-          selfLabel="This phone"
-          onRemove={canRemove ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
-          removeEffect="It stops reaching your computers through your account."
-          onRenameComputer={async (deviceId, name) => { await renameAccountComputer(app ?? null, deviceId, name) }}
-        />
-      </PanelSection>
+      <DeviceRows
+        devices={devices}
+        loading={devicesQ.isLoading}
+        noApproverNote={recovered}
+        names={app?.computer_names}
+        selfLabel="This phone"
+        meSigner={signer}
+        canChange
+        onAdd={signer ? onAdd : undefined}
+        onRemove={signer ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
+        removeEffect="It stops reaching your computers through your account."
+        onMakeApprover={signer ? (deviceId) => promote.mutateAsync(deviceId) : undefined}
+        rename={rename}
+        renameHint={(device) => (rename(device) ? undefined : device.name !== undefined ? 'Only a device that approves new devices can rename it.' : device.server ? 'Open this computer to rename it.' : undefined)}
+        uploadName={(deviceId, name) => phoneCloudRenameDevice(deviceId, name)}
+        onSignOut={onSignOut}
+        signOutDisabled={busy}
+      />
       {(devicesQ.error ?? remove.error) && (
         <Callout tone="error" role="alert">{(devicesQ.error ?? remove.error)?.message}</Callout>
       )}
@@ -101,8 +120,8 @@ function JoinByInvitation({ busy, onJoin }: { busy: boolean; onJoin: (link: stri
     else setScanError('That QR code is not an invitation. On your other phone: Settings → Account → Add a device.')
   }
   return (
-    <PanelSection title="Have an invitation?">
-      <Body>
+    <div className="space-y-3">
+        <p className="font-medium text-(--color-text)">Have an invitation?</p>
         <p>A device already in your account can show one: on it, open Settings → Account → Add a device, then scan its code here.</p>
         <div className="flex flex-wrap gap-2">
           {canScanQr() && (
@@ -114,14 +133,13 @@ function JoinByInvitation({ busy, onJoin }: { busy: boolean; onJoin: (link: stri
         {pasting && (
           <JoinWithLink busy={busy} onJoin={onJoin} hint="On your other phone, choose Can't scan? Use a link, and paste it here." />
         )}
-      </Body>
       {scanning && (
         <QrScanOverlay
           hint="Scan the code on your other phone: Settings → Account → Add a device."
           onCancel={() => { void cancelQrScan() }}
         />
       )}
-    </PanelSection>
+    </div>
   )
 }
 
@@ -149,19 +167,40 @@ export function PhoneAccountContent() {
   const cancel = usePhoneCancel()
   const signOut = usePhoneSignOut()
   const confirmRecovery = usePhoneConfirmRecovery()
+  const recover = usePhoneRecover()
+  const recoveredAck = usePhoneRecoveredAck()
   const devicesQ = usePhoneCloudDevices(status?.state === 'connected')
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const [reviewing, setReviewing] = useState<PendingRow | null>(null)
   const [adding, setAdding] = useState(false)
+  const [otherWays, setOtherWays] = useState(false)
+  const [withCode, setWithCode] = useState(false)
 
-  const busy = signIn.isPending || join.isPending || cancel.isPending || signOut.isPending
-  const failure = signIn.error ?? join.error ?? cancel.error ?? signOut.error ?? statusQ.error
+  const busy = signIn.isPending || join.isPending || cancel.isPending || signOut.isPending || recover.isPending
+  const failure = signIn.error ?? join.error ?? cancel.error ?? signOut.error ?? recover.error ?? statusQ.error
   // The only approver: signing out would leave nobody who can add devices.
-  const onlySigner = status?.state === 'connected' && status.signer
-    && devicesQ.data !== undefined && !devicesQ.data.some((d) => !d.me && d.signer)
+  // Devices that left are not listed, so they do not count.
+  const onlySigner = status?.state === 'connected' && status.signer && onlyApproverIsMe(devicesQ.data)
 
   const signOutButton = <Button size="sm" disabled={busy} onClick={() => setConfirmingSignOut(true)}>Sign out</Button>
   const cancelButton = <Button size="sm" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
+  // A wrong recovery code: the form opens again, to try once more.
+  const guestNotice = status?.state === 'guest' ? status.notice : null
+  const [seenNotice, setSeenNotice] = useState(guestNotice)
+  if (guestNotice !== seenNotice) {
+    setSeenNotice(guestNotice)
+    if (guestNotice === 'wrong_recovery_code') {
+      setOtherWays(true)
+      setWithCode(true)
+    }
+  }
+
+  /** From a waiting step: stop it, and open the recovery code under Other ways. */
+  const useRecoveryCode = () => {
+    cancel.mutate()
+    setOtherWays(true)
+    setWithCode(true)
+  }
 
   let content: ReactNode = null
   switch (status?.state) {
@@ -174,17 +213,34 @@ export function PhoneAccountContent() {
           {notice && (
             <Callout tone={notice.tone ?? 'info'} title={notice.title} role="status">{notice.body}</Callout>
           )}
-          <PanelSection title="Account">
-            <Body>
-              <OfferCopy />
-              <RolesChoice value={PHONE_ROLES} phone disabled />
-              <Button variant="primary" size="sm" disabled={busy} onClick={() => signIn.mutate()}>
-                {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
-              </Button>
-              <p>If your account has devices already, one of them approves this phone after you compare a 6-digit code.</p>
-            </Body>
-          </PanelSection>
-          <JoinByInvitation busy={busy} onJoin={(link) => join.mutate(link)} />
+          {/* No heading: the page title already says Account. */}
+          <SectionCard>
+            <div className="px-3 py-3 md:px-4 md:py-4">
+              <Body>
+                <p className="text-(--color-text)">Sign in to use your computers from anywhere.</p>
+                <div>
+                  <Button variant="primary" size="sm" disabled={busy} onClick={() => signIn.mutate()}>
+                    {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
+                  </Button>
+                </div>
+                <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+                  Other ways to sign in
+                </Button>
+                <Collapsible open={otherWays} innerClassName="space-y-4">
+                  <JoinByInvitation busy={busy} onJoin={(link) => join.mutate(link)} />
+                  {withCode ? (
+                    <RecoverWithCode device="phone" busy={busy} onRecover={(code) => recover.mutate(code)} onCancel={() => setWithCode(false)} />
+                  ) : (
+                    <p>
+                      <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
+                        Lost your phone? Use your recovery code
+                      </Button>
+                    </p>
+                  )}
+                </Collapsible>
+              </Body>
+            </div>
+          </SectionCard>
         </>
       )
       break
@@ -201,8 +257,9 @@ export function PhoneAccountContent() {
       break
     case 'signing_in':
       content = (
-        <PanelSection title="Signing in">
+        <PanelSection title={status.recovering ? 'Recovering your account' : 'Signing in'}>
           <Body>
+            {status.recovering && <p className="font-medium text-(--color-text)">Sign in in the browser to finish.</p>}
             <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
             <div className="flex flex-wrap gap-2">
               {status.url.startsWith('https://') && (
@@ -231,6 +288,11 @@ export function PhoneAccountContent() {
               </p>
             )}
             {cancelButton}
+            <p>
+              <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={useRecoveryCode}>
+                Lost your phone? Use your recovery code
+              </Button>
+            </p>
           </Body>
         </PanelSection>
       )
@@ -238,15 +300,8 @@ export function PhoneAccountContent() {
     case 'connected':
       content = (
         <>
-          <PanelSection title="Account" flush actions={signOutButton}>
-            <PanelRow label="This device">
-              <span className="font-mono text-xs text-(--color-text-2)">{status.fingerprint}</span>
-            </PanelRow>
-            <PanelRow label="Role">
-              <span className="text-xs text-(--color-text-2)">{status.signer ? 'Approves devices' : 'Member'}</span>
-            </PanelRow>
-          </PanelSection>
-          <DevicesSection canRemove={status.signer} onAdd={status.signer ? () => setAdding(true) : undefined} />
+          {status.recovered && <RecoveredNote device="phone" busy={recoveredAck.isPending} onDone={() => recoveredAck.mutate()} />}
+          <DevicesSection signer={status.signer} recovered={status.recovered === true} onAdd={() => setAdding(true)} onSignOut={() => setConfirmingSignOut(true)} busy={busy} />
           {status.signer && <PendingSection onReview={setReviewing} />}
         </>
       )
@@ -290,7 +345,7 @@ export function PhoneAccountContent() {
             This device stops being reachable through your account. Local sessions and settings stay.
             {onlySigner && (
               <span className="mt-2 block">
-                This phone is the only device that can approve others. Make another device an approver first, or keep your recovery code.
+                This phone is the only device that can approve others. Let another device approve first, or keep your recovery code.
               </span>
             )}
           </>

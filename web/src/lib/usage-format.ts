@@ -1,7 +1,7 @@
 /**
  * How a provider's usage amounts are written: money in its currency when the
  * provider names a real ISO 4217 code, a bare number for any other unit.
- * Shared by Settings → Providers and the run picker, so both read the same.
+ * Shared by Settings → Models and the run picker, so both read the same.
  */
 const amountFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 const moneyFormatters = new Map<string, Intl.NumberFormat | null>()

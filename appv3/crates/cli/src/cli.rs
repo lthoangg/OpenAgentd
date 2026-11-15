@@ -63,6 +63,7 @@ const EXAMPLES: &str = "\
 Examples:
   agentd server start                          Start the background server
   agentd server start --public --key --qr      Serve phones on the LAN and show a QR code to scan
+  agentd server start --cloud                  Start, then sign in so your phone reaches it from anywhere
   agentd server status                         Check the background server
   agentd run 'Summarize this repo'             Run one agent turn in this folder
   agentd auth copilot                          Log in to an OAuth provider";
@@ -130,6 +131,13 @@ pub enum CloudCmd {
     },
     /// Approve a device that signed in (when this computer approves devices)
     Approve,
+    /// Get back into your account with its recovery code when no device that
+    /// approves is left. This computer then approves devices, and the others
+    /// are signed out
+    Recover {
+        #[command(flatten)]
+        roles: CloudRoles,
+    },
     /// Show whether this computer is signed in and reachable
     Status,
     /// Sign out and erase this computer's account keys (local data stays)
@@ -217,6 +225,10 @@ pub struct StartArgs {
     /// LAN host and an access key)
     #[arg(long)]
     pub qr: bool,
+    /// Then sign this computer in to your OpenAgentd account, as `agentd
+    /// cloud login` does: your phone scans the code it shows
+    #[arg(long)]
+    pub cloud: bool,
 }
 
 #[derive(Debug, Args)]
@@ -594,8 +606,12 @@ mod tests {
 
     #[test]
     fn public_and_qr_flags() {
+        let Some(Command::Server(ServerCmd::Start(c))) = parse(&["server", "start", "--cloud"]).unwrap() else { panic!("not start") };
+        assert!(c.cloud && !c.qr);
+        let Some(Command::Server(ServerCmd::Restart(rc))) = parse(&["server", "restart", "--cloud"]).unwrap() else { panic!("not restart") };
+        assert!(rc.cloud);
         let Some(Command::Server(ServerCmd::Start(a))) = parse(&["server", "start", "--public", "--port", "4082", "--key", "--qr"]).unwrap() else { panic!("not start") };
-        assert_eq!((a.public, a.qr, a.addr.host.as_deref(), a.addr.port), (true, true, None, Some(4082)));
+        assert_eq!((a.public, a.qr, a.cloud, a.addr.host.as_deref(), a.addr.port), (true, true, false, None, Some(4082)));
         let Some(Command::Server(ServerCmd::Restart(r))) = parse(&["server", "restart", "--public", "--qr"]).unwrap() else { panic!("not restart") };
         assert!(r.public && r.qr);
         assert_eq!(kind(&["server", "start", "--public", "--host", "1.2.3.4"]), ErrorKind::ArgumentConflict);
@@ -651,6 +667,14 @@ mod tests {
         assert!(bare.action.is_none() && bare.provider.is_none());
         assert_eq!(kind(&["auth", "nope"]), ErrorKind::InvalidValue);
         assert_eq!(kind(&["auth", "logout", "nope"]), ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn cloud_recover_asks_for_roles_as_login_does() {
+        let Some(Command::Cloud(CloudCmd::Recover { roles })) = parse(&["cloud", "recover"]).unwrap() else { panic!("not recover") };
+        assert_eq!(roles.roles(), openagentd_cloud::keys::Roles::SERVER, "serves only unless asked, as login does");
+        let Some(Command::Cloud(CloudCmd::Recover { roles })) = parse(&["cloud", "recover", "--client"]).unwrap() else { panic!("not recover") };
+        assert_eq!(roles.roles(), openagentd_cloud::keys::Roles::BOTH);
     }
 
     #[test]

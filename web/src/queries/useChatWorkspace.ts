@@ -10,7 +10,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getCodingWorkspaceTree } from '@/api/client'
-import type { CodingWorkspaceTreeChat } from '@/api/types'
+import type { CodingWorkspaceTreeChat, CodingWorkspaceTreeRepository } from '@/api/types'
 import { getChatWorkspaceEntry, sameWorkspacePath, setChatWorkspaceEntry } from '@/utils/workspace'
 import { checkoutLabel, type CheckoutLabel } from '@/utils/checkout-label'
 import { queryKeys } from './keys'
@@ -55,4 +55,37 @@ export function isChatWorkspacePath(
   chat: CodingWorkspaceTreeChat | null = getChatWorkspaceEntry(),
 ): boolean {
   return sameWorkspacePath(workspace, chat?.path)
+}
+
+/**
+ * Whether ``workspace`` can show Git things (the Changes view, a branch,
+ * worktrees). ``false`` only when the tree says its repository row is a plain
+ * folder; a worktree or subfolder follows its repository. Anything unknown
+ * (an older server, a path the tree does not list, no tree yet) reads as
+ * ``true``, so nothing is hidden on a guess.
+ */
+export function workspaceHasGit(
+  workspace: string | null | undefined,
+  repositories: readonly CodingWorkspaceTreeRepository[] | undefined,
+): boolean {
+  if (!workspace || !repositories) return true
+  const repo = repositories.find((r) =>
+    sameWorkspacePath(r.path, workspace) || r.worktrees.some((w) => sameWorkspacePath(w.path, workspace)))
+  return repo?.git !== false
+}
+
+/**
+ * ``workspaceHasGit`` from the cached workspace tree (no request of its own).
+ * ``undefined`` while the tree is still loading: show Git things as usual,
+ * but do not probe git until it is known. A tree that failed to load reads
+ * as ``true``.
+ */
+export function useWorkspaceHasGit(workspace: string | null | undefined): boolean | undefined {
+  const { data, isPending } = useQuery({
+    queryKey: queryKeys.coding.tree(),
+    queryFn: getCodingWorkspaceTree,
+    staleTime: CHAT_WORKSPACE_STALE_MS,
+  })
+  if (isPending) return undefined
+  return workspaceHasGit(workspace, data?.repositories)
 }

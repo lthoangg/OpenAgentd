@@ -21,6 +21,7 @@ import type { AppBackendStatus } from '@/lib/app-backend'
 import { queryClient as appQueryClient } from '@/lib/query-client'
 import { cloudPollInterval } from '@/queries/cloud'
 import { queryKeys } from '@/queries/keys'
+import { consumeConnectPhone, useConnectPhoneStore } from '@/lib/connect-phone'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -42,12 +43,20 @@ const NUMBER_URL = 'http://localhost/api/cloud/number'
 const INVITE = 'agentd://invite?a=test-account-0000000000&s=test-slot-000000000&k=test-only'
 /** Synthetic: not a real device or secret. */
 const ADD_LINK = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
+const RECOVER_URL = 'http://localhost/api/cloud/recover'
+const ACK_URL = 'http://localhost/api/cloud/recovered/ack'
+const NAME_URL = 'http://localhost/api/cloud/devices/name'
+const APPROVER_URL = 'http://localhost/api/cloud/devices/approver'
+/** Synthetic: the shape of a recovery code, not a real one. */
+const RECOVERY_CODE = Array.from({ length: 13 }, () => 'ABCD').join('-')
+/** This computer, unnamed, the only approver. */
+const SELF = { device_id: 'me', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, me: true, kind: 'macos', name: null }
 
 beforeEach(() => {
   server.listen()
-  // A connected page lists devices and requests: none unless a test says so.
+  // A connected page lists this computer and no requests unless a test says so.
   server.use(
-    http.get(DEVICES_URL, () => HttpResponse.json([])),
+    http.get(DEVICES_URL, () => HttpResponse.json([SELF])),
     http.get(PENDING_URL, () => HttpResponse.json([])),
   )
   originalFetch = globalThis.fetch
@@ -81,33 +90,49 @@ function serveStatus(status: CloudStatus) {
 const FORBIDDEN = { detail: 'Only this computer can change its account.' }
 
 describe('AccountSettingsPage', () => {
-  it('offers Sign in first, with both roles on, and a link as the alternative, without blocking anything', async () => {
+  beforeEach(() => {
+    useConnectPhoneStore.setState({ requested: 0, handled: 0 })
+  })
+
+  it('titles the signed-out page once: the Sign in card sits under the page title', async () => {
     serveStatus({ state: 'guest', notice: null })
     renderPage()
 
-    expect(await screen.findByText('Reach your computer from anywhere.')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: 'Account' })).toHaveLength(1)
+  })
+
+  it('keeps the Devices heading once signed in', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Devices' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: 'Account' })).toHaveLength(1)
+  })
+
+  it('offers one Sign in and one sentence, with the other ways folded under one link', async () => {
+    serveStatus({ state: 'guest', notice: null })
+    renderPage()
+
+    expect(await screen.findByText('Sign in to reach this computer from your phone, anywhere.')).toBeTruthy()
     expect(screen.getByText('Optional. Everything works without an account.')).toBeTruthy()
-    expect((screen.getByRole('checkbox', { name: /Use as server/ }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).checked).toBe(true)
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
-    expect(screen.queryByLabelText('Invitation link')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Join with a link instead' }))
+    // No roles to choose up front, no jargon.
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Options' })).toBeNull()
+    expect(document.body.textContent).not.toMatch(/relay|fingerprint|user code/i)
+    const other = screen.getByRole('button', { name: 'Other ways to sign in' })
+    expect(other.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(other)
+    expect(other.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Join with a link' }))
     expect(screen.getByLabelText('Invitation link').getAttribute('type')).toBe('password')
+    expect(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' })).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('needs at least one role to sign in', async () => {
-    serveStatus({ state: 'guest', notice: null })
-    renderPage()
-
-    fireEvent.click(await screen.findByRole('checkbox', { name: /Use as server/ }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Use as client/ }))
-    expect(screen.getByText('Choose at least one.')).toBeTruthy()
-    expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('starts sign-in with the chosen roles and shows the code from the response', async () => {
+  it('starts sign-in with both roles and shows the code from the response', async () => {
     let sent: unknown = null
     serveStatus({ state: 'guest', notice: null })
     server.use(
@@ -124,11 +149,10 @@ describe('AccountSettingsPage', () => {
     )
     renderPage()
 
-    fireEvent.click(await screen.findByRole('checkbox', { name: /Use as client/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText('ABCD-EFGH')).toBeTruthy()
-    expect(sent).toEqual({ server: true, client: false })
+    expect(sent).toEqual({ server: true, client: true })
     expect(screen.getByText('account.openagentd.dev/device')).toBeTruthy()
     expect(screen.getByText('k7f2 91ab')).toBeTruthy()
     expect(screen.getByText(/you can finish once you are approved/)).toBeTruthy()
@@ -137,6 +161,78 @@ describe('AccountSettingsPage', () => {
     expect(link.getAttribute('href')).toBe('https://account.openagentd.dev/device')
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('recovers with the recovery code, then finishes in the browser', async () => {
+    let sent: unknown = null
+    serveStatus({ state: 'guest', notice: null })
+    server.use(http.post(RECOVER_URL, async ({ request }) => {
+      sent = await request.json()
+      return HttpResponse.json({
+        state: 'signing_in', user_code: 'ABCD-EFGH', url: 'https://account.openagentd.dev/device', fingerprint: 'k7f2 91ab', expires_in: 600, recovering: true,
+      })
+    }))
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' }))
+    const field = screen.getByLabelText('Recovery code')
+    expect(field.getAttribute('type')).toBe('password')
+    fireEvent.change(field, { target: { value: 'ABCD-EFGH' } })
+    expect(screen.getByText('A recovery code is 13 groups of 4 letters and digits.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(field, { target: { value: ` ${RECOVERY_CODE.toLowerCase()} ` } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText('Recovering your account')).toBeTruthy()
+    expect(sent).toEqual({ code: RECOVERY_CODE.toLowerCase(), server: true, client: true })
+    expect(screen.getByText('Sign in in the browser to finish.')).toBeTruthy()
+    expect(screen.getByText('ABCD-EFGH')).toBeTruthy()
+    // No scan code while recovering: the phone is what was lost.
+    expect(screen.queryByRole('img', { name: 'Sign-in QR code' })).toBeNull()
+  })
+
+  it('says the account is back after a recovery, and that the code stays the same', async () => {
+    let acked = 0
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0, recovered: true })
+    server.use(http.post(ACK_URL, () => {
+      acked += 1
+      return HttpResponse.json({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    }))
+    renderPage()
+
+    expect(await screen.findByText("You're back in.")).toBeTruthy()
+    expect(screen.getByText(/Your other devices were signed out/)).toBeTruthy()
+    expect(screen.getByText('Your recovery code stays the same. Keep it somewhere safe.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await waitFor(() => expect(acked).toBe(1))
+    await waitFor(() => expect(screen.queryByText("You're back in.")).toBeNull())
+  })
+
+  it('has no one-approver note beside the recovered note', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0, recovered: true })
+    renderPage()
+
+    expect(await screen.findByText("You're back in.")).toBeTruthy()
+    await screen.findByRole('button', { name: /^Details of / })
+    expect(screen.queryByText(/can approve new devices/)).toBeNull()
+  })
+
+  it('opens the recovery code again after a wrong one', async () => {
+    serveStatus({ state: 'guest', notice: 'wrong_recovery_code' })
+    renderPage()
+
+    expect(await screen.findByText("That recovery code doesn't match this account.")).toBeTruthy()
+    expect(screen.getByLabelText('Recovery code')).toBeTruthy()
+  })
+
+  it('offers the recovery code from the step that waits for an approver', async () => {
+    serveStatus({ state: 'joining', fingerprint: 'k7f2 91ab', code: null })
+    server.use(http.post(CANCEL_URL, () => HttpResponse.json({ state: 'guest', notice: null })))
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Lost your phone? Use your recovery code' }))
+    expect(await screen.findByLabelText('Recovery code')).toBeTruthy()
   })
 
   it('cancels a sign-in and returns to guest', async () => {
@@ -159,7 +255,8 @@ describe('AccountSettingsPage', () => {
     }))
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Join with a link instead' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Join with a link' }))
     const field = await screen.findByLabelText('Invitation link')
     fireEvent.change(field, { target: { value: 'https://example.invalid/x' } })
     expect(screen.getByText('That is not an invitation link. Copy it again from the inviting device.')).toBeTruthy()
@@ -179,7 +276,42 @@ describe('AccountSettingsPage', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
 
-  it('shows the scan code first, and the browser way under it for an account without a phone', async () => {
+  it('signs in once, with both roles, when opened from Connect your phone', async () => {
+    const sent: unknown[] = []
+    serveStatus({ state: 'guest', notice: null })
+    server.use(http.post(LOGIN_URL, async ({ request }) => {
+      sent.push(await request.json())
+      return HttpResponse.json({
+        state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
+      })
+    }))
+    useConnectPhoneStore.setState({ requested: 1, handled: 0 })
+    renderPage()
+
+    expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
+    expect(sent).toEqual([{ server: true, client: true }])
+    expect(consumeConnectPhone()).toBe(false)
+  })
+
+  it('shows a sign-in already under way, and starts no other, when opened from Connect your phone', async () => {
+    let posts = 0
+    serveStatus({
+      state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
+    })
+    server.use(http.post(LOGIN_URL, () => {
+      posts += 1
+      return HttpResponse.json({ state: 'guest', notice: null })
+    }))
+    useConnectPhoneStore.setState({ requested: 1, handled: 0 })
+    renderPage()
+
+    expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(posts).toBe(0)
+    expect(consumeConnectPhone()).toBe(false)
+  })
+
+  it('shows the scan code alone, with the browser way folded under it', async () => {
     serveStatus({
       state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://account.openagentd.dev/device?code=BCDF-GHJK', fingerprint: '3F9A 21C4', expires_in: 600, add_link: ADD_LINK,
     })
@@ -187,11 +319,15 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText('Scan with your phone')).toBeTruthy()
     expect(await screen.findByRole('img', { name: 'Sign-in QR code' })).toBeTruthy()
-    expect(screen.getByText(/On Servers, choose/)).toBeTruthy()
-    expect(screen.getByText('No phone in your account yet?')).toBeTruthy()
+    expect(screen.getByText(/Open OpenAgentd on your phone\. On Computers, tap/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+    expect(screen.queryByText('BCDF-GHJK')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Open page' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: "Can't use your phone? Sign in in the browser" }))
     expect(screen.getByText('BCDF-GHJK')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open page' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1)
   })
 
   it('shows no scan code to a server that did not make one', async () => {
@@ -200,7 +336,8 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText('BCDF-GHJK')).toBeTruthy()
     expect(screen.queryByText('Scan with your phone')).toBeNull()
-    expect(screen.queryByText('No phone in your account yet?')).toBeNull()
+    expect(screen.queryByRole('button', { name: "Can't use your phone? Sign in in the browser" })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open page' })).toBeTruthy()
   })
 
   it('asks to tap Add on the phone once it scanned', async () => {
@@ -226,7 +363,7 @@ describe('AccountSettingsPage', () => {
     expect(screen.getAllByRole('button').filter((b) => /^\d\d$/.test(b.textContent ?? '')).map((b) => b.textContent)).toEqual(['12', '47', '83'])
     fireEvent.click(screen.getByRole('button', { name: '47' }))
     await waitFor(() => expect(sent).toEqual({ number: '47' }))
-    expect(await screen.findByText('Remote sessions')).toBeTruthy()
+    expect(await screen.findByText('This computer')).toBeTruthy()
   })
 
   it('shows another device viewing this server that a number is asked, without the numbers', async () => {
@@ -263,26 +400,108 @@ describe('AccountSettingsPage', () => {
   })
 
   it.each([
-    ['online', { state: 'online' }, 'Reachable from your devices through your account'],
+    ['online', { state: 'online' }, 'Reachable from your devices'],
     ['connecting', { state: 'connecting' }, 'Connecting…'],
     ['offline', { state: 'offline' }, 'Offline, retrying'],
-    ['paused', { state: 'paused', until: null }, "Paused: today's relay allowance is used up"],
-    ['taken over', { state: 'taken_over' }, 'Taken over: another copy of this computer uses its account keys. Retrying every few minutes'],
-  ] as const)('shows a connected account that is %s', async (_name, relay, text) => {
+    ['paused', { state: 'paused', until: null }, "Paused: today's allowance is used up"],
+    ['taken over', { state: 'taken_over' }, 'Another copy of this computer is using its account. Retrying every few minutes'],
+  ] as const)('shows a connected account that is %s on this computer\'s row, and the rest under Details', async (_name, relay, text) => {
     serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, relay, sessions: 3 })
     renderPage()
 
     expect(await screen.findByText(text)).toBeTruthy()
-    expect(screen.getByText('k7f2 91ab')).toBeTruthy()
-    expect(screen.getByText('Approves devices')).toBeTruthy()
-    expect(screen.getByText('Remote sessions')).toBeTruthy()
-    expect(screen.getByText('3')).toBeTruthy()
+    expect(screen.getByText('This computer')).toBeTruthy()
+    // No separate Account panel: the key, role and sessions are under Details.
+    expect(screen.queryByText('k7f2 91ab')).toBeNull()
+    expect(screen.queryByText('Remote sessions')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/relay|fingerprint/i)
+    fireEvent.click(screen.getByRole('button', { name: 'Details of This computer' }))
+    const details = await screen.findByRole('dialog', { name: 'This computer' })
+    expect(details.textContent).toContain('Keyk7f2 91ab')
+    expect(details.textContent).toContain('approves devices')
+    expect(details.textContent).toContain('Remote sessions3')
+    expect(details.textContent).toContain(`Status${text}`)
   })
 
-  it('says Member for a device that cannot approve others', async () => {
-    serveStatus({ state: 'connected', fingerprint: 'f', signer: false, relay: { state: 'online' }, sessions: 0 })
+  it('says only this computer approves, and lets another device approve too with the app\'s proof', async () => {
+    inDesktopApp()
+    let promoted: { body: unknown; proof: string | null } | null = null
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json([SELF, { device_id: 'ph', fingerprint: 'D00D 0001', signer: false, server: false, client: true, me: false, kind: 'ios', name: "Hoang's iPhone" }])),
+      http.post(APPROVER_URL, async ({ request }) => {
+        promoted = { body: await request.json(), proof: request.headers.get('X-Agentd-Approval') }
+        return HttpResponse.json({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+      }),
+    )
     renderPage()
-    expect(await screen.findByText('Member')).toBeTruthy()
+
+    expect(await screen.findByText('Only this computer can approve new devices.')).toBeTruthy()
+    expect(screen.getByText(/Keep your recovery code safe, or let/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: "Let Hoang's iPhone approve" }))
+    await waitFor(() => expect(promoted).toEqual({ body: { device_id: 'ph' }, proof: 'app-proof' }))
+    expect(proofCalls).toEqual([{ action: 'promote', id: 'ph', signer: false, server: false, client: false, reason: 'let a device approve others in your account' }])
+  })
+
+  it('says a device left the account when it can no longer be made an approver, and lists the devices again', async () => {
+    inDesktopApp()
+    let listed = [SELF, { device_id: 'ph', fingerprint: 'D00D 0001', signer: false, server: false, client: true, me: false, kind: 'ios', name: "Hoang's iPhone" }]
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json(listed)),
+      http.post(APPROVER_URL, () => {
+        listed = [SELF]
+        return HttpResponse.json({ detail: { code: 'device_not_in_account', message: 'That device is no longer in your account.' } }, { status: 409 })
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: "Let Hoang's iPhone approve" }))
+    expect((await screen.findByRole('alert')).textContent).toContain('That device is no longer in your account.')
+    await waitFor(() => expect(screen.queryByRole('button', { name: "Details of Hoang's iPhone" })).toBeNull())
+  })
+
+  it('warns at sign-out when this computer is the only approver', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+    expect(await screen.findByText(/This computer is the only device that can approve others/)).toBeTruthy()
+  })
+
+  it('renames any device in the account, this computer included', async () => {
+    inDesktopApp()
+    const sent: unknown[] = []
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json([SELF, { device_id: 'ph', fingerprint: 'D00D 0001', signer: true, server: false, client: true, me: false, kind: 'ios', name: null }])),
+      http.post(NAME_URL, async ({ request }) => {
+        const body = await request.json() as { device_id: string; name: string | null }
+        sent.push(body)
+        return HttpResponse.json(body)
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of This computer' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: ' Studio ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(sent).toEqual([{ device_id: 'me', name: 'Studio' }]))
+  })
+
+  it('shows no approver actions to a computer that cannot approve others', async () => {
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: false, relay: { state: 'online' }, sessions: 0 })
+    server.use(http.get(DEVICES_URL, () => HttpResponse.json([
+      { ...SELF, signer: false },
+      { device_id: 'ph', fingerprint: 'D00D 0001', signer: true, server: false, client: true, me: false, kind: 'ios', name: "Hoang's iPhone" },
+    ])))
+    renderPage()
+
+    expect(await screen.findByText(/can approve new devices\./)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Add a device' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Let / })).toBeNull()
   })
 
   it('asks before signing out, then returns to guest', async () => {
@@ -347,8 +566,9 @@ describe('AccountSettingsPage', () => {
     ['device_exists', /already in your account or waiting to join/, 'Sign in'],
     ['account_closing', 'Account scheduled for deletion.', 'Sign in'],
     ['account_unavailable', 'Account unavailable.', 'Sign in'],
-    ['unreachable', 'Could not reach OpenAgentd. Check your network and try again.', 'Sign in'],
-    ['failed', /Something went wrong with this computer's account keys/, 'Sign in'],
+    ['unreachable', "Couldn't reach OpenAgentd. Check your network and try again.", 'Sign in'],
+    ['failed', /Something went wrong while signing in on this device/, 'Sign in'],
+    ['wrong_recovery_code', "That recovery code doesn't match this account.", 'Sign in'],
     ['wrong_number', /not the number your phone showed/, 'Sign in'],
   ] as const)('shows the %s notice to a guest', async (notice, text, button) => {
     serveStatus({ state: 'guest', notice })
@@ -381,7 +601,7 @@ describe('AccountSettingsPage', () => {
     expect(await screen.findByText(/Manage this computer's account with/)).toBeTruthy()
     expect(screen.getByText('agentd cloud login')).toBeTruthy()
     // The status stays; only the actions go.
-    expect(screen.getByText('Reach your computer from anywhere.')).toBeTruthy()
+    expect(screen.getByText('Sign in to reach this computer from your phone, anywhere.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     expect(screen.queryByLabelText('Invitation link')).toBeNull()
     expect(screen.queryByText(FORBIDDEN.detail)).toBeNull()
@@ -398,7 +618,8 @@ describe('AccountSettingsPage', () => {
     fireEvent.click(confirm)
 
     expect(await screen.findByText(/Manage this computer's account with/)).toBeTruthy()
-    expect(screen.getByText('Reachable from your devices through your account')).toBeTruthy()
+    expect(screen.getByText('Signed in')).toBeTruthy()
+    expect(screen.getByText('Reachable from your devices')).toBeTruthy()
   })
 })
 
@@ -473,7 +694,7 @@ describe('a computer that creates the account or approves devices', () => {
     fireEvent.change(screen.getByLabelText('Type group 1'), { target: { value: 'AAAA' } })
     fireEvent.change(screen.getByLabelText('Type group 3'), { target: { value: 'CCCC' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(await screen.findByText('Approves devices')).toBeTruthy()
+    expect(await screen.findByText('Only this computer can approve new devices.')).toBeTruthy()
     expect(sent).toEqual({ first: 'AAAA', second: 'CCCC' })
   })
 
@@ -502,17 +723,15 @@ describe('a computer that creates the account or approves devices', () => {
     expect(screen.getByText('This computer')).toBeTruthy()
     expect(screen.queryByText('Server')).toBeNull()
     expect(screen.queryByText('Approver')).toBeNull()
-    expect(screen.getByText('Used as')).toBeTruthy()
-    expect(screen.getAllByText('Server and client').length).toBeGreaterThan(0)
     expect(await screen.findByText('Pending approvals')).toBeTruthy()
-    expect(screen.getByText('Asks to be: client')).toBeTruthy()
+    expect(screen.getByText('Asks to open your computers')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Remove Linux · C1C1 0000' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Details of Linux · C1C1 0000' }))
     const details = await screen.findByRole('dialog', { name: 'Linux · C1C1 0000' })
     expect(details.textContent).toContain('SystemLinux')
     expect(details.textContent).toContain('KeyC1C1 0000')
-    expect(details.textContent).toContain('RoleServer')
+    expect(details.textContent).toContain('SharingCan be opened by your devices')
   })
 
   it('titles each computer by its name, and still asks to remove one by its system and key', async () => {
@@ -565,7 +784,7 @@ describe('a computer that creates the account or approves devices', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
     const details = await screen.findByRole('dialog', { name: 'studio-mini' })
     expect(details.textContent).toContain('KeyAA11 BB22')
-    expect(details.textContent).toContain('RoleServer and client · approves devices')
+    expect(details.textContent).toContain('SharingCan be opened, and opens other computers · approves devices')
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Work' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -591,7 +810,7 @@ describe('a computer that creates the account or approves devices', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
     const details = await screen.findByRole('dialog', { name: 'studio-mini' })
     expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
-    expect(details.textContent).toContain('Use the built-in server to rename this computer.')
+    expect(details.textContent).toContain('Switch to this computer to rename it.')
   })
 
   it('approves a request with the code, never adding a role it did not ask for', async () => {
@@ -615,7 +834,7 @@ describe('a computer that creates the account or approves devices', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
     expect(await screen.findByText('418 207')).toBeTruthy()
-    const serverBox = screen.getByRole('checkbox', { name: /Use as server/ }) as HTMLInputElement
+    const serverBox = screen.getByRole('checkbox', { name: /My other devices can open/ }) as HTMLInputElement
     expect(serverBox.checked).toBe(false)
     expect(serverBox.disabled).toBe(true)
     // A device that opens sessions has someone at it: it approves too by default.
@@ -688,7 +907,7 @@ describe('a computer that creates the account or approves devices', () => {
 
     expect(await screen.findByText('Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.')).toBeTruthy()
     expect(screen.getByText('Remove devices in the OpenAgentd app on this computer.')).toBeTruthy()
-    expect(screen.getByText('Asks to be: client')).toBeTruthy()
+    expect(screen.getByText('Asks to open your computers')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Review' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
   })
@@ -698,17 +917,19 @@ describe('a computer that creates the account or approves devices', () => {
     server.use(http.get(DEVICES_URL, () => HttpResponse.json(FORBIDDEN, { status: 403 })))
     renderPage()
 
-    expect(await screen.findByText('Approves devices')).toBeTruthy()
+    expect(await screen.findByText('Signed in')).toBeTruthy()
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(screen.queryByText('Devices')).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('says when this computer is not used as a server', async () => {
+  it('says when other devices cannot open this computer', async () => {
     serveStatus({ state: 'connected', fingerprint: 'f', signer: false, server: false, client: true, relay: { state: 'off' }, sessions: 0 })
+    server.use(http.get(DEVICES_URL, () => HttpResponse.json([{ ...SELF, signer: false, server: false }])))
     renderPage()
-    expect(await screen.findByText(/Not used as a server/)).toBeTruthy()
-    expect(screen.getByText('Client')).toBeTruthy()
+    expect(await screen.findByText('Your other devices cannot open it')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Details of This computer' }))
+    expect((await screen.findByRole('dialog')).textContent).toContain('Opens your other computers')
   })
 
   describe('Add a device (an invitation QR code)', () => {
@@ -834,7 +1055,7 @@ describe('a computer that creates the account or approves devices', () => {
     it('is not offered in a plain browser, which has no proof to give', async () => {
       serveStatus(CONNECTED)
       renderPage()
-      expect(await screen.findByText('Approves devices')).toBeTruthy()
+      expect(await screen.findByText('This computer')).toBeTruthy()
       await new Promise((resolve) => setTimeout(resolve, 20))
       expect(screen.queryByRole('button', { name: 'Add a device' })).toBeNull()
     })

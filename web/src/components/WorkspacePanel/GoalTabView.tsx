@@ -12,6 +12,7 @@
  * Colour carries the status only: blue while it works and once achieved,
  * orange while it waits on the user, red when blocked, neutral when paused.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { CircleCheck, Target } from 'lucide-react'
 import { useState } from 'react'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
@@ -35,9 +36,11 @@ import {
 import { nextTask, planStatus, type PlanStatus } from '@/lib/plan'
 import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
+import { formatDurationWords } from '@/utils/format'
 import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { planTitle } from '../ActivePlanSection'
 import { DockLoadError } from './DockLoadError'
@@ -87,16 +90,22 @@ function NowLine({ now }: { now: GoalNow }) {
   )
 }
 
-function StatRow({ label, value, fraction }: { label: string; value: string; fraction?: number }) {
+function StatRow({ label, value, fraction, words = false }: {
+  label: string
+  value: string
+  fraction?: number
+  /** The value is a phrase ("7 of 50", "18 minutes"), set in the UI font. */
+  words?: boolean
+}) {
   return (
-    <div className="grid grid-cols-[3.5rem_1fr_auto] items-center gap-2">
+    <div data-goal-stat="" className="grid grid-cols-[3.5rem_1fr_auto] items-center gap-2">
       <span className="text-(--color-text-muted)">{label}</span>
       {fraction === undefined ? <span /> : (
         <span className="h-1.5 overflow-hidden rounded-full bg-(--bg-key)" aria-hidden="true">
           <span className="block h-full rounded-full bg-(--color-text-2)" style={{ width: `${Math.min(100, Math.max(2, fraction * 100))}%` }} />
         </span>
       )}
-      <span className="font-mono text-meta tabular-nums text-(--color-text-2)">{value}</span>
+      <span className={cn('text-meta tabular-nums text-(--color-text-2)', !words && 'font-mono')}>{value}</span>
     </div>
   )
 }
@@ -116,7 +125,7 @@ function GoalPlanSection({ plan, status, label, onOpenPlan }: {
   label: string
   onOpenPlan?: () => void
 }) {
-  const title = planTitle(plan.content) ?? 'Session plan'
+  const title = planTitle(plan.content) ?? 'Plan'
   return (
     <section aria-label="Plan" className="flex flex-col gap-1.5" data-goal-plan={status}>
       <h3 className="label-caps text-(--color-text-muted)">Plan</h3>
@@ -160,9 +169,13 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
   const now = baseNow && baseNow.tone === 'active' && !baseNow.note && next
     ? { ...baseNow, note: `Next task: ${next.content}` }
     : baseNow
+  // Simple detail says the numbers in words and drops the token count unless
+  // it is measured against a budget; Full shows all three, as numbers.
+  const simple = useSimpleDetail()
+  const of = simple ? ' of ' : ' / '
   const turns = goalTurnNumber(goal, session.running)
   const tokens = goal.token_budget
-    ? `${formatGoalTokens(goal.tokens_used)} / ${formatGoalTokens(goal.token_budget)}`
+    ? `${formatGoalTokens(goal.tokens_used)}${of}${formatGoalTokens(goal.token_budget)}`
     : formatGoalTokens(goal.tokens_used)
   const note = goalNote(goal)
   return (
@@ -183,9 +196,11 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
         />
       )}
       <div className="flex flex-col gap-1.5">
-        <StatRow label="Turns" value={`${turns} / ${goal.max_turns}`} fraction={turns / goal.max_turns} />
-        <StatRow label="Tokens" value={tokens} fraction={goal.token_budget ? goal.tokens_used / goal.token_budget : undefined} />
-        <StatRow label="Time" value={formatGoalDuration(goal.active_seconds)} />
+        <StatRow label="Turns" value={`${turns}${of}${goal.max_turns}`} fraction={turns / goal.max_turns} words={simple} />
+        {(!simple || goal.token_budget) && (
+          <StatRow label="Tokens" value={tokens} fraction={goal.token_budget ? goal.tokens_used / goal.token_budget : undefined} words={simple} />
+        )}
+        <StatRow label="Time" value={simple ? formatDurationWords(goal.active_seconds * 1000) : formatGoalDuration(goal.active_seconds)} words={simple} />
       </div>
       {note && (
         <section aria-label={note.title} className="border-t border-(--color-border-subtle) pt-3 leading-relaxed text-(--color-text-2)">
@@ -236,7 +251,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
   const runAction = (action: GoalAction) => {
     if (!sessionId) return
     mutation.mutate({ sessionId, action }, {
-      onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: (err as Error).message }),
+      onError: (err) => pushToast(failureToast(`Couldn't ${action} the goal`, err)),
     })
   }
   // Clearing ends the goal for good, so the button only asks first.
@@ -275,7 +290,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
           <DialogHeader>
             <DialogTitle>Clear this goal?</DialogTitle>
             <DialogDescription>
-              The agent stops working toward it and no new goal turn starts. A turn that is running finishes first. This cannot be undone.
+              The agent stops working toward it and no new goal turn starts. This can't be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -1,5 +1,5 @@
 /**
- * Providers on a phone (mockup J10 10.2): three status segments pinned over
+ * Models on a phone: the two status segments pinned over
  * the list, Hidden in the footer, no type picker.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -84,7 +84,7 @@ describe('Providers on a phone', () => {
     ...overrides,
   })
 
-  it('pins three segments and moves Hidden to the footer', async () => {
+  it('pins the two segments and keeps Hidden in the footer', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
         has_any_configured: true,
@@ -97,9 +97,9 @@ describe('Providers on a phone', () => {
     )
     renderPage()
     const filter = await screen.findByRole('radiogroup', { name: 'Filter by status' })
-    expect(filter.closest('[data-provider-filter="phone"]')!.className).toContain('sticky')
+    expect(filter.closest('[data-provider-filter]')!.className).toContain('sticky')
     const labels = Array.from(filter.querySelectorAll('[role="radio"]')).map((el) => el.textContent)
-    expect(labels).toEqual(['All', 'Connected · 1', 'Not connected'])
+    expect(labels).toEqual(['All', 'Connected · 1'])
     expect(screen.queryByRole('combobox', { name: 'Filter by type' })).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: '1 hidden' }))
     await waitFor(() => expect(screen.getByText('Bravo')).toBeTruthy())

@@ -64,7 +64,7 @@ export function inferErrorTitle(message: string, category?: string): string {
     // arrives from the server with its own title.
     return "Can't reach the server"
   }
-  if (lower.includes('cannot undo') || lower.includes('failed to undo')) return 'Undo failed'
+  if (lower.includes('cannot undo') || lower.includes('failed to undo') || lower.includes("couldn't undo")) return 'Undo failed'
   if (lower.includes('compact') || lower.includes('compaction')) return "Couldn't summarize earlier messages"
   if (lower.includes('redo')) return 'Redo failed'
   if (lower.includes('queue') || lower.includes('send message')) return 'Message failed'

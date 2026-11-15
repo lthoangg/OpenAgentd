@@ -1,3 +1,4 @@
+import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, CheckCircle2, Copy, Loader2, TerminalSquare } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -111,23 +112,19 @@ export function OAuthLoginDialog({
                   void invalidateModelSetup(queryClient)
                   useToastStore.getState().push({
                     tone: 'success',
-                    title: 'Provider connected',
-                    description: 'Default agents are ready.',
+                    title: `Signed in to ${provider.label}`,
+                    description: 'Your agents are ready.',
                   })
                 })
                 .catch((err: unknown) => {
-                  useToastStore.getState().push({
-                    tone: 'error',
-                    title: 'Default model setup failed',
-                    description: err instanceof Error ? err.message : String(err),
-                  })
+                  useToastStore.getState().push(failureToast("Couldn't set the default model", err))
                 })
             } else {
-              useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
+              useToastStore.getState().push({ tone: 'success', title: `Signed in to ${provider.label}` })
             }
           }
           if (event.event === 'failed') {
-            setError(event.message ?? 'OAuth login failed')
+            setError(event.message ?? "Couldn't sign in. Close this window and try once more.")
           }
         },
         onError: (err) => {
@@ -143,11 +140,16 @@ export function OAuthLoginDialog({
   }, [authMode, credentialId, open, provider.id, provider.label, queryClient, renewUsage])
 
   const hasAccounts = supportsMultipleCredentials(provider) && (provider.stored_credentials?.length ?? 0) > 0
+  // The product leads: it is what the person subscribed to.
   const title = credentialId
-    ? `Reconnect ${accountLabel || provider.label}`
+    ? `Sign in to ${provider.label} again`
     : hasAccounts
       ? `Add a ${provider.label} account`
-      : `Connect ${provider.label}`
+      : `Sign in to ${provider.label}`
+  const hasCode = Boolean(deviceEvent?.user_code)
+  const doWhat = hasCode ? 'Sign in in your browser and enter this code.' : 'Sign in in your browser.'
+  // While the code waits there is one thing to act on: no status row above it.
+  const showStatus = !hasCode || isSuccess || latest?.event === 'token_acquired' || latest?.event === 'verifying'
 
   return (
     <Dialog
@@ -162,26 +164,28 @@ export function OAuthLoginDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {credentialId
-              ? 'Sign in with the same account. This window will update when the token is saved.'
+              ? `Sign in with the same account${accountLabel ? ` (${accountLabel})` : ''}. This window updates when you are done.`
               : hasAccounts
                 ? 'Sign in with another account. It is added after your existing accounts and used when they hit a limit.'
-                : 'Approve the browser prompt. This window will update when the token is saved.'}
+                : `${doWhat} This window updates when you are done.`}
           </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-4">
-          <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-accent)">
-              {isWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+          {showStatus && (
+            <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-accent)">
+                {isWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-(--color-text)">{latest ? eventLabel(latest) : 'Starting…'}</p>
+                <p className="text-xs text-(--color-text-muted)">Keep this window open until it is done.</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-(--color-text)">{latest ? eventLabel(latest) : 'Starting secure login'}</p>
-              <p className="text-xs text-(--color-text-muted)">Keep this dialog open until setup completes.</p>
-            </div>
-          </div>
+          )}
           {deviceEvent?.user_code && (
             <div className="overflow-hidden rounded-md bg-(--bg-key)">
               <div className="p-3 text-center sm:p-5">
-                <p className="label-caps text-(--color-text-muted)">Device code</p>
+                <p className="label-caps text-(--color-text-muted)">Code to enter</p>
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
                   <p className="min-w-0 max-w-full break-all font-mono text-2xl font-semibold tracking-[0.12em] text-(--color-text) sm:text-3xl sm:tracking-[0.18em]">{deviceEvent.user_code}</p>
                   <Tooltip>
@@ -193,13 +197,13 @@ export function OAuthLoginDialog({
                           variant="default"
                           size="icon-sm"
                           className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
-                          aria-label="Copy device code"
+                          aria-label="Copy code"
                         >
                           {codeCopied ? <Check size={14} className="text-(--accent-green-text)" /> : <Copy size={14} />}
                         </Button>
                       }
                     />
-                    <TooltipContent>Copy device code</TooltipContent>
+                    <TooltipContent>Copy code</TooltipContent>
                   </Tooltip>
                 </div>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
@@ -207,15 +211,15 @@ export function OAuthLoginDialog({
                 </p>
                 {deviceEvent.verification_uri && (
                   <Button className="mt-4 min-h-9 sm:min-h-0" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
-                    Open authorization page
+                    Open the sign-in page
                   </Button>
                 )}
               </div>
               {provider.id === 'codex' && authMode !== 'browser' && !isSuccess && (
                 <div className="border-t border-(--color-border-subtle) bg-(--bg-page)/70 p-3 text-left sm:p-4">
-                  <p className="text-xs font-medium text-(--color-text)">Workspace account?</p>
+                  <p className="text-xs font-medium text-(--color-text)">Work or school account?</p>
                   <p className="mt-1 text-xs leading-relaxed text-(--color-text-muted)">
-                    If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
+                    If the page says your admin must turn this kind of sign-in on, use browser sign-in instead.
                   </p>
                   <Button
                     className="mt-3 min-h-9 w-full sm:min-h-0"
@@ -247,24 +251,24 @@ export function OAuthLoginDialog({
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
                     void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
 
-                    useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
+                    useToastStore.getState().push({ tone: 'success', title: `Signed in to ${provider.label}` })
                   })
                   .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
                   .finally(() => setSubmittingCode(false))
               }}
             >
               <label className="block text-xs font-medium text-(--color-text-muted)">
-                Paste authorization callback URL/code
+                Paste the address or code your browser ended on
                 <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1 min-h-9" autoComplete="off" />
               </label>
               <Button type="submit" size="sm" className="min-h-9 w-full sm:min-h-0 sm:w-auto" disabled={!code.trim() || submittingCode}>
                 {submittingCode && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                Finish connection
+                Finish signing in
               </Button>
             </form>
           )}
           {isSuccess && (
-            <p className="text-sm text-(--accent-green-text)">Connected successfully.</p>
+            <p className="text-sm text-(--accent-green-text)">Signed in.</p>
           )}
           {error && <p className="text-sm text-(--color-error)">{error}</p>}
           {events.length > 0 && (

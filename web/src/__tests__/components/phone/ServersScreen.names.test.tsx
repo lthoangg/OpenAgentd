@@ -107,17 +107,17 @@ const rowOf = (name: string) => {
   return row
 }
 
-describe('names on the Servers screen', () => {
+describe('names on the Computers screen', () => {
   it('lists each computer by its own name, with no key or address on a row', async () => {
     backend = app({ computer_names: { 'dev-mac': 'Work', 'dev-mini': 'Personal', 'dev-box': 'build-box' } })
     render(<ServersScreen active onOpenSessions={() => {}} />)
     await screen.findByText('Work')
     await screen.findByText('Office NAS')
     expect(within(rowOf('Work')).getByText('In use')).toBeTruthy()
-    expect(within(rowOf('Personal')).getByText('Online')).toBeTruthy()
-    expect(within(rowOf('build-box')).getByText('Offline')).toBeTruthy()
-    // The saved server: its name and one status line, not its address.
-    await waitFor(() => expect(within(rowOf('Office NAS')).getByText('Online')).toBeTruthy())
+    expect(within(rowOf('Personal')).getByText('Online · from your account')).toBeTruthy()
+    expect(within(rowOf('build-box')).getByText("Can't reach · from your account")).toBeTruthy()
+    // The one added by address: its name and one status line, not its address.
+    await waitFor(() => expect(within(rowOf('Office NAS')).getByText('Online · added by address')).toBeTruthy())
     for (const row of rows()) {
       expect(row.textContent).not.toMatch(/3F9A|81BC|C2D0/)
       expect(row.textContent).not.toContain('://')
@@ -152,7 +152,7 @@ describe('names on the Servers screen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Personal' })
     expect(dialog.textContent).toContain('SystemmacOS')
     expect(dialog.textContent).toContain('Key81BC 77E0')
-    expect(dialog.textContent).toContain('RoleServer')
+    expect(dialog.textContent).toContain('SharingCan be opened by your devices')
     expect(dialog.textContent).not.toContain('Open this computer to rename it.')
   })
 
@@ -168,7 +168,7 @@ describe('names on the Servers screen', () => {
     await waitFor(() => expect(remembered).toEqual([{ key: 'dev-mini', name: 'Home' }]))
     // Nothing went over the connection to the computer in use.
     expect(requests.some((request) => request.method === 'PUT')).toBe(false)
-    await waitFor(() => expect(within(rowOf('Home')).getByText('Online')).toBeTruthy())
+    await waitFor(() => expect(within(rowOf('Home')).getByText('Online · from your account')).toBeTruthy())
     expect(within(rowOf('Work')).getByText('In use')).toBeTruthy()
   })
 
@@ -188,7 +188,7 @@ describe('names on the Servers screen', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Details of Work' }))
     const dialog = await screen.findByRole('dialog', { name: 'Work' })
-    expect(dialog.textContent).toContain('RoleServer and client · approves devices')
+    expect(dialog.textContent).toContain('SharingCan be opened, and opens other computers · approves devices')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Studio' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))

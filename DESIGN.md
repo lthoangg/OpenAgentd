@@ -408,6 +408,24 @@ Three deliberate tensions define the personality:
 Light mode is canonical. Dark mode is a tonal inversion of the same paper, not a
 separate identity.
 
+**Three rules decide what is on screen.** There is no separate simple mode;
+each rule extends something every surface already does.
+
+- **Where you are decides.** Chat, a folder without Git and a Git repository
+  each offer only what they can use. A view, menu item or command that could
+  only explain why it does not apply here (a Changes view outside Git,
+  "Create worktree…" in a plain folder, `/init` in Chat) is not shown.
+- **One Detail setting: Simple or Full** (Settings → Appearance → Detail). A
+  new install starts in Simple. Full is the app as this document describes
+  it. Simple folds each turn's work into one row and drops the numbers
+  around the chat: the model chip names the model only, the context ring
+  appears from 70% full, the status bar shows no spend, a retry reads as a
+  sentence. Nothing else forks on it: the line under a reply, Turn details,
+  the working row, cards and every control are the same in both.
+- **Empty things take no room.** A heading with nothing under it, or a row
+  that says "turn on X to change this", does not show until it can be used.
+  The first of anything is created from the palette, a "+" or the agent.
+
 ## Colors
 
 The palette is a warm neutral ramp — cream through sepia to ink — with color
@@ -1175,7 +1193,7 @@ on a box that holds a pinned control: a hidden-overflow box stops it pinning.
 - **Preview tab**: a file, diff or attachment opened from a list, a link or Quick Open opens as the focused pane's one preview tab, title in *italics*, and the next one replaces it. Double-click, Keep Open, a comment on it, or moving it keeps it. Its tooltip and `aria-description` say so; its name stays the file's.
 - **Drag**: a tab slides along its strip; carried out, a floating copy follows the pointer and a `focus-ring` caret or tint shows where it lands (another strip, a pane's middle, or the half an edge split takes). See Layout → Tabs drag between panes.
 - **Overflow**: when the strip cannot show every tab, a `N ⌄` button lists them all (`menuitemradio`, the open one checked).
-- **Menu** (right-click, Shift+F10), in groups: Close, Close others, Close to the left, Close to the right, Close all | Keep open, Split right, Split left, Split up, Split down, Move to next pane, Move left, Move right | Copy path, Reveal in Git. The close items act on the tab's own pane; Close all closes the pane with them.
+- **Menu** (right-click, Shift+F10), in groups: Close, Close others, Close to the right | Close all | Keep open, Split right, Split down, Move to next pane | Copy path, Show in Changes. The close items act on the tab's own pane; Close all closes the pane with them. Left and up splits, and moving along the strip, are the drag's and the keys' (`⌃⌥←/↑`, `⌥⇧←/→`).
 - **Stepping**: `Ctrl+Tab` / `Ctrl+Shift+Tab` everywhere, plus the platform's pair: `⌘⇧]` / `⌘⇧[` on macOS, `Ctrl+PageDown` / `Ctrl+PageUp` elsewhere.
 - **Active Tab**: the sidebar's current-row wash (`listRowSurface(true)`, `bg-key` at 60%), `font-medium`, `text-(--color-text)`. No coloured edge, no border. In a pane without focus (with several on screen) it steps back to a 35% wash and `text-2`; nothing on the strip fades.
 - **Inactive Tab**: no fill, `text-(--color-text-muted)`, the sidebar row's hover wash.
@@ -1254,7 +1272,7 @@ each a 36px target. Older answers keep Copy and the meta line. An
 action that cannot run now stays visible, dimmed (`aria-disabled`, so it
 keeps focus), and its tooltip says when it can. The meta line names the
 model and the account the turn ran on. The files pill opens the
-files the turn edited (both transcript styles), each opening its diff.
+files the turn edited (in Simple and in Full), each opening its diff.
 
 **Cards in the transcript** (a question, a plan review, a goal claim, a
 waiting or stopped turn, the undo notice): one `border-subtle` frame, no
@@ -1309,8 +1327,9 @@ scroller, with no rule above it, and scrolls on its own past 224px
 name in sentence case, `text-xs` medium muted, a count, and a chevron that is
 always visible when the section folds. Needs you counts in a warning chip
 with words ("2 waiting"), so colour is never the only signal. Sections are
-separated by their headers, not by rules. Scheduled is always there, with a
-**+** for a new task and an empty row when nothing is due. The list's header
+separated by their headers, not by rules. Scheduled appears with the first
+task and stays while any task exists, with a **+** for a new task and an
+empty row ("Nothing due") when none is due; with no task there is no heading. The list's header
 holds the icon actions (`md:` 24px, 36px on touch): Search and **View
 options** (which holds Collapse all and Open workspace…). The workspace tree
 shows placeholder rows while it first loads and an error with **Retry** when
@@ -1338,9 +1357,12 @@ the title over its workspace, Tasks and Review panel; a phone's bar is
 control is 36px on touch and the phone's control step on a phone (40px at
 Default), with a 44px touch area.
 
-**Notices** (toasts, the update card, the LSP prompt) stack at the top right
-under the header, newest first, so the run deck and Send stay clear. Phones
-span the width between the safe-area insets.
+**Notices** (toasts, the update notice, the TypeScript tools prompt) stack at
+the top right under the header, newest first, so the run deck and Send stay
+clear. Phones span the width between the safe-area insets. The update notice
+and the tools prompt are one line each (`NoticeLine`): what it is, then at
+most two buttons, quiet one first. A line does not move, minimize or expand,
+and a failure it runs into goes to a toast.
 
 **Command palette** (⌘K) is one overlay. Empty, it lists commands; typed, it
 shows up to three headed groups in order: Commands, Sessions (by title) and
@@ -1395,10 +1417,10 @@ on a phone so a 320px screen leaves the chip its room. With a mouse, the
 stacked chip (below) is 36px: its two lines need it.
 
 - **"+"** opens the add menu: Attach, Mention a file, Snippet, Side question
-  and MCP servers (state in words, Sign in, on/off). The deck has no MCP
-  button: while a server needs the user, "+" carries a 6px dot in the
-  orange text tone (its description names the server) and opens at that
-  section.
+  and, once the agent has one, Connectors (state in words, Sign in,
+  on/off). The deck has no connector button: while one needs the user, "+"
+  carries a 6px dot in the orange text tone (its description names the
+  connector) and opens at that section.
 - **Code/Plan** is one toggle button naming the mode in force; a tap (or Tab
   in the message field) switches to the other. Code, the default, sits on the
   keycap wash; Plan takes the selection fill, so it shows at a glance. Both
@@ -1499,7 +1521,7 @@ primitives in `components/ui/`:
   sit above its card (see Section cards).
 - **Rows.** `PanelRow` is a 56px row with the label and description on the
   left and the control on the right. It stacks below `sm`. Long reference
-  lists (shortcuts, tools, MCP servers, detail facts) use the 44px
+  lists (shortcuts, tools, connectors, detail facts) use the 44px
   `COMPACT_ROW` with the same layout.
 - **Fields.** `Field` puts the label 8px above the control and a hint or
   error 8px below it; grids use 16px columns and 20px rows. Inputs are 36px
@@ -1519,14 +1541,22 @@ primitives in `components/ui/`:
   docs, not on the page. Command palette commands are the exception: they
   stay Title Case ("Scheduled Tasks", "Toggle Sidebar"), like editor
   commands.
-- **Technical but legible.** Users are developers, so industry terms stay:
-  p50/p95, TTFT, tok/s, cache hit, stdio, OAuth, PID, exit code, cron, glob,
-  tool names, model IDs and span names keep their real strings. What they
-  need is a label, a unit and a definition: every number has a named label
-  and a unit (`p95 35.2 s`, `in 55.8K · out 268`), every column a header,
-  and every term a dotted-underline `Term` whose tooltip defines it.
+- **Technical where the work is, plain where you set up.** The working
+  surfaces (transcript, message box, Review panel, Usage) are a developer's
+  tools, so industry terms stay there: p50/p95, TTFT, tok/s, cache hit, PID,
+  exit code, cron, Git's words, tool names, model IDs and span names keep
+  their real strings. What they need is a label, a unit and a definition:
+  every number has a named label and a unit (`p95 35.2 s`,
+  `in 55.8K · out 268`), every column a header, and every term a
+  dotted-underline `Term` whose tooltip defines it.
+  First run and Settings are the first screens a newcomer reads, so they use
+  everyday words: Models (not providers), Connectors (not MCP servers),
+  Blocked files (not denied paths), Computer (not server), "Sign in" (not
+  OAuth or device code), a folder picker (not a glob), "How does it
+  connect?" (not stdio / HTTP / SSE). Settings search and the palette still
+  find each page by its earlier word.
   Words that only exist inside this codebase never reach the UI: say
-  "built-in server" not "builtin", "main agent / subagent" not
+  "this computer" not "builtin", "main agent / subagent" not
   "lead / member", "summarize" not "compact", `exit 0` not `[Succeeded]`.
   A model on its own shows as `provider:model` in mono
   (`anthropic:claude-sonnet-4-6`); when space runs out the `provider:` part
@@ -1536,11 +1566,17 @@ primitives in `components/ui/`:
   them. The run chip is the one label: it names the model alone, in sans,
   with the ID in its tooltip (Composer → the run chip).
 - **One name per thing.** Workspace (not project or repo), Worktree,
-  Rename, Tasks, Scheduled tasks, Review panel, Side questions, Find file,
-  Session, Built-in server, Main agent / Subagent, Run now, Usage (the
-  spend and trace overlay), Provider limits (a provider's quota), Retention
-  (its Settings page), Comment (on a Preview page), Needs you / Running /
-  Done / Failed / Can't reach (session states).
+  Rename, Tasks, Scheduled tasks, Review panel, Changes (its Git view, with
+  Uncommitted and History inside), Side questions, Find file, Session,
+  Computer and This computer (not server; a browser page says "This
+  server" of the one it was loaded from), Models, Connectors, Blocked files,
+  Main agent / Subagent, Run now, Usage (the spend and trace overlay), Usage
+  limits (a provider's quota), Detail: Simple / Full, Summarize, Comment (on
+  a Preview page), Needs you / Running / Done / Failed / Can't reach
+  (session states). Sending while the agent works is Steer, Queue until
+  done or Stop and send, on every device. A failure starts "Couldn't …",
+  the button that tries again is Retry, and what cannot come back "can't be
+  undone".
 
 Settings adds its own shell on top:
 
@@ -1554,11 +1590,11 @@ Settings adds its own shell on top:
   reference list at the bottom of an overlay.)
 - **Phones.** Settings opens on a grouped list of sections. Each section
   opens full-screen, with Back in the overlay header. An editor (agent,
-  skill, MCP server) brings its own Back, so the overlay's Back hides while
+  skill, connector) brings its own Back, so the overlay's Back hides while
   one is open: one Back on screen.
-- **Nav.** Groups in sentence case (App, Agents and tools, Sessions, Models
-  and media, Data and safety, About), no icons at full width, counts in words ("4 skills",
-  "1 needs sign-in"), a "Search settings" box on top.
+- **Nav.** Three groups in sentence case (Basics, Agent, Advanced), 15
+  sections, no icons at full width, counts in words ("4 skills",
+  "1 needs sign-in"; nothing for none), a "Search settings" box on top.
 - **One save rule.** A page of fields keeps a draft and saves from the save
   bar (`SaveBar`: Save, ⌘S, "Discard…" asks first); when Save is blocked the
   bar says why. Editors (agent, skill, MCP server, memory page) use the same
@@ -1574,7 +1610,7 @@ Settings adds its own shell on top:
   it. The phone section list has the same field. In a mouse window below
   900px the nav is an icon rail whose search opens in a dialog; a touch
   screen keeps the labelled list at every width.
-- **Long lists are rows, not cards.** Providers is one bordered list of
+- **Long lists are rows, not cards.** Models is one bordered list of
   rows (name, a subline such as "API key · 1 key · 13 models", a status
   chip); a row opens in place. Secondary row actions go in a "More" menu.
 - **Server.** The same `AppBackendPanel` appears as Settings → Server and
@@ -1585,7 +1621,11 @@ Settings adds its own shell on top:
 dock's Schedule tab. Spacing there keys off container queries (`@xl:`), not
 the viewport, so the narrow dock stays usable. The task list is full-bleed
 `divide-y` rows on the rail tone; a task's detail reads Status tiles, then
-Delivery, Schedule, Prompt and Runs sections.
+Runs in, Schedule, Prompt and Dates sections. The schedule is said in
+words wherever a cron expression has them ("weekdays at 09:00"); the
+expression itself shows in Full detail, or when it has no wording. The form
+is two pages: three questions (What should it do?, When?, Where?) and where
+the reply goes, then More options (Name, Stop after, Time zone, Session ID).
 
 On phones (`useIsMobile`) the overlay header carries the title and Back, so
 the detail and create panes drop their own title and close button. Run now
@@ -1594,6 +1634,36 @@ full width, and long detail values (workspace path, session ID) stack under
 their label instead of truncating behind a hover tooltip. Task rows hide
 their inline actions on coarse pointers, because the detail and the
 long-press menu already offer them.
+
+**Preview** (the Review panel's web preview) keeps one bar: Back, Forward,
+Refresh, the address, the size, Rotate (a fixed size only), Console, Comment
+and Open in browser. On a phone the bar is at the bottom with the address
+as a pill above the tools; Console and Open in browser share "⋯", and
+Comment keeps a button of its own.
+
+- **Address.** At rest it shows the address without `http://` (`https://`
+  stays); focused, the whole address, selected, over a list of **Recent**
+  addresses (five per workspace, on this device) and **Pages in this
+  workspace** (its HTML files, shallowest first, eight at most). Typing
+  filters both; ↑ ↓ and ↵ choose. On a phone the list opens upward in 44pt
+  rows. The size's name and the agent's chip give way by the panel's width
+  (`@lg`), not the window's.
+- **Commenting says it is on.** While picking, a line in the notice slot
+  reads "Click an element to comment" (Tap on a phone) with Esc and
+  **Done**; on a phone it sits just above the bar.
+- **Comments.** A click on a comment brings its pin into view. Clear and
+  the × on one comment answer with a toast and **Undo** (10 seconds), not a
+  dialog. Add comment shows its keys (`⌘↵`) where there is a keyboard. On a
+  phone the list is one row ("3 comments ▴") that opens, with Clear inside,
+  and Send to agent returns to the chat, where the comments are.
+- **Console.** Errors, Warnings and All, each with its count; it opens on
+  Errors when there are any (the badge counts those), keeps the newest line
+  in view until the list is scrolled up, and closes from its own ×. A phone's
+  "⋯" carries the same count, and its row reads **Hide console** while open.
+- **Size.** A fixed size draws a caption under the page, "390 × 844 · 62%"
+  (the scale is left out at 100%); in Responsive the size shows for a moment
+  while the panel is resized. A phone's size button takes the pressed fill
+  while a fixed size is chosen.
 
 ## Platform Shell
 
@@ -1795,18 +1865,21 @@ dismissed by drag.
 touch-first device; a narrow mouse window and a tablet keep the drawer
 layout). Three levels, all mounted: `components/phone/PhoneStack` holds
 Sessions with a chat pushed over it, and that stack is the page of a second
-`PhoneStack` over Servers. Only one of the two takes the edge swipe and
+`PhoneStack` over Computers. Only one of the two takes the edge swipe and
 Back at a time.
 
-- **Servers** (`/servers`, `components/phone/ServersScreen`, loaded lazily)
-  is the bottom level: a large **Servers** title over the saved servers, the
-  same list as Settings → Server (`AppBackendPanel`). The row in use offers
+- **Computers** (`/servers`, `components/phone/ServersScreen`, loaded lazily)
+  is the bottom level: a large **Computers** title over one list, the
+  account's computers and those added by address together, the same list as
+  Settings → Server (`AppBackendPanel`). The row in use offers
   **Sessions ›** back up to its list; **Use** on another switches the app to
-  it and lands on that server's Sessions. While a server answers, a swipe
-  left anywhere on Servers pulls Sessions in (the reverse of Back); with
+  it and lands on that computer's Sessions. While a computer answers, a swipe
+  left anywhere on Computers pulls Sessions in (the reverse of Back); with
   none connected it gives a little and springs back with an error tick. On
-  touch a saved server's row keeps one button (Use, or Sessions ›); Edit and
-  Remove are in its action sheet, from ⋯ or a long press. A row is a name
+  touch a row keeps one button (Use, or Sessions ›); Edit and
+  Remove are in its action sheet, from ⋯ or a long press. **Add a computer
+  by address** asks for Address, Access key and Name, and **Connect** tests,
+  saves and opens it. A row is a name
   and one status line, on every platform: a computer's own name (its host
   name until it is renamed), never its key or address. Those are under
   **Details** (a computer's sheet on touch, a button with a pointer), where
@@ -1814,10 +1887,10 @@ Back at a time.
   the app has never been on, and after a name while two share it; it always
   shows in full where a device is approved or removed.
 - **Sessions** (`/sessions`, the sidebar's `page` mode) is the first screen
-  the app opens on: ‹ Servers in the bar, a 28px
+  the app opens on: ‹ Computers in the bar, a 28px
   **Sessions** title (`text-large-title`) that hands over to the bar's small
-  title as it scrolls away, the server's dot and name under it (a tap goes
-  to Servers too), a search field, then Needs you, Running, Pinned and the
+  title as it scrolls away, the computer's dot and name under it (a tap goes
+  to Computers too), a search field, then Needs you, Running, Pinned and the
   workspaces (Running is the phone page's own section; the desktop sidebar
   keeps only Needs you). Pull down to refresh. Swipe a row left for Pin and Delete
   (Pin is neutral, only Delete is red; Delete confirms); a long press
@@ -1841,9 +1914,9 @@ Back at a time.
   Review panel on the right (20px glyphs in the accent).
 - **Back is by level, not by history**: ‹, a swipe from the left edge (it
   follows the finger and springs on with its speed) and Android Back all go
-  to the parent: a chat to Sessions, Sessions to Servers. A link, a
+  to the parent: a chat to Sessions, Sessions to Computers. A link, a
   notification or a widget opens the chat with Sessions under it; Android
-  Back on Servers sends the app to the background.
+  Back on Computers sends the app to the background.
 - **The composer takes a vertical swipe**: up on the box raises the soft
   keyboard (focus is given on `touchend`, the gesture iOS needs), down puts
   it away, as dragging the transcript does. A message that can still
@@ -1896,7 +1969,7 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
 - **Reading.** Wide content (code, diffs, tables) scrolls sideways inside
   its block, with a fade at the clipped edge; it never widens the page.
   Consecutive tool calls collapse into one summary row.
-  In the detailed transcript two or more finished, successful calls in a
+  In Full two or more finished, successful calls in a
   row fold behind "3 commands, 1 read ›" (sans); a failed or running call
   stays open. Tool output is code size and caps at 12 lines, then scrolls.
   Tables scroll sideways as a whole (no pinned column) and shade the right edge only while it is
@@ -1943,11 +2016,11 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
 - **Folded cards.** A goal check is one 44pt row, "Goal · achieved ›";
   evidence opens as 44pt rows under an "Evidence · N" label, each row one
   wrapped sentence with its code inline.
-- **Lists read like iOS.** The Workspace page (Changes, Files, Terminal,
+- **Lists read like iOS.** The Review panel page (Changes, Files, Terminal,
   Preview) and the worktree sheet are grouped 44pt rows with counts; a
   scheduled task has an on/off switch and its schedule as a sentence;
   filters that pin over a list fit in one line (three segments at most),
-  and every Settings list (Providers, Agents, Skills, MCP) pins its filter.
+  and every Settings list (Models, Agents, Skills, Connectors) pins its filter.
 - **Thumb reach and full screens.** Jump to latest is a round ↓ at the
   right corner; Preview's address bar sits at the bottom. A memory page
   edits full screen with Save in the bar and a formatting bar above the
@@ -2005,16 +2078,16 @@ this file wins.
   above the composer.
 - **Trouble is told where it happens.** When the server stops answering
   the status bar says **Can't reach** beside a red dot, the banner offers
-  **Retry** and, in the desktop app, **Start built-in server**, and Send is
+  **Retry** and, in the desktop app, **Start it**, and Send is
   disabled with the reason while the draft stays (nothing is queued
   offline). A moved folder is one line under the header with one way out
   each (**Open workspace…**, **Hide from sidebar**). An MCP call refused for
   sign-in offers **Sign in to {server}** under the call. A view that fails
-  to render says so in its own place (**Try again**, **Copy error details**)
+  to render says so in its own place (**Retry**, **Copy error details**)
   while the header, sidebar and status bar keep working.
 - **Reading.** The model chip names the model in sans; the `provider:model`
-  ID stays mono in its tooltip and the picker. The detailed transcript keeps
-  one row per tool call (folding is the Reader style's job), and a failed
+  ID stays mono in its tooltip and the picker. Full keeps
+  one row per tool call (folding is Simple's job), and a failed
   call stays a closed row like the others, since nothing opens on its own.
   A diff wraps by default
   (**Wrap lines** keeps lines whole); **Side by side** lays the old file
@@ -2071,7 +2144,7 @@ Left out on purpose, each a feature of its own and not a gap to patch:
 | Dialog buttons | Cancel · Action | Action · Cancel | Cancel · Action | alert (phone), Cancel · Action (iPad) | text buttons |
 | Badge | Dock | taskbar overlay | launcher | — | — |
 | System text size | — | — | — | Dynamic Type | font scale |
-| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | ‹ or edge swipe, one level up | Back, one level up; leaves from Servers |
+| Back | ⌘[ · two-finger swipe | Alt+← | Alt+← | ‹ or edge swipe, one level up | Back, one level up; leaves from Computers |
 
 ## Brand mark
 

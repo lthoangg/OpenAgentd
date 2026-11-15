@@ -176,14 +176,14 @@ describe('ProvidersSettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(await screen.findByText('ABCD-1234')).toBeTruthy()
-    expect(screen.getByText('Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.')).toBeTruthy()
-    const copyCode = screen.getByLabelText('Copy device code')
+    expect(screen.getByText('Enter it on GitHub to let Copilot in. Keep this window open until you have signed in.')).toBeTruthy()
+    const copyCode = screen.getByLabelText('Copy code')
     expect(copyCode.className).toContain('h-9')
     expect(copyCode.className).toContain('w-9')
     fireEvent.click(copyCode)
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ABCD-1234'))
-    expect(screen.getByRole('button', { name: /Open authorization page/i }).className).toContain('min-h-9')
-    expect(screen.queryByText(/personal ChatGPT accounts/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open the sign-in page' }).className).toContain('min-h-9')
+    expect(screen.queryByText(/personal ChatGPT account/)).toBeNull()
   })
 
   it('keeps OAuth dialog connected when mobile reports load failed after success', async () => {
@@ -229,7 +229,7 @@ describe('ProvidersSettingsPage', () => {
     expect(await screen.findByText('Codex')).toBeTruthy()
     fireEvent.click(screen.getAllByRole('button', { name: /Connect/i }).at(-1)!)
 
-    expect(await screen.findByText('Connected successfully.')).toBeTruthy()
+    expect(await screen.findByText('Signed in.')).toBeTruthy()
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByText('Load failed')).toBeNull()
   })
@@ -400,8 +400,9 @@ describe('ProvidersSettingsPage', () => {
 
     expect(await screen.findByText('OpenCode Zen')).toBeTruthy()
     expect(screen.queryByText(/Free models are available without an API key/i)).toBeNull()
-    const testKey = screen.getByRole('button', { name: 'Test' })
-    expect(testKey.getAttribute('disabled')).not.toBeNull()
+    // Nothing is stored yet, so there is nothing to test: the form has one button.
+    expect(screen.queryByRole('button', { name: 'Test' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'List models' })).toBeNull()
   })
 
@@ -788,34 +789,20 @@ describe('ProvidersSettingsPage', () => {
       expect((row.querySelector('[data-provider-subline]') as HTMLElement).className).toContain('md:truncate')
     })
 
-    it('wraps the status filter on phones instead of scrolling it out of view', async () => {
-      useProviders([provider('Alpha'), provider('Charlie', { is_disconnected: true }), provider('Delta', { is_configured: false, is_saved: false, is_reachable: null })])
-      renderPage()
-      const filter = await screen.findByRole('radiogroup', { name: 'Filter by status' })
-      expect(filter.className).toContain('max-md:flex-wrap')
-      // No sideways-scrolling wrapper around it, and it does not clip on phones.
-      expect(filter.parentElement?.closest('.overflow-x-auto')).toBeNull()
-      expect(filter.className).toContain('max-md:overflow-visible')
-    })
-
-    it('filters by type from the dropdown', async () => {
+    it('offers one filter, All or Connected, and no type picker', async () => {
       useProviders([
         provider('Alpha'),
-        provider('Bravo'),
         provider('Echo', { kind: 'oauth' }),
+        provider('Delta', { is_configured: false, is_saved: false, is_reachable: null }),
       ])
       renderPage()
-      expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
+      const filter = await screen.findByRole('radiogroup', { name: 'Filter by status' })
+      expect(Array.from(filter.querySelectorAll('[role="radio"]')).map((el) => el.textContent)).toEqual(['All', 'Connected · 2'])
+      expect(screen.queryByRole('button', { name: 'Filter by type' })).toBeNull()
 
-      fireEvent.click(screen.getByRole('button', { name: 'Filter by type' }))
-      expect(screen.getByRole('option', { name: 'Any type' })).toBeTruthy()
-      expect(screen.getByRole('option', { name: /^API key\s*2$/ })).toBeTruthy()
-      expect(screen.getByRole('option', { name: /^Sign-in\s*1$/ })).toBeTruthy()
-      expect(screen.queryByRole('option', { name: /Local server/ })).toBeNull()
-
-      fireEvent.click(screen.getByRole('option', { name: /^Sign-in/ }))
+      fireEvent.click(screen.getByRole('radio', { name: 'Connected · 2' }))
       expect(screen.getByRole('button', { name: /Echo/ })).toBeTruthy()
-      expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Delta/ })).toBeNull()
     })
 
     it('shows a loading skeleton while the providers load', async () => {
@@ -826,9 +813,9 @@ describe('ProvidersSettingsPage', () => {
         }),
       )
       renderPage()
-      expect(screen.getByRole('status', { name: 'Loading providers' })).toBeTruthy()
+      expect(screen.getByRole('status', { name: 'Loading models' })).toBeTruthy()
       expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
-      expect(screen.queryByRole('status', { name: 'Loading providers' })).toBeNull()
+      expect(screen.queryByRole('status', { name: 'Loading models' })).toBeNull()
     })
 
     it('shows an error callout with Retry when the providers fail to load, and recovers', async () => {
@@ -841,14 +828,14 @@ describe('ProvidersSettingsPage', () => {
         }),
       )
       renderPage()
-      expect(await screen.findByText("Couldn't load providers")).toBeTruthy()
+      expect(await screen.findByText("Couldn't load your models")).toBeTruthy()
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
       expect(await screen.findByRole('button', { name: /Alpha/ })).toBeTruthy()
-      expect(screen.queryByText("Couldn't load providers")).toBeNull()
+      expect(screen.queryByText("Couldn't load your models")).toBeNull()
     })
   })
 
-  describe('Hidden status filter', () => {
+  describe('Hidden ones', () => {
     const provider = (
       id: string,
       overrides: Partial<ProvidersListBody['providers'][number]> = {},
@@ -874,40 +861,38 @@ describe('ProvidersSettingsPage', () => {
       )
     }
 
-    // The status filter is a segmented control: radios named "Label N".
-    const chip = (label: string) =>
-      screen.getByRole('radio', { name: new RegExp(`^${label}\\s*\\d+$`) })
+    const segments = () =>
+      Array.from(screen.getByRole('radiogroup', { name: 'Filter by status' }).querySelectorAll('[role="radio"]')).map((el) => el.textContent)
 
-    it('counts each provider under exactly one status', async () => {
+    it('keeps hidden ones out of the filter: a link under the list says how many', async () => {
       useMixedProviders()
       renderPage()
       expect(await screen.findByText('Alpha')).toBeTruthy()
 
-      expect(screen.getByRole('radiogroup', { name: 'Filter by status' })).toBeTruthy()
-      expect(chip('All').textContent).toContain('4')
-      expect(chip('Connected').textContent).toContain('1')
-      expect(chip('Hidden').textContent).toContain('2')
-      expect(chip('Not connected').textContent).toContain('1')
-      expect(chip('All').getAttribute('aria-checked')).toBe('true')
+      expect(segments()).toEqual(['All', 'Connected · 1'])
+      expect(screen.getByRole('radio', { name: 'All' }).getAttribute('aria-checked')).toBe('true')
+      expect(screen.getByRole('button', { name: '2 hidden' })).toBeTruthy()
       expect(screen.getByText('1 connected')).toBeTruthy()
     })
 
-    it('shows only hidden providers when Hidden is active, and toggles back', async () => {
+    it('shows only the hidden ones from the link, with a segment that says so, and All goes back', async () => {
       useMixedProviders()
       renderPage()
       expect(await screen.findByText('Alpha')).toBeTruthy()
 
-      fireEvent.click(chip('Hidden'))
-      expect(chip('Hidden').getAttribute('aria-checked')).toBe('true')
+      fireEvent.click(screen.getByRole('button', { name: '2 hidden' }))
+      expect(segments()).toEqual(['All', 'Connected · 1', 'Hidden · 2'])
+      expect(screen.getByRole('radio', { name: 'Hidden · 2' }).getAttribute('aria-checked')).toBe('true')
+      expect(screen.queryByRole('button', { name: '2 hidden' })).toBeNull()
       expect(screen.queryByText('Alpha')).toBeNull()
       expect(screen.queryByText('Delta')).toBeNull()
       expect(screen.getByText('Bravo')).toBeTruthy()
       expect(screen.getByText('Charlie')).toBeTruthy()
 
-      // A radio does not toggle off; "All" brings every provider back
-      fireEvent.click(chip('All'))
+      fireEvent.click(screen.getByRole('radio', { name: 'All' }))
       expect(screen.getByText('Alpha')).toBeTruthy()
       expect(screen.getByText('Delta')).toBeTruthy()
+      expect(segments()).toEqual(['All', 'Connected · 1'])
     })
 
     it('composes Hidden with the search box', async () => {
@@ -915,8 +900,8 @@ describe('ProvidersSettingsPage', () => {
       renderPage()
       expect(await screen.findByText('Alpha')).toBeTruthy()
 
-      fireEvent.click(chip('Hidden'))
-      fireEvent.change(screen.getByPlaceholderText('Filter providers…'), { target: { value: 'brav' } })
+      fireEvent.click(screen.getByRole('button', { name: '2 hidden' }))
+      fireEvent.change(screen.getByPlaceholderText('Filter…'), { target: { value: 'brav' } })
       expect(screen.getByText('Bravo')).toBeTruthy()
       expect(screen.queryByText('Charlie')).toBeNull()
     })

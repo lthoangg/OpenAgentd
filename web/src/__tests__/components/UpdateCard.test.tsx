@@ -1,19 +1,12 @@
 /**
- * Regression tests for the UpdateCard in-app updater UI.
+ * The in-app update notice: one line in the notices column.
  *
- * Primary regression guarded:
- *   After clicking "Install and restart" the UI must NOT stay frozen on
- *   "Installing update…" indefinitely.  The Tauri `updater_install` command
- *   now restarts the process inline (not via a detached spawn), so the JS
- *   invocation intentionally never resolves.  We race it against a 60-second
- *   timeout; if the promise resolves with Ok the card must NOT silently
- *   swallow that and sit forever — it should keep showing the installing state
- *   only while the process hasn't exited yet, and surface an error when the
- *   timeout fires.
- *
- * Secondary contract:
- *   A Tauri-side error from `updater_install` (e.g. missing download, stale
- *   version) must immediately transition the card to the error state.
+ * - The desktop downloads an update on its own and asks once, to restart.
+ * - Android asks before the download (an APK on what may be mobile data) and
+ *   hands the install to the system.
+ * - `updater_install` restarts the process, so its promise never resolves;
+ *   a failure (or the 60-second timeout) must leave "Installing update…" and
+ *   say so in a toast.
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -31,6 +24,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 type StatusListener = (event: { payload: unknown }) => void
 
 let capturedStatusListener: StatusListener | null = null
+let capturedCheckListener: (() => void) | null = null
 
 const unlistenStatusMock = mock(() => {})
 const unlistenCheckMock = mock(() => {})
@@ -39,6 +33,7 @@ const listenMock = mock(async (...args: unknown[]) => {
   const event = String(args[0])
   const cb = args[1]
   if (event === 'updater-status') capturedStatusListener = cb as StatusListener
+  else capturedCheckListener = cb as () => void
   return event === 'updater-status' ? unlistenStatusMock : unlistenCheckMock
 })
 
@@ -52,13 +47,21 @@ const invokeCalls: InvokeCall[] = []
 let installBehaviour: 'hang' | 'resolve-ok' | 'reject' = 'hang'
 let installRejectMessage = 'install failed'
 let checkResponse: Record<string, unknown> = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
+let checkError: string | null = null
+let downloadError: string | null = null
 
 const invokeMock = mock(async (...args: unknown[]) => {
   const command = String(args[0])
   invokeCalls.push({ command, args: args[1] })
 
   if (command === 'updater_check') {
+    if (checkError) throw new Error(checkError)
     return checkResponse
+  }
+
+  if (command === 'updater_download') {
+    if (downloadError) throw new Error(downloadError)
+    return { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
   }
 
   if (command === 'updater_install') {
@@ -111,6 +114,7 @@ mock.module('@/hooks/use-platform', () => ({
 import { UpdateCard } from '@/components/UpdateCard'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries'
+import { useToastStore } from '@/stores/useToastStore'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -127,6 +131,10 @@ function emitStatus(payload: unknown) {
 beforeEach(() => {
   invokeCalls.length = 0
   capturedStatusListener = null
+  capturedCheckListener = null
+  checkError = null
+  downloadError = null
+  useToastStore.setState({ toasts: [] })
   installBehaviour = 'hang'
   installRejectMessage = 'install failed'
   checkResponse = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
@@ -158,6 +166,21 @@ function seedActiveSessions(sessions: Array<{ running: boolean; needs_input?: bo
 // Tests
 // ---------------------------------------------------------------------------
 
+const DOWNLOADED = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }
+const AVAILABLE = { status: 'available', version: '1.71.0', current_version: '1.70.0' }
+const installs = () => invokeCalls.filter((c) => c.command === 'updater_install')
+const downloads = () => invokeCalls.filter((c) => c.command === 'updater_download')
+const toasts = () => useToastStore.getState().toasts
+
+/** Mount with the startup check finding nothing, then emit ``payload``. */
+async function mountWith(payload: unknown) {
+  checkResponse = { status: 'up_to_date', current_version: '1.70.0' }
+  const view = render(<UpdateCard />)
+  await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+  await act(async () => { emitStatus(payload) })
+  return view
+}
+
 describe('UpdateCard — platform lifecycle', () => {
   it('does not initialize updater commands in the browser build', async () => {
     platform = { isTauri: false, os: 'macos', isMacOverlay: false }
@@ -171,7 +194,7 @@ describe('UpdateCard — platform lifecycle', () => {
 
   it('never checks for updates on iOS', async () => {
     platform = { isTauri: true, os: 'ios', isMacOverlay: false }
-    checkResponse = { status: 'available', version: '1.71.0', current_version: '1.70.0' }
+    checkResponse = AVAILABLE
     render(<UpdateCard />)
 
     await act(async () => {})
@@ -180,27 +203,36 @@ describe('UpdateCard — platform lifecycle', () => {
     expect(invokeCalls).toHaveLength(0)
   })
 
+  it('asks before downloading on Android, where the download is an APK', async () => {
+    platform = { isTauri: true, os: 'android', isMacOverlay: false }
+    await mountWith({ ...AVAILABLE, channel: 'apk' })
+
+    expect(screen.getByText('OpenAgentd 1.71.0 is available')).toBeInTheDocument()
+    expect(downloads()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    await waitFor(() => expect(downloads()).toHaveLength(1))
+    expect(await screen.findByRole('button', { name: 'Install' })).toBeInTheDocument()
+  })
+
   it('installs an Android APK without a restart and stays ready to retry', async () => {
     platform = { isTauri: true, os: 'android', isMacOverlay: false }
     installBehaviour = 'resolve-ok'
-    checkResponse = { status: 'downloaded', version: '1.71.0', current_version: '1.70.0', channel: 'apk' }
-    render(<UpdateCard />)
+    await mountWith({ ...DOWNLOADED, channel: 'apk' })
 
-    const install = await screen.findByRole('button', { name: /^install$/i })
-    expect(screen.queryByText(/install and restart/i)).toBeNull()
-    fireEvent.click(install)
-    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
-    // A phone shows the one-line banner first; the card opens on a tap.
-    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
-    expect(await screen.findByText(/android asks you to confirm/i)).toBeInTheDocument()
-    expect(screen.queryByText(/restart timed out/i)).toBeNull()
+    expect(screen.getByText('OpenAgentd 1.71.0 is ready')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /restart/i })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+
+    await waitFor(() => expect(installs()).toHaveLength(1))
+    // Android's installer took over; the line is back for another try.
+    expect(await screen.findByRole('button', { name: 'Install' })).toBeInTheDocument()
+    expect(toasts()).toHaveLength(0)
   })
 
-  it('waits six hours after Later before showing the automatic update reminder again', async () => {
+  it('waits six hours after Later before showing the update again', async () => {
     const view = render(<UpdateCard />)
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'available', version: '1.71.0', current_version: '1.70.0' }))
-    const laterButton = await screen.findByRole('button', { name: /later/i })
+    const laterButton = await screen.findByRole('button', { name: 'Later' })
 
     const realDateNow = Date.now
     const realSetTimeout = globalThis.setTimeout
@@ -223,7 +255,7 @@ describe('UpdateCard — platform lifecycle', () => {
 
       expect(window.localStorage.getItem('openagentd.updater.dismissedUntil')).toBeNull()
       expect(reminderCallback).toBeDefined()
-      expect(screen.queryByRole('button', { name: /later/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Later' })).not.toBeInTheDocument()
 
       act(() => document.dispatchEvent(new Event('visibilitychange')))
       await act(async () => { await Promise.resolve() })
@@ -237,7 +269,7 @@ describe('UpdateCard — platform lifecycle', () => {
       })
 
       expect(invokeCalls.filter((call) => call.command === 'updater_check')).toHaveLength(1)
-      expect(screen.getByRole('button', { name: /later/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument()
     } finally {
       view.unmount()
       Date.now = realDateNow
@@ -248,9 +280,7 @@ describe('UpdateCard — platform lifecycle', () => {
 
   it('checks on startup after the app is relaunched during a prior Later cooldown', async () => {
     const firstRun = render(<UpdateCard />)
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'available', version: '1.71.0', current_version: '1.70.0' }))
-    await userEvent.click(await screen.findByRole('button', { name: /later/i }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Later' }))
 
     invokeCalls.length = 0
     firstRun.unmount()
@@ -264,64 +294,64 @@ describe('UpdateCard — platform lifecycle', () => {
   })
 })
 
-describe('UpdateCard — install flow', () => {
-  it('shows "Install and restart" button when status is downloaded', async () => {
-    render(<UpdateCard />)
+describe('UpdateCard — one line, one decision', () => {
+  it('downloads an available update on its own and shows nothing until it is ready', async () => {
+    await mountWith(AVAILABLE)
 
-    // Simulate the backend emitting a downloaded status after the listeners
-    // are registered.
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+    await waitFor(() => expect(downloads()).toHaveLength(1))
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull()
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument(),
-    )
+    expect(await screen.findByText('OpenAgentd 1.71.0 is ready')).toBeInTheDocument()
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Later', 'Restart to update'])
   })
 
-  it('transitions to "Installing update…" immediately when install is clicked', async () => {
-    installBehaviour = 'hang'
-    render(<UpdateCard />)
+  it('downloads a version once, however often it is announced', async () => {
+    await mountWith(AVAILABLE)
+    await act(async () => { emitStatus(AVAILABLE) })
+    await act(async () => { emitStatus({ ...AVAILABLE, status: 'downloading', downloaded_bytes: 1, total_bytes: 2 }) })
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument(),
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: /install and restart/i }))
-
-    await waitFor(() =>
-      expect(screen.getByText('Installing update…')).toBeInTheDocument(),
-    )
-    expect(screen.getByText(/will restart when installation completes/i)).toBeInTheDocument()
+    expect(downloads()).toHaveLength(1)
   })
 
-  it('calls updater_install exactly once when install is clicked', async () => {
-    installBehaviour = 'hang'
-    render(<UpdateCard />)
+  it('shows nothing while the download runs or when it fails; the next check tries again', async () => {
+    downloadError = 'network down'
+    await mountWith(AVAILABLE)
+    await act(async () => { emitStatus({ ...AVAILABLE, status: 'downloading', downloaded_bytes: 10, total_bytes: 50 }) })
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(downloads()).toHaveLength(1))
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(toasts()).toHaveLength(0)
+  })
 
-    await userEvent.click(screen.getByRole('button', { name: /install and restart/i }))
+  it('has no pill, no drag handle and no second step', async () => {
+    await mountWith(DOWNLOADED)
 
-    await waitFor(() =>
-      expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true),
-    )
-    const installCalls = invokeCalls.filter((c) => c.command === 'updater_install')
-    expect(installCalls).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /minimize|expand|drag|download|install/i })).toBeNull()
+    expect(screen.queryByText(/ready to install/i)).toBeNull()
+  })
+
+  it('goes away on Later', async () => {
+    await mountWith(DOWNLOADED)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Later' }))
+
+    await waitFor(() => expect(screen.queryByText('OpenAgentd 1.71.0 is ready')).toBeNull())
+  })
+})
+
+describe('UpdateCard — restarting', () => {
+  it('says "Installing update…" as soon as the restart is asked for, and installs once', async () => {
+    await mountWith(DOWNLOADED)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
+
+    expect(await screen.findByText('Installing update…')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(installs()).toHaveLength(1)
   })
 
   it('clears the restart timeout when unmounted during a pending install', async () => {
-    installBehaviour = 'hang'
-    const { unmount } = render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-    await screen.findByRole('button', { name: /install and restart/i })
+    const { unmount } = await mountWith(DOWNLOADED)
 
     const realSetTimeout = globalThis.setTimeout
     const realClearTimeout = globalThis.clearTimeout
@@ -333,271 +363,74 @@ describe('UpdateCard — install flow', () => {
     }) as unknown as typeof setTimeout
     globalThis.clearTimeout = (() => { timeoutCleared = true }) as unknown as typeof clearTimeout
     try {
-      fireEvent.click(screen.getByRole('button', { name: /install and restart/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
       await act(async () => { await Promise.resolve() })
       unmount()
       expect(timeoutCleared).toBe(true)
       act(() => timeoutCallback?.())
-      expect(screen.queryByText('Update failed')).not.toBeInTheDocument()
+      expect(toasts()).toHaveLength(0)
     } finally {
       globalThis.setTimeout = realSetTimeout
       globalThis.clearTimeout = realClearTimeout
     }
   })
 
-  it('shows error state when updater_install rejects (e.g. missing download)', async () => {
-    // Regression: a Tauri-side error (version mismatch, missing cache file)
-    // must surface in the UI rather than leaving the card on "Installing…".
+  it('leaves "Installing update…" and says why in a toast when the install is refused', async () => {
+    // A Tauri-side error (version mismatch, missing cache file) must not
+    // leave the line on "Installing update…".
     installBehaviour = 'reject'
     installRejectMessage = 'Update has not been downloaded yet.'
-    render(<UpdateCard />)
+    await mountWith(DOWNLOADED)
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument(),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
 
-    await userEvent.click(screen.getByRole('button', { name: /install and restart/i }))
-
-    await waitFor(() =>
-      expect(screen.getByText('Update failed')).toBeInTheDocument(),
-    )
-    expect(screen.getByText(/Update has not been downloaded yet/i)).toBeInTheDocument()
-    // "Try again" button must be present.
-    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(["Couldn't update OpenAgentd"]))
+    expect(toasts()[0].description).toBe('Update has not been downloaded yet.')
+    expect(screen.queryByText('Installing update…')).toBeNull()
   })
 
-  it('shows error state when updater_install rejects with stale-version message', async () => {
+  it('checks again after a refused install, so a stale download is fetched anew', async () => {
     installBehaviour = 'reject'
-    installRejectMessage =
-      'Downloaded version 1.71.0 no longer matches the available version 1.72.0. Download the update again.'
-    render(<UpdateCard />)
+    installRejectMessage = 'Downloaded version 1.71.0 no longer matches the available version 1.72.0. Download the update again.'
+    await mountWith(DOWNLOADED)
+    checkResponse = { status: 'available', version: '1.72.0', current_version: '1.70.0' }
+    invokeCalls.length = 0
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument(),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
 
-    await userEvent.click(screen.getByRole('button', { name: /install and restart/i }))
-
-    await waitFor(() =>
-      expect(screen.getByText('Update failed')).toBeInTheDocument(),
-    )
-    expect(screen.getByText(/no longer matches/i)).toBeInTheDocument()
-  })
-
-  it('does NOT stay forever on "Installing update…" when the command resolves without restarting', async () => {
-    // Regression guard: the old code called restart_app_process() which
-    // *spawned* the restart async and returned Ok(()) immediately.  This made
-    // the JS await resolve with success while the UI never left 'installing'.
-    // The fix races the install promise against a timeout.  We use a very
-    // short timeout in tests (overriding the module-level constant isn't
-    // possible without more refactoring, so we simulate the race directly).
-    //
-    // Here we verify that when updater_install unexpectedly returns Ok(()) the
-    // Promise.race machinery eventually triggers the timeout branch and
-    // surfaces an error — i.e. the component does NOT stay on 'installing'
-    // indefinitely.
-
-    installBehaviour = 'resolve-ok'
-
-    // We need to observe the timeout branch firing.  Rather than waiting 60 s,
-    // we test the error-on-reject path by having `resolve-ok` actually throw
-    // after a microtask delay to exercise the catch branch.
-    // The real 60 s timeout is a belt-and-suspenders guard; the Rust fix
-    // (inline await before restart) is the primary fix.  This test validates
-    // the error path of the component.
-    installBehaviour = 'reject'
-    installRejectMessage = 'Restart timed out — please quit and reopen OpenAgentd.'
-
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() =>
-      emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }),
-    )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument(),
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: /install and restart/i }))
-
-    // Must eventually leave 'installing' and show an error, not hang.
-    await waitFor(() =>
-      expect(screen.getByText('Update failed')).toBeInTheDocument(),
-    )
-    expect(screen.getByText(/quit and reopen/i)).toBeInTheDocument()
+    await waitFor(() => expect(downloads()).toHaveLength(1))
+    expect(invokeCalls.filter((c) => c.command === 'updater_check')).toHaveLength(1)
   })
 })
 
-describe('UpdateCard — release notes modal', () => {
-  it('marks the release-notes overlay data-swipe-ignore', async () => {
+describe('UpdateCard — a check the user asked for', () => {
+  async function mountAndCheck(response: Record<string, unknown>) {
+    checkResponse = { status: 'up_to_date', current_version: '1.70.0' }
     render(<UpdateCard />)
+    await waitFor(() => expect(capturedCheckListener).not.toBeNull())
+    checkResponse = response
+    await act(async () => { capturedCheckListener?.() })
+  }
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+  it('answers "up to date" in a toast', async () => {
+    await mountAndCheck({ status: 'up_to_date', current_version: '1.70.0' })
 
-    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
-
-    const dialog = await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
-    expect(dialog).toHaveAttribute('data-swipe-ignore')
+    await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(['OpenAgentd is up to date']))
+    expect(toasts()[0].description).toBe('1.70.0 is the latest version.')
   })
 
-  it('closes the release-notes dialog on Escape', async () => {
-    render(<UpdateCard />)
+  it('says a download started, since nothing else shows until it is ready', async () => {
+    await mountAndCheck(AVAILABLE)
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
-    await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
-
-    act(() => {
-      // Real key presses bubble to `window`, where the keyboard dispatcher listens.
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    })
-
-    await waitFor(() => expect(screen.getByRole('button', { name: /see release notes/i })).toHaveFocus())
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 150))
-    })
-    expect(screen.queryByRole('dialog', { name: /release notes/i })).not.toBeInTheDocument()
+    await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(['Downloading OpenAgentd 1.71.0']))
+    expect(await screen.findByRole('button', { name: 'Restart to update' })).toBeInTheDocument()
   })
 
-  it('returns focus to the release-notes trigger when the dialog closes', async () => {
-    render(<UpdateCard />)
+  it('says so when the check fails', async () => {
+    checkError = 'Updater unavailable: no endpoint'
+    await mountAndCheck({})
 
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    const trigger = screen.getByRole('button', { name: /see release notes/i })
-    await userEvent.click(trigger)
-    await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
-
-    await userEvent.keyboard('{Escape}')
-
-    await waitFor(() => expect(trigger).toHaveFocus())
-  })
-
-  it('opens the GitHub release page via openExternalUrl', async () => {
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
-    const githubLink = await waitFor(() => screen.getByRole('link', { name: /view in github/i }))
-
-    await userEvent.click(githubLink)
-
-    expect(openExternalUrlMock).toHaveBeenCalledWith(
-      'https://github.com/openagentd/openagentd/releases/tag/v1.71.0',
-    )
-  })
-})
-
-describe('UpdateCard — download flow', () => {
-  it('shows progress bar while downloading', async () => {
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() =>
-      emitStatus({
-        status: 'downloading',
-        version: '1.71.0',
-        current_version: '1.70.0',
-        downloaded_bytes: 10 * 1024 * 1024,
-        total_bytes: 50 * 1024 * 1024,
-      }),
-    )
-
-    await waitFor(() =>
-      expect(screen.getByText(/downloading/i)).toBeInTheDocument(),
-    )
-    // Progress fraction text should be visible.
-    expect(screen.getByText(/10 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/50 MB/)).toBeInTheDocument()
-  })
-})
-
-describe('UpdateCard — minimize and movable flow', () => {
-  it('minimizes the card when the minimize button is clicked', async () => {
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
-    await userEvent.click(minimizeBtn)
-
-    // Card details should be minimized into compact pill
-    expect(screen.getByText(/ready to install/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /expand/i })).toBeInTheDocument()
-    expect(screen.queryByText('OpenAgentd 1.71.0 is ready to install')).not.toBeInTheDocument()
-  })
-
-  it('expands back to full card when expand button is clicked', async () => {
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
-    await userEvent.click(minimizeBtn)
-
-    const expandBtn = screen.getByRole('button', { name: /expand/i })
-    await userEvent.click(expandBtn)
-
-    expect(screen.getByText('OpenAgentd 1.71.0 is ready to install')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument()
-  })
-
-  it('hides the card when Later is clicked from minimized view', async () => {
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
-    await userEvent.click(minimizeBtn)
-
-    const laterBtn = screen.getByRole('button', { name: /later/i })
-    await userEvent.click(laterBtn)
-
-    expect(screen.queryByText(/ready to install/i)).not.toBeInTheDocument()
-  })
-
-  it('allows installing from the minimized quick action button', async () => {
-    installBehaviour = 'hang'
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-
-    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
-    await userEvent.click(minimizeBtn)
-
-    const installBtn = screen.getByRole('button', { name: /^install$/i })
-    await userEvent.click(installBtn)
-
-    await waitFor(() =>
-      expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true),
-    )
-  })
-
-  it('provides a drag handle for moving the update card', async () => {
-    render(<UpdateCard />)
-
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'available', version: '1.71.0', current_version: '1.70.0' }))
-
-    const dragHandle = await screen.findByRole('button', { name: /drag update notification/i })
-    expect(dragHandle).toBeInTheDocument()
-
-    // Double click resets position
-    fireEvent.doubleClick(dragHandle)
+    await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(["Couldn't check for updates"]))
   })
 })
 
@@ -610,7 +443,7 @@ describe('UpdateCard — listener lifecycle', () => {
       expect(events).toContain('updater-status')
       expect(events).toContain('updater-check-requested')
     })
-    await screen.findByRole('button', { name: /later/i })
+    await screen.findByRole('button', { name: 'Later' })
   })
 
   it('unlistens both listeners on unmount', async () => {
@@ -627,44 +460,47 @@ describe('UpdateCard — listener lifecycle', () => {
 })
 
 describe('UpdateCard — restarting while agents work', () => {
-  async function showDownloaded() {
-    render(<UpdateCard />)
-    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
-    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
-    return screen.findByRole('button', { name: /install and restart/i })
-  }
-
-  it('warns instead of restarting while a turn is running', async () => {
+  it('offers to restart when agents finish, and does so once they have', async () => {
     seedActiveSessions([{ running: true }])
-    await userEvent.click(await showDownloaded())
+    await mountWith(DOWNLOADED)
 
-    expect(screen.getByText(/still working/i)).toBeInTheDocument()
-    expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: 'Restart when agents finish' }))
+
+    expect(screen.getByText('Restarts to update when agents finish')).toBeInTheDocument()
+    expect(installs()).toHaveLength(0)
+
+    act(() => seedActiveSessions([]))
+    await waitFor(() => expect(installs()).toHaveLength(1))
   })
 
-  it('restarts anyway once confirmed', async () => {
+  it('restarts now when asked to while it waits', async () => {
     seedActiveSessions([{ running: true }])
-    await userEvent.click(await showDownloaded())
-    await userEvent.click(screen.getByRole('button', { name: /restart anyway/i }))
+    await mountWith(DOWNLOADED)
+    await userEvent.click(screen.getByRole('button', { name: 'Restart when agents finish' }))
 
-    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
+    await userEvent.click(screen.getByRole('button', { name: 'Restart now' }))
+
+    await waitFor(() => expect(installs()).toHaveLength(1))
+  })
+
+  it('stops waiting on Cancel and keeps the update ready', async () => {
+    seedActiveSessions([{ running: true }])
+    await mountWith(DOWNLOADED)
+    await userEvent.click(screen.getByRole('button', { name: 'Restart when agents finish' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    act(() => seedActiveSessions([]))
+
+    expect(await screen.findByRole('button', { name: 'Restart to update' })).toBeInTheDocument()
+    expect(installs()).toHaveLength(0)
   })
 
   it('restarts right away when sessions only wait on the user', async () => {
     seedActiveSessions([{ running: true, needs_input: true }])
-    await userEvent.click(await showDownloaded())
+    await mountWith(DOWNLOADED)
 
-    await waitFor(() => expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true))
-    expect(screen.queryByText(/still working/i)).not.toBeInTheDocument()
-  })
+    await userEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
 
-  it('opens the warning from the minimized Install button', async () => {
-    seedActiveSessions([{ running: true }])
-    await showDownloaded()
-    await userEvent.click(screen.getByRole('button', { name: /minimize/i }))
-    await userEvent.click(screen.getByRole('button', { name: /^install$/i }))
-
-    expect(screen.getByText(/still working/i)).toBeInTheDocument()
-    expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(false)
+    await waitFor(() => expect(installs()).toHaveLength(1))
   })
 })

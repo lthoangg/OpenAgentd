@@ -104,6 +104,11 @@ mock.module("@/components/Terminal/xterm-instance", () => ({
 // mount the inspector in a real iframe, so turn it back on.
 GlobalRegistrator.register({ url: "http://localhost:5173/", settings: { enableIframePageLoading: true } });
 
+// The suite runs as an install that exists and shows Full detail, where every
+// thinking trace and tool row is on screen. A new install starts in Simple;
+// the tests of that clear this key and rehydrate useDisplayPrefsStore.
+localStorage.setItem("oa.display.v1", JSON.stringify({ state: { transcriptStyle: "detailed", detailSeeded: true }, version: 0 }));
+
 // Clean up DOM after each test to prevent test interference
 afterEach(() => {
   // Clear all children from body

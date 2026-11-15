@@ -1,27 +1,46 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
-import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
+/**
+ * The update notice: one line in the notices column, one decision.
+ *
+ * The desktop downloads a new version on its own and shows nothing until it
+ * is ready; the line then asks once, to restart. Android asks before the
+ * download too (an APK, on what may be mobile data) and hands the install to
+ * the system. A check the user asked for (the app menu) answers in a toast.
+ * Settings → About keeps Check for updates and the release notes.
+ */
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { hashKey } from '@tanstack/react-query'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, hasInAppUpdates, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
-import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
+import { NoticeLine } from '@/components/NoticeLine'
 import { Button } from '@/components/ui/button'
 import { isMobileApp } from '@/lib/mobile-app'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { sessionsSpending } from '@/lib/active-sessions'
-import { dragSettle, noticePresence } from '@/lib/motion'
+import { failureToast } from '@/lib/failure-toast'
+import { noticePresence } from '@/lib/motion'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries'
-import { cn } from '@/lib/utils'
-import { errorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/useToastStore'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+const RESTART_TIMEOUT_MS = 60_000
+const IDLE: UpdateStatus = { status: 'idle' }
 
 /**
  * Whether any agent is mid-turn. Restarting stops the built-in backend, which
- * ends its turns, and drops the stream of any other. Read at click time from
- * the active-sessions list the sidebar keeps live.
+ * ends its turns, and drops the stream of any other. Read from the
+ * active-sessions list the sidebar keeps live.
  */
 function agentsWorking(): boolean {
   return sessionsSpending(queryClient.getQueryData(queryKeys.session.sessions.active()))
+}
+
+const ACTIVE_SESSIONS_HASH = hashKey(queryKeys.session.sessions.active())
+
+function subscribeToSessions(onChange: () => void): () => void {
+  return queryClient.getQueryCache().subscribe((event) => {
+    if (event.query.queryHash === ACTIVE_SESSIONS_HASH) onChange()
+  })
 }
 
 async function listenUpdaterEvents(callbacks: {
@@ -41,40 +60,87 @@ async function listenUpdaterEvents(callbacks: {
   }
 }
 
+const pushToast = (toast: Parameters<ReturnType<typeof useToastStore.getState>['push']>[0]) => useToastStore.getState().push(toast)
+
 export function UpdateCard() {
-  const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
+  const [status, setStatus] = useState<UpdateStatus>(IDLE)
   const [tauriReady, setTauriReady] = useState(false)
-  // A phone starts with the one-line banner (mockup J11): the card opens on a tap.
-  const [minimized, setMinimized] = useState(() => isMobileApp())
-  const [busyWarning, setBusyWarning] = useState(false)
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const dragControls = useDragControls()
+  // "Restart when agents finish" was chosen: the restart waits for them.
+  const [waiting, setWaiting] = useState(false)
+  const working = useSyncExternalStore(subscribeToSessions, agentsWorking)
   const reduced = useReducedMotion() ?? false
+  const mobile = isMobileApp()
   const [initialAutomaticCheckAt] = useState(() => Date.now())
   const dismissedUntilNextCheckRef = useRef(false)
   const nextAutomaticCheckAtRef = useRef(initialAutomaticCheckAt)
   const [nextAutomaticCheckAt, setNextAutomaticCheckAt] = useState(initialAutomaticCheckAt)
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // The version whose download this window started, so one is not started twice.
+  const downloadingVersionRef = useRef<string | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const scheduleNextAutomaticCheck = useCallback((timestamp: number) => {
     nextAutomaticCheckAtRef.current = timestamp
     setNextAutomaticCheckAt(timestamp)
   }, [])
 
-  const checkForUpdates = useCallback(async (silent = false) => {
+  /**
+   * Take a status from a check, a download or the shell. ``asked`` is true
+   * when the user started it, and then every outcome says something.
+   */
+  const receive = useCallback((next: UpdateStatus, asked: boolean) => {
+    if (next.status === 'available' && !isMobileApp()) {
+      // The desktop's one decision is the restart: fetch the update now.
+      const version = next.version ?? ''
+      if (downloadingVersionRef.current === version) return
+      downloadingVersionRef.current = version
+      if (asked) {
+        pushToast({ tone: 'info', title: `Downloading OpenAgentd ${version}`, description: 'It asks to restart when it is ready.' })
+      }
+      void invokeDownloadUpdate()
+        .then((downloaded) => { if (mountedRef.current) setStatus(downloaded) })
+        .catch((error: unknown) => {
+          // Unasked, a failed download says nothing: the next check tries again.
+          downloadingVersionRef.current = null
+          if (asked) pushToast(failureToast("Couldn't download the update", error))
+        })
+      return
+    }
+    if (next.status === 'up_to_date') {
+      if (asked) {
+        pushToast({
+          tone: 'success',
+          title: 'OpenAgentd is up to date',
+          description: next.message ?? (next.current_version ? `${next.current_version} is the latest version.` : undefined),
+        })
+      }
+      setStatus(IDLE)
+      return
+    }
+    if (next.status === 'error') {
+      if (asked) pushToast(failureToast("Couldn't check for updates", next.message))
+      setStatus(IDLE)
+      return
+    }
+    setStatus(next)
+  }, [])
+
+  const checkForUpdates = useCallback(async (silent = false, asked = !silent) => {
     setTauriReady(true)
     if (!silent) {
       dismissedUntilNextCheckRef.current = false
       scheduleNextAutomaticCheck(Date.now() + CHECK_INTERVAL_MS)
-      setStatus({ status: 'checking' })
     }
     try {
-      const next = await invokeCheckForUpdates(silent)
-      if (!silent || next.status !== 'up_to_date') setStatus(next)
+      receive(await invokeCheckForUpdates(silent), asked)
     } catch (error) {
-      if (!silent) setStatus({ status: 'error', message: errorMessage(error) })
+      if (asked) pushToast(failureToast("Couldn't check for updates", error))
     }
-  }, [scheduleNextAutomaticCheck])
+  }, [receive, scheduleNextAutomaticCheck])
 
   const runAutomaticUpdateCheck = useCallback(() => {
     const now = Date.now()
@@ -84,39 +150,39 @@ export function UpdateCard() {
     void checkForUpdates(true)
   }, [checkForUpdates, scheduleNextAutomaticCheck])
 
+  // Android only: the desktop downloads without being asked.
   const downloadUpdate = useCallback(async () => {
     try {
-      const next = await invokeDownloadUpdate()
-      setStatus(next)
+      setStatus(await invokeDownloadUpdate())
     } catch (error) {
-      setStatus({ status: 'error', message: errorMessage(error) })
+      pushToast(failureToast("Couldn't download the update", error))
     }
   }, [])
 
   const installUpdate = useCallback(async () => {
+    setWaiting(false)
     setStatus((current) => ({ ...current, status: 'installing' }))
     if (isMobileApp()) {
       // Android hands off to the system installer and returns; the system
       // replaces the app if the user confirms.
       try {
         await invokeInstallUpdate()
-        setStatus((current) => current.channel === 'apk' ? { ...current, status: 'downloaded' } : { status: 'idle' })
+        setStatus((current) => current.channel === 'apk' ? { ...current, status: 'downloaded' } : IDLE)
       } catch (error) {
-        setStatus((current) => ({ ...current, status: 'error', message: errorMessage(error) }))
+        setStatus((current) => ({ ...current, status: 'downloaded' }))
+        pushToast(failureToast("Couldn't install the update", error))
       }
       return
     }
     try {
       // The Tauri command shuts down the sidecar and then calls
-      // `app.restart()`, so this promise intentionally never
-      // resolves — the process is replaced before a response can come back.
-      // We race it against a 60-second timeout so that if the restart fails
-      // for any unexpected reason the card transitions to an error state
-      // instead of staying frozen on "Installing update…" indefinitely.
-      const RESTART_TIMEOUT_MS = 60_000
+      // `app.restart()`, so this promise intentionally never resolves: the
+      // process is replaced before a response can come back. It is raced
+      // against a timeout so a restart that fails for any reason leaves
+      // "Installing update…" instead of staying on it.
       const restartTimeout = new Promise<never>((_, reject) => {
         restartTimeoutRef.current = setTimeout(
-          () => reject(new Error('Restart timed out — please quit and reopen OpenAgentd.')),
+          () => reject(new Error('The restart timed out. Quit and reopen OpenAgentd.')),
           RESTART_TIMEOUT_MS,
         )
       })
@@ -125,42 +191,31 @@ export function UpdateCard() {
         restartTimeout,
       ])
     } catch (error) {
-      setStatus({ status: 'error', message: errorMessage(error) })
+      if (!mountedRef.current) return
+      pushToast(failureToast("Couldn't update OpenAgentd", error))
+      // The download may be stale or gone: ask the shell what is there now.
+      // Quiet, since the toast has said what happened.
+      downloadingVersionRef.current = null
+      setStatus(IDLE)
+      void checkForUpdates(false, false)
     } finally {
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
       restartTimeoutRef.current = undefined
     }
-  }, [])
+  }, [checkForUpdates])
 
-  // Install asks once while agents are working; "Restart anyway" goes on.
-  const requestInstall = useCallback(() => {
-    // Mobile agents run on the server, so installing interrupts nothing.
-    if (!isMobileApp() && agentsWorking()) {
-      setBusyWarning(true)
-      setMinimized(false)
-      return
-    }
-    void installUpdate()
-  }, [installUpdate])
+  // The agents finished: restart, as asked.
+  useEffect(() => {
+    if (waiting && !working && status.status === 'downloaded') void installUpdate()
+  }, [installUpdate, status.status, waiting, working])
 
   const handleLater = useCallback(() => {
     const dismissedUntil = Date.now() + CHECK_INTERVAL_MS
     dismissedUntilNextCheckRef.current = true
     scheduleNextAutomaticCheck(dismissedUntil)
-    setBusyWarning(false)
-    setStatus({ status: 'idle' })
+    setWaiting(false)
+    setStatus(IDLE)
   }, [scheduleNextAutomaticCheck])
-
-  const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
-    setOffset((prev) => ({
-      x: prev.x + info.offset.x,
-      y: prev.y + info.offset.y,
-    }))
-  }, [])
-
-  const resetPosition = useCallback(() => {
-    setOffset({ x: 0, y: 0 })
-  }, [])
 
   useEffect(() => {
     // Desktop and Android update themselves; the browser build has no
@@ -178,7 +233,7 @@ export function UpdateCard() {
         const unlistenAll = await listenUpdaterEvents({
           onStatus: (incomingStatus) => {
             if (dismissedUntilNextCheckRef.current && (incomingStatus.status === 'available' || incomingStatus.status === 'downloaded')) return
-            setStatus(incomingStatus)
+            receive(incomingStatus, false)
           },
           onCheckRequested: () => {
             void checkForUpdates(false)
@@ -216,7 +271,7 @@ export function UpdateCard() {
       restartTimeoutRef.current = undefined
       cleanup?.()
     }
-  }, [checkForUpdates, runAutomaticUpdateCheck])
+  }, [checkForUpdates, receive, runAutomaticUpdateCheck])
 
   useEffect(() => {
     if (!tauriReady) return
@@ -225,243 +280,61 @@ export function UpdateCard() {
     return () => window.clearTimeout(timeout)
   }, [nextAutomaticCheckAt, runAutomaticUpdateCheck, tauriReady])
 
-  const progress = useMemo(() => {
-    if (status.status !== 'downloading' || !status.downloaded_bytes || !status.total_bytes) return null
-    return Math.min(100, Math.round((status.downloaded_bytes / status.total_bytes) * 100))
-  }, [status])
-
-  const visible = tauriReady && status.status !== 'idle' && !(status.status === 'up_to_date' && !status.message)
+  const line = tauriReady ? lineFor(status, mobile) : null
 
   return (
     <AnimatePresence>
-    {visible && (
-    <motion.aside
-      key="update-card"
-      className="pointer-events-none flex w-full justify-end"
-      aria-live="polite"
-      {...noticePresence(reduced)}
-    >
-      <motion.div
-        drag
-        dragListener={false}
-        dragControls={dragControls}
-        dragMomentum={false}
-        dragElastic={0}
-        onDragEnd={handleDragEnd}
-        animate={{ x: offset.x, y: offset.y }}
-        transition={dragSettle(reduced)}
-        style={{ touchAction: 'none' }}
-        className={cn(
-          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-(--shadow-depth) backdrop-blur-xs transition-[width,padding,border-radius] duration-(--motion-base)',
-          minimized
-            ? 'w-auto rounded-full px-3 py-1.5'
-            : 'w-auto max-w-sm rounded-md p-4 sm:w-full sm:max-w-sm'
-        )}
-      >
-        {minimized ? (
-          <div className="flex items-center gap-2">
-            {!isMobileApp() && <button
-              type="button"
-              aria-label="Drag update notification (double-click to reset position)"
-              title="Drag to move · Double-click to reset"
-              onPointerDown={(e) => dragControls.start(e)}
-              onDoubleClick={resetPosition}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-            >
-              <GripVertical className="size-3.5" />
-            </button>}
-
-            <button
-              type="button"
-              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-xs px-1"
-              onClick={() => setMinimized(false)}
-              title="Show update details"
-            >
-              {statusIcon(status)}
-              <span className="font-medium">{minimizedLabel(status)}</span>
-            </button>
-
-            {status.status === 'available' && (
-              <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>
-                Download
-              </Button>
-            )}
-            {status.status === 'downloaded' && (
-              <Button type="button" variant="primary" size="xs" onClick={requestInstall}>
-                Install
-              </Button>
-            )}
-            {status.status === 'error' && (
-              <Button type="button" variant="default" size="xs" onClick={() => void checkForUpdates(false)}>
-                Retry
-              </Button>
-            )}
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setMinimized(false)}
-              title="Expand"
-              aria-label="Expand"
-            >
-              <Maximize2 className="size-3.5" />
-            </Button>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={handleLater}
-              title="Remind me later"
-            >
-              Later
-            </Button>
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2">
-                <button
-                  type="button"
-                  aria-label="Drag update notification (double-click to reset position)"
-                  title="Drag to move · Double-click to reset"
-                  onPointerDown={(e) => dragControls.start(e)}
-                  onDoubleClick={resetPosition}
-                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) mt-0.5"
-                >
-                  <GripVertical className="size-3.5" />
-                </button>
-                <div>
-                  <div className="font-medium">{titleForStatus(status)}</div>
-                  <div className="mt-1 text-xs text-(--color-text-muted)">
-                    {busyWarning && status.status === 'downloaded'
-                      ? 'Agents are still working. Restarting now may interrupt their turns.'
-                      : descriptionForStatus(status)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setMinimized(true)}
-                  title="Minimize"
-                  aria-label="Minimize"
-                >
-                  <Minus className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  onClick={handleLater}
-                  title="Remind me later"
-                >
-                  Later
-                </Button>
-              </div>
-            </div>
-
-            {status.version && (status.status === 'available' || status.status === 'downloaded') ? (
-              <div className="pl-6">
-                <ReleaseNotesButton fallbackNotes={status.notes} version={status.version} />
-              </div>
-            ) : null}
-
-            {status.status === 'downloading' ? (
-              <div className="mt-3 pl-6">
-                <div className="h-2 overflow-hidden rounded-full bg-(--bg-page)">
-                  {/* Slides in from the left rather than widening; the track clips it. */}
-                  <div className="h-full w-full rounded-full bg-(--color-accent) transition-transform duration-(--motion-base) ease-(--ease-out)" style={{ translate: `${(progress ?? 10) - 100}% 0` }} />
-                </div>
-                <div className="mt-1 text-xs text-(--color-text-muted)">
-                  {formatMegabytes(status.downloaded_bytes)}
-                  {status.total_bytes ? ` / ${formatMegabytes(status.total_bytes)}` : ''}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-4 flex justify-end gap-2">
-              {status.status === 'error' ? (
-                <Button type="button" variant="default" size="sm" onClick={() => void checkForUpdates(false)}>
-                  Try again
-                </Button>
-              ) : null}
-              {status.status === 'available' ? (
-                <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                  Download
-                </Button>
-              ) : null}
-              {status.status === 'downloaded' ? (
-                busyWarning ? (
-                  <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>
-                    Restart anyway
-                  </Button>
-                ) : (
-                  <Button type="button" variant="primary" size="sm" onClick={requestInstall}>
-                    {isMobileApp() ? 'Install' : 'Install and restart'}
-                  </Button>
-                )
-              ) : null}
-            </div>
-          </div>
-        )}
-      </motion.div>
-    </motion.aside>
-    )}
+      {line && (
+        <motion.aside
+          key="update-notice"
+          className="pointer-events-none flex w-full justify-end"
+          aria-live="polite"
+          {...noticePresence(reduced)}
+        >
+          {line === 'installing' && <NoticeLine busy text={mobile ? 'Opening the installer…' : 'Installing update…'} />}
+          {line === 'downloading' && <NoticeLine busy text={downloadingText(status)} />}
+          {line === 'available' && (
+            <NoticeLine text={`OpenAgentd ${status.version} is available`}>
+              <Button type="button" variant="ghost" size="xs" onClick={handleLater}>Later</Button>
+              <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>Download</Button>
+            </NoticeLine>
+          )}
+          {line === 'ready' && (waiting ? (
+            <NoticeLine text="Restarts to update when agents finish">
+              <Button type="button" variant="ghost" size="xs" onClick={() => setWaiting(false)}>Cancel</Button>
+              <Button type="button" variant="default" size="xs" onClick={() => void installUpdate()}>Restart now</Button>
+            </NoticeLine>
+          ) : (
+            <NoticeLine text={`OpenAgentd ${status.version} is ready`}>
+              <Button type="button" variant="ghost" size="xs" onClick={handleLater}>Later</Button>
+              {mobile ? (
+                // Mobile agents run on the server, so installing interrupts nothing.
+                <Button type="button" variant="primary" size="xs" onClick={() => void installUpdate()}>Install</Button>
+              ) : working ? (
+                <Button type="button" variant="primary" size="xs" onClick={() => setWaiting(true)}>Restart when agents finish</Button>
+              ) : (
+                <Button type="button" variant="primary" size="xs" onClick={() => void installUpdate()}>Restart to update</Button>
+              )}
+            </NoticeLine>
+          ))}
+        </motion.aside>
+      )}
     </AnimatePresence>
   )
 }
 
-function statusIcon(status: UpdateStatus) {
-  if (status.status === 'downloading' || status.status === 'installing' || status.status === 'checking') {
-    return <Loader2 className="size-3.5 animate-spin text-(--color-text-muted)" />
-  }
-  if (status.status === 'error') {
-    return <AlertCircle className="size-3.5 text-(--color-error)" />
-  }
-  return <Download className="size-3.5 text-(--color-accent)" />
+/** Which line the status puts on screen, if any. The desktop shows its download to nobody. */
+function lineFor(status: UpdateStatus, mobile: boolean): 'available' | 'downloading' | 'ready' | 'installing' | null {
+  if (status.status === 'downloaded') return 'ready'
+  if (status.status === 'installing') return 'installing'
+  if (!mobile) return null
+  if (status.status === 'available' || status.status === 'downloading') return status.status
+  return null
 }
 
-function minimizedLabel(status: UpdateStatus): string {
-  if (status.status === 'checking') return 'Checking updates…'
-  if (status.status === 'available') return `Update ${status.version ?? ''}`
-  if (status.status === 'downloading') return 'Downloading update…'
-  if (status.status === 'downloaded') return `Ready to install (${status.version ?? ''})`
-  if (status.status === 'installing') return 'Installing…'
-  if (status.status === 'up_to_date') return 'Up to date'
-  if (status.status === 'error') return 'Update failed'
-  return 'Update'
-}
-
-function titleForStatus(status: UpdateStatus): string {
-  if (status.status === 'checking') return 'Checking for updates…'
-  if (status.status === 'available') return `OpenAgentd ${status.version} is available`
-  if (status.status === 'downloading') return `Downloading OpenAgentd ${status.version}`
-  if (status.status === 'downloaded') return `OpenAgentd ${status.version} is ready to install`
-  if (status.status === 'installing') return 'Installing update…'
-  if (status.status === 'up_to_date') return 'OpenAgentd is up to date'
-  if (status.status === 'error') return 'Update failed'
-  return ''
-}
-
-function descriptionForStatus(status: UpdateStatus): string {
-  if (status.message) return status.message
-  const mobile = isMobileApp()
-  if (status.status === 'available') {
-    return `Current version: ${status.current_version}.`
-  }
-  if (status.status === 'downloaded') {
-    return mobile ? 'Android asks you to confirm the install.' : 'Install now to restart into the new version.'
-  }
-  if (status.status === 'installing') {
-    return mobile ? 'Opening the installer…' : 'OpenAgentd will restart when installation completes.'
-  }
-  if (status.status === 'downloading') return 'You can keep using OpenAgentd while the update downloads.'
-  return ''
+function downloadingText(status: UpdateStatus): string {
+  const done = formatMegabytes(status.downloaded_bytes)
+  return status.total_bytes ? `Downloading update… ${done} of ${formatMegabytes(status.total_bytes)}` : `Downloading update… ${done}`
 }
 
 /** Whole megabytes, so a download's progress does not flicker by tenths. */

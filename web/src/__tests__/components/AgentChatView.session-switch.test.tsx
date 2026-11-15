@@ -81,7 +81,7 @@ mock.module('@/components/AgentView', () => ({
 }))
 mock.module('@/components/PendingMessageQueue', () => ({ PendingMessageQueue: () => <div data-testid="pending-queue" /> }))
 // The transcript (AgentView, mocked here) is the one place that draws the queue.
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null, ChatNote: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 // Stands in for the header: its lead button shows exactly when the view passes a handler.

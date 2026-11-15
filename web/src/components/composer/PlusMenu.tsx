@@ -1,6 +1,7 @@
 /**
  * PlusMenu — the composer's "+": add things to the message (files, a file
- * mention, a snippet), ask a side question, and the session's MCP servers.
+ * mention, a snippet), ask a side question, and the session's connectors
+ * (MCP servers), once the agent has one.
  *
  * MCP lives here rather than on the deck or in a settings overlay: a server
  * that works needs no attention, and one that does puts a dot on "+" and
@@ -169,8 +170,11 @@ function PlusMenuItems({
   }, [scrollToMcp])
   const row = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
   const hint = 'ml-auto font-mono text-meta text-(--color-text-muted)'
-  // Touch: two parts (mockup J3). What to add to the message, then MCP servers,
-  // a page of its own inside the sheet.
+  // No connector, no section: an empty heading takes no room. A typed
+  // ``/connectors`` still opens it, where it says how to add one.
+  const showConnectors = agentServers.length > 0 || scrollToMcp
+  // Touch: two parts (mockup J3). What to add to the message, then the
+  // connectors, a page of their own inside the sheet.
   const [page, setPage] = useState<'add' | 'tools'>(scrollToMcp ? 'tools' : 'add')
   const mcp = (
     <SessionMcpServers
@@ -229,11 +233,11 @@ function PlusMenuItems({
           <span className={hint}>/btw</span>
         </button>
       )}
-      <div className={MENU_SEPARATOR_CLASS} role="separator" />
-      {touch ? (
+      {showConnectors && <div className={MENU_SEPARATOR_CLASS} role="separator" />}
+      {!showConnectors ? null : touch ? (
         <button type="button" className={row} onClick={() => setPage('tools')}>
           <Plug size={14} aria-hidden="true" />
-          MCP servers
+          Connectors
           <ChevronRight size={14} aria-hidden="true" className="ml-auto text-(--color-text-muted)" />
         </button>
       ) : (

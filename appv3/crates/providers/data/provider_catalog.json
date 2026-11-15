@@ -191,8 +191,8 @@
   },
   {
     "id": "codex",
-    "label": "OpenAI Codex",
-    "description": "Use your ChatGPT subscription via Codex OAuth.",
+    "label": "ChatGPT",
+    "description": "Use your ChatGPT subscription. No API key.",
     "kind": "oauth",
     "env_var": "",
     "supports_fast_mode": true,

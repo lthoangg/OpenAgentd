@@ -35,6 +35,8 @@ export type CloudNotice =
   | 'account_closing'
   | 'account_unavailable'
   | 'unreachable'
+  /** Recovery: that is not this account's recovery code. Nothing changed. */
+  | 'wrong_recovery_code'
   | 'failed'
 
 export type RelayState =
@@ -55,7 +57,16 @@ export type CloudStatus =
    * computer (a bearer secret, sent to this computer's own callers only).
    * Absent when the server made none.
    */
-  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number; add_link?: string }
+  | {
+      state: 'signing_in'
+      user_code: string
+      url: string
+      fingerprint: string
+      expires_in: number
+      add_link?: string
+      /** Signing in to recover the account with its recovery code (browser only). */
+      recovering?: boolean
+    }
   /** A new account: the recovery code is shown once, then groups `check` (1-based) are asked back. */
   | { state: 'recovery'; code?: string; check?: [number, number] }
   | { state: 'joining'; fingerprint: string; code: string | null }
@@ -74,6 +85,8 @@ export type CloudStatus =
       client?: boolean
       relay: RelayState
       sessions: number
+      /** This computer just recovered the account, until `cloudRecoveredAck`. */
+      recovered?: boolean
     }
   | { state: 'closing'; fingerprint: string; deletes_at: number | null }
   | { state: 'unavailable'; fingerprint: string }
@@ -93,6 +106,11 @@ export interface CloudDevice {
   client: boolean
   me: boolean
   kind: string | null
+  /**
+   * The name the account keeps for it (null: unnamed). Absent from an
+   * older server, which does not know account names.
+   */
+  name?: string | null
   /**
    * A server's relay connection is open now (the cloud's word, may be a
    * little stale). null or absent: not a server, or the cloud did not say.
@@ -186,6 +204,29 @@ export const cloudApproveReject = (enrollmentId: string) =>
   cloudRequest('/approve/reject', 'POST', { enrollment_id: enrollmentId })
 export const cloudRemoveDevice = (deviceId: string, proof: string) =>
   cloudRequest('/devices/remove', 'POST', { device_id: deviceId }, proof)
+/** Names a device of the account (null: unnamed). This computer's own name also renames it as a server. */
+export const cloudRenameDevice = (deviceId: string, name: string | null) =>
+  cloudCall<{ device_id: string; name: string | null }>('/devices/name', 'POST', { device_id: deviceId, name })
+/** Lets another device approve others too; the same kind of proof as `devices/remove`. */
+/** The stable code of a refusal: the device named left the account (or never was in it). */
+export const DEVICE_NOT_IN_ACCOUNT = 'device_not_in_account'
+
+/** The `code` of an error from an account route whose detail carries one. */
+export function cloudErrorCode(error: unknown): string | null {
+  const detail = (error as { detail?: unknown } | null)?.detail
+  return detail && typeof detail === 'object' && typeof (detail as { code?: unknown }).code === 'string' ? (detail as { code: string }).code : null
+}
+
+export const cloudMakeApprover = (deviceId: string, proof: string) =>
+  cloudRequest('/devices/approver', 'POST', { device_id: deviceId }, proof)
+/**
+ * Recovers the account with its recovery code: this computer signs in in
+ * the browser, then becomes the account's only device and approves the
+ * next ones. The code works like a password.
+ */
+export const cloudRecover = (code: string, roles: Roles) => cloudRequest('/recover', 'POST', { code, ...roles })
+/** The person read that the account was recovered. */
+export const cloudRecoveredAck = () => cloudRequest('/recovered/ack', 'POST')
 export const cloudLoginCancel = () => cloudRequest('/login/cancel', 'POST')
 /** Scan to add: the number the person picked. One answer; a wrong one leaves the account. */
 export const cloudPickNumber = (number: string) => cloudRequest('/number', 'POST', { number })

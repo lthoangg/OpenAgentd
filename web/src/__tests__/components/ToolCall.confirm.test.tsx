@@ -53,7 +53,7 @@ describe('confirming tool calls', () => {
   it('shows Apply and Cancel for an mcp save waiting on the user, not the placeholder', async () => {
     render(<ToolCall name="mcp" args={SAVE_ARGS} result={PLACEHOLDER} done toolCallId="call-save" />)
 
-    expect(screen.getByText('Needs your input')).toBeInTheDocument()
+    expect(screen.getByText('Needs you · a question')).toBeInTheDocument()
     expect(screen.queryByText(PLACEHOLDER)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /Apply/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
@@ -75,12 +75,12 @@ describe('confirming tool calls', () => {
   it('keeps the ordinary row once the call settled, or when it never opened a card', () => {
     useAgentStore.setState({ pendingQuestion: null })
     render(<ToolCall name="mcp" args={SAVE_ARGS} result="The user applied the change. Server 'excalidraw' is ready." done toolCallId="call-save" />)
-    expect(screen.queryByText('Needs your input')).not.toBeInTheDocument()
+    expect(screen.queryByText('Needs you · a question')).not.toBeInTheDocument()
     expect(screen.queryByText('Your input')).not.toBeInTheDocument()
     cleanup()
 
     render(<ToolCall name="mcp" args={SAVE_ARGS} result="Error: Changes are unavailable in Plan mode." done toolCallId="call-other" />)
-    expect(screen.queryByText('Needs your input')).not.toBeInTheDocument()
+    expect(screen.queryByText('Needs you · a question')).not.toBeInTheDocument()
   })
 
   it('leaves read-only mcp actions as ordinary rows', () => {

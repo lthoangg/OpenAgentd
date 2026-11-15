@@ -1,5 +1,5 @@
 /**
- * Palette Switch Server… — the builtin sidecar and saved servers.
+ * Palette Switch Computer… — this computer and the ones added by address.
  */
 import { describe, expect, it, mock } from 'bun:test'
 import type { AppBackendStatus } from '@/lib/app-backend'
@@ -35,15 +35,15 @@ function build(overrides: Partial<ServerCommandsInput> = {}) {
   return { handlers, commands, rows: commands[0]?.page?.commands ?? [] }
 }
 
-describe('Switch Server…', () => {
+describe('Switch Computer…', () => {
   it('is absent outside the desktop shell', () => {
     expect(build({ status: null }).commands).toEqual([])
   })
 
-  it('has no keyboard shortcut and opens a page of servers', () => {
+  it('has no keyboard shortcut and opens a page of computers', () => {
     const { commands, rows } = build()
     expect(commands).toHaveLength(1)
-    expect(commands[0].label).toBe('Switch Server…')
+    expect(commands[0].label).toBe('Switch Computer…')
     expect(commands[0].shortcut).toBeUndefined()
     expect(rows.map((r) => r.id)).toEqual(['server:bundled', `server:${REMOTE}`, `server:${LAB}`, 'server:manage'])
   })
@@ -56,7 +56,7 @@ describe('Switch Server…', () => {
     expect(rows[1].description).toBe('Online')
     expect(rows[1].keywords).toContain(REMOTE)
     expect(rows[2].label).toBe(LAB)
-    expect(rows[2].description).toBe('Offline')
+    expect(rows[2].description).toBe("Can't reach")
     rows[1].action()
     expect(handlers.useExternal).toHaveBeenCalledWith({ base_url: REMOTE, name: 'Work laptop' })
     rows[0].action()
@@ -97,14 +97,14 @@ describe('Switch Server…', () => {
   })
 })
 
-describe('Switch Server…: your computers', () => {
+describe('Switch Computer…: the account’s computers', () => {
   const computers = [
     { device_id: 'dev-mac', label: 'macOS · 3F9A 21C4', line: 'Current · through your account', current: true },
     { device_id: 'dev-linux', label: 'Linux · 9C02 E1B7', line: 'Online · through your account', current: false },
-    { device_id: 'dev-win', label: 'Windows · 1111 2222', line: 'Offline', current: false },
+    { device_id: 'dev-win', label: 'Windows · 1111 2222', line: "Can't reach", current: false },
   ]
 
-  it('lists them between the built-in server and the saved ones, the one in use marked', () => {
+  it('lists them between this computer and the ones added by address, the one in use marked', () => {
     const { rows } = build({ computers })
     expect(rows.map((r) => r.id)).toEqual([
       'server:bundled',
@@ -118,7 +118,7 @@ describe('Switch Server…: your computers', () => {
     expect(rows.slice(1, 4).map((r) => [r.label, r.description])).toEqual([
       ['macOS · 3F9A 21C4', 'Current · through your account'],
       ['Linux · 9C02 E1B7', 'Online · through your account'],
-      ['Windows · 1111 2222', 'Offline'],
+      ['Windows · 1111 2222', "Can't reach"],
     ])
   })
 

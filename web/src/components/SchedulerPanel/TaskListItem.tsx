@@ -12,12 +12,13 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { ROW_ACTION, listRowSurface } from '@/components/ui/list-row'
 import { TEXT } from '@/components/ui/panel-tokens'
-import { formatScheduleLabel, lastRunLabel, nextRunLabel, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
+import { formatScheduleLabel, isCronLabel, lastRunLabel, nextRunLabel, sentenceCase, taskState, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { Chip } from '@/components/ui/chip'
 import { Switch } from '@/components/ui/switch'
 import { WorkspaceBadge } from './ModeBadge'
 import { DeleteTaskDialog } from './DeleteTaskDialog'
 import { TaskActionsMenu, taskActionsMenuPoint } from './TaskActionsMenu'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 
 export function TaskListItem({
   task,
@@ -34,6 +35,9 @@ export function TaskListItem({
   const resumeMutation = useResumeScheduledTaskMutation()
   const triggerMutation = useTriggerScheduledTaskMutation()
   const isMobile = useIsMobile()
+  // The slug is the agent's schedule tool's name for the task: Full detail only.
+  const simple = useSimpleDetail()
+  const showSlug = !simple && task.slug !== task.name
   const isTauriMobile = isMobileApp(usePlatform())
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   // A phone's menu is an action sheet, from ⋯ or a long press alike.
@@ -54,6 +58,7 @@ export function TaskListItem({
     else pauseMutation.mutate(task.slug)
   }
 
+  const scheduleLabel = formatScheduleLabel(task)
   const state = taskState(task)
   const nextRun = nextRunLabel(task)
   const actionPending = triggerMutation.isPending || pauseMutation.isPending || resumeMutation.isPending
@@ -107,19 +112,19 @@ export function TaskListItem({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
             <p className={cn('truncate', TEXT.label)}>{task.name}</p>
-            {task.slug !== task.name && (
+            {showSlug && (
               <Chip mono title="Slug: the name the agent's schedule tool uses">
                 {task.slug}
               </Chip>
             )}
           </div>
 
-          {phoneSheet && task.schedule_type !== 'cron' ? (
-            // A phone reads the schedule as a sentence (mockup J9); cron
-            // stays mono, it is an expression.
-            <p data-schedule-label="" className="mt-1 truncate text-sm text-(--color-text-2)">{sentenceCase(formatScheduleLabel(task))}</p>
+          {phoneSheet && !isCronLabel(scheduleLabel) ? (
+            // A phone reads the schedule as a sentence (mockup J9); a cron
+            // expression stays mono.
+            <p data-schedule-label="" className="mt-1 truncate text-sm text-(--color-text-2)">{sentenceCase(scheduleLabel)}</p>
           ) : (
-            <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{formatScheduleLabel(task)}</p>
+            <p className="mt-1 truncate font-mono text-meta text-(--color-text-2)">{scheduleLabel}</p>
           )}
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -214,8 +219,4 @@ export function TaskListItem({
     />
     </>
   )
-}
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
 }

@@ -1,94 +1,79 @@
 /**
  * Schedule inputs shared by the create and edit forms. The interval is
- * entered as an amount and a unit ("Every 1 hours") with the raw seconds the
- * backend stores shown beside it, and says when it would first run if saved
- * now; the cron field previews what the expression means and when it fires
- * next, in the task's timezone; a one-time task says how soon it runs.
+ * entered as an amount and a unit ("Every 1 hours"); the cron field previews
+ * what the expression means and when it fires next, in the task's timezone;
+ * a one-time task says how soon it runs.
  */
 import { useState } from 'react'
 
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Input } from '@/components/ui/input'
-import { formatInTimezone, isoToWallClock } from '@/utils/format'
+import { isoToWallClock } from '@/utils/format'
 import { previewCron } from './cron'
 import { FIELD_CLASS, FIELD_ERROR, FIELD_HINT, FIELD_LABEL, INTERVAL_UNITS, atRunHint, splitInterval, type IntervalUnit } from './utils'
 
+/**
+ * The amount and unit after "Every" in the form's "When?" row. The row's
+ * hint or error (``describedBy``) is the form's.
+ */
 export function IntervalField({
   id,
   seconds,
   onChange,
-  error,
+  invalid,
+  describedBy,
 }: {
   id: string
   seconds: number
   onChange: (seconds: number) => void
-  error?: string
+  invalid: boolean
+  describedBy: string
 }) {
   // The unit is the user's choice, kept while they type ("90" minutes stays minutes).
   const [unit, setUnit] = useState<IntervalUnit>(() => splitInterval(seconds).unit)
   const unitSeconds = INTERVAL_UNITS.find((u) => u.value === unit)?.seconds ?? 1
   const amount = seconds > 0 ? seconds / unitSeconds : 0
-  const helpId = `${id}-help`
-  const errorId = `${id}-error`
-  // The scheduler counts the first interval from the save (create or edit).
-  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const firstRun = seconds > 0 ? formatInTimezone(new Date(Date.now() + seconds * 1000).toISOString(), localTz) : null
+  // Seconds are offered only to a task that already counts in them.
+  const units = INTERVAL_UNITS.filter((u) => u.value !== 'seconds' || unit === 'seconds')
 
   return (
-    <div>
-      <label htmlFor={id} className={FIELD_LABEL}>
-        Every
-      </label>
-      <div className="flex items-center gap-2">
-        <Input
-          id={id}
-          enterKeyHint="next"
-          className={`h-9 w-20 flex-none ${FIELD_CLASS}`}
-          type="number"
-          inputMode="numeric"
-          min="1"
-          value={amount ? String(Number(amount.toFixed(4))) : ''}
-          onChange={(e) => {
-            const n = Number(e.target.value)
-            onChange(Number.isFinite(n) && n > 0 ? Math.round(n * unitSeconds) : 0)
-          }}
-          aria-invalid={!!error}
-          aria-describedby={error ? errorId : helpId}
-        />
-        <Dropdown
-          value={unit}
-          onValueChange={(v) => {
-            const next = INTERVAL_UNITS.find((u) => u.value === v)
-            if (!next) return
-            setUnit(next.value)
-            // Keep the number the user typed; change what it counts.
-            if (amount > 0) onChange(Math.round(amount * next.seconds))
-          }}
-          trigger={unit}
-          aria-label="Interval unit"
-          className="h-9 w-28 flex-none rounded-sm border-(--color-border) bg-(--bg-page) px-2.5 text-xs"
-        >
-          {INTERVAL_UNITS.map((u) => (
-            <DropdownItem key={u.value} value={u.value}>
-              {u.label}
-            </DropdownItem>
-          ))}
-        </Dropdown>
-        {seconds > 0 && (
-          <span className="shrink-0 whitespace-nowrap font-mono text-meta text-(--color-text-muted) tabular-nums">= {seconds.toLocaleString('en-US')} s</span>
-        )}
-      </div>
-      {error ? (
-        <p id={errorId} className={FIELD_ERROR}>
-          {error}
-        </p>
-      ) : (
-        <p id={helpId} className={FIELD_HINT}>
-          <span>The first run is one interval after you save.</span>
-          {firstRun && <>{' '}<span>If you save now: <span className="text-(--color-text-2)">{firstRun}</span>.</span></>}
-        </p>
-      )}
-    </div>
+    <>
+      <Input
+        id={id}
+        enterKeyHint="next"
+        className={`h-9 w-20! flex-none ${FIELD_CLASS}`}
+        type="number"
+        inputMode="numeric"
+        min="1"
+        value={amount ? String(Number(amount.toFixed(4))) : ''}
+        onChange={(e) => {
+          const n = Number(e.target.value)
+          onChange(Number.isFinite(n) && n > 0 ? Math.round(n * unitSeconds) : 0)
+        }}
+        aria-label="Interval"
+        aria-invalid={invalid}
+        aria-describedby={describedBy}
+      />
+      <Dropdown
+        value={unit}
+        onValueChange={(v) => {
+          const next = INTERVAL_UNITS.find((u) => u.value === v)
+          if (!next) return
+          setUnit(next.value)
+          // Keep the number the user typed; change what it counts.
+          if (amount > 0) onChange(Math.round(amount * next.seconds))
+        }}
+        trigger={unit}
+        aria-label="Interval unit"
+        className="h-9 w-28 flex-none rounded-sm px-2.5 text-xs"
+      >
+        {units.map((u) => (
+          <DropdownItem key={u.value} value={u.value}>
+            {u.label}
+          </DropdownItem>
+        ))}
+      </Dropdown>
+    </>
   )
 }
 

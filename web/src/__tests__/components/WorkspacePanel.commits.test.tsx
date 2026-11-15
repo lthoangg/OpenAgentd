@@ -255,10 +255,10 @@ describe('WorkspacePanel – commit body expand/collapse', () => {
 
     await renderCommitsTab()
 
+    // Decoded subject must be shown
+    expect(await screen.findByText('feat: add login page')).toBeTruthy()
     // Raw percent-encoding must never appear
-    await waitFor(() => expect(screen.queryByText(/feat:%20/)).toBeNull())
-    // Decoded subject must be shown instead
-    expect(screen.getByText('feat: add login page')).toBeTruthy()
+    expect(screen.queryByText(/feat:%20/)).toBeNull()
   })
 
   it('handles invalid percent-encoded commit subjects gracefully without throwing URI error', async () => {
@@ -533,14 +533,14 @@ describe('WorkspacePanel – commits_ahead badge', () => {
     })
 
     // Wait for status query to settle (diff confirms render is stable)
-    await waitFor(() => expect(screen.getByText('Changes (0)')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Uncommitted (0)')).toBeTruthy())
 
     // History endpoint must NOT have been called yet (still on changes subtab)
     const callsBefore = (globalThis.fetch as ReturnType<typeof mock>).mock.calls
     const historyCalledBefore = callsBefore.some((args) => String(args[0]).includes('/workspace/git/history'))
     expect(historyCalledBefore).toBe(false)
 
-    // Switch to commits via the Git view segmented control
+    // Switch to commits via the Changes view segmented control
     await user.click(screen.getByRole('tab', { name: /history/i }))
 
     // Badge is on the History segment immediately

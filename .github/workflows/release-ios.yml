@@ -129,6 +129,10 @@ jobs:
           if codesign -dv "$app" 2>/dev/null; then
             echo "::error::the archived app is signed; the build job must not sign"; exit 1
           fi
+          # Without it iOS blocks Face ID for the account's signing key.
+          if ! plutil -extract NSFaceIDUsageDescription raw "$app/Info.plist" >/dev/null; then
+            echo "::error::the archived app has no NSFaceIDUsageDescription"; exit 1
+          fi
           mkdir -p _out
           COPYFILE_DISABLE=1 tar --no-mac-metadata -czf _out/unsigned-ios-app.tar.gz \
             -C "$(dirname "$app")" OpenAgentd.app

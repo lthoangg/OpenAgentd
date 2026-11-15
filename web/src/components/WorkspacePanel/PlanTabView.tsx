@@ -13,7 +13,7 @@
  * the change by content and tells the agent once.
  *
  * Beside Approve, "Keep going until done" also starts a goal that runs the
- * plan turn after turn until a check confirms its Done when. Settings → Goals
+ * plan turn after turn until a check confirms its Done when. Settings → Sessions
  * decides whether it starts ticked and the turn count it starts with; the
  * turns can be changed here for this plan. While it is on, Approve reads
  * "Approve and keep going (N turns)".
@@ -27,6 +27,7 @@
  * text in it, comment highlights, and jumping to a comment all work; jumping
  * to a passage in a closed Appendix opens it first.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -391,7 +392,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             })
             return
           }
-          setSaveError(cause instanceof Error && cause.message ? cause.message : 'Could not save the plan.')
+          setSaveError(cause instanceof Error && cause.message ? cause.message : "Couldn't save the plan.")
         },
       },
     )
@@ -447,7 +448,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const runAsGoal = () => {
     if (!sessionId) return
     startGoal.mutate({ sessionId }, {
-      onError: (err) => useToastStore.getState().push({ tone: 'error', title: 'Could not start the goal', description: (err as Error).message }),
+      onError: (err) => useToastStore.getState().push(failureToast("Couldn't start the goal", err)),
     })
   }
 
@@ -511,7 +512,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               }
             />
             <TooltipContent side="bottom">
-              {`The agent works through the plan turn after turn until a check confirms its Done when, up to ${decision.defaultTurns} turns (Settings → Goals).`}
+              {`The agent works through the plan turn after turn until a check confirms its Done when, up to ${decision.defaultTurns} turns (Settings → Sessions).`}
             </TooltipContent>
           </Tooltip>
         )}

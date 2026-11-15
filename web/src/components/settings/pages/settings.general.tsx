@@ -1,7 +1,7 @@
 /**
  * Settings → Appearance — how OpenAgentd looks on this device: color theme,
- * text size, transcript style and where the agent's previews open. Each
- * pick applies at once. The desktop
+ * text size, how much detail it shows (Simple or Full) and whether the
+ * agent's previews open on their own. Each pick applies at once. The desktop
  * app's notch status and pet live on Settings → Desktop.
  *
  * Each choice is the app's own segmented control on every platform, the
@@ -57,21 +57,21 @@ export function GeneralSettingsPage() {
         </PanelRow>
         <PanelRow
           label="Text size"
-          description="Compact is the densest. On iPhone, iPad and Android, the system text size adds to it."
+          description="On phones and tablets, the system text size adds to it."
         >
           <SegmentedChoice label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} />
         </PanelRow>
         <PanelRow
-          label="Transcript"
-          description="Reader groups each reply's thinking and tool calls into one summary row."
+          label="Detail"
+          description="Simple shows answers and folds the work. Full shows every step and number."
         >
-          <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
+          <SegmentedChoice label="Detail" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
         </PanelRow>
         <PanelRow
-          label="Previews"
-          description="Where a page the agent opens with its preview tool goes: straight into the Review panel, or only when you choose Open on its row."
+          label="Open previews"
+          description="When the agent shows a page."
         >
-          <SegmentedChoice label="Previews" options={PREVIEW_OPENS} value={previewOpen} onChange={setPreviewOpen} />
+          <SegmentedChoice label="Open previews" options={PREVIEW_OPENS} value={previewOpen} onChange={setPreviewOpen} />
         </PanelRow>
       </PanelSection>
     </SettingsPage>

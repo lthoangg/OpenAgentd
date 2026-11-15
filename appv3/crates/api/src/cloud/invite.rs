@@ -183,6 +183,7 @@ pub async fn add(enrollment_id: &str, grant: Grant) -> Result<(), SignerError> {
         return Err(FlowError::JoinEnded.into());
     }
     let mut m = super::signer::member()?;
+    super::signer::note_departed(&mut m).await;
     match flows::add_invited(&mut m, open.invite, enrollment_id, grant).await {
         Ok(r) => {
             tracing::info!("cloud_device_invited version={}", r.version());

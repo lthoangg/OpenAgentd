@@ -96,13 +96,13 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
                   type="button"
                   onClick={() => void navigator.clipboard?.writeText(commit.sha)}
                   className={cn(DOCK_ACTION_BUTTON_CLASS, '-mt-1 -mr-1')}
-                  aria-label="Copy full SHA"
+                  aria-label="Copy commit ID"
                 >
                   <Copy size={14} aria-hidden="true" />
                 </button>
               }
             />
-            <TooltipContent side="bottom">Copy full SHA</TooltipContent>
+            <TooltipContent side="bottom">Copy commit ID</TooltipContent>
           </Tooltip>
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-meta text-(--color-text-muted)">

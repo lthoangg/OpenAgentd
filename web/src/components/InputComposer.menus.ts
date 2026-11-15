@@ -30,7 +30,8 @@ export function filterSlashCommands(
           !cmd.isSeparator &&
           (cmd.id.toLowerCase().includes(slashFilter) ||
             cmd.label.toLowerCase().includes(slashFilter) ||
-            (cmd.displayName ?? '').toLowerCase().includes(slashFilter)),
+            (cmd.displayName ?? '').toLowerCase().includes(slashFilter) ||
+            (cmd.aliases ?? []).some((alias) => alias.includes(slashFilter))),
       )
       .map((cmd) => cmd.id),
   )

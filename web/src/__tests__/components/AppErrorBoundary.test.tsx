@@ -85,7 +85,7 @@ describe('AppErrorBoundary', () => {
       )
       fireEvent.click(screen.getByRole('button', { name: /copy error details/i }))
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Could not copy' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeInTheDocument()
       })
       unmount()
     }

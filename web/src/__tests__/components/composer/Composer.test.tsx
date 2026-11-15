@@ -9,8 +9,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
+/** The connectors (MCP servers) the session's agent lists. */
+let agentServers = ['github']
 mock.module('@/queries/useAgentsQuery', () => ({
-  useAgentsQuery: () => ({ data: { agents: [{ name: 'code', mcp_servers: ['github'], tools: [] }] }, refetch: async () => {} }),
+  useAgentsQuery: () => ({ data: { agents: [{ name: 'code', mcp_servers: agentServers, tools: [] }] }, refetch: async () => {} }),
 }))
 mock.module('@/queries/useMcpQuery', () => ({
   useMcpServersQuery: () => ({
@@ -31,6 +33,7 @@ type RunSettings = import('@/components/composer/useRunSettings').RunSettings
 
 afterEach(cleanup)
 beforeEach(() => {
+  agentServers = ['github']
   useUIStore.setState({ runPickerOpen: false, plusMenuOpen: false, plusMenuSection: null })
 })
 
@@ -201,13 +204,34 @@ describe('PlusMenu', () => {
     expect(actions.setDraft).toHaveBeenCalledWith('/btw ')
   })
 
-  it('holds the MCP servers, with their state in words', async () => {
+  it('holds the connectors, with their state in words', async () => {
     const actions = { attach: () => {}, startToken: () => {}, setDraft: () => {} }
     wrap(<PlusMenu actions={actions} workspace="/repo" />)
     act(() => useUIStore.getState().openPlusMenu('mcp'))
-    const section = await screen.findByRole('region', { name: 'MCP servers' })
+    const section = await screen.findByRole('region', { name: 'Connectors' })
     expect(section.textContent).toContain('github')
     expect(section.textContent).toContain('Needs sign-in')
+  })
+
+  it('has no connector section, heading or divider while the agent has no connector', async () => {
+    agentServers = []
+    const actions = { attach: () => {}, startToken: () => {}, setDraft: () => {} }
+    wrap(<PlusMenu actions={actions} workspace="/repo" canAskSideQuestion />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
+    const menu = await screen.findByRole('dialog', { name: 'Add to message' })
+    expect(menu.textContent).toContain('Ask a side question')
+    expect(screen.queryByRole('region', { name: 'Connectors' })).toBeNull()
+    expect(menu.textContent).not.toMatch(/MCP|Connectors|Manage/)
+    expect(menu.querySelector('[role="separator"]')).toBeNull()
+  })
+
+  it('still opens at the connectors for a typed /connectors with none set up, and says how to add one', async () => {
+    agentServers = []
+    const actions = { attach: () => {}, startToken: () => {}, setDraft: () => {} }
+    wrap(<PlusMenu actions={actions} workspace="/repo" />)
+    act(() => useUIStore.getState().openPlusMenu('mcp'))
+    const section = await screen.findByRole('region', { name: 'Connectors' })
+    expect(section.textContent).toContain('No connectors for this agent.')
   })
 })
 
@@ -226,6 +250,6 @@ describe('PlusMenu — MCP attention', () => {
     wrap(<PlusMenu actions={actions} workspace="/repo" />)
     fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
     expect(useUIStore.getState().plusMenuSection).toBe('mcp')
-    expect(await screen.findByRole('region', { name: 'MCP servers' })).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Connectors' })).toBeTruthy()
   })
 })

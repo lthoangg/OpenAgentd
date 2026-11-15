@@ -20,6 +20,7 @@
  *   draft.patch({ enabled: true })
  *   <SettingsPage draft={draft}>…</SettingsPage>
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useMemo, useState } from 'react'
 
 import { useToastStore } from '@/stores/useToastStore'
@@ -157,11 +158,7 @@ export function useSettingsDraft<T>({
       }))
       push({ tone: 'success', title: successTitle })
     } catch (err) {
-      push({
-        tone: 'error',
-        title: 'Save failed',
-        description: err instanceof Error ? err.message : String(err),
-      })
+      push(failureToast("Couldn't save", err))
     } finally {
       setIsSaving(false)
     }

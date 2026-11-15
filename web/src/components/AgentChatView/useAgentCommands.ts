@@ -26,6 +26,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { openNextNeedsYou } from '@/lib/desktop-commands'
+import { startConnectPhone, type ConnectPhoneOffer } from '@/lib/connect-phone'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
 /** The session's Goal tab as the palette needs it: given whenever it can open. */
@@ -71,6 +72,8 @@ interface UseAgentCommandsArgs {
   handleOpenSideQuestions?: () => void
   /** The session's goal, with a workspace to show its tab in. */
   goal?: UseAgentCommandsGoal
+  /** Desktop not yet in an account: Connect Your Phone (see `useConnectPhoneOffer`). */
+  connectPhone?: ConnectPhoneOffer | null
 }
 
 /**
@@ -109,6 +112,7 @@ export function useAgentCommands({
   handleOpenPreview,
   handleOpenSideQuestions,
   goal,
+  connectPhone,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { preference: theme, setPreference: setTheme } = useThemePreference()
@@ -118,6 +122,8 @@ export function useAgentCommands({
   const setTextSize = useDisplayPrefsStore((s) => s.setTextSize)
   const { os, isTauri } = usePlatform()
   const router = useRouter()
+  // A primitive, so a new offer object each render keeps the list memoized.
+  const phoneSignIn = connectPhone ? connectPhone.signIn : null
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     ...goalCommands(goal),
@@ -129,7 +135,7 @@ export function useAgentCommands({
           group: 'View' as const,
           label: 'Open Plan',
           description: planAwaitingReview
-            ? 'Waiting for your review · approve or request changes'
+            ? 'Needs you · approve or request changes'
             : hasPlan ? "View or edit this session's plan" : 'No plan yet · in Plan mode the agent writes one here',
           keywords: 'plan review approve request changes comment',
           action: handleOpenPlan,
@@ -147,7 +153,7 @@ export function useAgentCommands({
         }]
       : []),
     ...(handleOpenGit
-      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the Review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
+      ? [{ id: 'open-git', group: 'View' as const, label: 'Open Changes', description: 'Changed files and commit history in the Review panel', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
       : []),
     ...(handleToggleDockMaximized
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Panel', description: 'Give the Review panel the full width for diffs, files and terminals', keywords: 'dock', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
@@ -174,42 +180,46 @@ export function useAgentCommands({
         }]
       : []),
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'The last terminal, or a new shell in the workspace (runs on the connected server)', keywords: 'shell console', action: handleOpenTerminal },
-    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Agents, skills, providers and more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
+    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Models, appearance, agents and more', keywords: 'preferences providers connectors mcp', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'open-workspace', group: 'Navigation', label: 'Open Workspace…', description: 'Add a folder as a workspace', keywords: 'folder project repo add', shortcut: shortcutLabel(KEYS.openWorkspace, os), action: () => dispatchAppEvent(APP_EVENTS.openWorkspace) },
     { id: 'next-needs-you', group: 'Navigation', label: 'Next Session That Needs You', description: 'Jump to the next session waiting for an answer or a review', keywords: 'waiting attention ask question approve', action: () => openNextNeedsYou(router) },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Usage', description: 'Spend, turns and traces by workspace and model', keywords: 'telemetry usage spend cost traces', action: () => openTelemetry() },
+    ...(phoneSignIn !== null
+      ? [{
+          id: 'connect-phone',
+          group: 'Navigation' as const,
+          label: 'Connect Your Phone',
+          description: 'Show a code your phone scans to reach this computer from anywhere',
+          keywords: 'phone pair qr account mobile remote iphone scan',
+          action: () => startConnectPhone({ signIn: phoneSignIn }),
+        }]
+      : []),
     { id: 'keyboard-shortcuts', group: 'Navigation', label: 'Keyboard Shortcuts', description: 'Every shortcut, by where it works', keywords: 'keys hotkeys keybindings', shortcut: shortcutLabel(KEYS.shortcutsHelp, os), action: () => useUIStore.getState().toggleShortcutsHelp() },
     {
-      id: 'theme',
+      // Theme and text size on one page (they were two commands).
+      id: 'appearance',
       group: 'View',
-      label: 'Theme…',
-      description: `Switch between System, Light and Dark. Now: ${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'}`,
-      keywords: 'appearance color mode system light dark',
+      label: 'Appearance…',
+      description: `Theme and text size. Now: ${THEME_OPTIONS.find((o) => o.value === theme)?.label ?? 'System'}, ${TEXT_SIZES.find((size) => size.value === textSize)?.label ?? 'Default'}`,
+      keywords: 'theme color mode system light dark text size font zoom bigger smaller density',
       page: {
-        placeholder: 'Search themes…',
-        commands: THEME_OPTIONS.map(({ value, label }) => ({
-          id: `theme-${value}`,
-          label,
-          description: `${value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`}${value === theme ? ' · Current' : ''}`,
-          action: () => setTheme(value),
-        })),
-      },
-      action: () => {},
-    },
-    {
-      id: 'text-size',
-      group: 'View',
-      label: 'Text Size…',
-      description: `Compact, Default or Large. Now: ${TEXT_SIZES.find((size) => size.value === textSize)?.label ?? 'Default'}`,
-      keywords: 'font zoom bigger smaller density',
-      page: {
-        placeholder: 'Text size…',
-        commands: TEXT_SIZES.map(({ value, label }) => ({
-          id: `text-size-${value}`,
-          label,
-          description: value === textSize ? 'Current' : undefined,
-          action: () => setTextSize(value),
-        })),
+        placeholder: 'Theme or text size…',
+        commands: [
+          ...THEME_OPTIONS.map(({ value, label }) => ({
+            id: `theme-${value}`,
+            group: 'Theme',
+            label,
+            description: `${value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`}${value === theme ? ' · Current' : ''}`,
+            action: () => setTheme(value),
+          })),
+          ...TEXT_SIZES.map(({ value, label }) => ({
+            id: `text-size-${value}`,
+            group: 'Text size',
+            label,
+            description: value === textSize ? 'Current' : undefined,
+            action: () => setTextSize(value),
+          })),
+        ],
       },
       action: () => {},
     },
@@ -217,11 +227,12 @@ export function useAgentCommands({
     {
       id: 'toggle-reader-mode',
       group: 'View',
-      label: 'Toggle Reader Mode',
+      label: 'Toggle Simple View',
       description: readerMode
-        ? 'Reader mode is on · show every thinking trace and tool call again'
-        : "Fold each turn's work into one row and list the files it changed",
-      keywords: 'transcript compact detailed summary view',
+        ? 'Detail is Simple · show every step and number again'
+        : 'Detail is Full · show answers and fold the work',
+      // The setting's earlier names: Transcript, Detailed / Reader.
+      keywords: 'detail full reader mode transcript compact detailed summary',
       action: toggleReaderMode,
     },
     // Desktop only: the native ⌘R accelerator was dropped so a stray key
@@ -229,5 +240,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, router, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, hasPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
+  ], [os, isTauri, router, phoneSignIn, toggleRunPicker, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleSplitDock, handleSplitDockDown, handleFindInSession, handleOpenPlan, hasPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, goal, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, theme, setTheme, readerMode, toggleReaderMode, textSize, setTextSize])
 }

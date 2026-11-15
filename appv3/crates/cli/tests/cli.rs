@@ -115,6 +115,18 @@ fn cloud_approve_refuses_without_a_terminal_or_under_an_agent() {
     assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
 }
 
+#[test]
+fn cloud_recover_needs_a_person_at_a_terminal() {
+    let sb = Sandbox::new();
+    // The recovery code is never taken from a pipe or an agent's shell: it signs a roster.
+    let o = sb.run(&["cloud", "recover"]);
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert!(stderr(&o).contains("Run this in Terminal"), "{}", stderr(&o));
+    let o = sb.run_with(&["cloud", "recover"], &[("AGENTD_AGENT", "1")]);
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
+}
+
 /// A cloud that hands out one device code and denies it on the first poll.
 fn denying_cloud() -> String {
     use axum::routing::post;
@@ -159,6 +171,28 @@ fn an_unknown_mode_is_refused() {
     let o = Sandbox::new().run_with(&["doctor"], &[("OPENAGENTD_ENV", "staging")]);
     assert_ne!(code(&o), 0);
     assert!(stderr(&o).contains("OPENAGENTD_ENV"), "{}", stderr(&o));
+}
+
+/// `server start --cloud` starts the server, then signs in as `agentd cloud
+/// login` does; the server keeps running whatever the sign-in's outcome.
+// Unix only, like serve_shutdown.rs: on Windows the daemon inherits the
+// CLI's captured stdout pipe, so the test's `output()` never sees it close.
+#[cfg(unix)]
+#[test]
+fn start_with_cloud_signs_in_once_the_server_answers() {
+    let sb = Sandbox::new();
+    let cloud = denying_cloud();
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port().to_string();
+    let env = [("OPENAGENTD_CLOUD_API", cloud.as_str()), ("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev")];
+    let o = sb.run_with(&["server", "start", "--port", &port, "--cloud"], &env);
+    let running = sb.run(&["server", "status", "--port", &port]);
+    let _ = sb.run(&["server", "stop"]);
+    let out = stdout(&o);
+    assert!(out.contains("agentd server stop"), "the server started first:\n{out}{}", stderr(&o));
+    assert!(out.contains("https://account.openagentd.dev/device?code=BCDF-GHJK"), "then the sign-in:\n{out}");
+    assert!(out.contains("denied"), "{out}");
+    assert!(!out.contains("From anywhere:"), "no hint next to the sign-in itself:\n{out}");
+    assert_eq!(code(&running), 0, "still running after the sign-in:\n{}", stdout(&running));
 }
 
 #[test]

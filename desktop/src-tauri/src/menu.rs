@@ -522,7 +522,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let tray_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload Window", true, None::<&str>)?;
     let tray_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, None::<&str>)?;
 
-    // "Provider Limits" — dynamic OAuth provider usage submenu. Starts with a
+    // "Usage Limits" — dynamic OAuth provider usage submenu. Starts with a
     // single placeholder row; ``run_usage_poll_loop`` / the manual refresh
     // action mutate the submenu's children in place from here on (see
     // ``update_tray_usage``), so this initial shape is the only thing built
@@ -538,7 +538,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
     let usage_refresh = MenuItem::with_id(
         app,
         MENU_USAGE_REFRESH,
-        "Refresh Provider Limits",
+        "Refresh Usage Limits",
         true,
         None::<&str>,
     )?;
@@ -549,7 +549,7 @@ fn install_native_tray(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
-    let usage_submenu = SubmenuBuilder::new(app, "Provider Limits")
+    let usage_submenu = SubmenuBuilder::new(app, "Usage Limits")
         .item(&usage_placeholder_row)
         .separator()
         .item(&usage_footer)
@@ -633,10 +633,10 @@ fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
 /// only while something else is going on (starting, an error, an update).
 const TRAY_STATUS_RUNNING: &str = "Status: Running";
 
-/// The built-in server would not start or stopped for good. Named the way
+/// This computer's own OpenAgentd would not start or stopped for good. Named the way
 /// the app's other surfaces name a failure ("Failed"), with what failed, not
 /// a bare "Error".
-pub const TRAY_STATUS_FAILED: &str = "Status: Built-in server failed";
+pub const TRAY_STATUS_FAILED: &str = "Status: OpenAgentd failed on this computer";
 
 /// Whether the tray's status row shows ``text``: not for the healthy state.
 fn tray_status_shows(text: &str) -> bool {
@@ -967,7 +967,7 @@ fn notify_critical_crossings(app: &AppHandle, body: &UsageSummaryBody, to_notify
     }
 }
 
-/// Redraw the "Provider Limits" submenu from a fetch outcome.
+/// Redraw the "Usage Limits" submenu from a fetch outcome.
 ///
 /// On success the fresh snapshot is cached in ``AppState`` and rendered.
 /// On failure the *previous* snapshot (if any) is re-rendered — a
@@ -1238,7 +1238,7 @@ mod tests {
 
     #[test]
     fn a_failed_built_in_server_says_what_failed() {
-        assert_eq!(TRAY_STATUS_FAILED, "Status: Built-in server failed");
+        assert_eq!(TRAY_STATUS_FAILED, "Status: OpenAgentd failed on this computer");
     }
 
     #[test]

@@ -79,7 +79,8 @@ interface DockTabsOptions {
   mobile?: boolean
   /** False while the dock is closed (kept mounted, hidden): its keys are off. */
   open?: boolean
-  chatWorkspace: boolean
+  /** Chat, or a folder without Git: there is no Changes view to open or show. */
+  noGit: boolean
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   terminalOpenKey: number
   handledTerminalOpenKeyRef?: React.RefObject<number | null>
@@ -158,7 +159,7 @@ export function useDockTabs({
   sessionId = null,
   mobile = false,
   open = true,
-  chatWorkspace,
+  noGit,
   onFileSelect,
   terminalOpenKey,
   handledTerminalOpenKeyRef,
@@ -239,7 +240,7 @@ export function useDockTabs({
   }, [workspace, terminalTabOrder, terminalMetas])
 
   // A chat workspace is not a repository: no Git tab in its strips.
-  const hidden = useCallback((tab: DockTab) => chatWorkspace && tab.type === 'review', [chatWorkspace])
+  const hidden = useCallback((tab: DockTab) => noGit && tab.type === 'review', [noGit])
   const shownPanes = useMemo(() => paneOrder(state.layout), [state.layout])
   const strips = useMemo<Record<PaneId, DockTab[]>>(
     () => Object.fromEntries(Object.keys(state.panes).map((pane) => [pane, paneTabs(state, pane).filter((tab) => !hidden(tab))])),
@@ -292,8 +293,8 @@ export function useDockTabs({
 
   /** Open the Git tab, or show the open one. Never in a chat workspace. */
   const openGitTab = useCallback((pane?: PaneId) => {
-    if (!chatWorkspace) openTab(REVIEW_TAB, { pane })
-  }, [chatWorkspace, openTab])
+    if (!noGit) openTab(REVIEW_TAB, { pane })
+  }, [noGit, openTab])
 
   /** A new shell: in ``pane`` when opened from a strip, else the focused pane. */
   const openTerminal = useCallback((pane?: PaneId) => {
@@ -372,7 +373,7 @@ export function useDockTabs({
   useKeyedRequest({ key: terminalOpenKey }, handledTerminalOpenKeyRef, focusOrOpenTerminal)
   useKeyedRequest(terminalRunRequest, handledTerminalRunKeyRef, (request) => runInTerminal(request.command))
   useKeyedRequest(viewRequest, handledViewRequestKeyRef, (request) => {
-    if (chatWorkspace && request.view === 'review') return
+    if (noGit && request.view === 'review') return
     openTab(viewTab(request.view))
   })
   // Files and diffs opened from the transcript or a list are previews.
@@ -468,19 +469,17 @@ export function useDockTabs({
     setState((current) => activateTab(current, id))
     requestCloseTabs(stripOf(id).filter((tab) => tab.id !== id).map((tab) => tab.id), id)
   }
-  /** Tab menu: the tabs after (or before) this one in its pane; it shows if the open one goes. */
-  const closeTabsBeside = (id: string, side: 'left' | 'right') => {
+  /** Tab menu: the tabs after this one in its pane; it shows if the open one goes. */
+  const closeTabsToRight = (id: string) => {
     const strip = stripOf(id)
     const index = strip.findIndex((tab) => tab.id === id)
     if (index < 0) return
-    const beside = side === 'right' ? strip.slice(index + 1) : strip.slice(0, index)
+    const beside = strip.slice(index + 1)
     if (beside.length === 0) return
     const takesActive = beside.some((tab) => tab.id === state.panes[paneOf(state, id) ?? '']?.active)
     if (takesActive) setState((current) => activateTab(current, id))
     requestCloseTabs(beside.map((tab) => tab.id), takesActive ? id : undefined)
   }
-  const closeTabsToRight = (id: string) => closeTabsBeside(id, 'right')
-  const closeTabsToLeft = (id: string) => closeTabsBeside(id, 'left')
   /** Tab menu: every tab of its pane, and so the pane. */
   const closeAllTabs = (id: string) => requestCloseTabs(stripOf(id).map((tab) => tab.id))
   /** Close an empty pane (its strip's ×, ⌘W on its launcher). */
@@ -614,7 +613,6 @@ export function useDockTabs({
     closeTab: requestCloseTab,
     closeOtherTabs,
     closeTabsToRight,
-    closeTabsToLeft,
     closeAllTabs,
     confirmCloseOpen: confirmCloseIds !== null,
     confirmCloseTitles,

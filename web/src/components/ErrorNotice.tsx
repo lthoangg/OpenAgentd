@@ -12,7 +12,7 @@ export function errorOf(value: unknown): Error {
 }
 
 /** What the copy button reads after a press; the error's message stays on screen either way. */
-const COPY_LABEL = { idle: 'Copy error details', copied: 'Copied', failed: 'Could not copy' } as const
+const COPY_LABEL = { idle: 'Copy error details', copied: 'Copied', failed: "Couldn't copy" } as const
 
 function CopyErrorButton({ error }: { error: Error }) {
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle')

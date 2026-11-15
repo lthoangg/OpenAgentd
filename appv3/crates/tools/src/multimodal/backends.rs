@@ -61,7 +61,7 @@ const OPENAI_MAX_EDIT: usize = 16;
 const OPENAI_KEYS: [&str; 3] = ["size", "quality", "output_format"];
 
 fn openai_missing_key() -> String {
-    "Error: OPENAI_API_KEY is unset — cannot call OpenAI Images API. Add an OpenAI key in Settings → Providers, or export it.".into()
+    "Error: OPENAI_API_KEY is unset — cannot call OpenAI Images API. Add an OpenAI key in Settings → Models, or export it.".into()
 }
 
 async fn openai_decode(resp: reqwest::Response) -> Result<Vec<u8>, String> {
@@ -213,13 +213,13 @@ async fn codex_auth() -> Result<(String, Option<String>), String> {
     use appv3_providers::codex::{oauth_slot, CodexAuth};
     let path = oauth_slot();
     let Some(mut auth) = CodexAuth::load(&path) else {
-        return Err("Error: ChatGPT (Codex) is not signed in. The user signs in under Settings → Providers, or with `agentd auth codex` in a terminal.".into());
+        return Err("Error: ChatGPT (Codex) is not signed in. The user signs in under Settings → Models, or with `agentd auth codex` in a terminal.".into());
     };
     if auth.is_expired() {
         tracing::info!("codex_image_token_expired refreshing");
         auth = auth.refresh(&path).await.map_err(|e| {
             tracing::warn!("codex_image_token_refresh_failed err={}", e);
-            format!("Error: the ChatGPT (Codex) sign-in could not be renewed: {e}. The user signs in again under Settings → Providers, or with `agentd auth codex` in a terminal.")
+            format!("Error: the ChatGPT (Codex) sign-in could not be renewed: {e}. The user signs in again under Settings → Models, or with `agentd auth codex` in a terminal.")
         })?;
     }
     Ok((auth.access_token, auth.account_id))
@@ -396,7 +396,7 @@ const GEMINI_TIMEOUT: Duration = Duration::from_secs(120);
 const GEMINI_MAX_EDIT: usize = 14;
 
 fn gemini_missing_key() -> String {
-    "Error: GOOGLE_API_KEY is unset — cannot call Gemini Images API. Add a Google key in Settings → Providers, or export it.".into()
+    "Error: GOOGLE_API_KEY is unset — cannot call Gemini Images API. Add a Google key in Settings → Models, or export it.".into()
 }
 
 fn gemini_generation_config(cfg: &MediaSection, overrides: Option<&Overrides>) -> Value {
@@ -675,7 +675,7 @@ pub struct VideoInputs<'a> {
 pub async fn generate_video_googlegenai(cfg: &MediaSection, prompt: &str, inp: VideoInputs<'_>, overrides: Option<&Overrides>) -> Result<(Vec<u8>, String), String> {
     let key = api_key("GOOGLE_API_KEY");
     if key.is_empty() {
-        return Err("Error: GOOGLE_API_KEY is unset — cannot call Gemini Veo API. Add a Google key in Settings → Providers, or export it.".into());
+        return Err("Error: GOOGLE_API_KEY is unset — cannot call Gemini Veo API. Add a Google key in Settings → Models, or export it.".into());
     }
     let refs = inp.reference_images.filter(|r| !r.is_empty());
     if let Some(r) = refs {

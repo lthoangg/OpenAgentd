@@ -206,6 +206,18 @@ fn phone_account_end_to_end() {
         )
         .await;
         assert!(none.is_err(), "a device needs a role");
+        // Face ID cancelled: nothing is added, and the same approval can
+        // be confirmed again.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_approve_confirm(
+            pending[0].enrollment_id.clone(),
+            Some(false),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
+        assert_eq!(cloud::cloud_devices().await.unwrap().len(), 1, "nothing added");
         let (confirmed, added) = tokio::join!(
             cloud::cloud_approve_confirm(pending[0].enrollment_id.clone(), Some(false), None, None),
             flows::await_added(&mut computer, joined, &req, FAST)
@@ -310,6 +322,11 @@ fn phone_account_end_to_end() {
         assert!(cloud::bridge_key(&origin).is_none(), "its links are closed");
 
         // Remove the computer: its session ends and the bridge goes away.
+        // Face ID cancelled first: the computer stays in the account.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_remove_device(computer.cloud.device_id()).await;
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
+        assert_eq!(cloud::cloud_devices().await.unwrap().len(), 2, "nothing removed");
         cloud::cloud_remove_device(computer.cloud.device_id())
             .await
             .unwrap();
@@ -345,6 +362,17 @@ fn phone_account_end_to_end() {
         else {
             panic!("candidate")
         };
+        // Face ID cancelled on Add: the invitation stays open to retry.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_invite_add(
+            candidate.enrollment_id.clone(),
+            Some(false),
+            Some(true),
+            Some(true),
+        )
+        .await
+        .map(|_| ());
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
         let added =
             cloud::cloud_invite_add(candidate.enrollment_id, Some(false), Some(true), Some(true))
                 .await
@@ -653,6 +681,343 @@ fn the_page_keeps_its_bridge_and_key_through_failed_opens_restarts_and_the_backg
         assert!(!all.contains(&key) && !all.contains(&id), "{all}");
 
         drop(stop);
+        cloud::cloud_sign_out().await.unwrap();
+    });
+}
+
+/// A device of its own (not the phone), not in any account yet.
+fn another_device(base: &str) -> Member {
+    let mut m = Member::new(
+        Cloud::new(
+            reqwest::Client::new(),
+            Endpoints::custom(base, "https://account.openagentd.dev"),
+            DeviceKeys::generate(),
+            None,
+        ),
+        None,
+    );
+    m.cloud.roles = openagentd_cloud::keys::Roles::BOTH;
+    m
+}
+
+/// `member` creates `account` (its first roster) and answers the recovery
+/// code it showed.
+async fn account_created_by(fake: &fake_cloud::Fake, member: &mut Member, account: &str) -> String {
+    let dc = member.cloud.device_code().await.unwrap();
+    fake.approve(&dc.user_code, account);
+    let session = flows::wait_for_session(&member.cloud, &dc).await.unwrap();
+    let draft = flows::GenesisDraft::new();
+    let code = draft.code.to_string();
+    flows::genesis(member, &session, draft).await.unwrap();
+    code
+}
+
+#[test]
+fn a_device_that_left_is_no_longer_listed() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        init_phone();
+        let computer = signed_in_with_a_computer(&fake, &base).await;
+        let computer_id = computer.cloud.device_id();
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|d| d.device_id == computer_id));
+
+        // The computer leaves: the cloud still lists it as departed, the
+        // roster still names it, and the phone shows only itself.
+        computer.cloud.leave().await.unwrap();
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert!(rows[0].me);
+        assert!(
+            matches!(
+                cloud::cloud_status(),
+                Status::Connected { signer: true, .. }
+            ),
+            "listing never asks Face ID or changes the account: {:?}",
+            cloud::cloud_status()
+        );
+
+        cloud::cloud_sign_out().await.unwrap();
+    });
+}
+
+#[test]
+fn a_device_is_renamed_by_itself_or_by_the_phone_that_approves() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        init_phone();
+        let computer = signed_in_with_a_computer(&fake, &base).await;
+        let computer_id = computer.cloud.device_id();
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert!(rows.iter().all(|d| d.name.is_none()), "unnamed at first");
+        let me = rows.iter().find(|d| d.me).unwrap().device_id.clone();
+        let name_of = |rows: &[cloud::DeviceRow], id: &str| {
+            rows.iter()
+                .find(|d| d.device_id == id)
+                .unwrap()
+                .name
+                .clone()
+        };
+
+        // The phone names itself (no Face ID: the unlock is cancelled
+        // here, and the rename still goes through) and the computer.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let answer = cloud::cloud_rename_device(me.clone(), Some("  Hoang's \n iPhone ".into()))
+            .await
+            .unwrap();
+        cloud::CANCEL_NEXT_UNLOCK.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            answer,
+            serde_json::json!({ "device_id": me, "name": "Hoang's iPhone" })
+        );
+        let answer = cloud::cloud_rename_device(computer_id.clone(), Some("Studio".into()))
+            .await
+            .unwrap();
+        assert_eq!(answer["name"], "Studio");
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert_eq!(name_of(&rows, &me).as_deref(), Some("Hoang's iPhone"));
+        assert_eq!(name_of(&rows, &computer_id).as_deref(), Some("Studio"));
+
+        // An empty name clears it (null), and the answer says so.
+        let answer = cloud::cloud_rename_device(computer_id.clone(), Some("   ".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            answer,
+            serde_json::json!({ "device_id": computer_id, "name": null })
+        );
+        let answer = cloud::cloud_rename_device(computer_id.clone(), None)
+            .await
+            .unwrap();
+        assert_eq!(answer["name"], serde_json::Value::Null);
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert_eq!(name_of(&rows, &computer_id), None);
+
+        // A device the account does not have, said plainly.
+        let stranger = DeviceKeys::generate().id();
+        let refused = cloud::cloud_rename_device(stranger, Some("Ghost".into())).await;
+        assert_eq!(
+            refused.unwrap_err(),
+            "That device is no longer in your account."
+        );
+
+        cloud::cloud_sign_out().await.unwrap();
+    });
+}
+
+#[test]
+fn the_recovery_code_takes_the_account_over_on_the_phone() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        let (dir, _) = init_phone();
+        let account = fake.new_account();
+        let mut lost = another_device(&base);
+        let code = account_created_by(&fake, &mut lost, &account).await;
+
+        // Not a recovery code at all: nothing starts.
+        let bad = cloud::cloud_recover("ABCD".into());
+        assert_eq!(
+            bad.unwrap_err(),
+            "That is not a recovery code. Check it and type it again."
+        );
+        assert!(matches!(cloud::cloud_status(), Status::Guest { .. }));
+
+        cloud::cloud_recover(code).unwrap();
+        let Status::SigningIn {
+            user_code,
+            recovering,
+            ..
+        } = wait("the user code", |s| matches!(s, Status::SigningIn { .. })).await
+        else {
+            unreachable!()
+        };
+        assert!(recovering, "the sign-in says it recovers");
+        fake.approve(&user_code, &account);
+        let s = wait("connected", |s| matches!(s, Status::Connected { .. })).await;
+        assert!(
+            matches!(
+                s,
+                Status::Connected {
+                    signer: true,
+                    recovered: true,
+                    ..
+                }
+            ),
+            "{s:?}"
+        );
+        assert!(dir.join("cloud").join("identity.json").exists());
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert_eq!(rows.len(), 1, "this phone is the only device: {rows:?}");
+        assert!(rows[0].me && rows[0].signer);
+
+        // The other device is out.
+        assert!(matches!(
+            lost.sync().await,
+            Err(flows::FlowError::Problem(AccountProblem::Revoked))
+        ));
+
+        // The page told the person: the flag goes, the account stays.
+        let s = cloud::cloud_recovered_ack().unwrap();
+        assert!(
+            matches!(
+                s,
+                Status::Connected {
+                    signer: true,
+                    recovered: false,
+                    ..
+                }
+            ),
+            "{s:?}"
+        );
+        assert!(matches!(
+            cloud::cloud_status(),
+            Status::Connected {
+                recovered: false,
+                ..
+            }
+        ));
+
+        cloud::cloud_sign_out().await.unwrap();
+        assert!(!dir.join("cloud").join("identity.json").exists());
+    });
+}
+
+#[test]
+fn a_wrong_recovery_code_leaves_the_account_alone_and_an_empty_account_sets_up() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        let (dir, _) = init_phone();
+        let account = fake.new_account();
+        let mut other = another_device(&base);
+        account_created_by(&fake, &mut other, &account).await;
+
+        // A well-formed code that is not this account's.
+        let stranger = flows::GenesisDraft::new().code.to_string();
+        cloud::cloud_recover(stranger).unwrap();
+        let Status::SigningIn { user_code, .. } =
+            wait("the user code", |s| matches!(s, Status::SigningIn { .. })).await
+        else {
+            unreachable!()
+        };
+        fake.approve(&user_code, &account);
+        let s = wait("a guest again", |s| matches!(s, Status::Guest { .. })).await;
+        assert!(
+            matches!(
+                s,
+                Status::Guest {
+                    notice: Some(cloud::Notice::WrongRecoveryCode),
+                    ..
+                }
+            ),
+            "{s:?}"
+        );
+        assert_eq!(
+            serde_json::to_value(&s).unwrap()["notice"],
+            "wrong_recovery_code"
+        );
+        assert!(!dir.join("cloud").join("identity.json").exists());
+        assert!(other.sync().await.is_ok(), "the account kept its device");
+
+        // An account with no roster yet: the same sign-in sets it up, with
+        // its recovery code shown first (the recovery code typed is unused).
+        let empty = fake.new_account();
+        let typed = flows::GenesisDraft::new().code.to_string();
+        cloud::cloud_recover(typed).unwrap();
+        let Status::SigningIn { user_code, .. } =
+            wait("the user code", |s| matches!(s, Status::SigningIn { .. })).await
+        else {
+            unreachable!()
+        };
+        fake.approve(&user_code, &empty);
+        let Status::Recovery {
+            check: [a, b],
+            code,
+            ..
+        } = wait("the recovery code", |s| {
+            matches!(s, Status::Recovery { .. })
+        })
+        .await
+        else {
+            unreachable!()
+        };
+        let s = cloud::cloud_confirm_recovery(
+            recovery::group(&code, a).unwrap().into(),
+            recovery::group(&code, b).unwrap().into(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(
+                s,
+                Status::Connected {
+                    signer: true,
+                    recovered: false,
+                    ..
+                }
+            ),
+            "setting up is not a recovery: {s:?}"
+        );
+        cloud::cloud_sign_out().await.unwrap();
+
+        // Cancelling a recovering sign-in stops it.
+        cloud::cloud_recover(flows::GenesisDraft::new().code.to_string()).unwrap();
+        wait("the user code", |s| matches!(s, Status::SigningIn { .. })).await;
+        let s = cloud::cloud_cancel().unwrap();
+        assert!(matches!(s, Status::Guest { notice: None, .. }), "{s:?}");
+    });
+}
+
+#[test]
+fn the_phone_lets_a_computer_approve_others_after_face_id() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        init_phone();
+        let computer = signed_in_with_a_computer(&fake, &base).await;
+        let id = computer.cloud.device_id();
+        let signer_of =
+            |rows: &[cloud::DeviceRow]| rows.iter().find(|d| d.device_id == id).unwrap().signer;
+        assert!(!signer_of(&cloud::cloud_devices().await.unwrap()));
+
+        // Face ID cancelled: nothing changes.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_make_approver(id.clone()).await;
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
+        assert!(!signer_of(&cloud::cloud_devices().await.unwrap()));
+
+        cloud::cloud_make_approver(id.clone()).await.unwrap();
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert!(signer_of(&rows), "{rows:?}");
+        let row = rows.iter().find(|d| d.device_id == id).unwrap();
+        assert!(row.server && row.client, "its roles are unchanged");
+
+        // A device the account does not have is refused, in plain words.
+        let stranger = DeviceKeys::generate().id();
+        assert_eq!(
+            cloud::cloud_make_approver(stranger).await.unwrap_err(),
+            "That device is no longer in your account."
+        );
+
         cloud::cloud_sign_out().await.unwrap();
     });
 }

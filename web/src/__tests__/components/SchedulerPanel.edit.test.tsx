@@ -131,13 +131,13 @@ describe('SchedulerPanel — Edit Task Form', () => {
     // With no tasks the form is already open under a "New task" title, so the
     // header needs no button for it (and the old "Create new task" is gone).
     // The one "New task" button left is the empty list's action: it takes
-    // focus to the open form's title instead of opening it again.
+    // focus to the open form's first question instead of opening it again.
     expect(await screen.findByRole('heading', { name: 'New task' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Create new task/i })).toBeNull()
     const action = await screen.findByRole('button', { name: 'New task' })
     expect(action.closest('[data-slot="overlay-header"]')).toBeNull()
     await userEvent.setup().click(action)
-    expect(screen.getByLabelText('Task title')).toHaveFocus()
+    expect(document.activeElement === screen.getByLabelText('What should it do?')).toBe(true)
   })
 
   it('has a close button in the header', async () => {

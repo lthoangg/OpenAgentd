@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach } from 'bun:test'
 import '@testing-library/jest-dom'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Tooltip, TooltipTrigger, TooltipContent, OPEN_DELAY_MS } from '@/components/ui/tooltip'
 
 afterEach(cleanup)
 
@@ -40,9 +40,14 @@ describe('Tooltip', () => {
     const trigger = screen.getByRole('button', { name: 'Hover me' })
     fireEvent.mouseEnter(trigger.parentElement!)
 
-    await waitFor(() => {
-      expect(screen.queryByText('Help text')).toBeInTheDocument()
-    })
+    // Hover opens after OPEN_DELAY_MS, half of waitFor's default 1s budget;
+    // a busy CI runner used up the rest. Wait well past the delay.
+    await waitFor(
+      () => {
+        expect(screen.queryByText('Help text')).toBeInTheDocument()
+      },
+      { timeout: OPEN_DELAY_MS + 2000 },
+    )
 
     // `duration-*` also sets `transition-duration`; with the default
     // `transition-property: all` the first placement (from 0,0) would slide

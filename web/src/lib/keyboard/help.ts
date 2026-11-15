@@ -74,7 +74,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Send', { key: 'Enter' }),
         keys('New line', { key: 'Enter', shift: true }),
         // Named as in the Send menu while a turn runs.
-        keys('Stop & send', { key: 'Enter', mod: true }),
+        keys('Stop and send', { key: 'Enter', mod: true }),
         keys('Queue until done', { key: 'Enter', alt: true }),
         keys('Switch Plan and Code mode', { key: 'Tab' }),
         keys('Earlier and later sent messages', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
@@ -91,7 +91,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         app('splitDock', 'Split Review panel right'),
         app('splitDockDown', 'Split Review panel down'),
         keys('Send the focused tab left, right, up or down', chordOf(APP_SHORTCUTS.splitTabLeft), chordOf(APP_SHORTCUTS.splitTabRight), chordOf(APP_SHORTCUTS.splitTabUp), chordOf(APP_SHORTCUTS.splitTabDown)),
-        app('openGit', 'Open Git'),
+        app('openGit', 'Open Changes'),
         app('maximizeDock', 'Maximize the Review panel'),
         app('closeTab', 'Close tab'),
         keys(appOnly('Tab 1 to 8, and the last'), chordOf(APP_SHORTCUTS.dockTab1), chordOf(APP_SHORTCUTS.dockTab9)),

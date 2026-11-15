@@ -81,7 +81,7 @@ export const GoalClaimCard = memo(function GoalClaimCard({ args, result, done, a
   if (claim.kind === 'other') {
     return (
       <p className="my-2 py-1 font-mono text-xs text-(--color-text-muted)">
-        <span className="font-medium text-(--color-text)">update_goal</span> {claim.text.split('\n')[0]}
+        <span className="font-medium text-(--color-text)">Goal check</span> {claim.text.split('\n')[0]}
       </p>
     )
   }

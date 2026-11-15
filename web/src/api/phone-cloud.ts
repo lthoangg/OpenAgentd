@@ -25,18 +25,21 @@ export type PhoneNotice =
   | 'account_closing'
   | 'account_unavailable'
   | 'unreachable'
+  | 'wrong_recovery_code'
   | 'failed'
 
 export type PhoneCloudStatus =
   /** `supported: false` (Android for now): hide every account control. */
   | { state: 'guest'; notice: PhoneNotice | null; supported: boolean; retry_after?: number }
-  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number }
+  /** `recovering`: signing in to recover the account with its recovery code. */
+  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number; recovering?: boolean }
   /** A new account: the code is shown once, then groups `check` (1-based) are asked back. */
   | { state: 'recovery'; code: string; check: [number, number] }
   | { state: 'joining'; fingerprint: string; code: string | null }
   /** Claimed an invitation: the other phone adds this one once the person compares these. */
   | { state: 'invited'; fingerprint: string; kind: string | null }
-  | { state: 'connected'; fingerprint: string; signer: boolean }
+  /** `recovered`: this phone just recovered the account, until `phoneCloudRecoveredAck`. */
+  | { state: 'connected'; fingerprint: string; signer: boolean; recovered?: boolean }
   | { state: 'closing'; fingerprint: string; deletes_at: number | null }
   | { state: 'unavailable'; fingerprint: string }
 
@@ -50,6 +53,8 @@ export interface DeviceRow {
   client?: boolean
   me: boolean
   kind: string | null
+  /** The name the account keeps for it (null: unnamed); absent from an older shell. */
+  name?: string | null
   /**
    * A server's relay connection is open now (the cloud's word, may be a
    * little stale). null or absent: not a server, or the cloud did not say.
@@ -166,6 +171,15 @@ export const phoneCloudScannedAdd = (enrollmentId: string, approver: boolean, ro
   call<PhoneCloudStatus & { number: string }>('cloud_invite_add', { enrollmentId, approver, ...roles })
 export const phoneCloudInviteCancel = (generation?: number) => call<void>('cloud_invite_cancel', generation === undefined ? undefined : { generation })
 export const phoneCloudRemoveDevice = (deviceId: string) => call<PhoneCloudStatus>('cloud_remove_device', { deviceId })
+/** Names a device of the account (null: unnamed). Any device names itself; an approver names any. */
+export const phoneCloudRenameDevice = (deviceId: string, name: string | null) =>
+  call<{ device_id: string; name: string | null }>('cloud_rename_device', { deviceId, name })
+/** Lets another device approve others too (Face ID happens natively). */
+export const phoneCloudMakeApprover = (deviceId: string) => call<PhoneCloudStatus>('cloud_make_approver', { deviceId })
+/** Recovers the account with its recovery code; the phone then signs in in the browser. The code works like a password. */
+export const phoneCloudRecover = (code: string) => call<PhoneCloudStatus>('cloud_recover', { code })
+/** The person read that the account was recovered. */
+export const phoneCloudRecoveredAck = () => call<PhoneCloudStatus>('cloud_recovered_ack')
 export const phoneCloudSignOut = async () => {
   const status = await call<PhoneCloudStatus>('cloud_sign_out')
   // The home-screen widgets must not keep the sessions of a computer the

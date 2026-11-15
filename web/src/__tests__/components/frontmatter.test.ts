@@ -46,27 +46,23 @@ describe('buildFrontmatter', () => {
     expect(out).not.toContain('model')
   })
 
-  it('emits tools and mcp servers as bullet lists', () => {
+  it('emits tools as a bullet list', () => {
     const out = buildFrontmatter({
       name: 'a',
       role: 'member',
       tools: ['date', 'read'],
-      mcp: ['example-skill'],
     })
     expect(out).toContain('tools:\n  - date\n  - read')
-    expect(out).toContain('mcp:\n  - example-skill')
   })
 
-  it('sorts tools and mcp servers alphabetically — order is not semantic', () => {
+  it('sorts tools alphabetically — order is not semantic', () => {
     const out = buildFrontmatter({
       name: 'a',
       role: 'member',
       tools: ['shell', 'date', 'read'],
-      mcp: ['example-skill', 'lightpanda'],
     })
     // Sorted alphabetically regardless of input order.
     expect(out).toContain('tools:\n  - date\n  - read\n  - shell')
-    expect(out).toContain('mcp:\n  - example-skill\n  - lightpanda')
   })
 
   it('produces identical output for reordered input', () => {
@@ -74,13 +70,11 @@ describe('buildFrontmatter', () => {
       name: 'x',
       role: 'member',
       tools: ['shell', 'date', 'read'],
-      mcp: ['b', 'a'],
     })
     const b = buildFrontmatter({
       name: 'x',
       role: 'member',
       tools: ['read', 'shell', 'date'],
-      mcp: ['a', 'b'],
     })
     expect(a).toBe(b)
   })

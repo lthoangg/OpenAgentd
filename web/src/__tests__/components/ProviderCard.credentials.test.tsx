@@ -342,7 +342,7 @@ describe('ProviderCard — several API keys', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Test' }))
     expect(await within(rows('OpenAI keys')[1]).findByText('Checking…')).toBeTruthy()
     finish(json({ provider: 'openai', models: [], source: 'provider' }))
-    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('Could not verify'))
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.title)).toContain("Couldn't verify"))
     expect(within(rows('OpenAI keys')[1]).queryByText('Checking…')).toBeNull()
   })
 
@@ -436,7 +436,7 @@ describe('ProviderCard — Save checks the key first', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('keeps Test for checking a key without saving it', async () => {
+  it('keeps the card\'s Test for checking without saving', async () => {
     renderCard(openai)
     type('sk-test-third')
     fireEvent.click(screen.getByRole('button', { name: 'Test' }))
@@ -461,7 +461,7 @@ describe('ProviderCard — several OAuth accounts', () => {
     expect(within(list[0]).getByText('Signed in')).toBeTruthy()
     expect(within(list[0]).getByText('In use')).toBeTruthy()
     expect(within(list[0]).getByText('In use — new messages go to it until it hits its limit.')).toBeTruthy()
-    expect(within(list[1]).getByText('The provider ended this sign-in. It is skipped until you reconnect.')).toBeTruthy()
+    expect(within(list[1]).getByText('Codex ended this sign-in. It is skipped until you reconnect.')).toBeTruthy()
   })
 
   it('heads the accounts "Tried in this order" too', () => {
@@ -473,7 +473,8 @@ describe('ProviderCard — several OAuth accounts', () => {
   it('reconnects one account without touching the other', () => {
     renderCard(codex)
     fireEvent.click(within(rows('Codex accounts')[1]).getByRole('button', { name: 'Reconnect' }))
-    expect(screen.getByText('Reconnect team@example.com')).toBeTruthy()
+    expect(screen.getByText('Sign in to Codex again')).toBeTruthy()
+    expect(screen.getByText('Sign in with the same account (team@example.com). This window updates when you are done.')).toBeTruthy()
     expect(mockLoginStream).toHaveBeenCalledTimes(1)
     expect(mockLoginStream.mock.calls[0][0]).toBe('codex')
     expect(mockLoginStream.mock.calls[0][4]).toBe('cred_team')

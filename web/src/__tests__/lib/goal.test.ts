@@ -57,7 +57,7 @@ describe('goalNow', () => {
   })
 
   it('names what the goal waits for', () => {
-    expect(goalNow(makeGoal(), { ...IDLE, running: true, waitingForUser: true })).toMatchObject({ tone: 'wait', text: 'Waiting for your answer' })
+    expect(goalNow(makeGoal(), { ...IDLE, running: true, waitingForUser: true })).toMatchObject({ tone: 'wait', text: 'Needs you · a question' })
     expect(goalNow(makeGoal(), { ...IDLE, planMode: true })).toMatchObject({ tone: 'wait', text: 'Waiting for Code mode' })
     expect(goalNow(makeGoal(), { ...IDLE, sessionsAwaited: 1 })).toMatchObject({ tone: 'active', text: 'Waiting for 1 session' })
     expect(goalNow(makeGoal(), IDLE)).toMatchObject({ tone: 'active', text: 'Starting the next turn' })

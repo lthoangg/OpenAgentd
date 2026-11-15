@@ -32,7 +32,7 @@ import { WaitingForLine } from './AgentView/WaitingForLine'
 import { JumpToLatest } from './JumpToLatestChip'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels, type TurnItem } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix } from '@/utils/format'
+import { extractSleepPrefix, formatDurationWords } from '@/utils/format'
 import { Callout } from '@/components/ui/callout'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/stores/useUIStore'
@@ -41,7 +41,7 @@ import { ModelName } from '@/components/ui/model-name'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { useDisplayPrefsStore, useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
@@ -427,6 +427,10 @@ function WaitActions({ details }: { details?: string }) {
  * mono, the attempt and the wait with units, the raw error as a chip.
  * ``exhausted``: the retries ran out; the same line says so, and the error
  * card after it carries the way forward.
+ *
+ * With the Detail setting on Simple the line is a sentence, with no model ID
+ * and no error code: "The model is busy. Trying again in 8 seconds (2 of 5)."
+ * A dropped connection, which retries without a budget, says so instead.
  */
 function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode, exhausted = false }: {
   model?: string
@@ -437,6 +441,28 @@ function RetryNotice({ model, attempt, maxAttempts, delay, errorType, statusCode
   statusCode?: unknown
   exhausted?: boolean
 }) {
+  const simple = useSimpleDetail()
+  if (simple) {
+    const budgeted = typeof maxAttempts === 'number'
+    const sentence = exhausted
+      ? `Stopped trying${budgeted ? ` after ${maxAttempts} ${maxAttempts === 1 ? 'attempt' : 'attempts'}` : ''}.`
+      : [
+          budgeted ? 'The model is busy.' : 'The connection dropped.',
+          ` Trying again${typeof delay === 'number' ? ` in ${formatDurationWords(delay * 1000)}` : ''}`,
+          budgeted && attempt !== undefined && attempt !== null ? ` (${String(attempt)} of ${maxAttempts})` : '',
+          '.',
+        ].join('')
+    return (
+      <div
+        role="status"
+        data-provider-retry={exhausted ? undefined : ''}
+        data-provider-exhausted={exhausted ? '' : undefined}
+        className="flex min-h-7 items-center rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-muted)"
+      >
+        {sentence}
+      </div>
+    )
+  }
   // Dropped connections retry without a budget until the network is back.
   const progress = typeof maxAttempts === 'number'
     ? `${String(attempt ?? '?')}/${maxAttempts}`
@@ -916,14 +942,12 @@ export function AgentView({
     </div>
   ), [activeQuotaWaitBlockId, activeRetryBlockId, endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, leadSessionId, onMentionFileOpen, onOpenSession, sessionId])
 
-  // Under the last answer once its turn has closed: the sessions this one
-  // still waits for. A subagent's own session waits for nothing.
+  // The sessions this one still waits for, at the live end of the transcript,
+  // while the turn runs and after it closes. One slot after every turn, so
+  // the line is the same element throughout: the footer appears above it
+  // when the turn closes, and an open list stays open. A subagent's own
+  // session waits for nothing.
   const waitingLine = useMemo(() => (leadSessionId ? undefined : <WaitingForLine sessionId={sessionId} />), [leadSessionId, sessionId])
-  // It sits in the last answer's footer; when the transcript ends on
-  // something else (a report, a summary divider), under that instead. Not
-  // under a prompt just typed: its turn is about to open.
-  const waitingLineAfterTurns = !isTurnOpen && lastTurnItem !== undefined
-    && (lastTurnItem.kind === 'compaction' || (lastTurnItem.kind === 'user' && !isTypedPromptBlock(lastTurnItem.block)))
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   // A change key for auto-follow, not the content itself: the streamed fields
@@ -1401,7 +1425,7 @@ export function AgentView({
                fill={false}
                className="py-16 select-none"
                icon={<Seal size={16} className="text-(--color-text)" />}
-               title="What's on your mind?"
+               title="Ask anything"
              />
            )
          )}
@@ -1500,12 +1524,12 @@ export function AgentView({
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                       renderBlock={renderTurnBlock}
-                     afterFooter={isTrailingTurn ? waitingLine : undefined}
                    />
                  )
                 })}
 
-            {waitingLineAfterTurns && waitingLine}
+            {/* ``-mt-1`` keeps the footer's own gap (``space-y-2``) above it. */}
+            {waitingLine && <div className="-mt-1 empty:hidden">{waitingLine}</div>}
 
             {restoredQuotaWait && (
               <QuotaWaitNotice wait={restoredQuotaWait} sessionId={sessionId} persist={false} />

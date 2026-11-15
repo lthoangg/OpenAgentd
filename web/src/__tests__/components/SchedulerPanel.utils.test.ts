@@ -59,8 +59,15 @@ describe('formatScheduleLabel', () => {
     expect(formatScheduleLabel({ ...base, every_seconds: 3600 })).toBe('every 1 h')
   })
 
-  it('says "cron …" with the expression', () => {
-    expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: '0 9 * * 1-5' })).toBe('cron 0 9 * * 1-5')
+  it('says a cron schedule in words when it has a short description', () => {
+    expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: '0 9 * * *' })).toBe('every day at 09:00')
+    expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: '0 9 * * 1-5' })).toBe('weekdays at 09:00')
+    expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: '30 17 * * 5' })).toBe('Fri at 17:30')
+  })
+
+  it('keeps any other cron expression as the expression', () => {
+    expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: '0 9 1 6 *' })).toBe('cron 0 9 1 6 *')
+    expect(formatScheduleLabel({ ...base, schedule_type: 'cron', cron_expression: 'not cron' })).toBe('cron not cron')
   })
 
   it('says "once at" the date and time in the task timezone', () => {

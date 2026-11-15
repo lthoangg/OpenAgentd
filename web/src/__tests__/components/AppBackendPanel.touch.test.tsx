@@ -93,13 +93,14 @@ describe('Servers rows on touch', () => {
     expect(calls.some((call) => call.includes('4082'))).toBe(true)
   })
 
-  it('adds a server in a form inside the list, not a sheet', async () => {
+  it('adds a computer in a form inside the list, not a sheet, with one large Connect', async () => {
     render(<AppBackendPanel active />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Add a server' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a computer by address' }))
     const form = document.querySelector<HTMLElement>('[data-server-form="add"]')!
-    expect(within(form).getByLabelText('Server URL')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Address')).toBeInTheDocument()
     expect(form.closest('[data-bottom-sheet]')).toBeNull()
-    expect(within(form).getByRole('button', { name: 'Test' }).className).toContain('w-full')
+    expect(within(form).getAllByRole('button').map((button) => button.textContent)).toEqual(['Connect', 'Cancel'])
+    expect(within(form).getByRole('button', { name: 'Connect' }).className).toContain('w-full')
     fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }))
     expect(document.querySelector('[data-server-form]')).toBeNull()
   })
@@ -110,7 +111,7 @@ describe('Servers rows on touch', () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     const form = document.querySelector<HTMLElement>('[data-server-form="add"]')!
     expect(form).not.toBeNull()
-    expect(within(form).getByLabelText('Server URL')).toHaveValue('http://10.0.0.2:4082')
+    expect(within(form).getByLabelText('Address')).toHaveValue('http://10.0.0.2:4082')
     expect(document.querySelector('[data-bottom-sheet]')).toBeNull()
   })
 

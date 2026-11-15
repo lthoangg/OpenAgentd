@@ -93,17 +93,17 @@ function NotchStatusSection() {
       >
         <Switch id="island-enabled" checked={settings.enabled} onCheckedChange={(enabled) => change({ enabled })} />
       </PanelRow>
-      {NOTCH_OPTIONS.map((option) => (
+      {/* Its options show once it is on: a row that cannot be used takes no room. */}
+      {settings.enabled && NOTCH_OPTIONS.map((option) => (
         <PanelRow
           key={option.key}
           label={option.label}
           htmlFor={`island-${option.key}`}
-          description={settings.enabled ? option.description : 'Turn on Agent status to change this.'}
+          description={option.description}
         >
           <Switch
             id={`island-${option.key}`}
             checked={settings[option.key]}
-            disabled={!settings.enabled}
             onCheckedChange={(checked) => change({ [option.key]: checked })}
           />
         </PanelRow>

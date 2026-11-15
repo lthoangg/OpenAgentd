@@ -4,6 +4,7 @@
  * turn needs the folder, so the banner offers to open another folder or hide
  * the stale workspace from the sidebar.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -53,7 +54,7 @@ export function MissingFolderBanner({ workspace, onOpenFolder }: MissingFolderBa
       await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() })
       navigate({ to: '/', replace: true })
     } catch (err) {
-      pushToast({ tone: 'error', title: 'Could not hide the workspace', description: err instanceof Error ? err.message : undefined })
+      pushToast(failureToast("Couldn't hide the workspace", err))
     }
   }
 

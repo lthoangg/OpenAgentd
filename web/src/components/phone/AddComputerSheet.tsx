@@ -1,4 +1,8 @@
-/** The phone approves the computer it scanned, then shows its number (spec 4.3.1). */
+/**
+ * The phone approves the computer it scanned, then shows its number (spec
+ * 4.3.1). A default add is the device and **Add**: the roles it asked for
+ * and whether it may approve others are under **Options**.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { Roles } from '@/api/cloud'
@@ -8,6 +12,7 @@ import { INVITE_POLL_MS } from '@/components/account/InviteSheet'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Collapsible } from '@/components/ui/collapsible'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { usePhoneAddScanned, usePhoneScannedAdd } from '@/queries/phone-cloud'
 
@@ -17,6 +22,7 @@ export function AddComputerSheet({ link, onClose }: { link: string; onClose: () 
   const [candidate, setCandidate] = useState<InviteCandidate | null>(null)
   const [roles, setRoles] = useState<Roles | null>(null)
   const [approver, setApprover] = useState<boolean | null>(null)
+  const [options, setOptions] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
   const added = useRef(false)
@@ -123,11 +129,16 @@ export function AddComputerSheet({ link, onClose }: { link: string; onClose: () 
               {candidate && asked && chosen ? (
                 <>
                   <p className="font-mono text-sm text-(--color-text)">{deviceLabel(candidate)}</p>
-                  <RolesChoice value={chosen} allowed={asked} disabled={busy} onChange={setRoles} />
-                  <label className="flex items-center gap-2">
-                    <Checkbox checked={approver ?? Boolean(asked.client)} onCheckedChange={setApprover} disabled={busy} />
-                    Can approve other devices
-                  </label>
+                  <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={options} onClick={() => setOptions((open) => !open)}>
+                    Options
+                  </Button>
+                  <Collapsible open={options} innerClassName="space-y-3">
+                    <RolesChoice value={chosen} allowed={asked} disabled={busy} onChange={setRoles} />
+                    <label className="flex items-center gap-2">
+                      <Checkbox checked={approver ?? Boolean(asked.client)} onCheckedChange={setApprover} disabled={busy} />
+                      Can approve other devices
+                    </label>
+                  </Collapsible>
                 </>
               ) : !failure && <p role="status">Waiting for the computer…</p>}
             </>

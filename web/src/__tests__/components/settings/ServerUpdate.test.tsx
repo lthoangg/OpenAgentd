@@ -93,7 +93,7 @@ describe('ServerUpdate', () => {
     useServerUpdateStore.setState({ phase: { kind: 'failed', message: 'checksum mismatch', log: '/s/logs/upgrade.log' } })
     show()
     expect(screen.getByRole('alert').textContent).toContain('checksum mismatch Details: /s/logs/upgrade.log on the server.')
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('tells a server that cannot update itself what to do instead', () => {

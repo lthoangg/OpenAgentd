@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { act, render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AgentView } from "@/components/AgentView"
@@ -285,6 +285,36 @@ describe("AgentView — provider retry notice", () => {
   const notice = () => document.querySelector("[data-provider-retry]")
   const prompt: ContentBlock = { id: "u1", type: "user", content: "prompt" }
 
+  describe("with the Detail setting on Simple", () => {
+    beforeEach(() => { useDisplayPrefsStore.setState({ transcriptStyle: "reader" }) })
+    afterEach(() => { useDisplayPrefsStore.setState({ transcriptStyle: "detailed" }) })
+
+    it("says it in a sentence, with no model ID and no error code", () => {
+      render(<AgentView blocks={[prompt]} currentBlocks={[retrying({ max_attempts: 5, delay_seconds: 8, attempt: 2, error_type: "rate_limit", status_code: 429 })]} isWorking />)
+      expect(notice()?.textContent).toBe("The model is busy. Trying again in 8 seconds (2 of 5).")
+    })
+
+    it("leaves the count out while waiting for the network, which has no budget", () => {
+      render(<AgentView blocks={[prompt]} currentBlocks={[retrying({ max_attempts: null, delay_seconds: 90 })]} isWorking />)
+      expect(notice()?.textContent).toBe("The connection dropped. Trying again in 2 minutes.")
+    })
+
+    it("says when it stopped trying, and leaves the reason to the error card", () => {
+      const exhausted: ContentBlock = {
+        id: "x1", type: "provider_status", content: "",
+        extra: { type: "provider_status", status: "exhausted", model: "openai:gpt", max_attempts: 5, error_type: "HTTPStatusError", status_code: 503, message: null },
+      }
+      const error: ContentBlock = { id: "e1", type: "provider_status", content: "Provider returned 503", extra: { status: "error", title: "Provider Unavailable", message: "Provider returned 503", category: "provider" } }
+      render(<AgentView blocks={[prompt, exhausted, error]} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
+      expect(document.querySelector("[data-provider-exhausted]")?.textContent).toBe("Stopped trying after 5 attempts.")
+    })
+
+    it("says only that it is trying again when the wait is unknown", () => {
+      render(<AgentView blocks={[prompt]} currentBlocks={[retrying({ max_attempts: 5, delay_seconds: undefined })]} isWorking />)
+      expect(notice()?.textContent).toBe("The model is busy. Trying again (3 of 5).")
+    })
+  })
+
   it("goes away once the retried call answers", () => {
     const { rerender } = render(<AgentView blocks={[prompt]} currentBlocks={[retrying({ max_attempts: 5 })]} isWorking />)
     expect(notice()).toBeTruthy()
@@ -439,7 +469,7 @@ describe("AgentView — error card details and settings", () => {
     expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
   })
 
-  it("opens Settings → Providers from the error a turn ended with", () => {
+  it("opens Settings → Models from the error a turn ended with", () => {
     const openSettings = mock((..._args: unknown[]) => {})
     const original = useSettingsStore.getState().openSettings
     act(() => { useSettingsStore.setState({ openSettings }) })

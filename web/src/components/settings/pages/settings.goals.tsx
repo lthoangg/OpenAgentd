@@ -1,5 +1,5 @@
 /**
- * Settings → Goals — defaults for the goal an approved plan runs ("Keep going
+ * Settings → Sessions → Goals: defaults for the goal an approved plan runs ("Keep going
  * until done"): whether the plan review starts with Keep going ticked, how
  * many turns and tokens a goal may take (the review can change the turns for
  * one plan), and whether goal turns may ask the user questions. The
@@ -9,7 +9,7 @@
 import { useGoalSettingsQuery, useUpdateGoalSettingsMutation } from '@/queries/useGoalSettingsQuery'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { SettingsPage } from '@/components/settings/SettingsPage'
+import type { SettingsPart } from '@/components/settings/SettingsPartsPage'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
@@ -48,7 +48,7 @@ function budgetError(budget: number | null): string | null {
   return budget !== null && (!Number.isFinite(budget) || budget < 1) ? 'A whole number of tokens, or empty for no budget.' : null
 }
 
-export function GoalsSettingsPage() {
+export function useGoalsPart(): SettingsPart {
   const goalsQ = useGoalSettingsQuery()
   const updateGoals = useUpdateGoalSettingsMutation()
 
@@ -68,35 +68,25 @@ export function GoalsSettingsPage() {
   const tokenBudgetError = budgetError(budget)
   const defaultTurns = goalsQ.data?.default_max_turns ?? GOALS_DEFAULT.max_turns
 
-  return (
-    <SettingsPage
-      title="Goals"
-      description="The agent keeps working on an approved plan until it is done or a limit is reached."
-      draft={{ ...draft, canSave: draft.canSave && !maxTurnsError && !tokenBudgetError }}
-      saveBlockedReason={maxTurnsError ? 'Fix turns per goal to save.' : tokenBudgetError ? 'Fix the token budget to save.' : null}
-      loading={goalsQ.isLoading}
-      error={goalsQ.error}
-    >
-      <PanelSection title="When you approve a plan" flush>
-        <PanelRow
-          label="Keep going after approval by default"
-          htmlFor="goals-keep-going-default"
-          description="Starts the plan review with Keep going until done ticked. You can still untick it, or change the turns, for one plan."
-        >
+  return {
+    draft: { ...draft, canSave: draft.canSave && !maxTurnsError && !tokenBudgetError },
+    saveBlockedReason: maxTurnsError ? 'Fix turns per goal to save.' : tokenBudgetError ? 'Fix the token budget to save.' : null,
+    loading: goalsQ.isLoading,
+    error: goalsQ.error,
+    body: (
+      <PanelSection key="goals" title="Goals" flush>
+        <PanelRow label="Keep going after approval" htmlFor="goals-keep-going-default" description="Starts each plan review with it ticked.">
           <Switch
             id="goals-keep-going-default"
             checked={draft.value.keep_going_default}
             onCheckedChange={(checked) => draft.patch({ keep_going_default: checked })}
           />
         </PanelRow>
-      </PanelSection>
-
-      <PanelSection title="Limits" flush>
         <PanelRow
           label="Turns per goal"
           htmlFor="goals-max-turns"
           inline
-          description={`A turn is one full agent reply, often with many tool calls. The goal pauses when it runs out; Resume grants another batch. Default ${defaultTurns}. The plan review starts with this number.`}
+          description={`A turn is one full reply. The goal pauses when they run out. Default ${defaultTurns}.`}
           error={maxTurnsError}
         >
           <Input
@@ -115,7 +105,7 @@ export function GoalsSettingsPage() {
           label="Token budget per goal"
           htmlFor="goals-token-budget"
           inline
-          description={`Example: 2,000,000. Counts input (not cached) and output tokens across the goal. The goal pauses at the budget; Resume grants another. Applies to new goals.${budget !== null && !tokenBudgetError ? ` Now ≈ ${formatGoalTokens(budget)} tokens.` : ''}`}
+          description={`The goal pauses at the budget.${budget !== null && !tokenBudgetError ? ` Now ≈ ${formatGoalTokens(budget)} tokens.` : ''}`}
           error={tokenBudgetError}
         >
           <Input
@@ -131,13 +121,10 @@ export function GoalsSettingsPage() {
           />
           <span className="text-xs text-(--color-text-2)">tokens</span>
         </PanelRow>
-      </PanelSection>
-
-      <PanelSection title="While a goal runs" flush>
         <PanelRow
           label="Allow questions during goals"
           htmlFor="goals-allow-questions"
-          description="Off: goal turns run unattended, and the agent decides on its own and notes each choice. On: it may stop to ask, and the goal waits for your answer."
+          description="Off: the agent decides alone and notes each choice."
         >
           <Switch
             id="goals-allow-questions"
@@ -146,6 +133,6 @@ export function GoalsSettingsPage() {
           />
         </PanelRow>
       </PanelSection>
-    </SettingsPage>
-  )
+    ),
+  }
 }

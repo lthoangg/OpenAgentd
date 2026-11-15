@@ -1,5 +1,9 @@
 /**
- * McpServerForm — controlled form for an MCP server configuration.
+ * McpServerForm — controlled form for a connector (an MCP server).
+ *
+ * It first asks how the connector is reached, a web address or a program on
+ * this computer, and shows only that half's fields; what few connectors change
+ * (status, timeout, headers, app credentials, protocol) sits under Options.
  *
  * Mirrors the AgentForm shape:
  *   - the form is a pure controlled view of `value`; on every edit it
@@ -20,6 +24,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
+import { Switch } from '@/components/ui/switch'
+import { TEXT } from '@/components/ui/panel-tokens'
+import { cn } from '@/lib/utils'
 import { MAX_MCP_TIMEOUT_S, type KeyValuePair, type McpServerDraft } from './McpServerDraft'
 
 interface McpServerFormProps {
@@ -29,7 +36,7 @@ interface McpServerFormProps {
   isNew?: boolean
   /** Disable every interactive control (mid-save). */
   disabled?: boolean
-  /** Field-level errors keyed by `name | command | url | env | headers`. */
+  /** Field-level errors keyed by `name | command | url | env | headers | timeout`. */
   errors?: Record<string, string> | null
 }
 
@@ -54,98 +61,107 @@ export function McpServerForm({
     form.reset(next)
     onChange(next)
   }
+  const viaAddress = value.transport !== 'stdio'
+  const nameField = (
+    <Field
+      label="Name"
+      required
+      htmlFor="mcp-name"
+      error={errors?.name}
+      errorId="mcp-name-error"
+      hint={
+        !isNew
+          ? 'Saved in mcp.json under this name. It cannot be renamed.'
+          : 'What agents call it. Letters, digits, _ or -, starting with a letter.'
+      }
+    >
+      <Input
+        id="mcp-name"
+        value={value.name}
+        onChange={(e) => set({ name: e.target.value })}
+        disabled={disabled || !isNew}
+        placeholder={viaAddress ? 'Filled in from the address' : 'filesystem'}
+        aria-invalid={!!errors?.name || undefined}
+        aria-describedby={errors?.name ? 'mcp-name-error' : undefined}
+        className="min-h-9 font-mono"
+      />
+    </Field>
+  )
+
   return (
     <div className="flex flex-col gap-8">
-      {/* Identity ─────────────────────────────────────────────────── */}
-      <PanelSection title="Identity" description="How agents and the runtime address this server.">
-        <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-          <Field
-            label="Name"
-            required
-            error={errors?.name}
-            errorId="mcp-name-error"
-            hint={
-              !isNew
-                ? 'Persisted key in mcp.json; cannot be renamed.'
-                : 'Letters, digits, _ or -; must start with a letter.'
-            }
-          >
-            <Input
-              value={value.name}
-              onChange={(e) => set({ name: e.target.value })}
-              disabled={disabled || !isNew}
-              placeholder="filesystem"
-              aria-invalid={!!errors?.name || undefined}
-              aria-describedby={errors?.name ? 'mcp-name-error' : undefined}
-              className="min-h-9 font-mono"
-            />
-          </Field>
-
-          <Field
-            label="Status"
-            hint={value.enabled ? 'Starts with OpenAgentd.' : 'Stays stopped; agents cannot use its tools.'}
-          >
-            <EnabledToggle
-              value={value.enabled}
-              onChange={(enabled) => set({ enabled })}
-              disabled={disabled}
-            />
-          </Field>
-
-          <Field
-            label="Tool timeout (seconds)"
-            error={errors?.timeout}
-            errorId="mcp-timeout-error"
-            hint={`How long a tool call may run before it is cancelled, 1 to ${MAX_MCP_TIMEOUT_S}. Leave empty for 210.`}
-          >
-            <Input
-              value={value.timeoutText}
-              onChange={(e) => set({ timeoutText: e.target.value })}
-              disabled={disabled}
-              inputMode="numeric"
-              placeholder="210"
-              aria-label="Tool timeout in seconds"
-              aria-invalid={!!errors?.timeout || undefined}
-              aria-describedby={errors?.timeout ? 'mcp-timeout-error' : undefined}
-              className="min-h-9 font-mono"
-            />
-          </Field>
-        </div>
-      </PanelSection>
-
-      {/* Transport + connection fields — merged into one section ── */}
-      <PanelSection
-        title="Transport"
-        description={
-          value.transport === 'stdio'
-            ? 'Runs a local process and talks to it over stdin and stdout.'
-            : value.transport === 'sse'
-              ? 'Connects to a URL (HTTP + SSE, the legacy transport).'
-              : 'Connects to a URL (Streamable HTTP).'
-        }
-      >
+      {/* The first question, then only that half's fields ───────────── */}
+      <PanelSection title="How does it connect?">
         <div className="flex flex-col gap-5">
-          {/* Transport picker always at the top */}
-          <TransportToggle
-            value={value.transport}
-            onChange={(transport) => set({ transport })}
+          <SegmentedControl
+            label="How does it connect?"
+            value={viaAddress ? 'address' : 'program'}
+            onChange={(how) => {
+              if ((how === 'address') !== viaAddress) set({ transport: how === 'address' ? 'http' : 'stdio' })
+            }}
+            options={[
+              { value: 'address', label: 'A web address' },
+              // The last words leave a narrow screen, where both answers would not fit.
+              { value: 'program', label: <>A program<span className="max-sm:hidden"> on this computer</span></> },
+            ]}
             disabled={disabled}
+            fill
           />
 
-          {/* Divider between picker and transport-specific fields */}
-          <div className="border-t border-(--color-border)" />
+          {viaAddress ? (
+            <>
+              <Field
+                label="Address"
+                required
+                htmlFor="mcp-url"
+                error={errors?.url}
+                errorId="mcp-url-error"
+                hint="From the tool's own setup page (Notion, Slack, GitHub and others publish one)."
+              >
+                <Input
+                  id="mcp-url"
+                  value={value.url}
+                  onChange={(e) => set({ url: e.target.value })}
+                  disabled={disabled}
+                  placeholder="https://mcp.example.com/v1"
+                  aria-invalid={!!errors?.url || undefined}
+                  aria-describedby={errors?.url ? 'mcp-url-error' : undefined}
+                  className="min-h-9 font-mono"
+                />
+              </Field>
 
-          {/* ── Stdio fields ── */}
-          {value.transport === 'stdio' && (
+              {nameField}
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p id="mcp-oauth-label" className={TEXT.label}>Needs sign-in</p>
+                  <p className={cn('mt-1', TEXT.hint)}>
+                    {value.oauthEnabled
+                      ? 'Most hosted tools do. You sign in once it is saved.'
+                      : 'For tools that need no sign-in, or that take a key under Headers.'}
+                  </p>
+                  {errors?.oauth && <p className="mt-1 text-meta text-(--color-error)">{errors.oauth}</p>}
+                </div>
+                <Switch
+                  aria-labelledby="mcp-oauth-label"
+                  checked={value.oauthEnabled}
+                  onCheckedChange={(oauthEnabled) => set({ oauthEnabled })}
+                  disabled={disabled}
+                />
+              </div>
+            </>
+          ) : (
             <>
               <Field
                 label="Command"
                 required
+                htmlFor="mcp-command"
                 error={errors?.command}
                 errorId="mcp-command-error"
                 hint="A program on your PATH, or an absolute path."
               >
                 <Input
+                  id="mcp-command"
                   value={value.command}
                   onChange={(e) => set({ command: e.target.value })}
                   disabled={disabled}
@@ -156,8 +172,9 @@ export function McpServerForm({
                 />
               </Field>
 
-              <Field label="Arguments" hint="One per line, in order.">
+              <Field label="Arguments" htmlFor="mcp-args" hint="One per line, in order.">
                 <Textarea
+                  id="mcp-args"
                   value={value.argsText}
                   onChange={(e) => set({ argsText: e.target.value })}
                   disabled={disabled}
@@ -178,30 +195,51 @@ export function McpServerForm({
                 onChange={(envPairs) => set({ envPairs })}
                 disabled={disabled}
               />
+
+              {nameField}
             </>
           )}
+        </div>
+      </PanelSection>
 
-          {/* ── HTTP and SSE fields (the same for both) ── */}
-          {value.transport !== 'stdio' && (
+      {/* What most connectors never change ─────────────────────────── */}
+      <PanelSection title="Options">
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
+            <Field
+              label="Status"
+              hint={value.enabled ? 'Starts with OpenAgentd.' : 'Stays stopped; agents cannot use its tools.'}
+            >
+              <EnabledToggle
+                value={value.enabled}
+                onChange={(enabled) => set({ enabled })}
+                disabled={disabled}
+              />
+            </Field>
+
+            <Field
+              label="Tool timeout (seconds)"
+              htmlFor="mcp-timeout"
+              error={errors?.timeout}
+              errorId="mcp-timeout-error"
+              hint={`How long a tool call may run before it is cancelled, 1 to ${MAX_MCP_TIMEOUT_S}. Leave empty for 210.`}
+            >
+              <Input
+                id="mcp-timeout"
+                value={value.timeoutText}
+                onChange={(e) => set({ timeoutText: e.target.value })}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="210"
+                aria-invalid={!!errors?.timeout || undefined}
+                aria-describedby={errors?.timeout ? 'mcp-timeout-error' : undefined}
+                className="min-h-9 font-mono"
+              />
+            </Field>
+          </div>
+
+          {viaAddress && (
             <>
-              <Field
-                label="URL"
-                required
-                error={errors?.url}
-                errorId="mcp-url-error"
-                hint="The full address, including https://"
-              >
-                <Input
-                  value={value.url}
-                  onChange={(e) => set({ url: e.target.value })}
-                  disabled={disabled}
-                  placeholder="https://mcp.example.com/v1"
-                  aria-invalid={!!errors?.url || undefined}
-                  aria-describedby={errors?.url ? 'mcp-url-error' : undefined}
-                  className="min-h-9 font-mono"
-                />
-              </Field>
-
               <PairListField
                 label="Headers"
                 keyPlaceholder="Header-Name"
@@ -213,53 +251,56 @@ export function McpServerForm({
                 disabled={disabled}
               />
 
-              <Field
-                label="Sign-in"
-                error={errors?.oauth}
-                hint={
-                  value.oauthEnabled
-                    ? 'Optional app credentials. They are stored apart from mcp.json, in credentials.yaml.'
-                    : 'Turn on for hosted servers, such as Slack or Notion, that ask you to sign in.'
-                }
-              >
-                <EnabledToggle
-                  value={value.oauthEnabled}
-                  onChange={(oauthEnabled) => set({ oauthEnabled })}
-                  disabled={disabled}
-                  enabledLabel="OAuth"
-                  disabledLabel="None"
-                  label="Sign-in method"
-                />
-              </Field>
-
-              {value.oauthEnabled && (
-                <div className="rounded-xs border border-dashed border-(--color-border) px-3 py-2.5 text-xs text-(--color-text-muted)">
-                  Client credentials are optional. Leave them blank to let the server register this OAuth client.
-                </div>
-              )}
-
               {value.oauthEnabled && (
                 <div className="grid gap-x-4 gap-y-5 md:grid-cols-2">
-                  <Field label="Client ID" hint="Paste the OAuth app client ID.">
+                  <Field
+                    label="Client ID"
+                    htmlFor="mcp-client-id"
+                    hint="Only if the tool gave you app credentials. Leave empty to let it register this app."
+                  >
                     <Input
+                      id="mcp-client-id"
                       value={value.oauthClientIdEnv}
                       onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
                       disabled={disabled}
-                      placeholder="client id"
                       className="min-h-9 font-mono"
                     />
                   </Field>
-                  <Field label="Client secret" hint="Paste the OAuth app client secret.">
+                  <Field
+                    label="Client secret"
+                    htmlFor="mcp-client-secret"
+                    hint="Stored apart from mcp.json, in credentials.yaml."
+                  >
                     <Input
+                      id="mcp-client-secret"
                       value={value.oauthClientSecretEnv}
                       onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
                       disabled={disabled}
-                      placeholder="client secret"
                       className="min-h-9 font-mono"
                     />
                   </Field>
                 </div>
               )}
+
+              <Field
+                label="Protocol"
+                hint={
+                  value.transport === 'sse'
+                    ? 'Uses only the older SSE protocol.'
+                    : 'Tries the current protocol first, then the older SSE one.'
+                }
+              >
+                <SegmentedControl
+                  label="Protocol"
+                  value={value.transport === 'sse' ? 'sse' : 'http'}
+                  onChange={(transport) => set({ transport })}
+                  options={[
+                    { value: 'http', label: 'Automatic' },
+                    { value: 'sse', label: 'SSE only' },
+                  ]}
+                  disabled={disabled}
+                />
+              </Field>
             </>
           )}
         </div>
@@ -270,61 +311,26 @@ export function McpServerForm({
 
 // ── Enabled toggle ──────────────────────────────────────────────────────────
 
-/**
- * Two-button segmented toggle. We don't have a shadcn Switch in the
- * codebase, and a styled native checkbox feels out of place next to the
- * Tabs/Card aesthetic — the segmented control matches it.
- */
+/** On / Off as two segments: it is saved with the form, so it is not a switch. */
 function EnabledToggle({
   value,
   onChange,
   disabled,
-  enabledLabel = 'On',
-  disabledLabel = 'Off',
-  label = 'Server status',
 }: {
-  label?: string
   value: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
-  enabledLabel?: string
-  disabledLabel?: string
 }) {
   return (
     <SegmentedControl
-      label={label}
+      label="Connector status"
       value={value ? 'enabled' : 'disabled'}
       onChange={(v) => onChange(v === 'enabled')}
       options={[
-        { value: 'enabled', label: enabledLabel },
-        { value: 'disabled', label: disabledLabel },
+        { value: 'enabled', label: 'On' },
+        { value: 'disabled', label: 'Off' },
       ]}
       disabled={disabled}
-    />
-  )
-}
-
-function TransportToggle({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: McpServerDraft['transport']
-  onChange: (next: McpServerDraft['transport']) => void
-  disabled?: boolean
-}) {
-  return (
-    <SegmentedControl
-      label="MCP transport"
-      value={value}
-      onChange={onChange}
-      options={[
-        { value: 'stdio', label: 'stdio', tooltip: 'Runs a local process' },
-        { value: 'http', label: 'HTTP', tooltip: 'Connects to a URL' },
-        { value: 'sse', label: 'SSE (legacy)', tooltip: 'HTTP + SSE, the older transport' },
-      ]}
-      disabled={disabled}
-      fill
     />
   )
 }

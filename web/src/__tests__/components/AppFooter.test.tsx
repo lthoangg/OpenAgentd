@@ -5,10 +5,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
 import { HealthDot } from '@/components/HealthDot'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTerminalStore, _resetTerminalStoreForTests, type TerminalSessionMeta } from '@/stores/useTerminalStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import { queryKeys } from '@/queries/keys'
+import { queryClient as appQueryClient } from '@/lib/query-client'
+import { useConnectPhoneStore } from '@/lib/connect-phone'
 
 const navigate = mock(() => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
@@ -89,18 +92,18 @@ describe('AppFooter', () => {
   it('names the connected backend even when it is the healthy bundled one', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByLabelText('Status bar')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Connected\. Change server/ }).textContent).toBe('built-in')
+    expect(screen.getByRole('button', { name: /Connected\. Change computer/ }).textContent).toBe('This computer')
   })
 
   it('shows the backend indicator for an external server', () => {
     backendExternal = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Connected\. Change server/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Connected\. Change computer/ })).toBeTruthy()
   })
 
   it('names the server in the label when the dot has no visible name (phone drawer)', () => {
     renderWithQueryClient(<HealthDot />)
-    const dot = screen.getByRole('button', { name: 'Built-in server. Connected. Change server' })
+    const dot = screen.getByRole('button', { name: 'This computer. Connected. Change computer' })
     expect(dot.textContent).toBe('')
   })
 
@@ -115,14 +118,14 @@ describe('AppFooter', () => {
   it('shows the backend indicator when the backend is unhealthy', () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Server not reachable\. Change server/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Can't reach\. Change computer/ })).toBeTruthy()
   })
 
   // Desktop mockup 12.1: the dot alone was the only sign, and easy to miss.
   it("says Can't reach beside the server's name while it does not answer", () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('button', { name: /Server not reachable/ }).textContent).toBe("built-inCan't reach")
+    expect(screen.getByRole('button', { name: /Can't reach\. Change computer/ }).textContent).toBe("This computerCan't reach")
   })
 
   it('adds no word while the server answers', () => {
@@ -152,14 +155,14 @@ describe('AppFooter', () => {
     expect(screen.queryByText(/^\*/)).toBeNull()
   })
 
-  it('names the branch action "Open Git" with its shortcut, in the muted tone', async () => {
+  it('names the branch action "Open Changes" with its shortcut, in the muted tone', async () => {
     renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
     const branch = await screen.findByRole('button', { name: /^Git branch main/ })
 
     fireEvent.mouseEnter(branch.parentElement!)
     const tooltip = await screen.findByRole('tooltip')
-    const action = within(tooltip).getByText(/^Open Git \(.+\)$/)
-    expect(action.textContent).toMatch(/^Open Git \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
+    const action = within(tooltip).getByText(/^Open Changes \(.+\)$/)
+    expect(action.textContent).toMatch(/^Open Changes \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
     expect(action.className).toContain('text-(--color-text-muted)')
   })
 
@@ -251,6 +254,19 @@ describe('AppFooter', () => {
   it('leaves the spend out until the summary loads', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
+  })
+
+  it('shows no spend figure with the Detail setting on Simple', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      renderWithQueryClient(<AppFooter />, 1.234)
+      expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
+      expect(screen.queryByText(/24h/)).toBeNull()
+      // The rest of the bar is as in Full.
+      expect(screen.getByLabelText('Settings')).toBeTruthy()
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
   })
 })
 
@@ -441,6 +457,20 @@ describe('AppFooter spend refresh', () => {
     await waitFor(() => expect(spendRequests()).toBe(1))
   })
 
+  it('fetches no spend with the Detail setting on Simple, where none is shown', async () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    try {
+      const { client } = mount([{ running: true }], { seedSpend: false })
+      expect(spendRequests()).toBe(0)
+      // Nor when the last running turn ends, which refreshes it in Full.
+      act(() => { client.setQueryData(queryKeys.session.sessions.active(), activePage([{ running: false }])) })
+      await act(async () => { await Promise.resolve() })
+      expect(spendRequests()).toBe(0)
+    } finally {
+      useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+    }
+  })
+
   it('fetches no spend while the footer is hidden on a narrow window', () => {
     window.matchMedia = ((query: string) => ({
       matches: false, media: query, onchange: null,
@@ -448,5 +478,94 @@ describe('AppFooter spend refresh', () => {
     })) as unknown as typeof window.matchMedia
     mount([{ running: true }], { seedSpend: false })
     expect(spendRequests()).toBe(0)
+  })
+})
+
+/** Connect your phone: one click from the desktop's status bar to the QR code. */
+describe('AppFooter Connect your phone', () => {
+  const realPlatform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
+  const realFetch = globalThis.fetch
+  let cloudState: Record<string, unknown> = { state: 'guest', notice: null }
+  let cloudCalls: string[] = []
+
+  /** The desktop app on a Mac: account calls go through the shell to the built-in server. */
+  function inDesktopApp() {
+    ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (command: string, args: Record<string, unknown>) => {
+        if (command !== 'desktop_cloud_call') throw new Error(`unexpected command: ${command}`)
+        cloudCalls.push(`${String(args.method)} ${String(args.path)}`)
+        return { status: 200, body: JSON.stringify(cloudState) }
+      },
+      transformCallback: () => 0,
+    }
+    Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
+  }
+  const button = () => screen.queryByRole('button', { name: 'Connect your phone' })
+
+  beforeEach(() => {
+    cloudState = { state: 'guest', notice: null }
+    cloudCalls = []
+    backendExternal = false
+    mockOpenSettings.mockClear()
+    useConnectPhoneStore.setState({ requested: 0, handled: 0 })
+    globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
+  })
+  afterEach(() => {
+    cleanup()
+    appQueryClient.clear()
+    globalThis.fetch = realFetch
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    if (realPlatform) Object.defineProperty(window.navigator, 'platform', realPlatform)
+    else delete (window.navigator as unknown as Record<string, unknown>).platform
+  })
+
+  it('is offered to a desktop on its own server that is not in an account', async () => {
+    inDesktopApp()
+    renderWithQueryClient(<AppFooter />)
+    expect(await screen.findByRole('button', { name: 'Connect your phone' })).toBeTruthy()
+  })
+
+  it('opens Account and asks it to sign in, without signing in itself', async () => {
+    inDesktopApp()
+    renderWithQueryClient(<AppFooter />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect your phone' }))
+
+    expect(mockOpenSettings).toHaveBeenCalledWith('account')
+    expect(useConnectPhoneStore.getState().requested).toBe(1)
+    expect(cloudCalls).not.toContain('POST /login')
+  })
+
+  it('returns to a sign-in under way without starting another', async () => {
+    inDesktopApp()
+    cloudState = { state: 'signing_in', user_code: 'BCDF-GHJK', url: 'https://a.example/device', fingerprint: 'f', expires_in: 600 }
+    renderWithQueryClient(<AppFooter />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect your phone' }))
+
+    expect(mockOpenSettings).toHaveBeenCalledWith('account')
+    expect(useConnectPhoneStore.getState().requested).toBe(0)
+  })
+
+  it('goes away once this computer is in an account', async () => {
+    inDesktopApp()
+    cloudState = { state: 'connected', fingerprint: 'f', signer: true, relay: { state: 'online' }, sessions: 0 }
+    renderWithQueryClient(<AppFooter />)
+    await waitFor(() => expect(cloudCalls).toContain('GET /status'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(button()).toBeNull()
+  })
+
+  it('is not offered while the window is on another server', async () => {
+    inDesktopApp()
+    backendExternal = true
+    renderWithQueryClient(<AppFooter />)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(button()).toBeNull()
+    expect(cloudCalls).toEqual([])
+  })
+
+  it('is not offered outside the desktop app', async () => {
+    renderWithQueryClient(<AppFooter />)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(button()).toBeNull()
   })
 })

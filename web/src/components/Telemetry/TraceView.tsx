@@ -80,8 +80,8 @@ export function TraceView({
         <p className="text-sm font-medium text-(--color-text)">Trace not found</p>
         <p className="max-w-[48ch] text-xs text-(--color-text-muted)">
           {days < 90
-            ? `It isn't in the last ${days === 1 ? '24 hours' : `${days} days`}. It may be older, or already removed by Settings → Retention.`
-            : 'It may have been removed by Settings → Retention.'}
+            ? `It isn't in the last ${days === 1 ? '24 hours' : `${days} days`}. It may be older, or already removed by Settings → Sessions.`
+            : 'It may have been removed by Settings → Sessions.'}
         </p>
         {days < 90 && (
           <button type="button" onClick={() => setDays(90)} className={ACTION_CLASS}>

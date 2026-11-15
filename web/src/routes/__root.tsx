@@ -26,6 +26,7 @@ import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardSho
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
+import { DetailSeed } from '@/hooks/use-seed-detail'
 import { isMobileApp } from '@/lib/mobile-app'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { AiDataConsent } from '@/components/AiDataConsent'
@@ -163,6 +164,7 @@ export function Root() {
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
       <NeedsYouBadgeSync />
+      <DetailSeed />
       {isMobileApp() && (
         <Suspense fallback={null}>
           <WidgetSnapshotSync />

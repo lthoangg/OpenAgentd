@@ -3,11 +3,15 @@
  *
  * Shown while no message could run (see `lib/model-readiness.ts`). Three
  * ways in: **Use <provider>** for one that already works (a saved key, a key
- * exported in the environment, a running Ollama), paste a key for one of the
- * quick picks and **Connect** (check → save; the server then gives agents
- * with no model the provider's suggested one), or sign in with a
- * subscription. Every other provider stays one click away in Settings →
- * Providers.
+ * exported in the environment, a running Ollama), sign in with a
+ * subscription, or paste a key for one of the quick picks and **Connect**
+ * (check → save; the server then gives agents with no model the provider's
+ * suggested one). The sign-ins lead: someone with a ChatGPT or Copilot
+ * subscription has no key. Every other one stays a click away in Settings →
+ * Models.
+ *
+ * The card is the first thing a newcomer reads, so it says "model", never
+ * "provider"; each group is named once instead of a tag on every tile.
  */
 import { useMemo, useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -84,7 +88,7 @@ export function ModelSetupCard({
     push({
       tone: 'success',
       title: `${shortLabel(provider)} connected`,
-      description: model ? `Your agents use ${model}. Change it with the run chip under the message box.` : 'Your agents are ready.',
+      description: model ? `Replies use ${model}. Change it with the model button under the message box.` : 'You can send a message now.',
     })
   }
 
@@ -138,8 +142,40 @@ export function ModelSetupCard({
   const subtitle = needsProvider
     ? `Your agent uses ${currentModel ?? 'a model'}, but ${needsProvider.label} is not connected.`
     : detected.length > 0
-      ? 'You can use one of these right away, or connect another provider.'
-      : 'Pick where your model comes from. You can add more later.'
+      ? 'You can use one of these right away, or connect another.'
+      : 'You can add more later.'
+  const signIns = picks.filter((provider) => provider.kind === 'oauth')
+  const keys = picks.filter((provider) => provider.kind !== 'oauth')
+  const tile = (provider: ProviderInfo) => {
+    const active = selectedId === provider.id
+    return (
+      <button
+        key={provider.id}
+        type="button"
+        aria-pressed={provider.kind === 'oauth' ? undefined : active}
+        onClick={() => handlePick(provider)}
+        disabled={pending !== null}
+        className={cn(
+          'flex h-9 min-w-0 items-center rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
+          active
+            ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
+            : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)',
+        )}
+      >
+        <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(provider)}</span>
+      </button>
+    )
+  }
+  /** One named group of tiles; one column under 360px, so a long name is not clipped. */
+  const group = (label: string, items: ProviderInfo[]) => items.length > 0 && (
+    <div className="mt-3">
+      <p className="mb-1.5 text-meta font-medium text-(--color-text-muted)">{label}</p>
+      <div className="grid grid-cols-1 gap-1.5 min-[360px]:grid-cols-2" role="group" aria-label={label}>
+        {items.map(tile)}
+      </div>
+    </div>
+  )
 
   return (
     <section
@@ -163,7 +199,7 @@ export function ModelSetupCard({
                 <CheckCircle2 size={14} className="shrink-0 text-(--accent-green-text)" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-(--accent-green-text)">{text.title}</p>
-                  <p className="truncate text-meta text-(--color-text-2)">{text.detail}</p>
+                  <p className="text-meta text-(--color-text-2)">{text.detail}</p>
                 </div>
                 <Button
                   size="sm"
@@ -180,35 +216,8 @@ export function ModelSetupCard({
         </ul>
       )}
 
-      {/* One column under 360px, so "OpenRouter  API key" is not clipped. */}
-      {!needsProvider && picks.length > 0 && (
-        <div className="mt-3 grid grid-cols-1 gap-1.5 min-[360px]:grid-cols-2" role="group" aria-label="Providers">
-          {picks.map((provider) => {
-            const active = selectedId === provider.id
-            return (
-              <button
-                key={provider.id}
-                type="button"
-                aria-pressed={provider.kind === 'oauth' ? undefined : active}
-                onClick={() => handlePick(provider)}
-                disabled={pending !== null}
-                className={cn(
-                  'flex h-9 min-w-0 items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) disabled:opacity-50',
-                  active
-                    ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
-                    : 'bg-(--bg-key) text-(--color-text) hover:bg-(--color-fill-key-hover)',
-                )}
-              >
-                <span className="min-w-0 flex-1 truncate font-medium">{shortLabel(provider)}</span>
-                <span className={cn('shrink-0 text-meta', active ? 'text-(--color-text-on-selected)' : 'text-(--color-text-muted)')}>
-                  {provider.kind === 'oauth' ? 'Sign in' : 'API key'}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {!needsProvider && group('Sign in with a subscription you have', signIns)}
+      {!needsProvider && group(signIns.length > 0 ? 'Or paste an API key' : 'Paste an API key', keys)}
 
       {selected && selected.kind === 'api_key' && (
         <form onSubmit={(event) => { void handleConnect(event) }} className="mt-2 rounded-sm bg-(--bg-page) p-2.5">
@@ -275,13 +284,13 @@ export function ModelSetupCard({
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-meta text-(--color-text-muted)">
         <span>
           {needsProvider
-            ? 'Or use a different provider in Settings → Providers.'
+            ? 'Or use a different model in Settings → Models.'
             : localRunning
-              ? 'Every other provider is in Settings → Providers.'
-              : 'Running models locally? Start Ollama and it shows up here. Other providers are in Settings → Providers.'}
+              ? 'The rest are in Settings → Models.'
+              : 'A model running on this computer (Ollama) shows up here on its own.'}
         </span>
         <Button type="button" variant="link" size="xs" onClick={onOpenProviders}>
-          Open Providers
+          More models
         </Button>
       </div>
 

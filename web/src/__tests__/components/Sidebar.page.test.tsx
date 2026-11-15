@@ -97,7 +97,7 @@ mock.module('@/components/ThemeToggle', () => ({
 }))
 mock.module('@/components/HealthDot', () => ({
   HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
-    <button type="button" aria-label="Connected. Change server">{labeled ? 'backend-name' : null}</button>
+    <button type="button" aria-label="Connected. Change computer">{labeled ? 'backend-name' : null}</button>
   ),
 }))
 // The dialogs and the sheet belong to other primitives; keep them plain so
@@ -146,6 +146,13 @@ mock.module('@/queries/useSessionsQuery', () => ({
 
 const originalFetch = globalThis.fetch
 
+const SCHEDULED_TASK = {
+  id: 'weekly', slug: 'weekly', name: 'Weekly report', workspace: '/repo/project', schedule_type: 'every', at_datetime: null, every_seconds: 3600,
+  cron_expression: null, timezone: 'UTC', prompt: 'p', session_id: null, max_runs: null, enabled: false,
+  status: 'paused', run_count: 0, last_run_at: null, last_error: null, next_fire_at: null,
+  created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+}
+
 beforeEach(() => {
   isMobile = true
   workspaceSessionsData = [session('s-1', 'Fix login redirect loop')]
@@ -166,6 +173,8 @@ beforeEach(() => {
         groups: [],
       }))
     }
+    // One task, so the drawer has its Scheduled section (none: no section).
+    if (String(input).includes('/api/scheduler/tasks')) return new Response(JSON.stringify({ tasks: [SCHEDULED_TASK] }))
     return new Response(null, { status: 404 })
   }) as typeof fetch
 })
@@ -318,7 +327,7 @@ describe('Sidebar page mode: the Sessions screen', () => {
     const { view } = await renderPage()
     const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement
 
-    expect(within(bar).getByRole('button', { name: /Change server$/ }).textContent).toBe('backend-name')
+    expect(within(bar).getByRole('button', { name: /Change computer$/ }).textContent).toBe('backend-name')
     expect(bar.hasAttribute('data-title-visible')).toBe(false)
     const small = within(bar).getByText('Sessions')
     expect(small.className).toContain('text-base')
@@ -334,21 +343,21 @@ describe('Sidebar page mode: the Sessions screen', () => {
     expect(bar.hasAttribute('data-title-visible')).toBe(false)
   })
 
-  it('goes down to Servers from ‹ Servers, naming the server under the large title', async () => {
+  it('goes down to Computers from ‹ Computers, naming the computer under the large title', async () => {
     const onOpenServers = mock(() => {})
     const { view } = await renderPage({ onOpenServers })
     const bar = view.container.querySelector('[data-sessions-page-bar]') as HTMLElement
 
-    // ‹ Servers takes the server chip's place.
-    expect(within(bar).queryByRole('button', { name: /Change server$/ })).toBeNull()
-    fireEvent.click(within(bar).getByRole('button', { name: 'Back to Servers' }))
+    // ‹ Computers takes the chip's place.
+    expect(within(bar).queryByRole('button', { name: /Change computer$/ })).toBeNull()
+    fireEvent.click(within(bar).getByRole('button', { name: 'Back to Computers' }))
     expect(onOpenServers).toHaveBeenCalledTimes(1)
 
-    // The server stays in sight under the title, and goes to Servers too.
+    // The server stays in sight under the title, and goes to Computers too.
     const line = view.container.querySelector('[data-sessions-server]') as HTMLElement
     expect(line.closest('[data-sessions-page-header]')).not.toBeNull()
     expect(line.textContent).toContain('·')
-    // In a browser (no app shell status) it is "This server", the Servers screen's name.
+    // In a browser (no app shell status) it is "This server", the Computers screen's name.
     await waitFor(() => expect(line.textContent).toContain('This server'))
     fireEvent.click(line)
     expect(onOpenServers).toHaveBeenCalledTimes(2)
@@ -568,24 +577,18 @@ describe('Sidebar page mode: swipe actions', () => {
     expect((setSessionPinnedMutate.mock.calls[0] as unknown as [{ id: string; pinned: boolean }])[0]).toEqual({ id: 's-1', pinned: true })
   })
 
-  it('opens the delete confirmation instead of deleting', async () => {
+  it('deletes from the swipe action with no dialog, leaving a toast with Undo', async () => {
+    useToastStore.setState({ toasts: [] })
     await renderPage()
     const swipeRow = swipeRowOf('Fix login redirect loop')
     swipeOpen(rowOf('Fix login redirect loop'))
 
     fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
 
-    expect(screen.getByText('Delete this session?')).toBeTruthy()
-    expect(deleteSessionMutate).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(deleteSessionMutate).not.toHaveBeenCalled()
-
-    // The row shut after the action; swipe it open again and confirm this time.
-    swipeOpen(rowOf('Fix login redirect loop'))
-    fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete session' }))
+    expect(screen.queryByText('Delete this session?')).toBeNull()
     expect(deleteSessionMutate).toHaveBeenCalledTimes(1)
+    const toast = useToastStore.getState().toasts.find((t) => t.title === 'Session deleted')
+    expect(toast?.action?.label).toBe('Undo')
   })
 
   it('reveals the actions only while Sessions is the screen on top', async () => {
@@ -643,7 +646,7 @@ describe('Sidebar page mode: swipe actions', () => {
       },
       { timeout: 1500 },
     )
-    expect(within(sheet).getByRole('button', { name: 'Delete session…' })).toBeTruthy()
+    expect(within(sheet).getByRole('button', { name: 'Delete session' })).toBeTruthy()
   })
 })
 describe('Sidebar page mode: section order', () => {
@@ -724,7 +727,6 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
   const keptChat = () => {
     workspaceSessionsData = [session('s-1', 'Fix login redirect loop'), session('s-2', 'Profile file listing')]
   }
-  const confirmDelete = () => fireEvent.click(screen.getByRole('button', { name: 'Delete session' }))
 
   it('does not navigate when the swipe action deletes it', async () => {
     keptChat()
@@ -733,7 +735,6 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     swipeOpen(rowOf('Fix login redirect loop'))
 
     fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
-    confirmDelete()
 
     expect(deleteSessionMutate).toHaveBeenCalledTimes(1)
     expect((deleteSessionMutate.mock.calls[0] as unknown as [{ id: string }])[0].id).toBe('s-1')
@@ -745,8 +746,7 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     await renderPage({ currentSessionId: 's-1' })
 
     const sheet = await openSessionSheet('Fix login redirect loop')
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete session…' }))
-    confirmDelete()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete session' }))
 
     expect(deleteSessionMutate).toHaveBeenCalledTimes(1)
     expect(navigate).not.toHaveBeenCalled()
@@ -758,7 +758,6 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     const swipeRow = swipeRowOf('Fix login redirect loop')
     swipeOpen(rowOf('Fix login redirect loop'))
     fireEvent.click(within(swipeRow).getByRole('button', { name: 'Delete' }))
-    confirmDelete()
 
     const undo = useToastStore.getState().toasts.find((toast) => toast.action?.label === 'Undo')
     expect(undo).toBeTruthy()
@@ -772,8 +771,7 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
     await renderSidebar({ mobileOpen: true, currentSessionId: 's-1' })
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions for Fix login redirect loop' }))
-    fireEvent.click(within(screen.getByText('Choose a session action.').closest('[data-bottom-sheet]') as HTMLElement).getByRole('button', { name: 'Delete session…' }))
-    confirmDelete()
+    fireEvent.click(within(screen.getByText('Choose a session action.').closest('[data-bottom-sheet]') as HTMLElement).getByRole('button', { name: 'Delete session' }))
 
     expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 's-2' }, replace: true })
   })
@@ -1010,7 +1008,7 @@ describe('Sidebar without page mode', () => {
     expect(view.container.querySelector('[data-sessions-page-toolbar]')).toBeNull()
     expect(view.container.querySelector('[data-sessions-page-bar]')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Scheduled' })).toBeNull()
-    expect(screen.getByRole('region', { name: 'Scheduled' })).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Scheduled' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Settings' }).textContent).toBe('')
     expect(screen.getByRole('button', { name: /^Theme:/ })).toBeTruthy()
     expect(view.container.querySelector('[data-swipe-row]')).toBeNull()

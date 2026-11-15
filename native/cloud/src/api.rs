@@ -210,6 +210,19 @@ pub struct DeviceInfo {
     /// The self-reported kind, or `None` when the device declared none.
     #[serde(default)]
     pub kind: Option<String>,
+    /// The name the account keeps for the device (any device of the account
+    /// may set its own, a signer any): plain text, never trusted. `None`
+    /// when unnamed, or from a cloud before names.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+impl DeviceInfo {
+    /// Whether the device left or was removed (still listed, so the
+    /// others can tell departed devices from strangers).
+    pub fn departed(&self) -> bool {
+        self.revoked_at.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -611,6 +624,13 @@ impl Cloud {
         Ok(())
     }
 
+    /// The account's current roster head, read with the enrollment session
+    /// without spending it: what a recovery roster chains to.
+    pub async fn enroll_roster(&self, session: &Secret) -> ApiResult<RosterHead> {
+        let resp = self.http.get(self.url("/v1/enroll/roster")).bearer_auth(session.expose()).send().await.map_err(|e| ApiError::network(&e))?;
+        Self::answer(resp).await
+    }
+
     // ---- 3. Signed requests ---------------------------------------------
 
     fn account(&self) -> ApiResult<&str> {
@@ -740,6 +760,21 @@ impl Cloud {
             devices: Vec<DeviceInfo>,
         }
         Ok(self.signed::<Raw>(Method::GET, "/v1/devices", None).await?.devices)
+    }
+
+    /// Names `device_id` (`None` clears the name). Any device may name
+    /// itself; naming another needs a signer. Answers the stored name.
+    pub async fn set_device_name(&self, device_id: &str, name: Option<&str>) -> ApiResult<Option<String>> {
+        #[derive(Deserialize)]
+        struct Raw {
+            name: Option<String>,
+        }
+        // The id goes into a URL path: the shape is checked first.
+        if !crate::keys::is_device_id(device_id) {
+            return Err(ApiError::bad_response());
+        }
+        let raw: Raw = self.signed(Method::PUT, &format!("/v1/devices/{device_id}/name"), Some(json!({ "name": name }))).await?;
+        Ok(raw.name)
     }
 
     pub async fn leave(&self) -> ApiResult<()> {

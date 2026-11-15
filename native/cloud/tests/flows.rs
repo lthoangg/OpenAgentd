@@ -497,3 +497,181 @@ async fn a_signing_key_kept_apart_is_needed_to_write() {
     phone.set_sign_key(real);
     assert_eq!(phone.remove(&server.cloud.device_id()).await.unwrap().version(), 3);
 }
+
+/// A phone that created `account`, and the recovery code it showed.
+async fn phone_with_code(fake: &Fake, base: &str) -> (Member, String, String) {
+    let account = fake.new_account();
+    let mut phone = cloud(base);
+    phone.roles = Roles::CLIENT;
+    let session = sign_in(fake, &phone, &account).await;
+    let mut member = Member::new(phone, None);
+    let draft = GenesisDraft::new();
+    let code = draft.code.to_string();
+    flows::genesis(&mut member, &session, draft).await.unwrap();
+    (member, account, code)
+}
+
+#[tokio::test]
+async fn the_recovery_code_brings_back_an_account_whose_only_approver_is_lost() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, code) = phone_with_code(&fake, &base).await;
+    let server = join(&fake, &base, &mut phone, &account).await;
+    // The phone is lost. A new computer signs in and types the code
+    // (spaced and lower case, as people type it).
+    let mut laptop = cloud(&base);
+    laptop.roles = Roles::BOTH;
+    let session = sign_in(&fake, &laptop, &account).await;
+    let mut laptop = Member::new(laptop, None);
+    let typed = code.to_lowercase().replace('-', " ");
+    let r = flows::recover(&mut laptop, &session, &typed).await.unwrap();
+    assert_eq!(r.by, roster::RECOVERY);
+    assert_eq!(r.body.devices.len(), 1, "every other device is out");
+    assert!(laptop.is_signer() && laptop.is_server() && laptop.is_client());
+    // It approves from now on: it writes the roster with its own key.
+    let devices = laptop.cloud.devices().await.unwrap();
+    let lost = devices.iter().find(|d| d.device_id == phone.cloud.device_id()).unwrap();
+    assert!(lost.departed(), "the lost phone is revoked");
+    assert!(devices.iter().find(|d| d.device_id == server.cloud.device_id()).unwrap().departed());
+    assert!(matches!(phone.sync().await, Err(FlowError::Problem(AccountProblem::Revoked))));
+    // The code still works for the next recovery: the key cannot change.
+    let other = cloud(&base);
+    let session = sign_in(&fake, &other, &account).await;
+    let mut other = Member::new(other, None);
+    flows::recover(&mut other, &session, &code).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_wrong_recovery_code_changes_nothing_and_keeps_the_session() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let laptop = cloud(&base);
+    let session = sign_in(&fake, &laptop, &account).await;
+    let mut laptop = Member::new(laptop, None);
+    // Not a code at all, and another account's code.
+    assert!(matches!(flows::recover(&mut laptop, &session, "ABCD").await, Err(FlowError::WrongRecoveryCode)));
+    let stranger = GenesisDraft::new().code.to_string();
+    assert!(matches!(flows::recover(&mut laptop, &session, &stranger).await, Err(FlowError::WrongRecoveryCode)));
+    assert_eq!(fake.account(&account).version, 1, "nothing was written");
+    phone.sync().await.unwrap();
+    // The session is unspent: the device can still ask to join.
+    flows::request_to_join(&mut laptop, &session).await.unwrap();
+}
+
+#[tokio::test]
+async fn recovering_an_empty_account_leaves_the_session_for_genesis() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let account = fake.new_account();
+    let c = cloud(&base);
+    let session = sign_in(&fake, &c, &account).await;
+    let mut m = Member::new(c, None);
+    let code = GenesisDraft::new().code.to_string();
+    assert!(matches!(flows::recover(&mut m, &session, &code).await, Err(FlowError::EmptyAccount)));
+    flows::genesis(&mut m, &session, GenesisDraft::new()).await.unwrap();
+}
+
+#[tokio::test]
+async fn names_live_in_the_account_and_only_a_signer_names_another_device() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let server = join(&fake, &base, &mut phone, &account).await;
+    // A device names itself; a signer names any device.
+    assert_eq!(server.cloud.set_device_name(&server.cloud.device_id(), Some("  studio ")).await.unwrap().as_deref(), Some("studio"));
+    phone.cloud.set_device_name(&phone.cloud.device_id(), Some("Hoang's iPhone")).await.unwrap();
+    let e = server.cloud.set_device_name(&phone.cloud.device_id(), Some("x")).await.unwrap_err();
+    assert!(e.is("not_signer"), "{e:?}");
+    phone.cloud.set_device_name(&server.cloud.device_id(), Some("Work Mac")).await.unwrap();
+    let names: std::collections::HashMap<String, Option<String>> = server.cloud.devices().await.unwrap().into_iter().map(|d| (d.device_id, d.name)).collect();
+    assert_eq!(names[&server.cloud.device_id()].as_deref(), Some("Work Mac"));
+    assert_eq!(names[&phone.cloud.device_id()].as_deref(), Some("Hoang's iPhone"));
+    // Clearing it.
+    assert_eq!(phone.cloud.set_device_name(&server.cloud.device_id(), None).await.unwrap(), None);
+    assert!(phone.cloud.set_device_name("not a device id", Some("x")).await.is_err());
+}
+
+#[tokio::test]
+async fn a_signer_drops_departed_devices_from_the_roster_and_lists_hide_them() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let server = join(&fake, &base, &mut phone, &account).await;
+    let other = join(&fake, &base, &mut phone, &account).await;
+    server.cloud.leave().await.unwrap();
+    let devices = phone.cloud.devices().await.unwrap();
+    let r = phone.roster.clone().unwrap();
+    // The roster still lists it; the cloud says it left.
+    assert!(r.body.device(&server.cloud.device_id()).is_some());
+    assert_eq!(flows::departed_ids(&r, &phone.cloud.device_id(), &devices), vec![server.cloud.device_id()]);
+    let shown: Vec<String> = flows::active_devices(&r, &devices).iter().map(|d| d.id.clone()).collect();
+    assert!(!shown.contains(&server.cloud.device_id()) && shown.contains(&other.cloud.device_id()));
+    phone.note_departed(&devices);
+    let written = phone.drop_departed().await.unwrap().expect("a write");
+    assert!(written.body.device(&server.cloud.device_id()).is_none());
+    assert!(written.body.device(&other.cloud.device_id()).is_some());
+    // Nothing left to drop: no write.
+    let v = fake.account(&account).version;
+    phone.note_departed(&phone.cloud.devices().await.unwrap());
+    assert!(phone.drop_departed().await.unwrap().is_none());
+    assert_eq!(fake.account(&account).version, v);
+}
+
+#[tokio::test]
+async fn a_departed_signer_does_not_count_as_an_approver() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    // A second phone that approves too, then leaves.
+    let mut second = cloud(&base);
+    second.roles = Roles::CLIENT;
+    let session = sign_in(&fake, &second, &account).await;
+    let mut second = Member::new(second, None);
+    let req = flows::request_to_join(&mut second, &session).await.unwrap();
+    let pending = phone.cloud.pending_list().await.unwrap();
+    let mut approval = flows::begin_approval(&mut phone, pending[0].clone()).await.unwrap();
+    let jc = flows::await_signer(&mut second, &req, FAST).await.unwrap();
+    flows::await_reveal(&mut phone, &mut approval, FAST).await.unwrap();
+    let grant = flows::Grant { signer: true, roles: Roles::CLIENT };
+    let (a, b) = tokio::join!(flows::confirm_approval(&mut phone, approval, grant), flows::await_added(&mut second, jc, &req, FAST));
+    a.unwrap();
+    b.unwrap();
+    let r = phone.roster.clone().unwrap();
+    assert_eq!(flows::active_signers(&r, &phone.cloud.devices().await.unwrap()), 2);
+    second.cloud.leave().await.unwrap();
+    assert_eq!(flows::active_signers(&r, &phone.cloud.devices().await.unwrap()), 1);
+}
+
+#[tokio::test]
+async fn an_approver_can_let_another_device_approve_too() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let mut server = join(&fake, &base, &mut phone, &account).await;
+    assert!(!server.is_signer());
+    let r = phone.make_approver(&server.cloud.device_id()).await.unwrap();
+    assert!(r.body.signer(&server.cloud.device_id()).is_some());
+    assert_eq!(r.body.device(&server.cloud.device_id()).unwrap().roles(), Roles::SERVER, "roles unchanged");
+    server.sync().await.unwrap();
+    assert!(server.is_signer());
+    // A member cannot.
+    let other = join(&fake, &base, &mut phone, &account).await;
+    let mut other = other;
+    assert!(matches!(other.make_approver(&other.cloud.device_id()).await, Err(FlowError::NotSigner)));
+    assert!(matches!(phone.make_approver("AAAAAAAAAAAAAAAAAAAAAA").await, Err(FlowError::NotInAccount)));
+}
+
+#[tokio::test]
+async fn a_device_that_left_cannot_be_made_an_approver() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let server = join(&fake, &base, &mut phone, &account).await;
+    server.cloud.leave().await.unwrap();
+    // The roster still lists it; the cloud says it left.
+    assert!(phone.roster.as_ref().unwrap().body.device(&server.cloud.device_id()).is_some());
+    let v = fake.account(&account).version;
+    assert!(matches!(phone.make_approver(&server.cloud.device_id()).await, Err(FlowError::NotInAccount)));
+    assert_eq!(fake.account(&account).version, v, "nothing written");
+}

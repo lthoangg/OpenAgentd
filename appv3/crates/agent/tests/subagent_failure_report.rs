@@ -75,7 +75,7 @@ async fn a_member_whose_key_is_rejected_tells_the_lead_why_and_that_retrying_won
     appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(id), workspace: ws.clone(), ..Default::default() }).await.unwrap();
     manager::get_or_start_agent_session(&ws, Some(&sid)).await.unwrap().expect("agent configured");
 
-    subagents::spawn_subagent(&sid, "worker", "run the build", None, None, None, &ws, &pool, &factory).await.expect("member spawned");
+    subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
 
     wait_until("the lead to read the member's failure", || lead_read(&lead_mock, "worker#1 failed").is_some()).await;
     let report = lead_read(&lead_mock, "worker#1 failed").unwrap();
@@ -83,6 +83,6 @@ async fn a_member_whose_key_is_rejected_tells_the_lead_why_and_that_retrying_won
     assert!(report.contains("Invalid API key"), "{report}");
     assert!(report.contains("Retrying won't help until its model or provider is fixed."), "{report}");
     assert!(!report.contains("Subagent turn failed with error"), "{report}");
-    let listed = subagents::describe_subagents(&sid);
+    let listed = subagents::describe_subagents(&sid, &pool).await;
     assert!(listed.starts_with("- worker#1: failed: mock:worker rejected the request"), "{listed}");
 }

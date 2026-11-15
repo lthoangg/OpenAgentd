@@ -11,7 +11,7 @@ describe('isMissingSessionError', () => {
 
   it('leaves server and network failures to be retried', () => {
     expect(isMissingSessionError(new ApiValidationError(500, 'boom'))).toBe(false)
-    expect(isMissingSessionError(new TypeError('Failed to fetch'))).toBe(false)
+    expect(isMissingSessionError(new TypeError("Failed to fetch"))).toBe(false)
     expect(isMissingSessionError(null)).toBe(false)
   })
 })

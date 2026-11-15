@@ -5,6 +5,7 @@ import { createDefaultAgentStream } from './defaults'
 import { clearReconnectTimer } from './stream-slice'
 import type { PendingMessage, AgentStore, SendMessageOptions } from './types'
 import type { MessageAttachment, SessionInteractionMode } from '@/api/types'
+import { isUnconfiguredModel } from '@/lib/model-readiness'
 
 /**
  * The mode picked on the new-session screen rides on the message that
@@ -22,7 +23,9 @@ function newSessionInteractionMode(state: AgentStore): SessionInteractionMode | 
 type SendOptions = SendMessageOptions
 
 function effectiveLeadModel(state: AgentStore, leadName: string | null, requestedModel?: string | null): string | null {
-  return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+  const model = requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+  // The placeholder a new install starts with is not a model to show: the answer names the real one.
+  return isUnconfiguredModel(model) ? null : model
 }
 
 /** Display metadata for an immediate send — images carry a blob URL so the
@@ -242,7 +245,7 @@ export const createPendingSlice: StateCreator<
         })
       } catch (err) {
         set((draft) => {
-          draft.error = err instanceof Error ? err.message : 'Failed to queue message'
+          draft.error = err instanceof Error ? err.message : "Couldn't queue message"
         })
         return false
       }
@@ -364,7 +367,7 @@ export const createPendingSlice: StateCreator<
       return true
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to send message'
+        draft.error = err instanceof Error ? err.message : "Couldn't send message"
         draft.isAgentWorking = false
       })
       return false
@@ -390,7 +393,7 @@ export const createPendingSlice: StateCreator<
       return cancelled ? 'cancelled' : 'sent'
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to cancel queued message'
+        draft.error = err instanceof Error ? err.message : "Couldn't cancel queued message"
       })
       return 'failed'
     }

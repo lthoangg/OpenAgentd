@@ -40,7 +40,6 @@ describe('TaskListPane', () => {
     const onRetry = mock(() => {})
     renderPane({ isError: true, onRetry })
     expect(screen.getByText("Couldn't load scheduled tasks.")).toBeInTheDocument()
-    expect(screen.queryByText(/Failed to load/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })

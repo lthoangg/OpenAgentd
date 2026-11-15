@@ -38,6 +38,8 @@ pub const APPROVE_ELSEWHERE: &str = "Approve in the OpenAgentd app on this compu
 pub const REMOVE_ELSEWHERE: &str = "Remove devices in the OpenAgentd app on this computer.";
 /// What a refused invitation says.
 pub const INVITE_ELSEWHERE: &str = "Show invitations in the OpenAgentd app on this computer.";
+/// What a refused promotion (letting a device approve too) says.
+pub const PROMOTE_ELSEWHERE: &str = "Let a device approve others in the OpenAgentd app on this computer.";
 
 /// Installs the key the desktop app handed over. The previous one, if any,
 /// is zeroized as it drops.
@@ -62,6 +64,7 @@ pub(super) fn require(headers: &HeaderMap, action: Action, id: &str) -> ApiResul
         let text = match action {
             Action::Remove => REMOVE_ELSEWHERE,
             Action::Invite => INVITE_ELSEWHERE,
+            Action::Promote => PROMOTE_ELSEWHERE,
             Action::Approve { .. } => APPROVE_ELSEWHERE,
         };
         ApiError::new(403, text)

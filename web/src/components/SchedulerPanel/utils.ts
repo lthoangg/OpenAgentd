@@ -1,6 +1,7 @@
 import type { ScheduledTaskResponse } from '@/api/types'
 import { STATUS, type StatusView } from '@/lib/status'
 import { formatCompactDate, formatInTimezone, wallClockToISO } from '@/utils/format'
+import { describeCron } from './cron'
 
 export const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
 
@@ -42,7 +43,11 @@ export function formatInterval(seconds: number): string {
   return `${amount} ${short}`
 }
 
-/** The schedule in one short line: "every 3 min", "cron 0 9 * * 1-5", "once at Oct 24, 09:00". */
+/**
+ * The schedule in one short line: "every 3 min", "every day at 09:00",
+ * "once at Oct 24, 09:00". A cron expression with no short description stays
+ * the expression ("cron 0 9 1 6 *", see ``isCronLabel``).
+ */
 export function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_type' | 'at_datetime' | 'every_seconds' | 'cron_expression' | 'timezone'>): string {
   if (task.schedule_type === 'at' && task.at_datetime) {
     // Render in the task's saved timezone, not the browser's — otherwise
@@ -54,9 +59,22 @@ export function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_
     return `every ${formatInterval(task.every_seconds)}`
   }
   if (task.schedule_type === 'cron' && task.cron_expression) {
+    const words = describeCron(task.cron_expression)
+    // Day names keep their capital ("Fri at 17:30").
+    if (words) return /^(Every|Weekdays|Weekends|Day|Last)\b/.test(words) ? words.charAt(0).toLowerCase() + words.slice(1) : words
     return `cron ${task.cron_expression}`
   }
   return 'unknown schedule'
+}
+
+/** True for a ``formatScheduleLabel`` line that is a cron expression, not words. */
+export function isCronLabel(label: string): boolean {
+  return label.startsWith('cron ')
+}
+
+/** "every 3 min" → "Every 3 min". */
+export function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 /**

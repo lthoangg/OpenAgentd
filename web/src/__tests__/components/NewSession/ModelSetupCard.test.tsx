@@ -90,20 +90,28 @@ afterEach(() => {
 })
 
 describe('ModelSetupCard', () => {
-  it('offers the quick picks and the full list, without detected rows on a fresh install', () => {
+  it('leads with the subscription sign-ins, then the API keys, each group named once', () => {
     const { onOpenProviders } = renderCard()
-    const picks = screen.getByRole('group', { name: 'Providers' })
-    expect(Array.from(picks.querySelectorAll('button')).map((b) => b.textContent)).toEqual([
-      'AnthropicAPI key',
-      'OpenAIAPI key',
-      'GeminiAPI key',
-      'OpenRouterAPI key',
-      'ChatGPTSign in',
-      'GitHub CopilotSign in',
-    ])
+    const names = (group: HTMLElement) => Array.from(group.querySelectorAll('button')).map((b) => b.textContent)
+    // A person with a subscription has no key and need not learn what one is.
+    const groups = screen.getAllByRole('group')
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['Sign in with a subscription you have', 'Or paste an API key'])
+    expect(names(groups[0])).toEqual(['ChatGPT', 'GitHub Copilot'])
+    expect(names(groups[1])).toEqual(['Anthropic', 'OpenAI', 'Gemini', 'OpenRouter'])
+    // The group's label says it once: no "API key" or "Sign in" tag per tile.
+    expect(screen.getByText('Sign in with a subscription you have')).toBeTruthy()
+    expect(screen.getByText('Or paste an API key')).toBeTruthy()
     expect(screen.queryByRole('list', { name: 'Ready to use' })).toBeNull()
-    screen.getByRole('button', { name: 'Open Providers' }).click()
+    screen.getByRole('button', { name: 'More models' }).click()
     expect(onOpenProviders).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses no word a newcomer has not met: no provider, no OAuth', () => {
+    renderCard()
+    const card = screen.getByTestId('model-setup-card')
+    expect(card.textContent).not.toMatch(/provider|OAuth|device code/i)
+    expect(card.textContent).toContain('You can add more later.')
+    expect(card.textContent).toContain('A model running on this computer (Ollama) shows up here on its own.')
   })
 
   it('connects a pasted key in one step: checks it, saves it, and refetches the agents', async () => {
@@ -121,7 +129,8 @@ describe('ModelSetupCard', () => {
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(['POST /settings/providers/anthropic/models', 'PUT /settings/providers/anthropic'])
     expect(calls.every((c) => c.body?.api_key === PASTED)).toBe(true)
     expect(useToastStore.getState().toasts[0]).toMatchObject({ tone: 'success', title: 'Anthropic connected' })
-    expect(useToastStore.getState().toasts[0].description).toContain('claude-sonnet-5-5')
+    // In the user's words: "the model button", not this codebase's "run chip".
+    expect(useToastStore.getState().toasts[0].description).toBe('Replies use anthropic:claude-sonnet-5-5. Change it with the model button under the message box.')
     expect(invalidated).toContainEqual([...queryKeys.agents()])
     expect(invalidated).toContainEqual([...queryKeys.settings.providers()])
   })
@@ -161,7 +170,7 @@ describe('ModelSetupCard', () => {
     renderCard({ readiness: { status: 'needs-provider', model: 'anthropic:claude-sonnet-5-5', provider: anthropic } })
     expect(screen.getByRole('heading', { name: 'Connect Anthropic to start' })).toBeTruthy()
     expect(screen.getByText(/uses anthropic:claude-sonnet-5-5/)).toBeTruthy()
-    expect(screen.queryByRole('group', { name: 'Providers' })).toBeNull()
+    expect(screen.queryByRole('group')).toBeNull()
     // Its key field is already open.
     expect(screen.getByLabelText('anthropic API key')).toBeTruthy()
   })
@@ -179,20 +188,13 @@ describe('ModelSetupCard', () => {
     expect(ready.queryByRole('button', { name: 'Use' })).toBeNull()
   })
 
-  it('points its footer at Settings → Providers, in the words and in the link', () => {
-    const { onOpenProviders } = renderCard()
+  it('points to Settings → Models when it asks for one missing sign-in or key', () => {
+    const { onOpenProviders } = renderCard({ readiness: { status: 'needs-provider', model: 'anthropic:claude-sonnet-5-5', provider: provider('anthropic') } })
     const card = screen.getByTestId('model-setup-card')
-    expect(card.textContent).toContain('Settings → Providers')
+    expect(card.textContent).toContain('Or use a different model in Settings → Models.')
     expect(card.textContent).not.toContain('Settings → Agents')
-    screen.getByRole('button', { name: 'Open Providers' }).click()
+    screen.getByRole('button', { name: 'More models' }).click()
     expect(onOpenProviders).toHaveBeenCalledTimes(1)
-  })
-
-  it('points to Providers when it asks for one missing provider, too', () => {
-    renderCard({ readiness: { status: 'needs-provider', model: 'anthropic:claude-sonnet-5-5', provider: provider('anthropic') } })
-    const card = screen.getByTestId('model-setup-card')
-    expect(card.textContent).toContain('Settings → Providers')
-    expect(card.textContent).not.toContain('Settings → Agents')
   })
 
   it('draws no border around anything inside the card, and keeps green text on the green wash', () => {
@@ -208,5 +210,14 @@ describe('ModelSetupCard', () => {
     expect(title.className).toContain('text-(--accent-green-text)')
     expect(title.className).not.toContain('text-(--color-success)')
     expect(card.querySelector('li svg')?.getAttribute('class')).toContain('text-(--accent-green-text)')
+  })
+
+  it('lets the reason under a ready model wrap on a narrow screen, where "no key needed" was cut off', () => {
+    const providers = [
+      ...FRESH.filter((p) => p.id !== 'ollama'),
+      provider('ollama', { kind: 'local', is_configured: true }),
+    ]
+    renderCard({ providers })
+    expect(screen.getByText('Models on this computer, no key needed').className).not.toContain('truncate')
   })
 })

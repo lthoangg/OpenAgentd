@@ -205,7 +205,7 @@ describe('Review dock Plan tab', () => {
     const reported: (DockView | null)[] = []
     await renderPanel({ request: { view: 'plan', key: 1 }, plan: PLAN, onActiveViewChange: (v) => reported.push(v) })
 
-    const tab = await screen.findByRole('button', { name: 'Session plan' })
+    const tab = await screen.findByRole('button', { name: 'Plan' })
     expect(tab.getAttribute('aria-current')).toBe('true')
     expect(await screen.findByText('Write the migration')).toBeTruthy()
     expect(reported.at(-1)).toBe('plan')
@@ -252,7 +252,7 @@ describe('Review dock Schedule tab', () => {
     await renderPanel({ request: { view: 'schedule', key: 1 } })
 
     await user.click(await screen.findByRole('button', { name: 'New task' }))
-    expect(await screen.findByLabelText('Task title')).toBeTruthy()
+    expect(await screen.findByLabelText('What should it do?')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Back to task list' }))
     expect(await screen.findByRole('button', { name: 'New task' })).toBeTruthy()
   })
@@ -262,7 +262,7 @@ describe('Review dock Schedule tab', () => {
     const { container } = await renderPanel({ request: { view: 'schedule', key: 1 } })
 
     await user.click(await screen.findByRole('button', { name: 'New task' }))
-    await screen.findByLabelText('Task title')
+    await screen.findByLabelText('What should it do?')
     expect(container.querySelector('.\\@container')).not.toBeNull()
     expect(container.innerHTML).not.toMatch(/\bsm:grid-cols/)
   })

@@ -12,6 +12,7 @@ import type { SessionGoal, SessionPlan, TodoItem } from '@/api/types'
 import { GoalTabView } from '@/components/WorkspacePanel/GoalTabView'
 import { queryKeys } from '@/queries/keys'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 const originalFetch = globalThis.fetch
 
@@ -142,7 +143,7 @@ describe('GoalTabView', () => {
     useAgentStore.setState({ isAgentWorking: true, pendingQuestion: { kind: 'ask_user', id: 'q1' } as never })
     renderTab(makeGoal())
     expect(now()?.dataset.goalNow).toBe('wait')
-    expect(now()?.textContent).toContain('Waiting for your answer')
+    expect(now()?.textContent).toContain('Needs you · a question')
     cleanup()
 
     useAgentStore.setState({ isAgentWorking: false, pendingQuestion: null, sessionPendingInteractionMode: 'plan' })
@@ -159,7 +160,7 @@ describe('GoalTabView', () => {
     useAgentStore.setState({ pendingQuestion: { kind: 'plan_review', id: 'q1' } as never })
     renderTab(makeGoal())
     expect(now()?.dataset.goalNow).toBe('wait')
-    expect(now()?.textContent).toContain('Waiting for plan approval')
+    expect(now()?.textContent).toContain('Needs you · a plan to review')
   })
 
   it('shows the plan the goal runs as one line, with its status and a link, and the next task', async () => {
@@ -193,6 +194,17 @@ describe('GoalTabView', () => {
       ],
     })
     await waitFor(() => expect(now()?.textContent).toContain('Waiting for 2 sessions'))
+  })
+
+  it('does not count idle sessions it waits for', async () => {
+    const client = renderTab(makeGoal())
+    client.setQueryData(queryKeys.session.waiting('s1'), {
+      items: [
+        { kind: 'subagent', session_id: 'c1', title: 'Map the code', label: 'explorer#1', workspace: '', state: 'working' },
+        { kind: 'subagent', session_id: 'c2', title: 'Audit done', label: 'explorer#2', workspace: '', state: 'idle' },
+      ],
+    })
+    await waitFor(() => expect(now()?.textContent).toContain('Waiting for 1 session'))
   })
 
   it('says why a goal stopped and what the last check found', () => {
@@ -254,5 +266,28 @@ describe('GoalTabView', () => {
     expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThanOrEqual(3)
     expect(container.textContent).not.toContain('Loading the goal')
     expect(screen.queryByRole('heading', { name: 'No goal' })).toBeNull()
+  })
+})
+
+/** The goal's numbers: every one in Full, the ones a person can act on in Simple. */
+describe('GoalTabView numbers and the Detail setting', () => {
+  const stats = () => Array.from(document.querySelectorAll('[data-goal-stat]'), (row) => row.textContent)
+  afterEach(() => { useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' }) })
+
+  it('in Full shows turns, tokens and time, budget or not', () => {
+    renderTab(makeGoal({ turns_used: 7, tokens_used: 1_400_000, active_seconds: 18 * 60 }))
+    expect(stats()).toEqual(['Turns7 / 50', 'Tokens1.4M', 'Time18m'])
+  })
+
+  it('in Simple leaves the token count out when no budget is set, and says the rest in words', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    renderTab(makeGoal({ turns_used: 7, tokens_used: 1_400_000, active_seconds: 18 * 60 }))
+    expect(stats()).toEqual(['Turns7 of 50', 'Time18 minutes'])
+  })
+
+  it('in Simple shows the tokens against a budget when one is set', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+    renderTab(makeGoal({ turns_used: 7, tokens_used: 1_400_000, token_budget: 5_000_000, active_seconds: 18 * 60 }))
+    expect(stats()).toEqual(['Turns7 of 50', 'Tokens1.4M of 5M', 'Time18 minutes'])
   })
 })

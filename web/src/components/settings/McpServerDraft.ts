@@ -53,6 +53,31 @@ export function emptyDraft(): McpServerDraft {
   }
 }
 
+/** Second-level labels that are not a site's own name (`example.co.uk`). */
+const SHARED_SECOND_LEVEL = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu'])
+
+/**
+ * A connector name read from its address: the site's own name
+ * (`https://mcp.notion.com/mcp` gives `notion`), in the characters a name
+ * allows. Empty until the address has a scheme and a host, and for an IP
+ * address, so the person names those.
+ */
+export function nameFromAddress(address: string): string {
+  const text = address.trim()
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) return ''
+  let host: string
+  try {
+    host = new URL(text).hostname
+  } catch {
+    return ''
+  }
+  if (!host || host.includes(':') || /^[\d.]+$/.test(host)) return ''
+  const labels = host.split('.').filter(Boolean)
+  let label = labels.length >= 2 ? labels[labels.length - 2] : labels[0] ?? ''
+  if (labels.length >= 3 && SHARED_SECOND_LEVEL.has(label)) label = labels[labels.length - 3]
+  return label.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^[^a-zA-Z]+/, '')
+}
+
 /** Hydrate a draft from a backend `ServerBody` payload (edit mode seed). */
 export function draftFromServerBody(name: string, body: ServerBody): McpServerDraft {
   if (body.transport === 'stdio') {
@@ -98,7 +123,7 @@ export function draftToServerBody(
 ): { ok: true; body: ServerBody } | { ok: false; error: string } {
   if (draft.transport === 'stdio') {
     if (!draft.command.trim()) {
-      return { ok: false, error: 'Command is required for stdio servers.' }
+      return { ok: false, error: 'Command is required.' }
     }
     return {
       ok: true,
@@ -116,7 +141,7 @@ export function draftToServerBody(
     }
   }
   if (!draft.url.trim()) {
-    return { ok: false, error: 'URL is required for HTTP servers.' }
+    return { ok: false, error: 'Address is required.' }
   }
   return {
     ok: true,
@@ -172,7 +197,7 @@ export function validateDraft(
   if (draft.transport === 'stdio') {
     if (!draft.command.trim()) errors.command = 'Command is required.'
   } else if (!draft.url.trim()) {
-    errors.url = 'URL is required.'
+    errors.url = 'Address is required.'
   }
 
   const t = draft.timeoutText.trim()

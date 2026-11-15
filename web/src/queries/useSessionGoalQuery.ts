@@ -1,3 +1,4 @@
+import { failureToast } from '@/lib/failure-toast'
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { clearSessionGoal, getSessionGoal, pauseSessionGoal, resumeSessionGoal, startSessionGoal } from '@/api/client'
@@ -30,7 +31,7 @@ export function useGoalControls(sessionId: string | null | undefined): ((action:
   const run = useCallback((action: 'pause' | 'resume') => {
     if (!sessionId) return
     mutate({ sessionId, action }, {
-      onError: (err) => pushToast({ tone: 'error', title: `Could not ${action} the goal`, description: err instanceof Error ? err.message : String(err) }),
+      onError: (err) => pushToast(failureToast(`Couldn't ${action} the goal`, err)),
     })
   }, [sessionId, mutate, pushToast])
   return sessionId ? run : undefined

@@ -6,15 +6,16 @@
  *   - Fetching user-defined commands + snippets (workspace-scoped queries).
  *   - Assembling the ``SlashCommand[]`` / ``SnippetCommand[]`` lists the
  *     ``InputComposer`` renders in its picker (built-ins + backend-discovered).
- *   - Dispatching a picked slash command (``stop`` / ``btw`` / ``model`` /
- *     ``think`` / ``mcp`` / ``compact`` / ``undo`` / ``redo`` / ``redo-all`` /
- *     ``new`` / ``init`` — agent lifecycle
+ *   - Dispatching a picked or typed slash command (``stop`` / ``btw`` /
+ *     ``summarize`` / ``undo`` / ``redo`` / ``redo-all`` / ``new`` / ``init`` /
+ *     ``connectors``, and the typed-only ``model`` / ``think`` — agent lifecycle
  *     actions read straight off ``useAgentStore.getState()`` since they're
  *     one-shot imperative calls, not part of the render subscription).
  *   - Expanding a user-defined ``/command`` at submit time by rendering it
  *     server-side (``expandUserCommand``), used by the composer to swap the
  *     typed shorthand for its full body before sending.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useMemo } from 'react'
 import type { RefObject } from 'react'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
@@ -30,7 +31,7 @@ import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
 
 /** Commands that act on an existing session's history. */
-const SESSION_COMMANDS = new Set(['compact', 'undo', 'redo', 'redo-all'])
+const SESSION_COMMANDS = new Set(['summarize', 'undo', 'redo', 'redo-all'])
 
 export interface UseSlashCommandsArgs {
   /** Workspace path, or `null` while no workspace is attached. */
@@ -41,6 +42,10 @@ export interface UseSlashCommandsArgs {
   revertedCount?: number
   hasVisibleMessages?: boolean
   hasLiveMessages?: boolean
+  /** The workspace is Chat: ``/init`` is not listed there. */
+  isChat?: boolean
+  /** The session's agent lists a connector: ``/connectors`` is listed. */
+  hasConnectors?: boolean
   /** Shows the session's side questions (a bare ``/btw``); defaults to the panel above the composer. */
   onOpenSideQuestions?: (sessionId: string) => void
 }
@@ -65,6 +70,8 @@ export function useSlashCommands({
   revertedCount = 0,
   hasVisibleMessages = false,
   hasLiveMessages = false,
+  isChat = false,
+  hasConnectors = false,
   onOpenSideQuestions,
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
@@ -87,8 +94,10 @@ export function useSlashCommands({
         hasVisibleMessages,
         hasLiveMessages,
         hasWorkspace: Boolean(agentWorkspace),
+        isChat,
+        hasConnectors,
       }),
-    [isAgentWorking, revertedCount, hasVisibleMessages, hasLiveMessages, agentWorkspace],
+    [isAgentWorking, revertedCount, hasVisibleMessages, hasLiveMessages, agentWorkspace, isChat, hasConnectors],
   )
 
   const slashCommands: SlashCommand[] = useMemo(() => [
@@ -120,11 +129,7 @@ export function useSlashCommands({
       const res = await renderSnippet(id, agentWorkspace)
       return res.content
     } catch (err) {
-      pushToast({
-        tone: 'error',
-        title: `Failed to render #${id.replace('/', ':')}`,
-        description: (err as Error).message,
-      })
+      pushToast(failureToast(`Couldn't render #${id.replace('/', ':')}`, err))
       return null
     }
   }, [agentWorkspace, pushToast])
@@ -154,10 +159,10 @@ export function useSlashCommands({
       case 'think':
         useUIStore.getState().openRunPicker('thinking')
         break
-      case 'mcp':
+      case 'connectors':
         useUIStore.getState().openPlusMenu('mcp')
         break
-      case 'compact':
+      case 'summarize':
         useAgentStore.getState().compactAgent()
         break
       case 'undo':
@@ -204,11 +209,7 @@ export function useSlashCommands({
             }),
           )
           .catch((err: Error) =>
-            pushToast({
-              tone: 'error',
-              title: 'Failed to start /init',
-              description: err.message,
-            }),
+            pushToast(failureToast("Couldn't start /init", err)),
           )
         break
     }
@@ -238,11 +239,7 @@ export function useSlashCommands({
             const res = await renderCommand(commandName, args, agentWorkspace)
             return res.content
           } catch (err) {
-            pushToast({
-              tone: 'error',
-              title: `Failed to render /${candidate}`,
-              description: (err as Error).message,
-            })
+            pushToast(failureToast(`Couldn't render /${candidate}`, err))
             return content
           }
         }

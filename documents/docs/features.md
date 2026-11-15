@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.55.0 · November 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.55.0)
+**Latest release:** v3.56.0 · November 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.56.0)
 
 ---
 
@@ -628,7 +628,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     accepts nor rejects the claim, so the agent can claim again; three such
     failures in a row pause the goal. Goal turns run unattended by default: the
     agent decides instead of asking and notes each choice, and a plan it
-    submits is saved without opening a review. **Settings → Goals** sets
+    submits is saved without opening a review. **Settings → Sessions** sets
     whether Keep going starts ticked, the turn limit, a default token budget,
     and allows questions during a goal. The check runs on the session's own
     model, so it reuses the conversation's prompt cache. It is told which
@@ -868,7 +868,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   **Reconnect…**, and the run picker offers **Reconnect** beside that
   account. If the account is deleted or disabled, the session goes back to
   Auto with a note. Each answer's footer names the account it ran on, and
-  Settings → Providers shows how many sessions pin each account. The desktop
+  Settings → Models shows how many sessions pin each account. The desktop
   tray names the account a pinned session runs on (**Pinned to Work**), and
   its Provider limits name the account in use when a provider has several
   (**OpenAI Codex · Work**).
@@ -882,7 +882,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   provider uses now, and **Reset to default** removes a lock. The run chip
   always names the account in use, and the picker tags the account a locked
   session moved to with **in use**. Each account row shows every limit of the
-  account in % used, as Settings → Providers does (`5h 12% · 7d 64% · $84.50
+  account in % used, as Settings → Models does (`5h 12% · 7d 64% · $84.50
   left`). A limit that was hit is red and one at 90% or more is orange, and
   the tooltip gives reset times and other models' own limits. The wait and
   error cards no longer offer **Use Auto for this session**.
@@ -1115,7 +1115,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     capitals or corrections, a URL keyboard with Go); an address error has
     no pointless Retry and clears as you edit. `⌃⌥` + arrow and `⌃Tab`
     work from inside the page too.
-  - **Models** in Settings → Providers: the Shown / Hidden toggle and Copy
+  - **Models** in Settings → Models: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
 - **Settings: one way to save, every setting findable** `[v3.40.0]`:
   - Every page of fields saves the same way: a bar appears once something
@@ -1596,7 +1596,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     critical threshold fires a one-shot native notification (re-armed when
     the quota resets) and badges the tray icon. "Refresh Usage Now" forces
     a live re-check past the cache; "Manage Providers…" deep-links into
-    Settings → Providers. Each measurable row also carries a compact
+    Settings → Models. Each measurable row also carries a compact
     block-character meter (`████░░░░░░`) between the percent and reset
     countdown — a CodexBar-style bar rendered in plain text, since native
     tray `MenuItem`s can't host custom widgets `[v1.94.0]`. Workspace spend
@@ -1666,7 +1666,7 @@ run from the terminal (the native Rust binary since v3.0.0).
       reads "Can't reach ‹server›" with Retry, and the status says Offline
       ("Can't reach" since `[v3.40.0]`).
       With no providers it offers Open Providers, and Reconnect goes to
-      Settings → Providers.
+      Settings → Models.
     - **Keys.** Esc closes it, or the server menu first, which also takes
       ↑ ↓ Enter. ⌘R refreshes, and ⌘, and ⌘Q run Settings and Quit; since
       `[v3.55.0]` only ⌘ does (Ctrl+Q used to quit the app too). Since
@@ -1814,8 +1814,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     pet is still. Everywhere else the desktop has no window of ours. The
     window is also marked as not shareable (macOS) and as a tool window kept
     out of captures (Windows), which pickers that honour them respect.
-  - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
-    per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
+  - **Settings → Models usage panel redesign** `[v1.94.0]` — the
+    per-provider "Usage" card in Settings → Models (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
     window, a flat progress bar with a leading dot marker, `N% used ·
     Resets in Xh Ym` under each bar, a header strip showing "Updated Xm
@@ -2108,8 +2108,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     steps" button is gone `[v3.26.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   General → Appearance → Transcript, or Toggle Reader Mode in the command
-  palette, which also finds it as "compact" or "transcript"). Each turn reads
-  as its answer:
+  palette, which also finds it as "compact" or "transcript"). Since
+  `[v3.56.0]` it is the **Simple** level of the Detail setting, where a new
+  install starts (Settings → Appearance → Detail, or Toggle Simple View).
+  Each turn reads as its answer:
   - The thinking, every tool call, and the narration between them fold into
     one row such as "6 reads, 3 searches, 4 commands, 2 edits"; while the
     turn runs it names the current step ("Working ·
@@ -2342,6 +2344,267 @@ run from the terminal (the native Rust binary since v3.0.0).
     window's bottom edge; the worktree chip has a 24px target.
   - Phone: a tap on the Sessions toolbar (Settings, Scheduled, Usage) no
     longer sometimes closes the sheet it has just opened.
+- **One app that starts simple and grows with you** `[v3.56.0]`. Fewer
+  controls and plainer words for someone new, with nothing taken from a
+  developer: Steer, Queue, btw, tool names and the line under a reply stay.
+  - One name each. A waiting question reads **Needs you · a question** and a
+    waiting plan **Needs you · a plan to review**, on the card, the bar above
+    the message box, the goal's status and for screen readers (there were
+    seven wordings). The Review panel's Git view is **Changes** everywhere
+    (tab, launcher, **Open Changes** in the palette and status bar, **Show in
+    Changes** on a tab's menu), with **Uncommitted (N)** and **History**
+    inside; the plan's tab reads **Plan**; the phone's page is **Review
+    panel** and its rows keep the desktop's names.
+  - Sending while the agent works has the same three labels on a phone as
+    on desktop, each with its one-line explanation: **Steer**, **Queue until
+    done**, **Stop and send** (the phone said "Steer now" and "Send after
+    this turn finishes"; the desktop said "Stop & send").
+  - The model picker's thinking row always shows what is in effect: with no
+    level set, a **Default** segment is lit (the model's own level) and
+    picking it goes back to that. It replaces the line "Not set: the model's
+    own default applies."
+  - Words that only exist in the code are gone from the screen: a command's
+    result reads `exit 0` or `exit 1` (not `[Succeeded]`), a subagent's
+    message is **From the main agent** (not "From lead"), a task's status
+    reads **To do**, **In progress**, **Done** (not `pending`,
+    `in_progress`, `completed`), an empty board says **No tasks**, and an
+    unreadable goal reply is headed **Goal check** (not `update_goal`).
+  - One spelling: a failure starts **Couldn't …** (118 messages said "Could
+    not", "Unable to" or "Failed to"), the button that tries again is
+    **Retry**, what cannot come back **can't be undone**, and a computer
+    that does not answer is **Can't reach** (lists said "Offline"). The
+    banner for the app's own stopped engine reads **OpenAgentd stopped on
+    this computer**. A test holds each of these.
+  - **Delete side questions…** names what its dialog does (the button said
+    "Clear"). An empty session is headed **Ask anything**, and a workspace's
+    new session **What should we do in {name}?** ("build" assumed code).
+  - **One Detail setting: Simple or Full** (Settings → Appearance → Detail,
+    or **Toggle Simple View** in the command palette). It replaces
+    Transcript: Detailed / Reader, and search still finds it as "reader",
+    "detailed" or "transcript". A new install starts in **Simple**; an
+    install that already has sessions keeps **Full** until the setting is
+    changed, and a style picked earlier is kept. Full is the app as before.
+    Simple folds each turn's work into one row (the Reader transcript) and:
+    - the model chip names the model only (thinking level and account are
+      in the picker);
+    - the context ring appears once the context is 70% full, reading
+      "78% full";
+    - the status bar shows no estimated spend, and does not fetch it;
+    - a retry reads as a sentence: "The model is busy. Trying again in 8
+      seconds (2 of 5)." or, for a dropped connection, "The connection
+      dropped. Trying again in 8 seconds.";
+    - the Goal tab reads "7 of 50" and "18 minutes", and shows tokens only
+      against a token budget;
+    - the phone's run line reads "Working · 3:12", without the step;
+    - a scheduled task's slug chip is not shown.
+    The line under a reply, Turn details, the working row and the context
+    popover are the same in both.
+  - Settings → Appearance: **Open previews** is **Automatically** or **When
+    I choose** (it was Previews: Review panel / Manually).
+  - **Where you are decides what is offered.** Chat already had no Changes
+    view; a folder without Git now has none either: no **Changes** row in
+    the Review panel (it led to "Not a git repository"), no **Open Changes**
+    command or key, no git probes, and no **Create worktree…** in the
+    workspace's menu. There the Review panel leads with what it can show
+    (**Find file…**, **Preview**, **Terminal**, then Tasks and Scheduled
+    tasks), on the phone's Review page too. The workspace list says whether
+    each folder is inside a Git working tree; a server from before this
+    version is treated as before.
+  - **Empty things take no room.** The sidebar's **Scheduled** section
+    appears with the first task and stays while any task exists (paused or
+    not due: "Nothing due"); with none there is no heading. The palette,
+    the Review panel's "+" and the agent still create the first task. A
+    workspace's menu has no **Groups** block until a group exists. The
+    composer's "+" menu has no connector section until the agent has one,
+    and names it **Connectors** (it was "MCP servers"). The Review panel
+    lists **Goal** and **Side questions** once the session has one.
+    Settings → Desktop shows the notch's and the pet's options once each is
+    turned on (with both off, 12 of its 14 rows read "Turn on … to change
+    this"). "No
+    workspaces yet" adds: "A workspace is a folder the agent works in."
+  - **The "/" menu lists what this place can use.** `/model` and `/think`
+    are no longer listed (the model button under the box opens the same
+    picker); `/compact` is listed as `/summarize` and `/mcp` as
+    `/connectors`, which shows once the agent has a connector; `/init` is
+    not listed in Chat. All of them, and the earlier names, still run when
+    typed, and typing an earlier name finds the row.
+  - **First run in plain words.** Start-up reads **Starting OpenAgentd…**
+    with a **Use another computer** link; a failed start says "OpenAgentd
+    couldn't start on this computer." with **Copy details** (the message,
+    the error, the version and the log's path). The model card leads with
+    **Sign in with a subscription you have**, then **Or paste an API key**,
+    and says a model running on this computer (Ollama) shows up on its own;
+    once connected it says which model replies use and where to change it.
+    A first Chat says, under the message box, that it works in your home
+    folder and that Undo needs a folder, with **open a folder** as a link
+    (the note leaves once Chat has a session). The message box always
+    reads "Ask anything…" (a phone said "Assign a task to the agent…"), and
+    in Plan mode "Plan mode: the agent reads and writes a plan. It changes
+    no files." Until a model is connected the model button reads **No
+    model** (it showed the placeholder `__PROVIDER_MODEL__`), and a
+    message sent before then shows no model on its row (it showed the
+    same placeholder until the answer arrived).
+  - **Opening a folder asks about the folder**: "Let agents work in
+    {folder}?" says they can read, change and delete files there and run
+    commands, and that Undo in the chat brings back files they edited, up
+    to 2 MB each. The button is **Allow and open** (it was "Trust this
+    workspace?" and "Trust and open").
+  - **Undo instead of a dialog.** Deleting a session no longer asks first:
+    the row leaves and a **Session deleted** toast offers **Undo** for 10
+    seconds (it was about 5, after a dialog). A session whose agent is still
+    working keeps the dialog, since Undo does not restart it. **Hide from
+    sidebar** now says what happened ("Hid {name} from the sidebar. Its
+    sessions are kept. Open workspace… brings it back.") with **Undo**.
+  - **A failure toast is a sentence.** A reason the server wrote for people
+    stays on the toast; a status line, JSON or a stack goes behind **Copy
+    details**, with "Try again, or copy the details for a bug report." (Git
+    errors keep Git's own words.)
+  - **Updates in one line.** The desktop downloads a new version on its own
+    and then asks once: "OpenAgentd 3.56.0 is ready", **Later**, **Restart
+    to update**. While agents are working the button reads **Restart when
+    agents finish** and the restart waits for them (**Restart now** and
+    **Cancel** while it waits). The card that could be dragged, minimized
+    to a pill and expanded, and its separate Download step, are gone;
+    **Check for Updates…** in the app menu answers in a toast, and Settings
+    → About downloads a found update the same way and keeps the release
+    notes. Android keeps one **Download** step (an APK), in the same line.
+    The TypeScript tools prompt is one line too: "Install TypeScript tools
+    for {folder}?", **Later**, **Install**.
+  - Network access on Linux shows each firewall command as a code line with
+    **Copy**. "Clear this goal?" is two sentences.
+  - **Settings: 15 sections in 3 groups** (it was 18 in 6). **Basics**:
+    Appearance, Models, Account, Desktop, About. **Agent**: Agents, Skills,
+    Connectors, Plugins, Memory. **Advanced**: Sessions, Workspaces, Blocked
+    files, Image and video, Server. Renamed: Providers is **Models**, MCP
+    servers is **Connectors**, Denied paths is **Blocked files**, Provider
+    limits is **Usage limits**, and OpenAI Codex is **ChatGPT**. Session
+    titles, Context, Goals and Retention are one page, **Sessions**. Search
+    in Settings and the palette finds every page by its earlier name, links
+    into the four merged pages open Sessions at their heading, and messages
+    that point to a page use its new name.
+  - **Models**: one filter (All / Connected), with hidden ones behind a
+    link under the list. A model's form has one button: **Connect**, which
+    checks the key and saves it (**Save** once one is stored); **Test** is
+    a small action beside Hide. Signing in reads **Sign in to {name}**,
+    **Code to enter**, **Copy code**, **Open the sign-in page**.
+  - **Connectors**: a new connector first asks **How does it connect?**, **A
+    web address** or **A program on this computer**, and shows only that
+    half. An address needs nothing else: the name is filled in from it
+    (`https://mcp.notion.com/mcp` gives `notion`) until one is typed, and
+    **Needs sign-in** is a switch, on. Status, timeout, headers, app
+    credentials and the protocol (**Automatic**, which tries the current
+    one and then the older SSE one, or **SSE only**) are under **Options**.
+    It was a form pre-filled with an `npx` command and a stdio / HTTP / SSE
+    (legacy) switch.
+  - **Blocked files**: **Block a folder…** picks the folder (the system's
+    dialog, or the folder list of the computer the agents run on) and
+    writes its pattern. Each rule reads as a sentence above its pattern
+    ("Any file named .env", "Everything in taxes"). Four common patterns
+    are one press each under **Add a pattern**, which replaces the
+    examples popover, and the empty page says **Nothing is blocked**. The
+    help no longer suggests `secrets/**`, which never matched: a pattern is
+    matched against a file's full path.
+  - **Computers**: the desktop's connection page, the phone's first screen
+    and the palette say **Computer** where they said Server ("Built-in
+    server" is **This computer**; **Switch Computer…**). One list holds this
+    computer, the account's computers and the ones added by address; a row
+    has **Use** and **Details**, and stopping, watching in the background,
+    editing and removing are in Details. Adding one by address has one
+    button, **Connect**, which checks the address and key before it saves.
+  - Account: the two sign-in choices are sentences, **My other devices can
+    open this computer** and **This computer can open my other computers**
+    (they were "Use as server" and "Use as client"); a device's details
+    read "Can be opened, and opens other computers".
+  - The palette's **Theme…** and **Text Size…** are one command,
+    **Appearance…**, found by either name. Image and video has one **Size**
+    row, whose options follow the chosen image model. Settings → Plugins
+    lists **Single-file plugins** once one exists.
+  - **A new scheduled task asks three questions**: **What should it do?**,
+    **When?** (Every day, Every weekday, Every week on…, Every … minutes,
+    hours or days, Once on…, each with a time picker; Custom (cron) keeps
+    the expression) and **Where?**, then **Where does the reply go?** (a
+    new session each time, the same session, or this session when the open
+    one is in that workspace). The form had eight fields, a cron expression
+    and a session ID on its first page. **More options** holds Name, Stop
+    after N runs, Time zone and Session ID; a task left unnamed is named
+    after what it does. A field in error opens the page it is on. Every
+    task made before opens in the same form: a cron expression the form
+    can say in words shows as words, any other as Custom.
+  - **A task's detail reads as sentences.** **Runs in** (workspace, where
+    replies go), **Schedule** ("Every weekday at 09:00 · next: Mon 09:00";
+    the cron expression shows in Full, or when it has no wording) and
+    **Dates**. The list and the sidebar say "weekdays at 09:00" in place of
+    `0 9 * * 1-5`. The sidebar's "+" reads **New task**, the dialog
+    **Delete this task?**, and the phone's page **Scheduled tasks**.
+  - **Shorter menus in the Review panel.** A tab's menu drops Close to the
+    left, Split left, Split up, Move left and Move right (dragging a tab
+    and the split keys still do all five). A commit's menu is **Open in
+    tab**, **Copy commit ID**, **Copy message**, **Revert commit…** and
+    **Undo commit…**, on desktop and phone.
+  - **Fewer Refresh buttons.** An open text file re-reads itself when the
+    file changes on disk. On desktop the Refresh buttons on Changes, a diff
+    and a file are one **Refresh** row in the pane's "⋯" menu; a phone
+    keeps the buttons.
+  - **Create worktree asks for a name.** The branch follows it
+    (`openagentd/{name}`) and is shown as a line with **Change** for when
+    it should differ. The dialog no longer repeats the list of existing
+    worktrees (the worktree chip has it).
+  - The notice on a session whose model is not connected reads **Connect a
+    model to start chatting** with **Open Models** (it said "model
+    provider" and "Open providers").
+  - **Preview says what it is doing.** While commenting, a line under the
+    bar reads "Click an element to comment" with **Done** (Esc and ⌥C still
+    stop it). On a phone the line reads "Tap an element to comment" above
+    the bar, and Comment is a button on the bar (it was a row in "⋯", with
+    nothing on screen while it was on).
+  - **Preview comments**: **Clear** and the × on one comment answer with
+    **Undo** for 10 seconds (Clear could not be taken back). A click on a
+    comment scrolls the page to its pin and outlines the element. **Add
+    comment** shows its keys (⌘↵). On a phone the list is one row, "3
+    comments", that opens with Clear inside, and **Send to agent** returns
+    to the chat, where the comments are in the message box.
+  - **Preview console**: **Errors**, **Warnings** and **All**, each with
+    its count. It opens on Errors when there are any (it listed every line
+    from the oldest), keeps the newest line in view until the list is
+    scrolled up, and has its own ×. On a phone "⋯" shows the error count
+    (it was a dot) and its row reads **Hide console** while it is open.
+  - **Preview size**: a fixed size (Mobile, Tablet, Desktop) says the
+    page's size and scale under it, "390 × 844 · 62%"; in Responsive the
+    size shows for a moment while the panel is resized. The size button
+    shows an icon and, when the panel has room, the size's name. On a phone
+    the button is filled while a fixed size is chosen.
+  - **Preview address**: focusing the field lists **Recent** addresses
+    (five per workspace, kept on this device) and **Pages in this
+    workspace** (its HTML files). Typing filters both; ↑ ↓ and ↵ choose. On
+    a phone the list opens upward from the address pill. At rest the field
+    leaves out `http://` (`https://` stays). The size's name gives way by
+    the panel's width, so a narrow panel on a wide window keeps the address
+    readable.
+  - **Renamed in this version** (each earlier word still finds its page in
+    Settings search and the command palette, and typed commands still run):
+
+    | Before | Now |
+    |---|---|
+    | Transcript: Detailed / Reader; Toggle Reader Mode | Detail: Full / Simple; Toggle Simple View |
+    | Git (tab, launcher, palette, status bar) | Changes |
+    | Workspace (the phone's page) | Review panel |
+    | Stop & send; on a phone "Steer now", "Send after this turn finishes" | Steer, Queue until done, Stop and send |
+    | Compact, Summarize now; `/compact` | Summarize; `/summarize` |
+    | Providers | Models |
+    | Provider limits | Usage limits |
+    | OpenAI Codex | ChatGPT |
+    | MCP servers; `/mcp` | Connectors; `/connectors` |
+    | Denied paths | Blocked files |
+    | Session titles, Context, Goals, Retention (four pages) | Sessions (one page) |
+    | Server, Servers, Built-in server | Computer, Computers, This computer |
+    | Use as server / Use as client | My other devices can open this computer / This computer can open my other computers |
+    | Trust this workspace? Trust and open | Let agents work in {folder}? Allow and open |
+    | Theme…, Text Size… (palette) | Appearance… |
+    | Copy short SHA, Copy full SHA, Copy commit message | Copy commit ID, Copy message |
+    | New scheduled task (sidebar "+") | New task |
+    | "Could not", "Unable to", "Failed to" | Couldn't |
+    | Try again (a button) | Retry |
+    | Offline (a computer that does not answer) | Can't reach |
 - **Each platform is offered what it can do, in one wording** `[v3.54.0]`:
   - iPad: a long press in the terminal opens Select All, Copy, Paste, Find
     and Add to chat, as on a phone. Before, only a phone-sized window had it.
@@ -2369,7 +2632,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     "Theme: Dark. Switch to System." and the update and TypeScript tools
     pills "Show … details", in place of "Click to …".
   - A provider that is not signed in says so and names the screen that
-    fixes it ("Sign in under Settings → Providers"), with the `agentd auth`
+    fixes it ("Sign in under Settings → Models"), with the `agentd auth`
     command after it. A server that does not answer names the setting to
     turn on (**Access from other devices**), not a server flag.
   - A crash screen's **Copy error details** reads **Could not copy** when
@@ -2476,7 +2739,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     offers **Sign in to {server}** right under the call (or **Open in
     Settings** for a server the app cannot sign in to), and reads **Signed
     in to {server}** once it is connected, so you no longer have to find
-    Settings → MCP from the agent's reply.
+    Settings → Connectors from the agent's reply.
   - A view that fails to render (a session's transcript, the Review panel)
     shows **Couldn't show this view** with **Try again** and **Copy error
     details** in its place, while the header, sidebar and status bar keep
@@ -2603,6 +2866,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   Before anything is sent, the iOS app asks once for consent to share what you
   write with the AI providers your server uses, with a link to the privacy
   policy, which is also in **Settings → About OpenAgentd** `[v3.49.0]`.
+- **iOS app on the App Store** `[v3.55.0]` — OpenAgentd is free on the
+  [App Store](https://apps.apple.com/app/openagentd/id6831600179) for iPhone
+  and iPad (iOS/iPadOS 15.0 or later). The public TestFlight beta stays for
+  early builds; a device has one or the other. See
+  [Install the iOS app](../../mobile/INSTALL-IOS.md).
 - **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
   `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
   encrypted with an Android Keystore key, downloads open the system share
@@ -2620,6 +2888,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **OpenAgentd Cloud account (beta, optional)** `[v3.50.0]` — reach your computers from your iPhone away from home, and get notified when agents finish. Nothing changes for people who don't sign in: local use, LAN pairing and `agentd server start --public --key --qr` work as before, and no screen asks for an account. It is offered only in a skippable card on the phone's Servers screen and in **Settings → Account** (desktop and phone); `agentd cloud join | login | status | logout` does the same on a headless server, and `agentd server status` adds a `Cloud:` line once signed in.
   - **Adding a device: QR invitation first.** On the phone, **Settings → Account → Add a device** shows a QR code for 10 minutes, and only while that screen is open (closing it or leaving the app cancels it). Another phone scans it; a computer can't scan, so **Can't scan? Use a link** shows the same invitation as a link, after a warning that it works like a password. Paste it in the computer's **Settings → Account**, or run `agentd cloud join` (it asks for the link without echoing it). The phone then shows the new device's kind and fingerprint, which the new device shows too, and adds it only when you tap **Add** (Face ID). If two devices claim the same invitation, nobody is added, the invitation is cancelled, and the phone offers a new one. The 6-digit code stays as the fallback: **Use a 6-digit code instead** on the phone, **Sign in with a code instead** on the computer, or `agentd cloud login`. An account holds up to 10 devices.
   - **Scan to add a computer** `[v3.55.0]`. In the desktop app, **Settings → Account → Sign in** shows a QR code next to the browser way; `agentd cloud login` draws it in the terminal. On an iPhone that approves devices, **Servers → Scan QR code** opens **Add this computer?**. Adding needs Face ID and shows a two-digit number: choose it on the computer (or type it in the terminal) to join. A wrong number, Cancel or no answer makes the computer leave again; it connects only after the right number. The browser way remains for a first device or when no phone can approve. The phone's Add a device sheet no longer offers a copied invitation link *(deprecated)*; a desktop can still show one. The scanner now reads sign-in codes, invitations and server connect codes.
+  - **Connect your phone in one click** `[v3.56.0]`. In the desktop app, a phone button in the status bar (and **Connect Your Phone** in the command palette) signs this computer in with server and client on and shows the QR code at once; it is there only on the app's own server, until the computer is in an account. The sign-in screen shows just the QR code: the browser way folds under **Can't use your phone? Sign in in the browser**, and the roles move under **Options** (on the guest card and on the phone's **Add this computer?**, which defaults to what the computer asked for). An iPhone that is not signed in yet can scan a computer's code too: it signs in (creating the account if needed) and then opens **Add this computer?** without a second scan; Android says adding a computer needs the iPhone app for now. On a server, `agentd server start --cloud` starts it and then signs in as `agentd cloud login` does, and a plain `server start` suggests `agentd cloud login` to a person not signed in.
   - **The phone sets up the account.** Signing in on the phone shows a recovery code once (you type two of its groups back); other devices join an account the phone approves, by invitation or by comparing a 6-digit code on both screens and confirming with Face ID or the passcode. Since `[v3.51.0]` any device can be first (below); use `agentd cloud login` on a computer. The old `--first-device` flag is no longer needed or accepted *(deprecated)*.
   - **Any device signs in first; servers and clients** `[v3.51.0]`. A computer creates the account from **Settings → Account → Sign in** or `agentd cloud login` (it asks before creating one, then shows the recovery code). Signing in chooses what the device is for: **Use as server** (your other devices open sessions on it) and **Use as client** (it opens sessions on your other computers); a computer offers both, on by default in the app, while `agentd cloud login` is server-only unless given `--client`; a phone is a client only. A later device signs in the same way and waits; every device that approves gets "A device wants to join your account" (a push on the phone, which opens the request when tapped; a notification and an in-app prompt in the desktop app; `agentd cloud approve` on a headless computer). Approving compares the 6-digit code on both screens and confirms with Face ID, Touch ID or the login password; the approver can turn a requested role off but never add one. Each device's roles show in **Devices**. A server-only device cannot open sessions on others, and a client-only computer runs no relay connector. On a computer, only a person approves or removes devices: in the desktop app (which proves the confirmation to its own server), or with `agentd cloud approve` typed in a terminal; an agent's commands, a script, or a plain browser tab cannot, and say where to do it instead.
   - **End-to-end encrypted.** Traffic between the phone and a computer goes through the relay inside a Noise session keyed to the account's signed device list, which every device verifies; the relay cannot read it, and the cloud cannot add a device. On the computer, relayed requests are served in-process, never as a local caller, and lose any credential or proxy header the phone sends. Done / Needs you / Failed notifications are sealed to the phone and opened by its notification extension.
@@ -2638,8 +2907,14 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **Stays connected after the phone was locked** `[v3.53.1]`. The phone app reaches its account computer again when it comes back from the background: iOS may take a suspended app's local connection to the computer without saying so, so the app stops it in the background and opens it again in front (on the same address and with the same key, so the page needs no reload), and checks it whenever a retry is asked. A failed open no longer cuts off the computer the app is on, a reload no longer leaves the connection waiting for the app to come back, and a large reply that overlapped another request no longer ends the session on 3.53.0 hosts and phones. The last row of the phone's Servers screen, **Copy diagnostics**, copies what the app saw of its connections (the last 50 events, with the app version and time; no keys, tokens or addresses) for a problem report.
   - **Open your other computers from the desktop app** `[v3.53.0]`. On a computer signed in to an account (with **Use as client**, the default), Settings → Server lists **Your computers**: every other computer of the account that serves sessions, with Online or Offline (refreshed every 30 s while the list shows), the one in use marked, and **Use** to open it in that window. ⌘K → Switch Server… lists them too, between the built-in server and the saved ones. The built-in server holds the account keys, so it keeps the connection to each opened computer (the same self-healing link as the phone) and closes it once no window uses it; with the built-in server stopped the list says so and offers **Start**, and a computer signed in without **Use as client** says it cannot open others. Account calls always go to this computer's own server, so Settings → Account keeps working while a window shows another computer. The footer, the health dot and the notch name the computer in use, and one computer saved under two addresses (or opened through the account too) shows its sessions once in the notch.
   - **Direct at home, through your account away** `[v3.53.0]`. On the same home network, the phone and the desktop app reach a computer of your account directly, with the account's device keys: nothing to type and no access key. Leave home and the same chat keeps going through your account within seconds, with no reload; come home and it moves back by itself. The computer's row says which way it is reached: **On your network** or **Through your account**. The computer tells your devices where to find it only inside an encrypted session, so the cloud never learns its addresses, and a device tries them only on the network where it learned them. A computer accepts direct sessions only from devices of the account that may open sessions, on its private addresses, and refuses a device that was removed or left the account (also after a restart without internet); a computer that hasn't heard from the cloud for 7 days stops accepting them until it does. It's on by default for a computer used as a server, with a switch in **Settings → Server → Let your account's devices connect directly on this network**. Saved servers (an address with an access key, **Allow devices on your network to connect**) are a separate thing and work as before; a machine that is both shows two rows, and an account computer never takes a saved server's name (it has its own, see below). Each computer keeps one local address in the app across launches, so its page storage stays.
-  - **Names for your computers** `[v3.54.0]`. Each computer has a name: its own host name ("studio-mini") until you call it something else ("Work", "Personal"). Your computers, the Devices list, ⌘K → Switch Server…, the status bar, the phone's header, the tray and the notch show that name where they showed a system and key ("macOS · 3F9A 21C4") or an address. The name lives on the computer and an app reads it over the connection it already has, so every device of yours shows the same one after its next connection and the cloud never sees it. **Details** on a row (⋯ or a long press on touch) holds what the row no longer carries: the system, the key, the role, and for the built-in server its address; a saved server's address is in its **Edit** form. **Rename** is in the Details of every computer of your account (Your computers and the Devices list, on a phone or in the desktop app), and of the built-in server in the desktop app; an empty name gives the host name back. `[v3.55.0]` Any device of the account may rename any of its computers, approver or not: a computer you are not on is renamed through its link in the background, and the app stays where it is. A computer that predates names says to update it. A row is a name and one status line; a computer the app has never been on, and a phone (which has no name), are still titled by system and key, and the key joins a name only while two computers share it. A saved server is titled by the name you gave it, else by its computer's name, else by its address. A name is at most 40 characters of plain text and is only a label: nothing trusts a device by it, and removing a device still asks with its system and key in full. An older server reports no name and keeps its old title.
+  - **Names for your computers** `[v3.54.0]`. Each computer has a name: its own host name ("studio-mini") until you call it something else ("Work", "Personal"). Your computers, the Devices list, ⌘K → Switch Server…, the status bar, the phone's header, the tray and the notch show that name where they showed a system and key ("macOS · 3F9A 21C4") or an address. The name lives on the computer and an app reads it over the connection it already has, so every device of yours shows the same one after its next connection. `[v3.56.0]` Your account keeps the names too (see **One name per device** below), so the cloud stores each device's name; before, it never saw them. **Details** on a row (⋯ or a long press on touch) holds what the row no longer carries: the system, the key, the role, and for the built-in server its address; a saved server's address is in its **Edit** form. **Rename** is in the Details of every computer of your account (Your computers and the Devices list, on a phone or in the desktop app), and of the built-in server in the desktop app; an empty name gives the host name back. `[v3.55.0]` Any device of the account may rename any of its computers, approver or not: a computer you are not on is renamed through its link in the background, and the app stays where it is. A computer that predates names says to update it. A row is a name and one status line; a computer the app has never been on, and a phone (which has no name), are still titled by system and key, and the key joins a name only while two computers share it. A saved server is titled by the name you gave it, else by its computer's name, else by its address. A name is at most 40 characters of plain text and is only a label: nothing trusts a device by it, and removing a device still asks with its system and key in full. An older server reports no name and keeps its old title.
+  - **One name per device, kept by your account** `[v3.56.0]`. Each device has one name, stored with your account, and every device and list shows that same name, also before the app has reached the computer. Renaming in **Details** changes it everywhere (a device renames itself; a device that approves new devices renames any of them); a computer keeps its own server name and its account name in step, whichever changed last, and a computer that joins names itself after its host name. The names your app remembered for your computers before this update go to your account once, where it has none yet. A phone has no name of its own (iOS gives apps none): it shows as **This phone**, or by the name you give it. A name is at most 40 characters of plain text and is still only a label.
+  - **Signed-out devices leave the list** `[v3.56.0]`. A device that signed out disappears from every device list at once instead of staying as a row that can't be used; a computer that approves removes it from the account's signed device list in the background, and the phone does so with its next approve, add or remove. Signing out on the only device that approves new devices warns first, as removing it does.
+  - **Lost your phone? Use your recovery code** `[v3.56.0]`. When the device that approves new devices is gone, **Settings → Account → Other ways to sign in → Lost your phone?** (on a computer and on a phone, also from the waiting sign-in steps) takes the recovery code saved when the account was set up, then a sign-in in the browser. That device then approves new devices and every other device is signed out, to sign in again from it. The recovery code stays the same afterwards, and the screen says so. On a server, `agentd cloud recover` does the same. A wrong code says so and changes nothing.
+  - **Only one device can approve** `[v3.56.0]`. While a single device approves new devices, the Account screen says so above the list, with a button that lets another device (your phone, or a computer with a screen first) approve too; any device's **Details** has **Let it approve new devices**. On the phone it asks for Face ID.
+  - **A simpler Account screen** `[v3.56.0]`. Signed out, the screen is one sentence and **Sign in**; the invitation link and the recovery code fold under **Other ways to sign in**, and sign-in asks no roles (a computer is a server and a client; `agentd cloud login` keeps its role options). Signed in, it is one list of your devices by name, this one first with **Sign out**; the status, key, roles and sharing that were a separate panel are in each device's **Details**. The phone's Servers screen shows a single **Sign in** row to a phone that isn't signed in.
   - **Keys stay on the device:** the iPhone keeps them in the Keychain (the approval key behind Face ID); computers keep them in `cloud/identity.json` in the server's state folder, readable only by your user. Signing out leaves the account and erases the keys; sessions and settings stay. Removed, deleted, closing and unavailable accounts each say so; in every state the app keeps working on its own, and only reaching other devices through the relay and notifications stop.
+  - **Face ID before every device change** `[v3.56.0]`. On the iPhone, approving, adding or removing a device asks for Face ID (before, Face ID iPhones only ever asked for the passcode), with Touch ID or the passcode as the fallback. Cancelling changes nothing, and you can tap again to retry. An iPhone without a passcode is told to set one before it signs in, instead of failing after the recovery code.
   - Not yet: Android, changing a device's roles after it joined. Approving from a computer arrived in `[v3.51.0]`. The protocol is in `appv3/contract/tunnel.md`, its threat model in `appv3/contract/tunnel-threats.md`.
 
 ---
@@ -2675,11 +2950,27 @@ executes tools, manages its task list, and inspects workspace repositories.
   of "Subagent turn failed with error." One that can't reach its model (out of quota,
   or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
   Stopped subagents show as `stopped` rather than `error`.
+- **Finished subagents leave memory** `[v3.56.0]` — a subagent whose turn completed
+  is unloaded 5 minutes after its report reached the lead; before, it stayed loaded
+  until its lead was deleted. `team(action='list')` and the app still show it as
+  done, and a message to its handle (`team(target='explorer#1', task='…')`) loads the
+  same session back with its whole conversation. A subagent that failed, was stopped
+  or waits on the lead's answer stays loaded.
+  - After a restart, the list also shows the lead's earlier subagents; it used to
+    say "No subagents yet."
+  - A profile name alone (`target='explorer'`) finds only a loaded subagent; the
+    handle always works.
+  - A report longer than 32,000 characters is cut, and its notice now tells the
+    lead to ask the subagent for the rest by its handle. It used to point at the
+    subagent's session, which the lead cannot read.
 - **Shorter tool names** `[v3.30.0]` — `schedule_task`, `send_to_workspace`,
   `delegate` and `todo_manage` are now `schedule`, `workspace`, `team` and `todo`,
   with the same arguments. A session from before the rename that calls a former
   name is told the new one ("Did you mean 'team'?"); agent files that list a
   former name are left as they are; old transcripts render as before.
+  Calls to the older v2 team tools (`team_spawn`, `team_send`, `team_list`,
+  `team_wait`, `team_stop`, `team_manage`, `send_to_lead`) in old transcripts show
+  as ordinary tool cards, with the call and its result as text `[v3.56.0]`.
 - **Built-in instructions that agree with each other** `[v3.23.0]` — the built-in
   prompt, runtime rules, Plan and Code notes, tool descriptions, bundled skill, and
   member prompts were reviewed together, so they no longer contradict each other or
@@ -2713,6 +3004,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   kept them in memory only), so the line, the sidebar's active list and the
   held-back "Done" notification stay right across a restart. Deleting a session
   that owed a reply ends the wait for it.
+  From `[v3.56.0]` the line shows while the main agent is still running too, in one
+  place after the transcript, so it never jumps or doubles when the turn ends. On
+  the desktop it opens the list inline under the line (Enter or Space toggles it,
+  and it stays open after a row opens a session); a phone keeps the sheet. Idle
+  sessions are left out: the line, the list and the Goal tab count only sessions
+  that are running or need you.
 - **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related
@@ -3436,6 +3733,12 @@ agent against it.
   hunk line marked `-` or `+`, so every line reads as unchanged context — is
   rejected with guidance instead of reporting success without writing,
   which previously sent the agent into a silent retry loop `[v2.0.0]`.
+  A patch that leaves out the closing `*** End Patch` line is applied
+  `[v3.56.0]`: models sometimes omit it, and every other check still runs. A
+  reply cut off at the output limit never reaches a tool, so the line guarded
+  nothing. Only a line that starts with the marker closes a patch, so text
+  that mentions it inside a line stays content; a last line of
+  `+*** End Patch` is refused, with a message saying where the marker goes.
   A hunk can narrow its search after a unique literal line with
   `@@ in: <anchor>`; ambiguous or missing anchors, and ambiguous targets
   within that scope, are rejected rather than selecting a match `[v2.5.0]`.
@@ -3541,12 +3844,12 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
-  Changing the trigger in Settings → Context applies from the next model
+  Changing the trigger in Settings → Sessions applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
   Summaries in sessions with an active goal, @-mentioned context, or a
   session plan now reuse the turn's prompt cache too, so compaction there no
   longer re-reads the whole context `[v3.34.0]`.
-  Opt-in **idle compaction** in Settings → Context → Idle sessions
+  Opt-in **idle compaction** in Settings → Sessions → Idle sessions
   compacts a session in the background when it has been idle for 4½ minutes
   after a turn and its context has reached a set share of the trigger
   (default 70%). This uses the provider's prompt cache while it is still
@@ -3650,11 +3953,11 @@ agnostic by design.
   subscriptions sign in through the usual dialog. A provider that already
   works (a saved key, a key exported in the server's environment, or a running
   Ollama) is offered with a one-click **Use**. **More providers…** opens
-  Settings → Providers. Open sessions keep the banner, which now follows the
+  Settings → Models. Open sessions keep the banner, which now follows the
   same rule, so it no longer hides while sends would fail and no longer shows
   for a working Ollama setup.
 - **A saved key is enough to chat** `[v3.31.0]` — when the first provider
-  gets a credential (Settings → Providers, the setup card, or `POST
+  gets a credential (Settings → Models, the setup card, or `POST
   /api/settings/providers/{id}/credentials`), agents that have no model yet
   get that provider's suggested model, read from its live model list:
   the newest match of a version pattern such as `claude-sonnet-*`. Without a
@@ -3713,14 +4016,14 @@ agnostic by design.
   in dollars, and falls back to the legacy monthly limit. Token refresh
   retries transient failures and keeps the saved session unless xAI rejects
   the grant `[v3.29.0]`.
-- **Codex usage monitor** `[v1.32.0, v1.131.0, v1.131.1]` — Settings → Providers shows live Codex
+- **Codex usage monitor** `[v1.32.0, v1.131.0, v1.131.1]` — Settings → Models shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
   Workspace spend caps report used/limit/remaining amounts and a reset time — the only
   usage signal once a cap is reached and Codex stops returning rate-limit windows — and
   a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`. The
   desktop tray's "Usage Limits" submenu renders the same cap `[v1.131.1]`.
 - **Priority / Fast mode** `[v1.90.0, v1.92.0]` — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The status bar shows a **fast** pill while the session has it on; it is a status indicator, not a switch, so the mode is set through the API or another client, and the session field, API parameter, and provider mapping apply as before.
-- **Hide / show a provider** `[v1.92.0]` — Settings → Providers lets you
+- **Hide / show a provider** `[v1.92.0]` — Settings → Models lets you
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
   on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
@@ -3733,7 +4036,7 @@ agnostic by design.
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
 - **Several keys and accounts per provider, with automatic switching** `[v3.30.0]` —
-  Settings → Providers keeps an ordered list of API keys for each API-key
+  Settings → Models keeps an ordered list of API keys for each API-key
   provider (OpenAI, Anthropic, OpenRouter, …) and of OAuth accounts for Codex,
   GitHub Copilot, and Grok. Each row shows a masked key hint or account name and
   its state (In use, Ready, Cooling down with a reset countdown, Reconnect
@@ -3754,7 +4057,7 @@ agnostic by design.
   they opt in with `supportsMultipleCredentials: true`; they then get the same
   account list, switching, and cooldowns, with per-account OAuth tokens kept in
   `credentials.yaml` `[v3.30.0]`.
-- **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Providers
+- **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Models
   shows each enabled profile's quota windows, spend caps and credits in its
   own row, without a duplicate provider-wide usage block. Disabled profiles
   do not request usage. Usage checks share a per-account cache across clients
@@ -3766,16 +4069,16 @@ agnostic by design.
 - **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or
-  saving a key in Settings → Providers takes effect on the next message
+  saving a key in Settings → Models takes effect on the next message
   instead of after quitting and reopening the app.
-- **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
+- **Copilot usage monitor** `[v1.33.0]` — Settings → Models shows live Copilot
   premium request quota from the saved OAuth token. Token-based / pooled-credit
   seats skip a fake 0% quota window and show used credits as `N/∞` in Settings
   and the usage tray instead of "unlimited" `[v2.23.0]`.
-- **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
+- **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Models shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
-  surface live usage in the same Settings → Providers panel as built-ins.
-- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.9.0]` — Settings → Providers lets
+  surface live usage in the same Settings → Models panel as built-ins.
+- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.9.0]` — Settings → Models lets
   users choose which provider models appear in normal model pickers. Session
   settings and other pickers read a cached provider model list for instant
   open; when the cache is empty, `/api/agents/registry` warms configured
@@ -4098,7 +4401,7 @@ Four orthogonal ways to add capability.
     as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
     `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,
     and an `http` server that refuses Streamable HTTP falls back to it on its
-    own. Plugins can declare `sse` servers, and the Settings → MCP form offers
+    own. Plugins can declare `sse` servers, and the Settings → Connectors form offers
     **SSE (legacy)**.
   - **Set up MCP servers from chat** `[v3.35.0]` — ask the agent to connect a
     server ("add the GitHub MCP") and it proposes the `mcp.json` entry
@@ -4110,7 +4413,7 @@ Four orthogonal ways to add capability.
     sees a secret: `env` and header values and OAuth credentials show as
     `********` (a `${NAME}` reference shows as written), sending `********`
     back keeps the stored value, and tokens and OAuth sign-in stay in
-    Settings → MCP. The `mcp` tool is listed even before the first server, and
+    Settings → Connectors. The `mcp` tool is listed even before the first server, and
     its description is fixed for the session, so adding or removing a server
     does not invalidate the prompt cache; new sessions see the new list. A
     change that was made elsewhere after the card opened is not applied.
@@ -4167,7 +4470,7 @@ Four orthogonal ways to add capability.
   its turn ends instead of loading again. An HTTP MCP server's session is
   kept across restarts of OpenAgentd, so what a server holds for it (a
   canvas an app is editing) is still there afterwards; restart the server in
-  Settings → MCP to start a fresh session.
+  Settings → Connectors to start a fresh session.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
@@ -4175,7 +4478,7 @@ Four orthogonal ways to add capability.
   not answer in 210 s (other MCP requests: 30 s) fails with a "timed out"
   error instead of hanging the turn, and the server is sent
   `notifications/cancelled` when a call times out or is stopped. Set
-  **Tool timeout** (1–270 s) per server in Settings → MCP, or `"timeout"` in
+  **Tool timeout** (1–270 s) per server in Settings → Connectors, or `"timeout"` in
   `mcp.json`.
 - **`.agents/` is the only project folder** `[v3.14.0]` — skills, commands and
   snippets load from `<project>/.agents/`, the OpenAgentd config dir, and
@@ -4253,7 +4556,7 @@ Four orthogonal ways to add capability.
     Reload button, and details: skills, the command or URL of each MCP
     server, tools (read-only ones marked), permissions, errors and warnings.
     Plugin MCP servers appear in
-    Settings → MCP marked "from <plugin>": they can be restarted there, go on
+    Settings → Connectors marked "from <plugin>": they can be restarted there, go on
     and off with their plugin, and the agent's `mcp` tool cannot change them.
     With no plugin folder yet, it suggests asking an agent to install one.
   - **`agentd` for the agent in the desktop app** `[v3.44.0]` — the desktop
@@ -4583,7 +4886,7 @@ Desktop is primary. CLI / server is the developer path.
   import <dotenv>` copies provider keys from a dotenv file such as a project's
   `.env` `[v3.30.0]`.
 - **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
-  (including keys saved in Settings → Providers and the lead agent's OAuth
+  (including keys saved in Settings → Models and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
   and exits 1 when a check fails. With the server running it also lists the
   server's modules and their state, with the reason a module failed or is

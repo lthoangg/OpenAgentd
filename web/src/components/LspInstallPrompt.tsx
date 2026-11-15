@@ -1,15 +1,24 @@
-import { useCallback, useState } from 'react'
-import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion'
-import { AlertCircle, Check, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
+/**
+ * The TypeScript tools prompt: one line in the notices column, the same
+ * shape as the update notice. Done leaves a toast; a failure says why in a
+ * toast and keeps the line, with Retry.
+ */
+import { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 
 import { apiBaseUrl } from '@/api/base-url'
 import { installTypeScriptLsp } from '@/api/client'
+import { NoticeLine } from '@/components/NoticeLine'
 import { Button } from '@/components/ui/button'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { dragSettle, noticePresence } from '@/lib/motion'
+import { failureToast } from '@/lib/failure-toast'
+import { noticePresence } from '@/lib/motion'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import type { LspInstallRequest } from '@/stores/useLspInstallStore'
-import { cn } from '@/lib/utils'
+import { useToastStore } from '@/stores/useToastStore'
+import { workspaceLabel } from '@/utils/workspace'
+
+const FAILED = "Couldn't install TypeScript tools"
 
 export function LspInstallPrompt() {
   const request = useLspInstallStore((state) => state.request)
@@ -21,239 +30,57 @@ export function LspInstallPrompt() {
     <AnimatePresence>
       {request && requestKey && (
         <motion.div key={requestKey} className="pointer-events-none w-full" {...noticePresence(reduced)}>
-          <LspInstallDialog request={request} />
+          <LspInstallLine request={request} />
         </motion.div>
       )}
     </AnimatePresence>
   )
 }
 
-function LspInstallDialog({ request }: { request: LspInstallRequest }) {
+function LspInstallLine({ request }: { request: LspInstallRequest }) {
   const dismiss = useLspInstallStore((state) => state.dismiss)
-  const reduced = useReducedMotion() ?? false
-  const [error, setError] = useState<string | null>(null)
-  const [installed, setInstalled] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [installing, setInstalling] = useState(false)
-  const [minimized, setMinimized] = useState(false)
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const dragControls = useDragControls()
-
-  const close = () => {
-    setError(null)
-    setInstalled(false)
-    dismiss()
-  }
-
-  const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
-    setOffset((prev) => ({
-      x: prev.x + info.offset.x,
-      y: prev.y + info.offset.y,
-    }))
-  }, [])
-
-  const resetPosition = useCallback(() => {
-    setOffset({ x: 0, y: 0 })
-  }, [])
+  const name = workspaceLabel(request.workspace)
 
   const install = async () => {
-    setError(null)
+    const push = useToastStore.getState().push
     setInstalling(true)
     try {
       const status = await installTypeScriptLsp()
       if (status.typescript.state === 'error') {
-        setError(status.typescript.detail ?? 'TypeScript language tools could not be installed.')
+        setFailed(true)
+        push(failureToast(FAILED, status.typescript.detail))
       } else if (status.typescript.state !== 'ready') {
-        setError('TypeScript language tools did not finish installing. Try again or check the server logs.')
+        setFailed(true)
+        push({ tone: 'error', title: FAILED, description: 'The install did not finish. Retry, or check the logs of the computer the agent runs on.' })
       } else {
-        setInstalled(true)
+        push({ tone: 'success', title: 'TypeScript tools are ready', description: name })
+        dismiss()
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'TypeScript language tools could not be installed.')
+      setFailed(true)
+      push(failureToast(FAILED, cause))
     } finally {
       setInstalling(false)
     }
   }
 
   return (
-    <aside
-      className="pointer-events-none flex w-full justify-end"
-      aria-live="polite"
-    >
-      <motion.div
-        drag
-        dragListener={false}
-        dragControls={dragControls}
-        dragMomentum={false}
-        dragElastic={0}
-        onDragEnd={handleDragEnd}
-        animate={{ x: offset.x, y: offset.y }}
-        transition={dragSettle(reduced)}
-        style={{ touchAction: 'none' }}
-        role="dialog"
-        aria-label="Install TypeScript language tools"
-        data-swipe-ignore
-        className={cn(
-          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-(--shadow-depth) backdrop-blur-xs transition-[width,padding,border-radius] duration-(--motion-base)',
-          minimized
-            ? 'w-auto rounded-full px-3 py-1.5'
-            : 'w-auto max-w-sm rounded-md p-4 sm:w-full sm:max-w-sm',
-        )}
-      >
-        {minimized ? (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Drag TypeScript tools notification (double-click to reset position)"
-              title="Drag to move · Double-click to reset"
-              onPointerDown={(e) => dragControls.start(e)}
-              onDoubleClick={resetPosition}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-            >
-              <GripVertical className="size-3.5" />
-            </button>
-
-            <button
-              type="button"
-              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-xs px-1"
-              onClick={() => setMinimized(false)}
-              title="Show TypeScript tools details"
-            >
-              {statusIcon(installing, installed, Boolean(error))}
-              <span className="font-medium">{minimizedLabel(installing, installed, Boolean(error))}</span>
-            </button>
-
-            {!installed && !installing && (
-              <Button
-                type="button"
-                variant="primary"
-                size="xs"
-                onClick={() => { void install() }}
-              >
-                {error ? 'Retry' : 'Install'}
-              </Button>
-            )}
-            {installed && (
-              <Button type="button" variant="default" size="xs" onClick={close}>
-                Close
-              </Button>
-            )}
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setMinimized(false)}
-              title="Expand"
-              aria-label="Expand"
-            >
-              <Maximize2 className="size-3.5" />
-            </Button>
-
-            {!installed && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={close}
-                disabled={installing}
-                title="Remind me later"
-              >
-                Later
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2">
-                <button
-                  type="button"
-                  aria-label="Drag TypeScript tools notification (double-click to reset position)"
-                  title="Drag to move · Double-click to reset"
-                  onPointerDown={(e) => dragControls.start(e)}
-                  onDoubleClick={resetPosition}
-                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) mt-0.5"
-                >
-                  <GripVertical className="size-3.5" />
-                </button>
-                <div>
-                  <div className="font-medium">Install TypeScript language tools?</div>
-                  <div className="mt-1 text-xs text-(--color-text-muted)">
-                    TypeScript language tools are needed for this workspace. They will be downloaded and installed on the server, not on this device.
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setMinimized(true)}
-                  title="Minimize"
-                  aria-label="Minimize"
-                >
-                  <Minus className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-1 pl-6 font-mono text-meta text-(--color-text-subtle)">
-              <p className="break-all">{request.workspace}</p>
-              <p>Language server {request.languageServerVersion}, TypeScript {request.typeScriptVersion}</p>
-            </div>
-
-            {error && <p role="alert" className="mt-3 pl-6 text-sm text-(--color-error)">{error}</p>}
-            {installed && <p role="status" className="mt-3 pl-6 text-sm text-(--color-text-muted)">TypeScript language tools are ready on the server.</p>}
-
-            <div className="mt-4 flex justify-end gap-2">
-              <Button type="button" variant="default" size="sm" onClick={close} disabled={installing}>
-                {installed ? 'Close' : 'Later'}
-              </Button>
-              {!installed && (
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => { void install() }}
-                  disabled={installing}
-                >
-                  {installing ? (
-                    <>
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      Installing…
-                    </>
-                  ) : error ? (
-                    'Try again'
-                  ) : (
-                    'Install'
-                  )}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-      </motion.div>
+    <aside className="pointer-events-none flex w-full justify-end" aria-live="polite">
+      {installing ? (
+        <NoticeLine role="dialog" aria-label="Install TypeScript language tools" busy text="Installing TypeScript tools…" />
+      ) : (
+        <NoticeLine
+          role="dialog"
+          aria-label="Install TypeScript language tools"
+          text={`Install TypeScript tools for ${name}?`}
+          detail={`Downloaded and installed on the computer the agent runs on, not on this device.\n${request.workspace}\nLanguage server ${request.languageServerVersion}, TypeScript ${request.typeScriptVersion}`}
+        >
+          <Button type="button" variant="ghost" size="xs" onClick={dismiss}>Later</Button>
+          <Button type="button" variant="primary" size="xs" onClick={() => { void install() }}>{failed ? 'Retry' : 'Install'}</Button>
+        </NoticeLine>
+      )}
     </aside>
   )
-}
-
-function statusIcon(installing: boolean, installed: boolean, hasError: boolean) {
-  if (installing) {
-    return <Loader2 className="size-3.5 animate-spin text-(--color-text-muted)" />
-  }
-  if (hasError) {
-    return <AlertCircle className="size-3.5 text-(--color-error)" />
-  }
-  if (installed) {
-    return <Check className="size-3.5 text-(--color-accent)" />
-  }
-  return <Download className="size-3.5 text-(--color-accent)" />
-}
-
-function minimizedLabel(installing: boolean, installed: boolean, hasError: boolean): string {
-  if (installing) return 'Installing tools…'
-  if (hasError) return 'Install failed'
-  if (installed) return 'Tools ready'
-  return 'TypeScript tools'
 }

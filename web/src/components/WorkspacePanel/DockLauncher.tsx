@@ -41,16 +41,28 @@ export interface DockOpenActions {
   onOpenFile?: () => void
 }
 
-/** The rows of the launcher and the tab strip's "+" menu, in order. */
-export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: ReadonlySet<string> = new Set(), counts: Readonly<Record<string, number>> = {}): DockOpenItem[] {
-  const rows: DockOpenItem[] = []
+/**
+ * The rows of the launcher and the tab strip's "+" menu, in order: views,
+ * then tools. ``toolsFirst`` is for a place without Git (Chat, a plain
+ * folder), where files are what the panel can show: Find file…, Preview and
+ * Terminal lead, and the views follow.
+ */
+export function dockOpenItems(
+  os: OS,
+  actions: DockOpenActions,
+  openIds: ReadonlySet<string> = new Set(),
+  counts: Readonly<Record<string, number>> = {},
+  { toolsFirst = false }: { toolsFirst?: boolean } = {},
+): DockOpenItem[] {
+  const views: DockOpenItem[] = []
+  const tools: DockOpenItem[] = []
   const view = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
-    if (run) rows.push({ id, label, icon, shortcut, group: 'view', open: openIds.has(id), count: counts[id], run })
+    if (run) views.push({ id, label, icon, shortcut, group: 'view', open: openIds.has(id), count: counts[id], run })
   }
   const tool = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
-    if (run) rows.push({ id, label, icon, shortcut, group: 'tool', run })
+    if (run) tools.push({ id, label, icon, shortcut, group: 'tool', run })
   }
-  view('review', 'Git', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
+  view('review', 'Changes', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
   view('goal', 'Goal', <Target size={14} aria-hidden="true" />, actions.onOpenGoal)
   view('plan', 'Plan', <FileText size={14} aria-hidden="true" />, actions.onOpenPlan)
   view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))
@@ -59,7 +71,7 @@ export function dockOpenItems(os: OS, actions: DockOpenActions, openIds: Readonl
   tool('terminal', 'Terminal', <TerminalSquare size={14} aria-hidden="true" />, actions.onOpenTerminal)
   tool('preview', 'Preview', <Globe size={14} aria-hidden="true" />, actions.onOpenPreview)
   tool('file', 'Find file…', <Search size={14} aria-hidden="true" />, actions.onOpenFile, shortcutLabel(APP_SHORTCUTS.quickOpen, os))
-  return rows
+  return toolsFirst ? [...[...tools].reverse(), ...views] : [...views, ...tools]
 }
 
 /** Up/Down (wrapping), Home and End move between the launcher's rows, as in a menu. */
@@ -84,17 +96,19 @@ function moveBetweenRows(event: KeyboardEvent<HTMLDivElement>) {
  * Opened empty, the panel puts focus on its first row (see ``WorkspacePanel``).
  */
 /** A phone names the rows by what they hold (mockup J7 7.1). */
-export const PHONE_LABELS: Record<string, string> = { review: 'Changes', file: 'Files' }
+export const PHONE_LABELS: Record<string, string> = {}
 
 export function DockLauncher({ items, phone = false }: { items: DockOpenItem[]; phone?: boolean }) {
   if (phone) {
     // An iOS grouped list: views, then tools, each a 44pt row with a count
     // and a chevron.
-    const groups = [items.filter((row) => row.group === 'view'), items.filter((row) => row.group === 'tool')].filter((rows) => rows.length > 0)
+    // In the order the rows came in: tools lead where there is no Git.
+    const order: DockOpenItem['group'][] = items[0]?.group === 'tool' ? ['tool', 'view'] : ['view', 'tool']
+    const groups = order.map((group) => ({ group, rows: items.filter((row) => row.group === group) })).filter(({ rows }) => rows.length > 0)
     return (
       <div data-dock-launcher="phone" className="flex h-full flex-col gap-5 overflow-y-auto px-4 pt-4 pb-4">
-        {groups.map((rows, index) => (
-          <div key={index} role="group" aria-label={index === 0 ? 'Views' : 'Tools'} className="flex flex-col divide-y divide-(--color-border) overflow-hidden rounded-md bg-(--bg-card)">
+        {groups.map(({ group, rows }) => (
+          <div key={group} role="group" aria-label={group === 'view' ? 'Views' : 'Tools'} className="flex flex-col divide-y divide-(--color-border) overflow-hidden rounded-md bg-(--bg-card)">
             {rows.map((row) => (
               <button
                 key={row.id}

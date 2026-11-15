@@ -10,7 +10,7 @@ import type { AppBackendStatus } from '@/lib/app-backend'
 mock.module('@/hooks/use-touch-first', () => ({ useTouchFirst: () => true }))
 mock.module('@tauri-apps/api/core', () => ({ invoke: async () => null }))
 
-const { AccountComputersSection } = await import('@/components/phone/AccountComputers')
+const { AccountComputerRows } = await import('@/components/phone/AccountComputers')
 
 const MAC: DeviceRow = { device_id: 'dev-mac', fingerprint: '3F9A 21C4', signer: true, me: false, kind: 'macos', server: true, client: true, online: true }
 const APP: AppBackendStatus = {
@@ -22,7 +22,7 @@ afterEach(cleanup)
 
 describe('a computer row on touch', () => {
   it('keeps no buttons on the row, and Details in its sheet', async () => {
-    render(<AccountComputersSection computers={[{ device: MAC, label: 'Work' }]} loaded app={APP} route="none" onOpenSessions={() => {}} />)
+    render(<AccountComputerRows computers={[{ device: MAC, label: 'Work' }]} loaded app={APP} route="none" onOpenSessions={() => {}} />)
     const row = screen.getByText('Work').closest('[data-server-row]') as HTMLElement
     expect(within(row).getByRole('button', { name: 'Open Work' })).toBeTruthy()
     expect(within(row).queryByRole('button', { name: 'Details of Work' })).toBeNull()

@@ -1,6 +1,5 @@
 /**
- * PanelSection — a titled group on a panel (Settings, Scheduled tasks,
- * Session settings, …).
+ * PanelSection — a titled group on a panel (Settings, Scheduled tasks, …).
  *
  * The heading (and optional description and actions) sits above the card
  * rather than in a caps strip inside it, which gives each group room to

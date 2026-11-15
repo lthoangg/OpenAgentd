@@ -96,7 +96,7 @@ function renderAccounts(usageByAccount: Record<string, ProviderUsageResponse['li
 
 describe('RunPicker', () => {
   describe('account quota', () => {
-    it('shows every window of the main limit in % used, as Settings → Providers does', () => {
+    it('shows every window of the main limit in % used, as Settings → Models does', () => {
       const row = renderAccounts({
         work: [{ primary: { used_percent: 12, window_minutes: 300 }, secondary: { used_percent: 64, window_minutes: 10_080 } }],
         home: [],
@@ -301,7 +301,7 @@ describe('RunPicker', () => {
     expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: 'low' })
   })
 
-  it('offers no "Default" thinking level: only the levels the model has', () => {
+  it('offers no "Default" thinking level while the agent sets one: its level is the default', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const group = screen.getByRole('radiogroup', { name: 'Thinking level' })
     expect(Array.from(group.querySelectorAll('[role="radio"]')).map((r) => r.textContent)).toEqual(['Low', 'Medium', 'High'])
@@ -325,12 +325,20 @@ describe('RunPicker', () => {
     expect(row().className.split(/\s+/)).not.toContain('flex-col')
   })
 
-  it('says the model decides when no thinking level is set, so an empty control is not a mystery', () => {
-    const { unmount } = wrap(<RunPicker settings={settings({ thinkingLevel: null, agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
-    expect(screen.getByText(/model's own default/)).toBeTruthy()
-    unmount()
-    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect(screen.queryByText(/model's own default/)).toBeNull()
+  it('lights a Default segment when no thinking level is set, so the row always shows what is in effect', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevel: null, agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
+    const group = screen.getByRole('radiogroup', { name: 'Thinking level' })
+    expect(Array.from(group.querySelectorAll('[role="radio"]')).map((r) => r.textContent)).toEqual(['Default', 'Low', 'Medium', 'High'])
+    expect(screen.getByRole('radio', { name: "Default: the model's own level" }).getAttribute('aria-checked')).toBe('true')
+    // The segment says it; no line of text under the row.
+    expect(screen.queryByText(/Not set/)).toBeNull()
+  })
+
+  it('goes back to the model\'s own level from Default once a level was picked', async () => {
+    wrap(<RunPicker settings={settings({ thinkingLevel: 'high', agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
+    expect(screen.getByRole('radio', { name: 'High' }).getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(screen.getByRole('radio', { name: "Default: the model's own level" }))
+    expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: null })
   })
 
   it('has no Auto row: picking an account locks it, and a cooling account says so', () => {
@@ -365,7 +373,7 @@ describe('RunPicker', () => {
     expect(screen.getByText('Back on Work when its limit resets.')).toBeTruthy()
   })
 
-  it('offers Reconnect for a signed-out account, opening Settings → Providers', () => {
+  it('offers Reconnect for a signed-out account, opening Settings → Models', () => {
     const openSettings = mock((..._args: unknown[]) => {})
     const original = useSettingsStore.getState().openSettings
     useSettingsStore.setState({ openSettings })

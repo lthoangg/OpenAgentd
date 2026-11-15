@@ -146,7 +146,7 @@ describe('Coding workspace two-layer file preview', () => {
     const { WorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, readmePath)
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Git' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Changes' }))
     expect(screen.getByText('Not a git repository')).toBeTruthy()
 
     renderResult.rerender(

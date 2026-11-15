@@ -80,13 +80,13 @@ describe('McpServerDetailPage', () => {
 
     expect((await screen.findAllByText(/Status/i)).length).toBeGreaterThan(0)
 
-    expect(screen.getByRole('radiogroup', { name: /server status/i })).toBeTruthy()
-    expect(screen.getByRole('radiogroup', { name: /mcp transport/i })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: /connector status/i })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'How does it connect?' })).toBeTruthy()
     expect(screen.getByPlaceholderText('npx')).toBeTruthy()
     expect(screen.getByRole('button', { name: /add environment variables/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /remove root/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /restart server/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /delete server/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /restart connector/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Delete…' })).toBeTruthy()
   })
 
   it('saves and discards through the shared save bar, with no Save or Discard changes… of its own', async () => {
@@ -180,12 +180,12 @@ describe('McpServerDetailPage — a server from a plugin', () => {
     renderPage('changelog-tools/github')
     await screen.findByText('from changelog-tools')
 
-    expect(screen.queryByRole('radiogroup', { name: /server status/i })).toBeNull()
-    expect(screen.queryByRole('radiogroup', { name: /mcp transport/i })).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: /connector status/i })).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: 'How does it connect?' })).toBeNull()
     expect(screen.queryByPlaceholderText('npx')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
-    expect(screen.queryByRole('button', { name: /delete server/i })).toBeNull()
-    expect(screen.queryByText('Delete server')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete…' })).toBeNull()
+    expect(screen.queryByText('Delete connector')).toBeNull()
     expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull()
     // The header does not name mcp.json as the file: the plugin owns the server.
@@ -210,7 +210,7 @@ describe('McpServerDetailPage — a server from a plugin', () => {
     renderPage('changelog-tools/github')
 
     expect((await screen.findByText('https://mcp.example.com/v1')).tagName).toBe('CODE')
-    expect(screen.getByText('URL')).toBeTruthy()
+    expect(screen.getByText('Address')).toBeTruthy()
   })
 
   it('shows an sse server\'s URL and its transport', async () => {
@@ -222,8 +222,8 @@ describe('McpServerDetailPage — a server from a plugin', () => {
     renderPage('changelog-tools/github')
 
     expect((await screen.findByText('https://mcp.example.com/sse')).tagName).toBe('CODE')
-    expect(screen.getByText('URL')).toBeTruthy()
-    expect(screen.getByText('sse')).toBeTruthy()
+    expect(screen.getByText('Address')).toBeTruthy()
+    expect(screen.getByText('A web address (SSE only)')).toBeTruthy()
   })
 
   it('offers Sign in for a plugin server that needs it', async () => {
@@ -244,14 +244,14 @@ describe('McpServerDetailPage — a server from a plugin', () => {
 
     expect(await screen.findByText("Defined by the plugin changelog-tools. It can't be edited here.")).toBeTruthy()
     expect(screen.queryByText('Command')).toBeNull()
-    expect(screen.getByRole('button', { name: /restart server/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /restart connector/i })).toBeTruthy()
   })
 
   it('keeps Restart, which goes through the encoded path too', async () => {
     serveServer()
     renderPage('changelog-tools/github')
 
-    fireEvent.click(await screen.findByRole('button', { name: /restart server/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /restart connector/i }))
 
     await waitFor(() => expect(requests.some((r) => r.method === 'POST')).toBe(true))
     expect(requests.find((r) => r.method === 'POST')?.path).toBe('/api/mcp/servers/changelog-tools%2Fgithub/restart')
@@ -274,7 +274,7 @@ describe('McpServerDetailPage — a server from a plugin', () => {
 
     expect(await screen.findByText('Turn the plugin on in Plugins before you sign in.')).toBeTruthy()
     expect(screen.getByText('Turn the plugin on in Plugins first.')).toBeTruthy()
-    expect((screen.getByRole('button', { name: /restart server/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /restart connector/i }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('still shows the form and Delete for a server saved in mcp.json', async () => {
@@ -282,7 +282,7 @@ describe('McpServerDetailPage — a server from a plugin', () => {
     renderPage('filesystem')
 
     expect(await screen.findByPlaceholderText('npx')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /delete server/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Delete…' })).toBeTruthy()
     expect(screen.queryByText('Source')).toBeNull()
     expect(screen.getByText('.openagentd/config/mcp.json')).toBeTruthy()
   })

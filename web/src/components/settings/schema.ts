@@ -112,7 +112,6 @@ export const agentFrontmatterSchema = z.object({
   model: modelSchema,
   thinking_level: thinkingLevelSchema.nullable().optional(),
   tools: z.array(z.string()).optional(),
-  mcp: z.array(z.string()).optional(),
 })
 
 export type AgentFrontmatterParsed = z.infer<typeof agentFrontmatterSchema>

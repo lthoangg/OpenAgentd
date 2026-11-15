@@ -384,7 +384,7 @@ describe("AgentView — AssistantFooter", () => {
         isWorking: false,
       })
 
-      expect(screen.getByText("What's on your mind?")).toBeTruthy()
+      expect(screen.getByText("Ask anything")).toBeTruthy()
       expect(screen.getByRole("region", { name: "Earlier messages summarized" })).toBeTruthy()
     })
 

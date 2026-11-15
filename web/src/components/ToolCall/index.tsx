@@ -484,7 +484,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                 <div>
                   <SectionHeader label="arguments" controls={detailsId} onCollapse={collapse} />
                   <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
-                    {remoteArgs.error ? `Could not load the arguments: ${remoteArgs.error}` : 'Loading arguments…'}
+                    {remoteArgs.error ? `Couldn't load the arguments: ${remoteArgs.error}` : 'Loading arguments…'}
                   </p>
                 </div>
               )}
@@ -532,7 +532,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                             </span>
                             {awaitingResult && !shellOutput && (
                               <span className="block text-(--color-text-muted)" role="status">
-                                {remote.error ? `Could not load the output: ${remote.error}` : 'Loading output…'}
+                                {remote.error ? `Couldn't load the output: ${remote.error}` : 'Loading output…'}
                               </span>
                             )}
                           </pre>
@@ -588,7 +588,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         divided={argsShown}
                       />
                       <p className="bg-(--bg-input) px-3 py-2.5 text-xs text-(--color-text-muted)" role="status">
-                        {remote.error ? `Could not load the result: ${remote.error}` : 'Loading result…'}
+                        {remote.error ? `Couldn't load the result: ${remote.error}` : 'Loading result…'}
                       </p>
                     </div>
                   )}

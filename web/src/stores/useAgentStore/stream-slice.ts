@@ -197,7 +197,7 @@ export const createStreamSlice: StateCreator<
     } catch (err) {
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to compact'
+        draft.error = err instanceof Error ? err.message : "Couldn't compact"
         draft.isAgentWorking = false
       })
     }
@@ -248,7 +248,7 @@ export const createStreamSlice: StateCreator<
     } catch (err) {
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to undo'
+        draft.error = err instanceof Error ? err.message : "Couldn't undo"
       })
       return undefined
     }
@@ -344,7 +344,7 @@ export const createStreamSlice: StateCreator<
         })
       } else {
         set((draft) => {
-          draft.error = `Failed to redo: ${message}`
+          draft.error = `Couldn't redo: ${message}`
         })
       }
       return undefined
@@ -390,7 +390,7 @@ export const createStreamSlice: StateCreator<
         })
       } else {
         set((draft) => {
-          draft.error = `Failed to redo: ${message}`
+          draft.error = `Couldn't redo: ${message}`
         })
       }
       return undefined

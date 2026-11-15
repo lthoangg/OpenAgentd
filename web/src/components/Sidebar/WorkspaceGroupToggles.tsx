@@ -15,6 +15,10 @@ const SHEET_ITEM_CLASS = cn(MENU_ITEM_CLASS, 'min-h-(--phone-control) text-sm')
  * briefed and deleted. A toggle saves at once and leaves the menu open, so
  * several groups can be set in one go.
  *
+ * Before any group exists the block takes no room: there is nothing to
+ * toggle, and the first group is made in Settings → Workspaces. The menu
+ * keeps one separator in its place.
+ *
  * `menu` renders context-menu rows; `sheet` renders rows for the phone's
  * workspace actions sheet.
  */
@@ -40,6 +44,7 @@ export function WorkspaceGroupToggles({
     setGroups.mutate({ workspace, groupIds: next })
   }
 
+  if (groups.length === 0) return menu ? <ContextMenuSeparator /> : null
   return (
     <>
       {menu && <ContextMenuSeparator />}

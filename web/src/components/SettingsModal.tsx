@@ -66,10 +66,7 @@ import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
 import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
 import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
-import { GoalsSettingsPage } from '@/components/settings/pages/settings.goals'
-import { TelemetrySettingsPage } from '@/components/settings/pages/settings.telemetry'
-import { TitlesSettingsPage } from '@/components/settings/pages/settings.titles'
-import { ContextSettingsPage } from '@/components/settings/pages/settings.context'
+import { SessionsSettingsPage } from '@/components/settings/pages/settings.sessions'
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
 import { DesktopSettingsPage } from '@/components/settings/pages/settings.desktop'
 import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
@@ -299,10 +296,11 @@ function SectionContent({
     case 'providers':    return <ProvidersSettingsPage />
     case 'denied_paths': return <DeniedPathsSettingsPage />
     case 'workspaces':   return <WorkspacesSettingsPage />
-    case 'goals':        return <GoalsSettingsPage />
-    case 'telemetry':    return <TelemetrySettingsPage />
-    case 'titles':       return <TitlesSettingsPage />
-    case 'context':      return <ContextSettingsPage />
+    // The store resolves the merged ids to ``titles``; listed for the type.
+    case 'titles':
+    case 'context':
+    case 'goals':
+    case 'telemetry':    return <SessionsSettingsPage />
     case 'media':        return <MediaSettingsPage />
     case 'about':
     default:             return <AboutSettingsPage />
@@ -330,6 +328,13 @@ export function SettingsModal() {
     setSection(hit.section)
     setReveal(hit.kind === 'setting' ? { anchor: hit.anchor, nonce: Date.now() } : null)
   }
+  // A section id that became a heading of Sessions opens at that heading.
+  const anchor = useSettingsStore((s) => s.anchor)
+  useEffect(() => {
+    if (!open || !anchor) return
+    setReveal({ anchor, nonce: Date.now() })
+    useSettingsStore.setState({ anchor: null })
+  }, [open, anchor])
   useEffect(() => {
     if (!open || !reveal) return undefined
     let tries = 0

@@ -259,6 +259,33 @@ async fn a_computer_creates_the_account_and_approves_the_others() {
     let r = relay::connect(&ci.cloud, &relay::http1_client(), &server_id, &host_box, Join::default()).await;
     assert!(matches!(r, Err(RelayError::Handshake) | Err(RelayError::Closed(4002))), "{:?}", r.err());
     let ci_id = ci.cloud.device_id();
+    // 4b. Letting it approve too needs the app's proof for exactly that device.
+    let version = fake.account(&account).version;
+    let promote_proof = approval::proof(&KEY, Action::Promote, &ci_id);
+    let for_remove = approval::proof(&KEY, Action::Remove, &ci_id);
+    let for_other = approval::proof(&KEY, Action::Promote, &server_id);
+    for (why, proof) in [("no proof", None), ("a remove proof", Some(for_remove)), ("another device", Some(for_other))] {
+        let (s, v) = proved(&app, "/api/cloud/devices/approver", json!({ "device_id": ci_id }), proof).await;
+        assert_eq!(s, StatusCode::FORBIDDEN, "{why}: {v}");
+        assert_eq!(v["detail"].as_str(), Some(appv3_api::cloud::approval::PROMOTE_ELSEWHERE), "{why}");
+    }
+    let (s, _) = call_with(&app, "POST", "/api/cloud/devices/approver", Some(json!({ "device_id": ci_id })), "192.168.1.20:5000", Some(promote_proof.clone())).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "only this computer, proof or not");
+    ci.sync().await.unwrap();
+    assert!(!ci.is_signer() && fake.account(&account).version == version, "nothing was written");
+    let (s, v) = proved(&app, "/api/cloud/devices/approver", json!({ "device_id": ci_id }), Some(promote_proof)).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    ci.sync().await.unwrap();
+    assert!(ci.is_signer() && ci.is_server() && !ci.is_client(), "a signer now, roles unchanged");
+    assert_eq!(fake.account(&account).version, version + 1);
+    let (s, _) = proved(&app, "/api/cloud/devices/approver", json!({ "device_id": "not a device id" }), Some(approval::proof(&KEY, Action::Promote, "not a device id"))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    // A device id the account does not have: a stable code, and plain words.
+    let gone = "AAAAAAAAAAAAAAAAAAAAAA";
+    let (s, v) = proved(&app, "/api/cloud/devices/approver", json!({ "device_id": gone }), Some(approval::proof(&KEY, Action::Promote, gone))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert_eq!(v["detail"]["code"], "device_not_in_account");
+    assert_eq!(v["detail"]["message"], "That device is no longer in your account.");
     let version = fake.account(&account).version;
     let approve_mac = approval::proof(&KEY, Action::Approve { signer: false, server: false, client: false }, &ci_id);
     let other_device = approval::proof(&KEY, Action::Remove, &server_id);

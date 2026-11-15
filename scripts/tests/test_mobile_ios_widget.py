@@ -195,3 +195,18 @@ def test_dev_device_builds_use_the_dev_bundle_id():
 def test_app_names_its_app_group_for_the_widget_storage():
     plist = INFO_IOS_PLIST.read_text()
     assert "<key>OAWidgetAppGroup</key>\n  <string>group.$(PRODUCT_BUNDLE_IDENTIFIER)</string>" in plist
+
+
+def test_app_says_why_it_uses_face_id():
+    # The account's signing key needs user presence; without this key iOS
+    # blocks Face ID and only the passcode works.
+    plist = INFO_IOS_PLIST.read_text()
+    assert (
+        "<key>NSFaceIDUsageDescription</key>\n"
+        "  <string>Confirm changes to your OpenAgentd account.</string>"
+    ) in plist
+
+
+def test_release_build_checks_the_face_id_reason_in_the_archive():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "release-ios.yml").read_text()
+    assert 'plutil -extract NSFaceIDUsageDescription raw "$app/Info.plist"' in workflow

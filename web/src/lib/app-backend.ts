@@ -124,15 +124,17 @@ function nameWithKey(name: string, fingerprint: string): string {
 }
 
 /**
- * An account computer's title: the name it gave for itself, once this app
- * has been on it; until then its kind and fingerprint, from the account.
- * Never a saved server's name, which belongs to a different thing even on
- * the same machine.
+ * An account device's title: the name the account keeps for it, else its
+ * kind and fingerprint. A device from an older shell or server carries no
+ * account name (`name` absent): then the name this app remembers its
+ * computer giving for itself. Never a saved server's name, which belongs to
+ * a different thing even on the same machine.
  */
 export function accountComputerTitle(
-  device: { device_id?: string; kind: string | null | undefined; fingerprint: string },
+  device: { device_id?: string; kind: string | null | undefined; fingerprint: string; name?: string | null },
   names?: ComputerNames | null,
 ): string {
+  if (device.name !== undefined) return device.name?.trim() || deviceLabel(device)
   const name = device.device_id ? names?.[device.device_id]?.trim() : undefined
   return name || deviceLabel(device)
 }
@@ -143,7 +145,7 @@ export function accountComputerTitle(
  * two of them share it, so the list never shows the same line twice.
  */
 export function deviceTitles(
-  devices: Array<{ device_id: string; kind: string | null | undefined; fingerprint: string }>,
+  devices: Array<{ device_id: string; kind: string | null | undefined; fingerprint: string; name?: string | null }>,
   names?: ComputerNames | null,
 ): Map<string, string> {
   const titled = devices.map((device) => ({ device, title: accountComputerTitle(device, names) }))
@@ -215,8 +217,18 @@ export function formatBackendConnectionLabel(
   return status.computer_names?.[current]?.trim() || hostFromBaseUrl(status.base_url)
 }
 
+/**
+ * What a person reads for the label of the connection in use: the app's own
+ * OpenAgentd is "This computer"; in a browser, where the page comes from
+ * whatever it talks to, "This server".
+ */
+export function connectionDisplayName(label: string, inBrowser = false): string {
+  if (label !== BUILT_IN_NAME_KEY) return label
+  return inBrowser ? 'This server' : 'This computer'
+}
+
 /** What a notification calls the built-in server until its computer's name is known (the desktop shell's word). */
-const BUILT_IN_NOTIFICATION_NAME = 'Built-in server'
+const BUILT_IN_NOTIFICATION_NAME = 'This computer'
 /** The longest server name a notification title carries, in characters. */
 const NOTIFICATION_NAME_MAX_CHARS = 40
 

@@ -192,7 +192,7 @@ export function MemorySettingsPage() {
       setLintFindings(report.findings)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      push({ tone: 'error', title: 'Could not check links', description: msg })
+      push({ tone: 'error', title: "Couldn't check links", description: msg })
     } finally {
       setIsLinting(false)
     }

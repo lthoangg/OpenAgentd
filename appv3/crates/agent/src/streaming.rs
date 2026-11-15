@@ -248,7 +248,7 @@ fn plan_recovery(err: &ProviderError, spent: Spent, network_limit: Option<i64>, 
         // A bad address, a refused certificate, an answer that cannot be read.
         ProviderError::NetworkPermanent(m) => Plan::fail(
             AgentError::Unavailable {
-                message: format!("The request could not be completed, and trying again will not help. Check the provider's base URL in Settings → Providers. {KEPT}"),
+                message: format!("The request could not be completed, and trying again will not help. Check the provider's base URL in Settings → Models. {KEPT}"),
                 details: m.clone(),
                 status: None,
                 provider: Some(label.to_string()),
@@ -1215,7 +1215,7 @@ mod tests {
         assert_eq!(info["title"], "mock:mock is unavailable");
         assert_eq!(
             info["message"],
-            "The request could not be completed, and trying again will not help. Check the provider's base URL in Settings → Providers. Your messages and the files changed so far are kept."
+            "The request could not be completed, and trying again will not help. Check the provider's base URL in Settings → Models. Your messages and the files changed so far are kept."
         );
         assert_eq!(info["details"], "builder error: relative URL without a base");
     }

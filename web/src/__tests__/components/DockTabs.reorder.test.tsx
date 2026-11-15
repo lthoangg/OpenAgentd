@@ -116,13 +116,13 @@ describe('dock tab order', () => {
   it('opens a view before the terminals of the focused pane; reopening only activates it', async () => {
     const { request } = await renderDock()
     await request({ view: 'review', key: 1 })
-    expect(strips()).toEqual([['Git', 'Terminal 1', 'Terminal 2']])
-    expect(tab('Git').getAttribute('aria-current')).toBe('true')
+    expect(strips()).toEqual([['Changes', 'Terminal 1', 'Terminal 2']])
+    expect(tab('Changes').getAttribute('aria-current')).toBe('true')
 
     act(() => tab('Terminal 2').click())
     await request({ view: 'review', key: 2 })
-    expect(order()).toEqual(['Git', 'Terminal 1', 'Terminal 2'])
-    expect(tab('Git').getAttribute('aria-current')).toBe('true')
+    expect(order()).toEqual(['Changes', 'Terminal 1', 'Terminal 2'])
+    expect(tab('Changes').getAttribute('aria-current')).toBe('true')
     expect(tab('Terminal 2').hasAttribute('aria-current')).toBe(false)
   })
 
@@ -131,7 +131,7 @@ describe('dock tab order', () => {
     await request({ view: 'review', key: 1 })
     act(() => tab('Terminal 1').click())
     await newTerminal()
-    await waitFor(() => expect(strips()).toEqual([['Git', 'Terminal 1', 'Terminal 3', 'Terminal 2']]))
+    await waitFor(() => expect(strips()).toEqual([['Changes', 'Terminal 1', 'Terminal 3', 'Terminal 2']]))
     expect(tab('Terminal 3').getAttribute('aria-current')).toBe('true')
   })
 
@@ -167,13 +167,10 @@ describe('moving tabs from the keyboard and the menu', () => {
     expect(order()).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
   })
 
-  it('Move Left and Move Right in the tab menu', async () => {
+  it('leaves Move Left and Move Right to the keys and the drag: the tab menu has neither', async () => {
     await renderDock()
-    await menuItem('Terminal 1', 'Move right')
-    expect(order()).toEqual(['Terminal 2', 'Terminal 1'])
-
-    await menuItem('Terminal 1', 'Move left')
-    expect(order()).toEqual(['Terminal 1', 'Terminal 2'])
+    fireEvent.contextMenu(tab('Terminal 1'))
+    expect(screen.queryByRole('menuitem', { name: /^Move (left|right)/ })).toBeNull()
   })
 
   it('Split Down takes a tab into a new pane below, and Move to Next Pane takes it back', async () => {

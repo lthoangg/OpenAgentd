@@ -5,8 +5,12 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { ContextMeter } from '@/components/composer/ContextMeter'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
+})
 
 describe('ContextMeter', () => {
   it('sets its labels in the UI font and only the numbers in mono, as the turn details do', () => {
@@ -39,5 +43,24 @@ describe('ContextMeter', () => {
       expect(screen.queryByText(/\$\d/)).toBeNull()
       cleanup()
     }
+  })
+
+  it('in Full shows the ring from the first message, with a bare percentage', () => {
+    render(<ContextMeter input={1000} output={10} trigger={50000} canSummarize />)
+    expect(screen.getByRole('button', { name: /^Context 2% full/ }).textContent).toBe('2%')
+  })
+
+  it('in Simple waits until the context is 70% full, then says what the number means', () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
+
+    const { rerender } = render(<ContextMeter input={34_500} output={10} trigger={50000} canSummarize />)
+    expect(screen.queryByRole('button', { name: /^Context/ })).toBeNull()
+
+    rerender(<ContextMeter input={35_000} output={10} trigger={50000} canSummarize />)
+    expect(screen.getByRole('button', { name: /^Context 70% full/ }).textContent).toBe('70% full')
+
+    // The numbers and Summarize now are behind it, as in Full.
+    fireEvent.click(screen.getByRole('button', { name: /^Context 70% full/ }))
+    expect(screen.getByRole('button', { name: 'Summarize now' })).toBeTruthy()
   })
 })

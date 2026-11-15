@@ -23,11 +23,20 @@ describe('searchSettings', () => {
   it('finds a single setting by its name, or by a word people use for it', () => {
     expect(labelsFor('text size')).toContain('setting:general:Text size')
     expect(labelsFor('dark')).toContain('setting:general:Theme')
-    expect(labelsFor('gitignore')).toContain('setting:denied_paths:Denied patterns')
-    expect(labelsFor('retention days')).toContain('setting:telemetry:Keep traces for')
+    expect(labelsFor('gitignore')).toContain('setting:denied_paths:Blocked patterns')
+    expect(labelsFor('retention days')).toContain('setting:titles:Keep usage history for')
   })
 
-  it('finds the fallback order of accounts under Providers', () => {
+  it('finds the Detail setting by its new name and by every old one', () => {
+    for (const query of ['detail', 'simple', 'full', 'reader', 'detailed', 'transcript']) {
+      expect(labelsFor(query)).toContain('setting:general:Detail')
+    }
+    for (const query of ['previews', 'manually', 'review panel', 'automatically']) {
+      expect(labelsFor(query)).toContain('setting:general:Open previews')
+    }
+  })
+
+  it('finds the fallback order of accounts under Models', () => {
     for (const query of ['use first', 'rate limit', 'tried in this order', 'pinned']) {
       expect(labelsFor(query)).toContain('setting:providers:Accounts and fallback order')
     }
@@ -49,6 +58,38 @@ describe('searchSettings', () => {
     expect(anchors).toEqual({ 'Plugin folders': 'Plugin folders', 'Single-file plugins': 'Single-file plugins' })
   })
 
+  it('finds every renamed page by the name it had', () => {
+    const firstSection = (query: string) => searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')
+    expect(firstSection('mcp')).toMatchObject({ section: 'mcp', label: 'Connectors' })
+    expect(firstSection('mcp servers')).toMatchObject({ section: 'mcp', label: 'Connectors' })
+    expect(firstSection('provider')).toMatchObject({ section: 'providers', label: 'Models' })
+    expect(firstSection('providers')).toMatchObject({ section: 'providers', label: 'Models' })
+    expect(firstSection('denied')).toMatchObject({ section: 'denied_paths', label: 'Blocked files' })
+    expect(firstSection('denied paths')).toMatchObject({ section: 'denied_paths', label: 'Blocked files' })
+    expect(firstSection('server')).toMatchObject({ section: 'connection', label: 'Server' })
+    expect(firstSection('about openagentd')).toMatchObject({ section: 'about', label: 'About' })
+  })
+
+  it('finds Sessions by each of the four pages it replaced, and their settings by the old names', () => {
+    for (const query of ['session titles', 'context', 'goals', 'retention']) {
+      expect(searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')).toMatchObject({ section: 'titles', label: 'Sessions' })
+    }
+    expect(labelsFor('token threshold')).toContain('setting:titles:Summarize when a session reaches')
+    expect(labelsFor('idle trigger')).toContain('setting:titles:Summarize idle sessions')
+    expect(labelsFor('keep forever')).toContain('setting:titles:Keep usage history forever')
+    expect(labelsFor('generate titles')).toContain('setting:titles:Name sessions automatically')
+  })
+
+  it('finds the list of computers by the words the Server page used, and names each result as the page does', () => {
+    const settingsFor = (query: string) => searchSettings(query, SETTINGS_SECTIONS).filter((hit) => hit.kind === 'setting')
+    expect(settingsFor('built-in server')).toContainEqual(expect.objectContaining({ section: 'connection', label: 'This computer', anchor: 'Computers' }))
+    for (const query of ['saved server', 'server url', 'add a server', 'computer']) {
+      expect({ query, hits: settingsFor(query) }).toEqual({ query, hits: expect.arrayContaining([expect.objectContaining({ section: 'connection', label: 'Add a computer by address', anchor: 'Add a computer by address' })]) })
+    }
+    const labels = SETTINGS_INDEX.filter((entry) => entry.section === 'connection').map((entry) => entry.label)
+    expect(labels.filter((label) => /server/i.test(label))).toEqual([])
+  })
+
   it('needs every word of the query, in any order', () => {
     expect(labelsFor('size text')).toContain('setting:general:Text size')
     expect(labelsFor('text zzz')).toEqual([])
@@ -57,8 +98,9 @@ describe('searchSettings', () => {
   it('lists matching sections first, then settings whose name starts with the query', () => {
     const hits = searchSettings('server', SETTINGS_SECTIONS)
     expect(hits[0]).toMatchObject({ kind: 'section', section: 'connection', label: 'Server' })
-    const settings = hits.filter((hit) => hit.kind === 'setting').map((hit) => hit.label)
-    expect(settings.indexOf('Server URL')).toBeLessThan(settings.indexOf('Access key'))
+    const settings = searchSettings('add', SETTINGS_SECTIONS).filter((hit) => hit.kind === 'setting').map((hit) => hit.label)
+    expect(settings[0]).toBe('Add a computer by address')
+    expect(settings.length).toBeGreaterThan(1)
   })
 
   it('names the section a setting lives in', () => {

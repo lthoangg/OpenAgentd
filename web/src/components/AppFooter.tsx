@@ -5,20 +5,28 @@
  *   • left:  connected backend and its health · git branch with ahead/behind
  *            + dirty count · "N terminals running" while the workspace has
  *            live shells (they keep running with the Review panel closed)
- *   • right: fast mode · 24h spend · settings
+ *   • right: fast mode · 24h spend · Connect your phone · settings
+ *
+ * The spend is an estimate from token counts, so with the Detail setting on
+ * Simple it is neither shown nor fetched (Usage still has it).
+ *
+ * **Connect your phone** shows only in the desktop app, on its own built-in
+ * server (which holds the account), while this computer is not in an
+ * account or is part-way through signing in: one click to the QR code.
  *
  * The model lives on the composer's run deck, the one place to read and
  * change it, so the status bar does not repeat it.
  *
- * The command palette entry lives in the header's command center, so the
- * footer carries no help button. Hidden below ``md``; mobile surfaces these
- * in the sidebar drawer footer instead.
+ * The command palette has no button (its shortcut and the View menu open
+ * it), so the footer carries no help button. Hidden below ``md``; mobile
+ * surfaces these in the sidebar drawer footer instead.
  */
 import { RollingNumber } from '@/components/ui/swap'
 import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
   GitBranch,
   Settings,
+  Smartphone,
   TerminalSquare,
   Zap,
 } from 'lucide-react'
@@ -29,6 +37,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
@@ -39,6 +48,7 @@ import { formatSpend } from '@/utils/telemetryFormat'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { startConnectPhone, useConnectPhoneOffer } from '@/lib/connect-phone'
 
 // The summary endpoint only refreshes on demand. Spend moves only while a
 // model call runs, so poll each minute then; idle, a slow poll still lets the
@@ -61,9 +71,10 @@ function useFooterShown(): boolean {
   )
 }
 
-/** Last-24 h spend, refreshed on turn activity, never while hidden. */
+/** Last-24 h spend, refreshed on turn activity, never while hidden (a narrow window, Simple detail). */
 function useFooterSpend(): number | undefined {
-  const shown = useFooterShown()
+  const simple = useSimpleDetail()
+  const shown = useFooterShown() && !simple
   const spending = sessionsSpending(useActiveSessionsQuery().data)
   const query = useObservabilitySummaryQuery(1, {}, {
     enabled: shown,
@@ -76,7 +87,7 @@ function useFooterSpend(): number | undefined {
     if (wasSpending.current && !spending && shown) void refetch()
     wasSpending.current = spending
   }, [spending, shown, refetch])
-  return query.data?.totals.estimated_cost_usd
+  return simple ? undefined : query.data?.totals.estimated_cost_usd
 }
 
 export interface AppFooterProps {
@@ -101,6 +112,32 @@ const ICON_ITEM =
 
 function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
+}
+
+/** Desktop only, on its own server, until this computer is in an account. */
+function ConnectPhoneButton() {
+  const offer = useConnectPhoneOffer()
+  if (!offer) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={() => startConnectPhone(offer)}
+            className={ICON_ITEM}
+            aria-label="Connect your phone"
+          >
+            <Smartphone size={12} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>
+        <span className="block">Connect your phone</span>
+        <span className="block text-(--color-text-muted)">Scan a code to reach this computer from anywhere</span>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 function syncLabel(ahead: number | null | undefined, behind: number | null | undefined): string | null {
@@ -209,7 +246,7 @@ export const AppFooter = memo(function AppFooter({
               />
               <TooltipContent>
                 <span className="block">{branchTooltip}</span>
-                <span className="block text-(--color-text-muted)">{`Open Git (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
+                <span className="block text-(--color-text-muted)">{`Open Changes (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
               </TooltipContent>
             </Tooltip>
           </>
@@ -287,6 +324,8 @@ export const AppFooter = memo(function AppFooter({
             </TooltipContent>
           </Tooltip>
         )}
+
+        <ConnectPhoneButton />
 
         <Tooltip>
           <TooltipTrigger

@@ -77,7 +77,7 @@ export interface PluginBundleSkill {
 }
 
 export interface PluginBundleMcpServer {
-  /** `<bundle>/<server>`: the name Settings → MCP lists it under. */
+  /** `<bundle>/<server>`: the name Settings → Connectors lists it under. */
   name: string
   transport: 'stdio' | 'http' | 'sse'
   /** stdio: the program to run. Null for http. */

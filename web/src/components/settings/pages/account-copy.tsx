@@ -66,9 +66,14 @@ export const NOTICES: Record<CloudNotice, NoticeCopy> = {
     body: 'Contact OpenAgentd if this continues. Everything on this device keeps working.',
     tone: 'warning',
   },
-  unreachable: { body: 'Could not reach OpenAgentd. Check your network and try again.', tone: 'warning' },
+  unreachable: { body: "Couldn't reach OpenAgentd. Check your network and try again.", tone: 'warning' },
+  wrong_recovery_code: {
+    title: "That recovery code doesn't match this account.",
+    body: 'Nothing was changed. Check the code you saved and try again.',
+    tone: 'warning',
+  },
   failed: {
-    body: "Something went wrong with this computer's account keys. Sign in again to start over.",
+    body: 'Something went wrong while signing in on this device. Sign in again to start over.',
     tone: 'warning',
   },
 }
@@ -135,13 +140,13 @@ export function SigningInCopy({ url, userCode, fingerprint }: { url: string; use
   )
 }
 
-/** Scan to add: the QR code is the first way, for an account with a phone. */
+/** Scan to add: the QR code is the first way; a phone not signed in yet signs in, then adds it. */
 export function ScanCodeCopy({ minutes }: { minutes: number }) {
   return (
     <>
       <p className="font-medium text-(--color-text)">Scan with your phone</p>
       <p>
-        Open OpenAgentd on a phone in your account. On Servers, choose{' '}
+        Open OpenAgentd on your phone. On Computers, tap{' '}
         <strong className="text-(--color-text)">Scan QR code</strong>.
       </p>
       <p>Works for {minutes} minutes. Show it only to your own phone.</p>

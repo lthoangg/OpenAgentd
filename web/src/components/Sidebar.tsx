@@ -29,6 +29,7 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -130,6 +131,7 @@ import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
 import { ScheduledSection } from './Sidebar/ScheduledSection'
 import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
+import { WorktreeFields } from './Sidebar/WorktreeFields'
 import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
@@ -166,6 +168,7 @@ import {
 import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
+  restoreHiddenWorkspace,
 } from './Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
@@ -193,7 +196,9 @@ import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
-const SESSION_DELETE_UNDO_MS = 5000
+const SESSION_DELETE_UNDO_MS = 10_000
+// Hiding undoes from the toast for as long as a delete does.
+const WORKSPACE_HIDE_UNDO_MS = 10_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
@@ -465,9 +470,7 @@ export function Sidebar({
   const [worktreeName, setWorktreeName] = useState('')
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [worktreeLoading, setWorktreeLoading] = useState(false)
-  const [worktreeOptions, setWorktreeOptions] = useState<WorktreeInfo[]>([])
   const [worktreeRemoving, setWorktreeRemoving] = useState<string | null>(null)
-  const [worktreesBySource, setWorktreesBySource] = useState<Record<string, WorktreeInfo[]>>({})
   const [removedWorktreePaths, setRemovedWorktreePaths] = useState<Set<string>>(() => new Set())
   // Managed-worktree pending removal — null when no confirmation is open.
   // Removing a managed worktree deletes it from disk (git worktree remove),
@@ -498,7 +501,7 @@ export function Sidebar({
       setParentPath(result.parent)
       setDirs(result.directories)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to read directory')
+      setError(err instanceof Error ? err.message : "Couldn't read directory")
     } finally {
       setLoading(false)
     }
@@ -535,7 +538,7 @@ export function Sidebar({
       setTrustWorkspace(await validateTrustedWorkspace(selected))
       setDialogOpen(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+      setError(err instanceof Error ? err.message : "Couldn't open workspace")
     } finally {
       setLoading(false)
     }
@@ -737,7 +740,7 @@ export function Sidebar({
       if (added && !isMobile) pushToast({ tone: 'info', title: `Added ${workspaceLabel(path)}` })
       onMobileClose?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+      setError(err instanceof Error ? err.message : "Couldn't open workspace")
     } finally {
       setPendingWorkspace(null)
     }
@@ -747,7 +750,7 @@ export function Sidebar({
     const pinned = !session.pinned_at
     setSessionPinned.mutate(
       { id: session.id, pinned },
-      { onError: () => pushToast({ tone: 'error', title: pinned ? 'Could not pin session' : 'Could not unpin session' }) },
+      { onError: () => pushToast({ tone: 'error', title: pinned ? "Couldn't pin session" : "Couldn't unpin session" }) },
     )
   }
 
@@ -762,7 +765,7 @@ export function Sidebar({
       for (const hidden of [path, ...worktreePaths]) next.delete(hidden)
       return next
     })
-    void confirmWorkspaceRemoval({
+    const removal = confirmWorkspaceRemoval({
       path,
       worktreePaths,
       activeWorkspace,
@@ -770,33 +773,39 @@ export function Sidebar({
       queryClient,
       refreshWorkspaceTree,
       navigate: ({ to, replace }) => navigate({ to, replace }),
-    }).catch((err: unknown) => {
-      pushToast({
-        tone: 'error',
-        title: `Could not remove ${workspaceLabel(path)} from the sidebar`,
-        description: err instanceof Error ? err.message : undefined,
-      })
+    })
+    // The row leaves at once, so the toast is what says it happened and how
+    // to get it back. Undo shows the folder (and its worktrees) again, after
+    // the hide has landed; it does not reopen it.
+    const toastId = pushToast({
+      tone: 'info',
+      title: `Hid ${workspaceLabel(path)} from the sidebar`,
+      description: 'Its sessions are kept. Open workspace… brings it back.',
+      action: {
+        label: 'Undo',
+        onAction: () => {
+          void removal
+            .then(() => restoreHiddenWorkspace({ paths: [path, ...worktreePaths], queryClient, refreshWorkspaceTree }))
+            .catch(() => pushToast({ tone: 'error', title: `Couldn't show ${workspaceLabel(path)} again` }))
+        },
+      },
+    }, WORKSPACE_HIDE_UNDO_MS)
+    removal.catch((err: unknown) => {
+      dismissToast(toastId)
+      pushToast(failureToast(`Couldn't remove ${workspaceLabel(path)} from the sidebar`, err))
       void refreshWorkspaceTree()
     })
   }
 
-  const loadWorktreesForTarget = useCallback(async (path: string) => {
-    const items = await loadWorktreesForSource(path, listWorktrees)
-    setWorktreesBySource((current) => ({ ...current, [path]: items }))
-    if (worktreeTarget === path) setWorktreeOptions(items)
-    return items
-  }, [worktreeTarget])
+  const loadWorktreesForTarget = useCallback((path: string) => loadWorktreesForSource(path, listWorktrees), [])
 
-  const openWorktreeDialog = async (path: string) => {
-    const nextState = buildOpenWorktreeDialogState(path, worktreesBySource[path])
+  const openWorktreeDialog = (path: string) => {
+    const nextState = buildOpenWorktreeDialogState(path)
     setWorktreeTarget(nextState.target)
     setWorktreeName(nextState.name)
     setWorktreeBranch(nextState.branch)
-    setWorktreeOptions(nextState.options)
     setWorktreeRemoving(nextState.removing)
     setError(nextState.error)
-    const items = await loadWorktreesForTarget(path)
-    setWorktreeOptions(items)
   }
 
   const handleRemoveWorktree = async (item: WorktreeInfo) => {
@@ -819,16 +828,8 @@ export function Sidebar({
         next.delete(result.removedDirectory)
         return next
       })
-      setWorktreesBySource((current) => {
-        const next = { ...current }
-        delete next[result.removedDirectory]
-        if (result.source) {
-          next[result.source] = result.refreshedItems
-        }
-        return next
-      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to remove worktree')
+      setError(err instanceof Error ? err.message : "Couldn't remove worktree")
     } finally {
       setWorktreeRemoving(null)
     }
@@ -873,7 +874,7 @@ export function Sidebar({
         setError(null)
         return
       }
-      setError(err instanceof Error ? err.message : 'Unable to create worktree')
+      setError(err instanceof Error ? err.message : "Couldn't create worktree")
     } finally {
       setWorktreeLoading(false)
     }
@@ -1009,7 +1010,7 @@ export function Sidebar({
         await refreshWorkspaceTree()
       })
       .catch((err: unknown) => {
-        pushToast({ tone: 'error', title: 'Could not remove it from the sidebar', description: err instanceof Error ? err.message : undefined })
+        pushToast(failureToast("Couldn't remove it from the sidebar", err))
       })
   }
 
@@ -1033,10 +1034,10 @@ export function Sidebar({
 
   const openInNewWindow = (session: SessionResponse) => {
     openSessionInNewWindow({ session }).catch((err) => {
-      console.error('Failed to open session in new window:', err)
+      console.error("Couldn't open session in new window:", err)
       pushToast({
         tone: 'error',
-        title: 'Could not open session in new window',
+        title: "Couldn't open session in new window",
         description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
       })
     })
@@ -1058,11 +1059,10 @@ export function Sidebar({
     })
   }
 
-  // From a row's key (an event) or its swipe action (none): either way it
-  // only opens the confirmation.
+  // From a row's key (an event) or its swipe action (none).
   const handleSessionDelete = (e: React.SyntheticEvent | null, session: SessionResponse) => {
     e?.stopPropagation()
-    setDeleteTarget(session)
+    requestSessionDelete(session)
   }
 
   const handleSessionEdit = (session: SessionResponse) => {
@@ -1073,7 +1073,7 @@ export function Sidebar({
     setEditingSessionId(null)
     updateSessionTitle.mutate(
       { id: session.id, title },
-      { onError: () => pushToast({ tone: 'error', title: 'Could not rename session' }) },
+      { onError: () => pushToast({ tone: 'error', title: "Couldn't rename session" }) },
     )
   }
 
@@ -1096,7 +1096,7 @@ export function Sidebar({
       if (!renamed) return
       setWorktreeEditTarget(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to rename worktree')
+      setError(err instanceof Error ? err.message : "Couldn't rename worktree")
     } finally {
       setWorktreeEditLoading(false)
     }
@@ -1141,7 +1141,8 @@ export function Sidebar({
         run: () => toggleSessionPinned(session),
       })
     }
-    actions.push({ id: 'delete', label: 'Delete session…', icon: Trash2, danger: true, separatorBefore: actions.length > 0, rowKey: 'delete', run: () => setDeleteTarget(session) })
+    // The ellipsis says a dialog follows, which only a working session gets.
+    actions.push({ id: 'delete', label: sessionWorking(session) ? 'Delete session…' : 'Delete session', icon: Trash2, danger: true, separatorBefore: actions.length > 0, rowKey: 'delete', run: () => requestSessionDelete(session) })
     return actions
   }
 
@@ -1150,9 +1151,21 @@ export function Sidebar({
     setMobileSessionActions({ session, workspacePath })
   }
 
+  // Undo or confirm, not both (DESIGN.md): the toast's Undo covers a delete,
+  // so only a session whose agent is still working asks first. Undo brings
+  // the session back but does not restart a stopped turn.
+  function requestSessionDelete(session: SessionResponse) {
+    if (sessionWorking(session)) setDeleteTarget(session)
+    else deleteSessionNow(session)
+  }
+
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
-    const target = deleteTarget
+    deleteSessionNow(deleteTarget)
+    setDeleteTarget(null)
+  }
+
+  function deleteSessionNow(target: SessionResponse) {
     // On the Sessions page, ``currentSessionId`` is the chat kept under the
     // list, not one on screen: deleting it neither leaves for another session
     // (that would push a chat over Sessions) nor, on Undo, goes back to it.
@@ -1187,13 +1200,12 @@ export function Sidebar({
           onSettled: () => dismissToast(toastId),
           onError: () => {
             if (undo.signal.aborted) return
-            pushToast({ tone: 'error', title: 'Could not delete session' })
+            pushToast({ tone: 'error', title: "Couldn't delete session" })
           },
         },
       ),
       navigate,
     })
-    setDeleteTarget(null)
   }
 
   const mobileWorkspaceActionsTitle = mobileWorkspaceActions?.kind === 'chat'
@@ -1436,6 +1448,7 @@ export function Sidebar({
             compact
             icon={FolderPlus}
             title="No workspaces yet"
+            body="A workspace is a folder the agent works in."
             className="px-3 py-3"
             action={(
               <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
@@ -1805,9 +1818,11 @@ export function Sidebar({
           {trustWorkspace ? (
             <>
               <DialogHeader>
-                <DialogTitle>Trust this workspace?</DialogTitle>
+                <DialogTitle>Let agents work in {workspaceLabel(trustWorkspace)}?</DialogTitle>
+                {/* The Undo limit is the snapshot's: edited files up to 2 MB, not what a command moved or deleted. */}
                 <DialogDescription>
-                  Agents get filesystem and shell access inside this exact directory.
+                  They can read, change and delete files in this folder, and run commands there. Undo in the chat
+                  brings back files they edited, up to 2 MB each.
                 </DialogDescription>
               </DialogHeader>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
@@ -1815,7 +1830,7 @@ export function Sidebar({
               </div>
               <DialogFooter>
                 <Button type="button" variant="default" onClick={() => setTrustWorkspace(null)}>Back</Button>
-                <Button variant="primary" type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
+                <Button variant="primary" type="button" onClick={confirmTrustedWorkspace}>Allow and open</Button>
               </DialogFooter>
             </>
           ) : nativeFolderPickerEnabled && !isTauriMobile ? (
@@ -1959,18 +1974,20 @@ export function Sidebar({
                     Locate folder…
                   </button>
                 )}
+                {workspaceByPath.get(mobileWorkspaceActions.path)?.git !== false && (
                 <button
                   type="button"
                   className={SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
-                    if (action) void openWorktreeDialog(action.path)
+                    if (action) openWorktreeDialog(action.path)
                   }}
                 >
                   <GitBranch size={16} aria-hidden="true" />
                   Create worktree…
                 </button>
+                )}
                 <WorkspaceGroupToggles
                   workspace={mobileWorkspaceActions.path}
                   variant="sheet"
@@ -2026,87 +2043,12 @@ export function Sidebar({
                   <p className="truncate font-mono text-meta text-(--color-text-muted)" />
                 )}
               </div>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
-                  <span>Worktree name</span>
-                  <input
-                    value={worktreeName}
-                    onChange={(e) => setWorktreeName(e.target.value)}
-                    placeholder="feature-login"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
-                    maxLength={80}
-                    autoFocus
-                  />
-                  <p className="text-xs md:text-meta font-normal text-(--color-text-muted)">Blank uses &quot;session&quot;.</p>
-                </label>
-                <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
-                  <span>Branch</span>
-                  <input
-                    value={worktreeBranch}
-                    onChange={(e) => setWorktreeBranch(e.target.value)}
-                    placeholder="openagentd/feature-login"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
-                    maxLength={255}
-                  />
-                  <p className="text-xs md:text-meta font-normal text-(--color-text-muted)">Blank defaults to openagentd/name.</p>
-                </label>
-              </div>
-              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
-                    <Chip mono>{worktreeOptions.length}</Chip>
-                </div>
-                {worktreeOptions.length === 0 ? (
-                    <EmptyState compact icon={GitBranch} title="No worktrees yet" className="py-1" />
-                ) : (
-                  <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
-                      {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-xs px-2 py-1 hover:bg-(--bg-key)">
-                          <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                          <Tooltip className="min-w-0 flex-1">
-                            <TooltipTrigger
-                              className="min-w-0 flex-1"
-                              render={
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-(--color-text-2)">{item.name}</p>
-                                  {item.branch && <p className="truncate text-meta text-(--color-text-subtle)">{item.branch}</p>}
-                                </div>
-                              }
-                            />
-                            <TooltipContent>{item.directory}</TooltipContent>
-                          </Tooltip>
-                          {item.managed ? (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => setRemoveWorktreeTarget(item)}
-                                    disabled={worktreeRemoving === item.directory}
-                                    aria-label={`Delete worktree ${item.name}…`}
-                                  >
-                                    {worktreeRemoving === item.directory ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : <Trash2 className="size-3" aria-hidden="true" />}
-                                  </Button>
-                                }
-                              />
-                              <TooltipContent>Delete worktree…</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Chip>external</Chip>
-                          )}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </div>
+              <WorktreeFields
+                name={worktreeName}
+                branch={worktreeBranch}
+                onNameChange={setWorktreeName}
+                onBranchChange={setWorktreeBranch}
+              />
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter>
@@ -2183,6 +2125,8 @@ export function Sidebar({
               <Copy size={12} aria-hidden="true" />
               Copy path
             </button>
+            {/* A folder without Git has no worktrees to make. */}
+            {workspaceByPath.get(desktopWorkspaceActions.path)?.git !== false && (
             <button
               type="button"
               role="menuitem"
@@ -2190,12 +2134,13 @@ export function Sidebar({
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
-                void openWorktreeDialog(action.path)
+                openWorktreeDialog(action.path)
               }}
             >
               <GitBranch size={12} aria-hidden="true" />
               Create worktree…
             </button>
+            )}
             <WorkspaceGroupToggles
               workspace={desktopWorkspaceActions.path}
               variant="menu"
@@ -2256,7 +2201,7 @@ export function Sidebar({
             <button
               type="button"
               className={ACTION_SHEET_ROW_CLASS}
-              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); void openWorktreeDialog(repo) }}
+              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); openWorktreeDialog(repo) }}
             >
               <Plus size={16} aria-hidden="true" />
               Create worktree…
@@ -2327,7 +2272,7 @@ export function Sidebar({
             onClick={() => {
               const repo = checkoutMenu.repo
               setCheckoutMenu(null)
-              void openWorktreeDialog(repo)
+              openWorktreeDialog(repo)
             }}
           >
             <Plus size={12} aria-hidden="true" />

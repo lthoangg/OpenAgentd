@@ -399,7 +399,7 @@ pub fn classify_http(status: u16, body: &str, label: &str) -> AgentError {
     };
     if (status == 401 || status == 403) && !blames_the_model(detail.as_deref()) {
         return AgentError::Auth {
-            message: format!("{label} rejected the request — authentication failed (HTTP {status}){suffix}{punct} Check the provider's API key / login in Settings → Providers."),
+            message: format!("{label} rejected the request — authentication failed (HTTP {status}){suffix}{punct} Check the provider's API key / login in Settings → Models."),
             status: Some(status),
             provider: Some(label.to_string()),
         };
@@ -449,10 +449,7 @@ mod tests {
     #[test]
     fn classify() {
         let e = classify_http(401, r#"{"error":{"message":"bad key","type":"auth"}}"#, "openai:gpt");
-        assert_eq!(
-            e.to_string(),
-            "openai:gpt rejected the request — authentication failed (HTTP 401): auth: bad key. Check the provider's API key / login in Settings → Providers."
-        );
+        assert_eq!(e.to_string(), "openai:gpt rejected the request — authentication failed (HTTP 401): auth: bad key. Check the provider's API key / login in Settings → Models.");
         let e = classify_http(401, r#"{"error":"model not supported"}"#, "x");
         assert!(matches!(e, AgentError::Request { .. }));
     }

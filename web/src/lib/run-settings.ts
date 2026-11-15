@@ -133,7 +133,7 @@ const finite = (n: number | null | undefined): n is number => typeof n === 'numb
 /** A bare amount (`$84.50`, `12`): reads as "left". Ratios and notes (`237/300`, `12.40 used`) stay as given. */
 const AMOUNT_RE = /^[^\d/\s]{0,3}\d[\d,]*(\.\d+)?$/
 
-/** At or past the limit: red. Close to it: orange. As Settings → Providers colours its bars. */
+/** At or past the limit: red. Close to it: orange. As Settings → Models colours its bars. */
 const toneOf = (used: number): QuotaTone => (used >= 100 ? 'error' : used >= 90 ? 'warning' : 'muted')
 
 /** A real but sub-percent use reads "<1%", never a false "0%". */
@@ -195,7 +195,7 @@ function creditsText(credits: Credits): { text: string; empty: boolean } {
 }
 
 /**
- * Every limit of an account worth a glance, in the order Settings → Providers
+ * Every limit of an account worth a glance, in the order Settings → Models
  * lists them, or `null` when nothing is known.
  *
  * - The windows of the account's main limit (the first): `5h 12% · 7d 64%`.

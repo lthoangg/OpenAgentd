@@ -99,7 +99,7 @@ widgets never store the server address or access key.
 |---|---|
 | "App not installed" on a fresh install | The phone runs a 32-bit system, which this APK doesn't support, or the download is incomplete. Check the `.sha256`. |
 | "App not installed" when updating | The installed copy was signed with a different key, such as a local developer build. Uninstall it, then install the release APK. You'll need to add your servers again. |
-| The app can't reach the server | Check that the phone and the computer are on the same network and the server was started with `--host 0.0.0.0 --key`. Turn off mobile data to rule out the phone leaving Wi-Fi. |
+| The app can't reach the server | Check that the phone and the computer are on the same network and the server was started with `--public --key`. Turn off mobile data to rule out the phone leaving Wi-Fi. |
 | "Unauthorized" when connecting | The access key doesn't match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |
 | The app asks for the access key again after restoring a backup or moving to a new phone | Expected. The encryption key stays on the original device, so re-enter the access key. |
 | The screen is blank or looks broken | Update **Android System WebView** and **Chrome** in Google Play. |

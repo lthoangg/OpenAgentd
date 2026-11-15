@@ -592,7 +592,7 @@
     "type": "function",
     "function": {
       "name": "team",
-      "description": "Delegate a focused task to a specialized subagent running asynchronously in the background. Returns immediately after dispatching; the subagent will automatically send its deliverable back to you as a message when finished.\n\nAvailable subagent profiles:\n- profile='explorer': Explores the codebase, maps code paths, traces symbols, and gathers architectural facts without mutating files.\n- profile='researcher': Gathers technical context from external web documentation, libraries, APIs, and the local codebase.\n\nTo run tasks concurrently, call team multiple times in the same turn. To reply to a subagent that asked a question or send follow-up instructions, provide target='<handle>' (e.g. target='explorer#1').",
+      "description": "Replaced at runtime by a description that lists the member profiles on disk; see delegate_description in agent/src/tools/team.rs.",
       "parameters": {
         "type": "object",
         "properties": {

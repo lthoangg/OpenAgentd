@@ -2,19 +2,22 @@
 //! `/api/auth/*`, which is model-provider sign-in.
 //!
 //! Anyone who may use the API can read the status. Everything else (signing
-//! in or out, the recovery step, and the signer routes: devices, pending
-//! requests, approving, removing) only answers the machine itself: an
-//! unproxied loopback caller on the private listener, never a relayed
-//! device or a LAN client.
+//! in or out, the recovery step, recovering the account with its recovery
+//! code (`recover`, `recovered/ack`), and the signer routes: devices,
+//! renaming one (`devices/name`), pending requests, approving, removing)
+//! only answers the machine itself: an unproxied loopback caller on the
+//! private listener, never a relayed device or a LAN client.
 //!
-//! The routes that sign a roster, `approve/confirm`, `invite/add` and
-//! `devices/remove`, also need the desktop app's proof that the person
+//! The routes that sign a roster, `approve/confirm`, `invite/add`,
+//! `devices/remove` and `devices/approver` (let a device approve others
+//! too), also need the desktop app's proof that the person
 //! approved ([`super::approval`]): a loopback caller alone may be an
 //! agent's shell. So do `invite/start` and `invite/poll`, which sign
 //! nothing but hand out an invitation link (a bearer secret) and its
 //! candidates. Creating the account (`recovery`, the genesis roster of an
 //! empty account) does not, and neither do the other routes that sign
-//! nothing (cancelling is always safe).
+//! nothing (cancelling is always safe; naming a device writes no roster;
+//! recovering is the person typing the recovery code here).
 //!
 //! `open`, `close` and `poke` drive this computer's links to the account's
 //! other computers ([`super::controller`]). Local only too: a relayed device
@@ -41,7 +44,11 @@ pub fn router() -> Router<AppState> {
         .route("/logout", post(logout))
         .route("/reload", post(reload))
         .route("/recovery", post(recovery))
+        .route("/recover", post(recover))
+        .route("/recovered/ack", post(recovered_ack))
         .route("/devices", get(devices))
+        .route("/devices/name", post(rename_device))
+        .route("/devices/approver", post(make_approver))
         .route("/devices/remove", post(remove_device))
         .route("/pending", get(pending))
         .route("/approve/begin", post(approve_begin))
@@ -282,6 +289,10 @@ fn signer_error(e: super::signer::SignerError) -> ApiError {
                 FlowError::NotSigner => ApiError::new(403, "This computer cannot approve devices."),
                 FlowError::Roles => ApiError::new(400, "A device can only get the roles it asked for, and needs at least one."),
                 FlowError::JoinEnded | FlowError::TimedOut => ApiError::new(409, "The request was cancelled or expired."),
+                // A stable code beside the words, for a page that acts on it.
+                FlowError::NotInAccount => {
+                    ApiError::with_detail(409, serde_json::json!({ "code": "device_not_in_account", "message": "That device is no longer in your account." }))
+                }
                 FlowError::InviteCompromised => ApiError::new(409, "Someone else has this invitation, so nobody was added. Show a new one."),
                 FlowError::CommitMismatch => ApiError::new(409, "Request cancelled. If you didn't start it, someone may be trying to join your account."),
                 FlowError::Roster(rule) => ApiError::new(502, format!("The account's device list failed a check ({rule}). Nothing was changed.")),
@@ -298,9 +309,100 @@ fn json_of<T: serde::Serialize>(v: &T) -> ApiResult<Response> {
     Ok(json(serde_json::to_value(v).map_err(ApiError::internal)?))
 }
 
+/// Longest recovery code accepted (a code is 52 characters with its dashes).
+const MAX_RECOVERY_CODE: usize = 128;
+
+const NOT_A_RECOVERY_CODE: &str = "That is not a recovery code. Check it and type it again.";
+
+/// `{ "code": "ABCD-…", "server"?: bool, "client"?: bool }`: signs this
+/// computer in and recovers the account with its recovery code, for when no
+/// device that approves is left. The status becomes `signing_in` with
+/// `recovering: true` (the person approves its code in the browser); once
+/// it is approved, this computer is the account's only device and it
+/// approves others, the rest are signed out. The code is a secret:
+/// zeroized after use and never logged. A mistyped one is refused here
+/// before any sign-in.
+async fn recover(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        code: String,
+        #[serde(flatten)]
+        roles: RolesBody,
+    }
+    if body.len() > MAX_RECOVERY_CODE + 64 {
+        return Err(ApiError::new(400, NOT_A_RECOVERY_CODE));
+    }
+    let parsed: Body = serde_json::from_slice(&body).map_err(|_| ApiError::new(400, NOT_A_RECOVERY_CODE))?;
+    let code = zeroize::Zeroizing::new(parsed.code);
+    if code.len() > MAX_RECOVERY_CODE || openagentd_cloud::recovery::decode(&code).is_err() {
+        return Err(ApiError::new(400, NOT_A_RECOVERY_CODE));
+    }
+    let roles = parsed.roles.roles()?;
+    super::begin_recover(code, roles);
+    // The first answer (the user code) usually arrives within a second.
+    for _ in 0..30 {
+        if !matches!(super::status(), super::Status::Guest { .. }) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    status_json()
+}
+
+/// The person saw that the account was recovered here: `recovered` leaves
+/// the status.
+async fn recovered_ack(ext: Extensions) -> ApiResult<Response> {
+    local_only(&ext)?;
+    super::ack_recovered();
+    status_json()
+}
+
 async fn devices(ext: Extensions) -> ApiResult<Response> {
     local_only(&ext)?;
     json_of(&super::signer::devices().await.map_err(signer_error)?)
+}
+
+/// `{ "device_id": string, "name": string | null }`: names a device of the
+/// account (an empty name or null clears it) and answers `{ device_id, name
+/// }` with the name the account stored. Any device may name itself; naming
+/// another needs this computer to be one that approves. Naming this computer
+/// also names it here (its server name). Nothing is signed, so no approval.
+async fn rename_device(ext: Extensions, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    #[derive(serde::Deserialize)]
+    struct Body {
+        device_id: String,
+        name: Option<String>,
+    }
+    let b: Body = body_of(&body)?;
+    if !openagentd_cloud::keys::is_device_id(&b.device_id) {
+        return Err(ApiError::new(400, "Malformed request."));
+    }
+    let name = b.name.as_deref().and_then(openagentd_cloud::names::clean);
+    let stored = super::signer::rename(&b.device_id, name.as_deref()).await.map_err(rename_error)?;
+    Ok(json(serde_json::json!({ "device_id": b.device_id, "name": stored })))
+}
+
+/// What a rename's failure says to the person.
+fn rename_error(e: super::signer::SignerError) -> ApiError {
+    use super::signer::SignerError;
+    use openagentd_cloud::flows::FlowError;
+    if let SignerError::Flow(FlowError::Api(a)) = &e {
+        if a.is("not_signer") {
+            return ApiError::new(403, "Only a device that approves others can rename this device.");
+        }
+        if a.is("unknown_device") {
+            return ApiError::new(409, "That device is no longer in your account.");
+        }
+        if a.is("rate_limited") {
+            return ApiError::new(429, "Too many renames. Try again in a few minutes.");
+        }
+        if a.is("invalid_request") {
+            return ApiError::new(400, "Use 1 to 40 characters, on one line.");
+        }
+    }
+    signer_error(e)
 }
 
 /// Where a session's device reaches this host directly (spec 5.5). Only
@@ -474,6 +576,16 @@ fn device_id(body: &[u8]) -> ApiResult<String> {
     Ok(b.device_id)
 }
 
+/// `{ device_id }`: lets a device of the account approve others too. Writes
+/// a roster, so it needs the app's proof for `promote` on that device id.
+async fn make_approver(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = device_id(&body)?;
+    super::approval::require(&headers, openagentd_cloud::approval::Action::Promote, &id)?;
+    super::signer::make_approver(&id).await.map_err(signer_error)?;
+    status_json()
+}
+
 /// `{ device_id }`: opens a computer of the account through its link and
 /// answers `{ origin, key, device }`, the loopback bridge the desktop app
 /// switches a window to. `key` is a bearer secret for that origin.
@@ -547,6 +659,7 @@ mod tests {
             fingerprint: "3F9A".into(),
             expires_in: 600,
             add_link: Some("agentd://add?c=ABCDEFGH&d=x&k=y".into()),
+            recovering: false,
         };
         assert_eq!(seen(signing(), true)["add_link"], "agentd://add?c=ABCDEFGH&d=x&k=y");
         let v = seen(signing(), false);
@@ -556,8 +669,22 @@ mod tests {
         assert_eq!(seen(confirming(), true)["choices"], serde_json::json!(["12", "47", "83"]));
         assert_eq!(seen(confirming(), false), serde_json::json!({"state": "confirming", "fingerprint": "3F9A"}));
         // Other states are unchanged.
-        let connected = Status::Connected { fingerprint: "3F9A".into(), signer: false, server: true, client: true, relay: RelayState::Online, sessions: 1 };
-        assert_eq!(seen(connected.clone(), false), serde_json::to_value(connected).unwrap());
+        let connected = Status::Connected { fingerprint: "3F9A".into(), signer: false, server: true, client: true, relay: RelayState::Online, sessions: 1, recovered: false };
+        assert_eq!(seen(connected.clone(), false), serde_json::to_value(&connected).unwrap());
+        // The two flags show only when set, so an older page reads the same status.
+        assert!(serde_json::to_value(&connected).unwrap().get("recovered").is_none());
+        let back = Status::Connected { fingerprint: "3F9A".into(), signer: true, server: true, client: true, relay: RelayState::Online, sessions: 0, recovered: true };
+        assert_eq!(serde_json::to_value(back).unwrap()["recovered"], true);
+        let recovering = || Status::SigningIn {
+            user_code: "ABCD-EFGH".into(),
+            url: "https://account.openagentd.dev/device?code=ABCD-EFGH".into(),
+            fingerprint: "3F9A".into(),
+            expires_in: 600,
+            add_link: None,
+            recovering: true,
+        };
+        assert_eq!(seen(recovering(), true)["recovering"], true);
+        assert_eq!(seen(recovering(), false), serde_json::json!({"state": "signing_in", "fingerprint": "3F9A"}), "no code or page for another device");
         // The recovery code never leaves this computer.
         let recovery = Status::Recovery { code: "AAAA-BBBB".into(), check: [1, 2] };
         assert_eq!(seen(recovery.clone(), true)["code"], "AAAA-BBBB");
@@ -571,5 +698,21 @@ mod tests {
         assert_eq!(RolesBody::default().roles().unwrap(), Roles::BOTH);
         assert_eq!(RolesBody { server: Some(false), client: None }.roles().unwrap(), Roles::CLIENT);
         assert!(RolesBody { server: Some(false), client: Some(false) }.roles().is_err());
+    }
+
+    #[test]
+    fn a_refused_rename_says_why_in_plain_words() {
+        use super::super::signer::SignerError;
+        use super::rename_error;
+        use openagentd_cloud::api::ApiError as Cloud;
+        use openagentd_cloud::flows::FlowError;
+        let refused = |status: u16, code: &str| rename_error(SignerError::Flow(FlowError::Api(Cloud { status, code: code.into(), body: None, retry_after: None })));
+        let text = |e: crate::error::ApiError| (e.status.as_u16(), e.detail.as_str().unwrap_or_default().to_string());
+        assert_eq!(text(refused(403, "not_signer")), (403, "Only a device that approves others can rename this device.".to_string()));
+        assert_eq!(text(refused(409, "unknown_device")), (409, "That device is no longer in your account.".to_string()));
+        assert_eq!(text(refused(429, "rate_limited")), (429, "Too many renames. Try again in a few minutes.".to_string()));
+        assert_eq!(text(refused(400, "invalid_request")), (400, "Use 1 to 40 characters, on one line.".to_string()));
+        assert_eq!(refused(0, "network").status.as_u16(), 502, "no connection is not a refusal of the name");
+        assert_eq!(rename_error(SignerError::NotSignedIn).status.as_u16(), 409);
     }
 }

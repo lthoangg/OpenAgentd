@@ -22,6 +22,7 @@ mock.module('@/hooks/use-element-width', () => ({
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
 const addFilesMock = mock(() => {})
+const addDesignFeedbackMock = mock((_feedback: unknown) => {})
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => mock(() => Promise.resolve()),
@@ -68,6 +69,8 @@ mock.module('@/stores/useUIStore', () => {
     toggleRunPicker: () => {},
     closeScheduler: () => {},
     closeRunPicker: () => {},
+    closePalette: () => {},
+    closeQuickOpen: () => {},
   }
   return {
     useUIStore: Object.assign((selector: (state: Record<string, unknown>) => unknown) => selector(ui), { getState: () => ui }),
@@ -87,7 +90,7 @@ mock.module('@/api/client', () => ({
 mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, removeWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => <button type="button">Transcript content</button> }))
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null, ChatNote: () => null }))
 // The sidebar is the Sessions screen on a phone: record how it is asked to render.
 mock.module('@/components/Sidebar', () => ({
   Sidebar: ({ page, mobileOpen, onOpenServers }: { page?: boolean; mobileOpen?: boolean; onOpenServers?: () => void }) => (
@@ -104,9 +107,10 @@ mock.module('@/components/phone/LazyServersScreen', () => ({
   ),
 }))
 mock.module('@/components/WorkspacePanel', () => ({
-  WorkspacePanel: ({ onClose }: { onClose: () => void }) => (
-    <aside data-testid="coding-workspace-panel">
+  WorkspacePanel: ({ onClose, open, onSendPreviewComments }: { onClose: () => void; open?: boolean; onSendPreviewComments?: (feedback: unknown) => void }) => (
+    <aside data-testid="coding-workspace-panel" data-open={String(Boolean(open))}>
       <button type="button" onClick={onClose}>Close workspace panel</button>
+      <button type="button" onClick={() => onSendPreviewComments?.({ where: 'http://localhost:5173/', items: [] })}>Send preview comments</button>
     </aside>
   ),
 }))
@@ -128,13 +132,15 @@ mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentComm
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/components/composer/Composer', () => ({
   Composer: forwardRef<
-    { setValue: (value: string) => void; setFiles: (files: File[]) => void; addFiles: (files: File[]) => void },
+    { setValue: (value: string) => void; setFiles: (files: File[]) => void; addFiles: (files: File[]) => void; addDesignFeedback: (feedback: unknown) => void; focus: () => void },
     unknown
   >(function ComposerMock(_, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,
       addFiles: addFilesMock,
+      addDesignFeedback: addDesignFeedbackMock,
+      focus: () => {},
     }))
     return <textarea aria-label="Message input" />
   }),
@@ -208,6 +214,16 @@ describe('the phone navigation stack', () => {
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" phoneStack={{ atSessions: false, onBack }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Back to Sessions' }))
     expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns to the chat after Preview comments are sent to the agent', async () => {
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" phoneStack={{ atSessions: false, onBack: () => {} }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
+    expect((await screen.findByTestId('coding-workspace-panel')).dataset.open).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Send preview comments' }))
+    // The comments are in the message box, which is the chat's: go there.
+    expect(addDesignFeedbackMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('coding-workspace-panel').dataset.open).toBe('false')
   })
 
   it('keeps the sidebar beside the chat without a stack', () => {

@@ -90,7 +90,7 @@ async fn a_member_out_of_quota_alerts_its_lead_and_can_be_stopped_and_resumed() 
     appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(id), workspace: ws.clone(), ..Default::default() }).await.unwrap();
     let lead = manager::get_or_start_agent_session(&ws, Some(&sid)).await.unwrap().expect("agent configured");
 
-    subagents::spawn_subagent(&sid, "worker", "run the build", None, None, None, &ws, &pool, &factory).await.expect("member spawned");
+    subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
     let member = subagents::with_instance(&sid, "worker#1", |i| i.session.clone()).expect("member registered");
 
     // The member parks in the quota wait; the lead hears about it at once.
@@ -101,18 +101,18 @@ async fn a_member_out_of_quota_alerts_its_lead_and_can_be_stopped_and_resumed() 
     assert!(notice.contains("team(action='stop', target='worker#1')"), "{notice}");
     assert!(member.is_busy(), "the member keeps waiting for the reset");
     assert!(subagents::has_working_subagents(&sid), "a stalled member still works for its lead");
-    let listed = subagents::describe_subagents(&sid);
+    let listed = subagents::describe_subagents(&sid, &pool).await;
     assert!(listed.contains("stalled: mock:worker is out of quota"), "{listed}");
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("the lead's turn on the notice ends");
 
     // The lead stops it: no report follows, and it no longer holds the lead.
-    let stopped = subagents::stop_subagent(&sid, "worker#1").await.expect("stop accepted");
+    let stopped = subagents::stop_subagent(&sid, "worker#1", &pool).await.expect("stop accepted");
     assert_eq!(stopped["was_running"], serde_json::json!(true));
     wait_until("the member's turn to end", || member.active_task_done() && !member.is_busy()).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(!subagents::has_working_subagents(&sid));
     assert_eq!(subagents::with_instance(&sid, "worker#1", |i| i.status().as_str()), Some("stopped"));
-    assert_eq!(subagents::describe_subagents(&sid), "- worker#1: stopped (send it a task to resume)");
+    assert_eq!(subagents::describe_subagents(&sid, &pool).await, "- worker#1: stopped (send it a task to resume)");
     let reports = user_texts(&lead_mock).into_iter().filter(|t| t.contains("worker#1 failed") || t.contains("no text output")).count();
     assert_eq!(reports, 0, "a stopped member reported to its lead");
 

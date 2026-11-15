@@ -19,7 +19,7 @@ mock.module('@/lib/island-setting', () => ({
   readIslandSettings: async () => (supported ? stored : null),
   updateIslandSettings: async (patch: Partial<IslandSettings>) => {
     patches.push(patch)
-    if (failWrite) throw new Error('Could not save the setting.')
+    if (failWrite) throw new Error("Couldn't save the setting.")
     stored = { ...stored, ...patch }
     return stored
   },
@@ -62,12 +62,16 @@ describe('DesktopSettingsPage notch status', () => {
     expect(await toggle('Show while OpenAgentd is in front')).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('disables the options while the island is off', async () => {
+  it('shows one row while the notch status is off, and its options once it is on', async () => {
     stored = { ...DEFAULT_ISLAND_SETTINGS, enabled: false }
     render(<DesktopSettingsPage />)
-    expect(await toggle('Expand on hover')).toBeDisabled()
-    fireEvent.click(await toggle('Agent status in the notch'))
+    const main = await toggle('Agent status in the notch')
+    expect(screen.queryByRole('switch', { name: 'Expand on hover' })).toBeNull()
+    expect(screen.queryByText(/to change this/)).toBeNull()
+
+    fireEvent.click(main)
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Expand on hover' })).not.toBeDisabled())
+    expect(screen.getByRole('switch', { name: 'Show while OpenAgentd is in front' })).toBeTruthy()
   })
 
   it('puts the switch back and says why when saving fails', async () => {
@@ -77,7 +81,7 @@ describe('DesktopSettingsPage notch status', () => {
 
     fireEvent.click(main)
     await waitFor(() => expect(main).toHaveAttribute('aria-checked', 'true'))
-    expect(screen.getByText('Could not save the setting.')).toBeInTheDocument()
+    expect(screen.getByText("Couldn't save the setting.")).toBeInTheDocument()
   })
 
   it('has no notch section outside the macOS app', async () => {
@@ -93,13 +97,6 @@ describe('DesktopSettingsPage notch status', () => {
     expect(screen.queryByText('Agent status in the notch')).toBeNull()
   })
 
-  it('says why the options are off', async () => {
-    stored = { ...DEFAULT_ISLAND_SETTINGS, enabled: false }
-    render(<DesktopSettingsPage />)
-    await toggle('Expand on hover')
-    expect(screen.getAllByText('Turn on Agent status to change this.').length).toBe(3)
-  })
-
   // The notch's own menu, or Settings in another window, changes them too.
   it('follows a change made elsewhere, and stops listening when it closes', async () => {
     const { unmount } = render(<DesktopSettingsPage />)
@@ -108,7 +105,7 @@ describe('DesktopSettingsPage notch status', () => {
 
     act(() => onExternalChange?.({ ...DEFAULT_ISLAND_SETTINGS, enabled: false }))
     expect(await toggle('Agent status in the notch')).toHaveAttribute('aria-checked', 'false')
-    expect(await toggle('Expand on hover')).toBeDisabled()
+    expect(screen.queryByRole('switch', { name: 'Expand on hover' })).toBeNull()
 
     unmount()
     expect(onExternalChange).toBeUndefined()

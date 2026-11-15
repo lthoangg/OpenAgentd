@@ -42,3 +42,29 @@ it('asks before going back to the phone section list with unsaved work', () => {
   expect(useSettingsStore.getState().mobileView).toBe('index')
   expect(useSettingsStore.getState().section).toBe('context')
 })
+
+it.each([
+  ['context', 'Summaries'],
+  ['goals', 'Goals'],
+  ['telemetry', 'History'],
+] as const)('opens Sessions at its heading for the merged section id %s', (id, heading) => {
+  act(() => useSettingsStore.getState().openSettings(id))
+
+  expect(useSettingsStore.getState().section).toBe('titles')
+  expect(useSettingsStore.getState().anchor).toBe(heading)
+
+  // Another section drops the anchor.
+  act(() => useSettingsStore.getState().setSection('providers'))
+  expect(useSettingsStore.getState().anchor).toBeNull()
+  act(() => useSettingsStore.getState().setSection(id))
+  expect(useSettingsStore.getState().section).toBe('titles')
+  expect(useSettingsStore.getState().anchor).toBe(heading)
+})
+
+it('reopens Sessions when the last visited section was one of the merged pages', async () => {
+  window.localStorage.setItem('oa.settingsStore', JSON.stringify({ state: { section: 'context' }, version: 0 }))
+
+  await useSettingsStore.persist.rehydrate()
+
+  expect(useSettingsStore.getState().section).toBe('titles')
+})

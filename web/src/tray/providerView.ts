@@ -90,7 +90,7 @@ export function windowLabel(minutes?: number | null): string | null {
 
 /**
  * The part of a limit's name the provider's name doesn't already say:
- * "Codex" under "OpenAI Codex" adds nothing, "DeepSeek Balance" under
+ * "Copilot" under "GitHub Copilot" adds nothing, "DeepSeek Balance" under
  * "DeepSeek" adds "Balance", "On-demand cap" under "Grok" is kept whole.
  */
 function ownName(provider: string, limitName?: string | null): string | null {

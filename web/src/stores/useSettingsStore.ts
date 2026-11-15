@@ -55,6 +55,22 @@ export function parentSection(section: SettingsSection): SettingsSection {
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
 
+/**
+ * Pages that are now headings of Sessions (section id ``titles``). Their ids
+ * still open: on Sessions, scrolled to the heading.
+ */
+const MERGED_INTO_SESSIONS: Partial<Record<SettingsSection, string>> = {
+  context: 'Summaries',
+  goals: 'Goals',
+  telemetry: 'History',
+}
+
+/** The page a section id opens, and the heading on it to scroll to, if any. */
+export function resolveSection(section: SettingsSection): { section: SettingsSection; anchor: string | null } {
+  const anchor = MERGED_INTO_SESSIONS[section]
+  return anchor ? { section: 'titles', anchor } : { section, anchor: null }
+}
+
 interface SettingsStore {
   open: boolean
   dirtyDrafts: Record<string, boolean>
@@ -64,6 +80,8 @@ interface SettingsStore {
   section: SettingsSection
   /** Name param for editor views (skills-edit, mcp-edit). */
   selectedName: string | null
+  /** A heading on the page to scroll to once it has rendered (a merged section id). Not persisted. */
+  anchor: string | null
   /**
    * Phones show either the grouped section list (`index`) or one section
    * full-screen. Desktop always shows sidebar + section and ignores this.
@@ -106,13 +124,16 @@ export const useSettingsStore = create<SettingsStore>()(
           if (pending.close) state.open = false
           else if (pending.index) state.mobileView = 'index'
           else if (pending.section) {
-            state.section = pending.section
+            const target = resolveSection(pending.section)
+            state.section = target.section
+            state.anchor = target.anchor
             state.selectedName = pending.name ?? null
             state.mobileView = 'section'
           }
         }),
         section: 'general',
         selectedName: null,
+        anchor: null,
         mobileView: 'index',
         openSettings: (section, name = null) => {
           if (get().open && section !== undefined && Object.keys(get().dirtyDrafts).length) {
@@ -124,7 +145,9 @@ export const useSettingsStore = create<SettingsStore>()(
             state.open = true
             // `undefined` means "resume where the user left off".
             if (section !== undefined) {
-              state.section = section
+              const target = resolveSection(section)
+              state.section = target.section
+              state.anchor = target.anchor
               state.selectedName = name ?? null
               state.mobileView = 'section'
             } else {
@@ -132,17 +155,20 @@ export const useSettingsStore = create<SettingsStore>()(
             }
           })
         },
-        setSection: (section, name = null) =>
+        setSection: (requested, name = null) =>
           set((state) => {
+            const { section, anchor } = resolveSection(requested)
             if (section === state.section && name === state.selectedName) {
               state.mobileView = 'section'
+              state.anchor = anchor
               return
             }
             if (Object.keys(state.dirtyDrafts).length) {
-              state.pendingNavigation = { section, name }
+              state.pendingNavigation = { section: requested, name }
               return
             }
             state.section = section
+            state.anchor = anchor
             state.selectedName = name ?? null
             state.mobileView = 'section'
           }),
@@ -170,6 +196,11 @@ export const useSettingsStore = create<SettingsStore>()(
       // `open` is deliberately excluded: the modal should never reappear on
       // its own after a reload.
       partialize: (state) => ({ section: parentSection(state.section) }),
+      // A section saved by a version that still had the merged pages.
+      merge: (persisted, current) => {
+        const saved = (persisted as { section?: SettingsSection } | undefined)?.section
+        return saved ? { ...current, section: resolveSection(saved).section } : current
+      },
     },
   ),
 )

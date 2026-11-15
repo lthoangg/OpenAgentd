@@ -15,7 +15,9 @@
 | `model` | `provider:model` — must contain `:`. Provider ids: `anthropic`, `openai`, `googlegenai`, `openrouter`, `vertexai`, `bedrock`, `copilot`, `codex`, `ollama`, `deepseek`, `xai`, `zai`, … plus provider plugins. The provider must already be configured. |
 | `thinking_level` | `none`, `low`, `medium`, `high`; some models also accept `xhigh` / `max`. |
 | `tools` | Extra tool names (see below). |
-| `responses_api` | Legacy — parsed but not applied; don't add it. |
+
+Any other key is ignored. `mcp` and `responses_api` were fields once and do
+nothing now: don't add them.
 
 The Markdown body after the frontmatter is the system prompt. An empty body in
 `code.md` means the built-in coding prompt — don't paste a prompt in unless asked.
@@ -67,4 +69,4 @@ tell the user to switch it in the model picker.
 
 - **Model without `:`** → invalid; suggest `provider:model`.
 - **Provider not configured** → the next turn reports "not configured"; offer to
-  revert, or point the user to Settings → Providers.
+  revert, or point the user to Settings → Models.

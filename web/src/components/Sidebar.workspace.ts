@@ -102,3 +102,19 @@ export async function confirmWorkspaceRemoval(options: {
   for (const path of paths) next.delete(path)
   return next
 }
+
+/**
+ * Undo of ``confirmWorkspaceRemoval``: the repository and the worktrees
+ * hidden with it are listed again. The view stays where it is.
+ */
+export async function restoreHiddenWorkspace(options: {
+  paths: readonly string[]
+  queryClient: QueryClient
+  refreshWorkspaceTree: () => Promise<void>
+  setCodingWorkspaceVisibilityFn?: typeof setCodingWorkspaceVisibility
+}): Promise<void> {
+  const setVisibility = options.setCodingWorkspaceVisibilityFn ?? setCodingWorkspaceVisibility
+  await Promise.all(options.paths.map((path) => setVisibility(path, false)))
+  await options.queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+  await options.refreshWorkspaceTree()
+}

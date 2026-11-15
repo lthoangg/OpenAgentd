@@ -119,7 +119,7 @@ describe('SideQuestionsTabView', () => {
   it('says why Clear is off while there is nothing to clear', async () => {
     items = []
     renderTab()
-    const clear = await screen.findByRole('button', { name: 'Clear side questions…' })
+    const clear = await screen.findByRole('button', { name: 'Delete side questions…' })
     expect((clear as HTMLButtonElement).disabled).toBe(true)
     fireEvent.mouseEnter(clear.parentElement!)
     expect((await screen.findByRole('tooltip')).textContent).toBe('No side questions yet')
@@ -128,7 +128,7 @@ describe('SideQuestionsTabView', () => {
   it('keeps the plain Clear tooltip once there are side questions', async () => {
     renderTab()
     await screen.findByText('question a')
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Clear side questions…' }).parentElement!)
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Delete side questions…' }).parentElement!)
     expect((await screen.findByRole('tooltip')).textContent).toBe('Delete all side questions of this session')
   })
 
@@ -158,7 +158,7 @@ describe('SideQuestionsTabView', () => {
     renderTab()
     await screen.findByText('second answer')
     // "…": the button opens a confirmation.
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete side questions…' }))
 
     expect(await screen.findByText('Delete all side questions?')).toBeTruthy()
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
@@ -170,7 +170,7 @@ describe('SideQuestionsTabView', () => {
   it('keeps every side question when the dialog is cancelled', async () => {
     renderTab()
     await screen.findByText('second answer')
-    fireEvent.click(screen.getByRole('button', { name: 'Clear side questions…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete side questions…' }))
     await screen.findByText('Delete all side questions?')
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))

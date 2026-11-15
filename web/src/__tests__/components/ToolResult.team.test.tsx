@@ -163,17 +163,26 @@ describe('subagent rows', () => {
     expect(screen.getByText('explorer#1').closest('[data-subagent-row]')?.tagName).toBe('DIV')
   })
 
-  it('open from a single member result and from a team_wait result too', () => {
+  it('open from a single member result and from a result with several members too', () => {
     const spawn = JSON.stringify({ status: 'spawned', member_id: 'explorer#3', session_id: SUB })
-    const { unmount } = render(<ToolResult toolName="team_spawn" result={spawn} />)
+    const { unmount } = render(<ToolResult toolName="team" result={spawn} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open explorer#3 session, Running' }))
     unmount()
 
     const wait = JSON.stringify({ status: 'completed', results: { 'researcher#1': { status: 'completed', output: 'Fetched docs', session_id: SUB } } })
-    render(<ToolResult toolName="team_wait" result={wait} />)
+    render(<ToolResult toolName="team" result={wait} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open researcher#1 session, Done' }))
     expect(opened).toEqual([{ sessionId: SUB, workspace: '' }, { sessionId: SUB, workspace: '' }])
     expect(screen.getByText(/Fetched docs/)).toBeTruthy()
+  })
+})
+
+describe('a retired team tool', () => {
+  it('shows its result as plain text, with no subagent row', () => {
+    const result = JSON.stringify({ member_id: 'explorer#1', status: 'working', session_id: SUB })
+    const { container } = render(<ToolResult toolName="team_spawn" result={result} />)
+    expect(container.querySelector('pre')?.textContent).toBe(JSON.stringify(JSON.parse(result), null, 2))
+    expect(screen.queryByText('Running')).toBeNull()
   })
 })
 
@@ -186,7 +195,7 @@ describe('subagent rows with the live roster', () => {
     roster(qc, 'lead-1', [{ member_id: 'researcher#1', status: 'working', session_id: SUB, created_at: isoAgo(30), has_pending_question: false }])
     // The call said completed (when it ran); the roster says it was set going again.
     const wait = JSON.stringify({ status: 'completed', results: { 'researcher#1': { status: 'completed', output: 'Fetched docs' } } })
-    withClient(qc, <ToolResult toolName="team_wait" result={wait} />)
+    withClient(qc, <ToolResult toolName="team" result={wait} />)
 
     const row = screen.getByRole('button', { name: 'Open researcher#1 session, Running' })
     expect(row.querySelector('[data-subagent-elapsed]')?.textContent).toBe('00:30')
@@ -198,7 +207,7 @@ describe('subagent rows with the live roster', () => {
     const qc = client()
     useAgentStore.setState({ sessionId: 'lead-with-no-roster' })
     const wait = JSON.stringify({ results: { 'researcher#1': { status: 'completed', output: 'Fetched docs' } } })
-    withClient(qc, <ToolResult toolName="team_wait" result={wait} />)
+    withClient(qc, <ToolResult toolName="team" result={wait} />)
     expect(screen.getByText('Done')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Open researcher#1/ })).toBeNull()
   })
@@ -215,7 +224,7 @@ describe('a subagent\'s question', () => {
     })
 
   it('lists the options as plain text, says who answers, and links to the session to read', () => {
-    render(<ToolResult toolName="team_send" result={asked()} />)
+    render(<ToolResult toolName="team" result={asked()} />)
     expect(screen.getByText('Question for the main agent')).toBeTruthy()
     // Not buttons or chips: the options are a plain list with nothing to press.
     const options = screen.getByRole('list', { name: 'Options' })
@@ -240,14 +249,14 @@ describe('a subagent\'s question', () => {
   })
 
   it('keeps the caption and the options where no session link is shown', () => {
-    render(<ToolResult toolName="team_send" result={asked({ session_id: undefined })} />)
+    render(<ToolResult toolName="team" result={asked({ session_id: undefined })} />)
     expect(screen.getByRole('list', { name: 'Options' })).toBeTruthy()
     expect(screen.getByText('The main agent answers subagent questions.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Open subagent session/ })).toBeNull()
   })
 
   it('says who answers even for a question with no options', () => {
-    render(<ToolResult toolName="team_send" result={asked({ pending_question: { question: 'Which branch?' } })} />)
+    render(<ToolResult toolName="team" result={asked({ pending_question: { question: 'Which branch?' } })} />)
     expect(screen.getByText('Which branch?')).toBeTruthy()
     expect(screen.queryByRole('list', { name: 'Options' })).toBeNull()
     expect(screen.getByText('The main agent answers subagent questions.')).toBeTruthy()
@@ -255,7 +264,7 @@ describe('a subagent\'s question', () => {
   })
 
   it('has no link where the member\'s session is not known', () => {
-    render(<ToolResult toolName="team_send" result={asked({ session_id: undefined })} />)
+    render(<ToolResult toolName="team" result={asked({ session_id: undefined })} />)
     expect(screen.getByText('Should I include OAuth routes?')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Open subagent session/ })).toBeNull()
   })
@@ -264,7 +273,7 @@ describe('a subagent\'s question', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     useAgentStore.setState({ sessionId: 'lead-1' })
     roster(qc, 'lead-1', [{ member_id: 'explorer#2', status: 'working', session_id: SUB, has_pending_question: false }])
-    withClient(qc, <ToolResult toolName="team_send" result={asked()} />)
+    withClient(qc, <ToolResult toolName="team" result={asked()} />)
     expect(screen.getByText('Should I include OAuth routes?')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Open subagent session/ })).toBeNull()
     // The row reads the live state, not the stale one.
@@ -275,7 +284,7 @@ describe('a subagent\'s question', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     useAgentStore.setState({ sessionId: 'lead-1' })
     roster(qc, 'lead-1', [{ member_id: 'explorer#2', status: 'waiting_lead', session_id: SUB, has_pending_question: true }])
-    withClient(qc, <ToolResult toolName="team_send" result={asked({ session_id: undefined })} />)
+    withClient(qc, <ToolResult toolName="team" result={asked({ session_id: undefined })} />)
     expect(screen.getByRole('button', { name: /Open subagent session/ })).toBeTruthy()
   })
 })

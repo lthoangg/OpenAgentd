@@ -18,7 +18,7 @@ mock.module('@/lib/pet-setting', () => ({
   readPetSettings: async () => stored,
   updatePetSettings: async (patch: Partial<PetSettings>) => {
     patches.push(patch)
-    if (failWrite) throw new Error('Could not save the setting.')
+    if (failWrite) throw new Error("Couldn't save the setting.")
     stored = { ...stored, ...patch }
     return stored
   },
@@ -43,12 +43,18 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('PetSettingsSection', () => {
-  it('is off by default, with its options waiting behind the switch', async () => {
+  it('is off by default, as one row: its options show once it is on', async () => {
     render(<PetSettingsSection />)
     expect(await toggle('Show a desktop pet')).toHaveAttribute('aria-checked', 'false')
-    expect(await toggle('Show notifications in its bubble')).toBeDisabled()
-    expect(await toggle('Show pet while OpenAgentd is in front')).toBeDisabled()
-    expect(screen.getByRole('radio', { name: 'Playful' })).toBeDisabled()
+    // A row that cannot be used does not show.
+    expect(screen.getAllByRole('switch')).toHaveLength(1)
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.queryByText(/to change this/)).toBeNull()
+
+    fireEvent.click(await toggle('Show a desktop pet'))
+    expect(await toggle('Show notifications in its bubble')).not.toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Playful' })).not.toBeDisabled()
+    expect(await toggle('Show pet while OpenAgentd is in front')).not.toBeDisabled()
   })
 
   it('offers no full-screen switch: the pet always steps aside for full-screen apps', async () => {
@@ -90,33 +96,25 @@ describe('PetSettingsSection', () => {
   })
 
   it('has no ladders switch any more', async () => {
+    stored = { ...DEFAULT_PET_SETTINGS, enabled: true }
     render(<PetSettingsSection />)
-    expect(await toggle('Climb on windows')).toBeDisabled()
+    await toggle('Climb on windows')
     expect(screen.queryByText('Ladders')).toBeNull()
     expect(document.getElementById('pet-toys')).toBeNull()
   })
 
-  it('greys out the kinds while bubbles are off', async () => {
+  it('shows the kinds of notification only while its bubble shows them', async () => {
     stored = { ...DEFAULT_PET_SETTINGS, enabled: true, bubbles: false }
     render(<PetSettingsSection />)
-    expect(await toggle('Questions')).toBeDisabled()
-    expect(await toggle('Finished replies')).toBeDisabled()
-  })
-
-  // A greyed-out row said nothing about how to get it back; the notch's rows do.
-  it('says why an option is off', async () => {
-    render(<PetSettingsSection />)
-    await toggle('Show a desktop pet')
-    // Character, Color, Size, Movement, bubble, two kinds, in front, climb.
-    expect(screen.getAllByText('Turn on the desktop pet to change this.').length).toBe(9)
-    cleanup()
-
-    stored = { ...DEFAULT_PET_SETTINGS, enabled: true, bubbles: false }
-    render(<PetSettingsSection />)
-    await toggle('Questions')
-    expect(screen.queryByText('Turn on the desktop pet to change this.')).toBeNull()
-    expect(screen.getAllByText('Turn on Show notifications in its bubble to change this.').length).toBe(2)
+    await toggle('Show notifications in its bubble')
+    expect(screen.queryByRole('switch', { name: 'Questions' })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Finished replies' })).toBeNull()
+    expect(screen.queryByText(/to change this/)).toBeNull()
     expect(screen.getByText('Each walks its own way.')).toBeInTheDocument()
+
+    fireEvent.click(await toggle('Show notifications in its bubble'))
+    expect(await toggle('Questions')).not.toBeDisabled()
+    expect(await toggle('Finished replies')).not.toBeDisabled()
   })
 
   // No server sends a reminder notification: the switch controlled nothing.
@@ -142,6 +140,6 @@ describe('PetSettingsSection', () => {
     const main = await toggle('Show a desktop pet')
     fireEvent.click(main)
     await waitFor(() => expect(main).toHaveAttribute('aria-checked', 'false'))
-    expect(screen.getByText('Could not save the setting.')).toBeInTheDocument()
+    expect(screen.getByText("Couldn't save the setting.")).toBeInTheDocument()
   })
 })

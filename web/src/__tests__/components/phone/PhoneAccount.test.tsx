@@ -85,10 +85,10 @@ afterEach(() => {
 
 const ran = (command: string) => calls.filter((call) => call.command === command)
 
-// The Account section on the Servers screen: ServersScreen.account.test.tsx.
+// The Account section on the Computers screen: ServersScreen.account.test.tsx.
 
-describe('computers on the Servers screen', () => {
-  it('lists an account computer apart from the saved servers, and opens it through its link', async () => {
+describe('computers on the Computers screen', () => {
+  it('lists an account computer in the same list as the ones added by address, and opens it through its link', async () => {
     shell(CONNECTED, {
       cloud_devices: () => [ME, MAC, { device_id: 'dev-phone', fingerprint: 'D00D 0001', signer: false, me: false, kind: 'android' }],
       cloud_open_computer: () => ({ status: appStatus, via: 'account' }),
@@ -96,17 +96,16 @@ describe('computers on the Servers screen', () => {
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
     expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
-    expect(screen.getByText('Your account')).toBeTruthy()
+    expect(screen.getByText('From your account')).toBeTruthy()
     expect(screen.queryByText(/Android/)).toBeNull()
     // This phone is not a computer.
     expect(screen.queryByText(/iOS · AA11 BB22/)).toBeNull()
-    // Saved servers stay listed as they are.
-    expect(screen.getByText('Studio Mac')).toBeTruthy()
+    // A computer added by address is a row of the same list.
+    expect(screen.getByText('Studio Mac').closest('[data-server-row]')?.parentElement).toBe(screen.getByText('macOS · 3F9A 21C4').closest('[data-server-row]')?.parentElement ?? null)
 
     fireEvent.click(screen.getByRole('button', { name: 'Use macOS · 3F9A 21C4' }))
     await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
     expect(ran('cloud_open_computer')[0].args).toEqual({ deviceId: 'dev-mac', lanBaseUrl: null })
-    expect(await screen.findByText('Opened.')).toBeTruthy()
   })
 
   it('shows what the shell says when a computer cannot be opened', async () => {
@@ -123,12 +122,20 @@ describe('computers on the Servers screen', () => {
 })
 
 describe('Account page', () => {
+  it('has no second Account heading above the signed-out card (the sheet is titled Account)', async () => {
+    shell({ state: 'guest', notice: null, supported: true })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Account' })).toBeNull()
+  })
+
   it('offers a guest Sign in and explains a notice', async () => {
     shell({ state: 'guest', notice: 'revoked', supported: true })
     render(<PhoneAccountContent />)
 
     expect(await screen.findByText('This device was removed from your account.')).toBeTruthy()
-    expect(screen.getByText('Reach your computer from anywhere.')).toBeTruthy()
+    expect(screen.getByText('Sign in to use your computers from anywhere.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -148,13 +155,58 @@ describe('Account page', () => {
     expect(await screen.findByText('3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.')).toBeTruthy()
   })
 
-  it('signs a phone in as a client only: Use as server shows, disabled', async () => {
+  it('asks no roles up front, and folds the invitation and the recovery code under Other ways to sign in', async () => {
     shell({ state: 'guest', notice: null, supported: true })
     render(<PhoneAccountContent />)
-    const server = await screen.findByRole('checkbox', { name: /Use as server/ })
-    expect((server as HTMLInputElement).disabled).toBe(true)
-    expect((server as HTMLInputElement).checked).toBe(false)
-    expect((screen.getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).checked).toBe(true)
+
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Paste link' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Other ways to sign in' }))
+    expect(screen.getByText('Have an invitation?')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Paste link' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' })).toBeTruthy()
+  })
+
+  it('recovers the account with the recovery code', async () => {
+    const CODE = Array.from({ length: 13 }, () => 'WXYZ').join('-')
+    shell({ state: 'guest', notice: null, supported: true }, {
+      cloud_recover: () => {
+        status = { state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600, recovering: true }
+        return status
+      },
+    })
+    render(<PhoneAccountContent />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' }))
+    fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: CODE } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText('Recovering your account')).toBeTruthy()
+    expect(ran('cloud_recover')[0].args).toEqual({ code: CODE })
+    expect(screen.getByText('WXYZ-1234')).toBeTruthy()
+  })
+
+  it('says the account is back once recovered, until the person reads it', async () => {
+    shell({ ...CONNECTED, recovered: true }, {
+      cloud_recovered_ack: () => { status = CONNECTED; return status },
+    })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText("You're back in.")).toBeTruthy()
+    expect(screen.getByText('Your recovery code stays the same. Keep it somewhere safe.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await waitFor(() => expect(ran('cloud_recovered_ack')).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByText("You're back in.")).toBeNull())
+  })
+
+  it('opens the recovery code again after a wrong one', async () => {
+    shell({ state: 'guest', notice: 'wrong_recovery_code', supported: true })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText("That recovery code doesn't match this account.")).toBeTruthy()
+    expect(screen.getByLabelText('Recovery code')).toBeTruthy()
   })
 
   it('has no account UI where accounts are not supported', async () => {
@@ -163,7 +215,7 @@ describe('Account page', () => {
 
     await waitFor(() => expect(ran('cloud_status')).toHaveLength(1))
     expect(screen.queryByRole('button')).toBeNull()
-    expect(screen.queryByText('Reach your computer from anywhere.')).toBeNull()
+    expect(screen.queryByText('Sign in to use your computers from anywhere.')).toBeNull()
   })
 
   it('shows the sign-in code, opens the page only for https, and cancels', async () => {
@@ -258,7 +310,7 @@ describe('recovery code', () => {
 
     fireEvent.change(screen.getByLabelText('Type group 5'), { target: { value: 'EEEEE' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(await screen.findByText('Approves devices')).toBeTruthy()
+    expect(await screen.findByText('Only this phone can approve new devices.')).toBeTruthy()
     expect(ran('cloud_confirm_recovery')[1].args).toEqual({ first: 'BBBBB', second: 'EEEEE' })
   })
 
@@ -284,8 +336,10 @@ describe('connected account', () => {
 
     expect(await screen.findByText('Linux · 9C02 E1B7')).toBeTruthy()
     expect(screen.getByText('This phone')).toBeTruthy()
-    expect(screen.getByText('This device')).toBeTruthy()
-    expect(screen.getByText('Approves devices')).toBeTruthy()
+    // One list: no separate Account panel, no key in the main view.
+    expect(screen.queryByText('This device')).toBeNull()
+    expect(screen.queryByText('AA11 BB22')).toBeNull()
+    expect(screen.getByText('Only this phone can approve new devices.')).toBeTruthy()
     // Not this phone itself.
     expect(screen.getAllByRole('button', { name: /^Remove / })).toHaveLength(1)
 
@@ -307,7 +361,7 @@ describe('connected account', () => {
     })
     render(<PhoneAccountContent />)
 
-    const row = (await screen.findByText('build-box')).closest('div[class*="min-h"]') as HTMLElement
+    const row = (await screen.findByRole('button', { name: 'Details of build-box' })).closest('div[class*="min-h"]') as HTMLElement
     expect(within(row).getByText('Online')).toBeTruthy()
     // The row: a name and one status line.
     expect(row.textContent).not.toContain('9C02')
@@ -318,7 +372,7 @@ describe('connected account', () => {
     const details = await screen.findByRole('dialog', { name: 'build-box' })
     expect(details.textContent).toContain('SystemLinux')
     expect(details.textContent).toContain('Key9C02 E1B7')
-    expect(details.textContent).toContain('RoleServer')
+    expect(details.textContent).toContain('SharingCan be opened by your devices')
     // Any computer of the account is renamed here, through its link.
     fireEvent.click(within(details).getByRole('button', { name: 'Rename' }))
     fireEvent.change(within(details).getByRole('textbox', { name: 'Name' }), { target: { value: 'CI box' } })
@@ -335,7 +389,7 @@ describe('connected account', () => {
   it('registers for push quietly once connected', async () => {
     shell(CONNECTED)
     render(<PhoneAccountContent />)
-    await screen.findByText('Approves devices')
+    await screen.findByText('This phone')
     await waitFor(() => expect(ran('cloud_push_register')).toHaveLength(1))
     expect(ran('cloud_push_register')[0].args).toEqual({ prompt: false })
   })
@@ -345,7 +399,7 @@ describe('connected account', () => {
     let registration: unknown = null
     shell(CONNECTED, { cloud_push_register: () => ({ status: 'denied', registration }) })
     render(<PhoneAccountContent />)
-    await screen.findByText('Approves devices')
+    await screen.findByText('This phone')
     await waitFor(() => expect(ran('cloud_push_register')).toHaveLength(1))
     expect(phonePushRegistered(CONNECTED.state === 'connected' ? CONNECTED.fingerprint : '')).toBe(false)
 
@@ -366,7 +420,7 @@ describe('connected account', () => {
   it('warns before the only approver signs out', async () => {
     shell(CONNECTED, { cloud_sign_out: () => { status = { state: 'guest', notice: 'signed_out', supported: true }; return status } })
     render(<PhoneAccountContent />)
-    await screen.findByText('Approves devices')
+    await screen.findByText('This phone')
     await waitFor(() => expect(ran('cloud_devices')).toHaveLength(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
@@ -389,10 +443,113 @@ describe('connected account', () => {
   it('asks for pending approvals only while the phone can approve', async () => {
     shell({ state: 'connected', fingerprint: 'AA11 BB22', signer: false })
     render(<PhoneAccountContent />)
-    await screen.findByText('Member')
+    await screen.findByText('This phone')
     await waitFor(() => expect(ran('cloud_devices')).toHaveLength(1))
     expect(ran('cloud_pending')).toHaveLength(0)
     expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
+  })
+})
+
+describe('names and approvers kept by the account', () => {
+  const NAMED_ME: DeviceRow = { ...ME, name: null, client: true, server: false }
+  const MAC_NAMED: DeviceRow = { ...MAC, name: 'Work Mac', server: true, client: true }
+
+  it('titles devices by the account\'s names and renames this phone in the account', async () => {
+    shell(CONNECTED, {
+      cloud_devices: () => [NAMED_ME, MAC_NAMED],
+      cloud_rename_device: (args) => ({ device_id: args?.deviceId, name: args?.name }),
+    })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByRole('button', { name: 'Details of Work Mac' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Details of This phone' }))
+    const details = await screen.findByRole('dialog', { name: 'This phone' })
+    fireEvent.click(within(details).getByRole('button', { name: 'Rename' }))
+    fireEvent.change(within(details).getByRole('textbox', { name: 'Name' }), { target: { value: "Hoang's iPhone" } })
+    fireEvent.click(within(details).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(ran('cloud_rename_device').map((call) => call.args)).toEqual([{ deviceId: 'dev-me', name: "Hoang's iPhone" }]))
+    // A phone has no server name to keep in step.
+    expect(ran('cloud_rename_computer')).toHaveLength(0)
+  })
+
+  it('renames a computer in the account and on the computer itself', async () => {
+    shell(CONNECTED, {
+      cloud_devices: () => [NAMED_ME, MAC_NAMED],
+      cloud_rename_device: (args) => ({ device_id: args?.deviceId, name: args?.name }),
+      cloud_rename_computer: () => ({ name: 'Studio', default: 'mac', custom: true }),
+      app_remember_computer_name: () => appStatus,
+    })
+    render(<PhoneAccountContent />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of Work Mac' }))
+    const details = await screen.findByRole('dialog', { name: 'Work Mac' })
+    fireEvent.click(within(details).getByRole('button', { name: 'Rename' }))
+    fireEvent.change(within(details).getByRole('textbox', { name: 'Name' }), { target: { value: 'Studio' } })
+    fireEvent.click(within(details).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(ran('cloud_rename_device').map((call) => call.args)).toEqual([{ deviceId: 'dev-mac', name: 'Studio' }]))
+    await waitFor(() => expect(ran('cloud_rename_computer').map((call) => call.args)).toEqual([{ deviceId: 'dev-mac', name: 'Studio' }]))
+  })
+
+  it('lets a member rename only itself', async () => {
+    shell({ ...CONNECTED, signer: false }, { cloud_devices: () => [{ ...NAMED_ME, signer: false }, { ...MAC_NAMED, signer: true }] })
+    render(<PhoneAccountContent />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Details of Work Mac' }))
+    const details = await screen.findByRole('dialog', { name: 'Work Mac' })
+    expect(within(details).queryByRole('button', { name: 'Rename' })).toBeNull()
+    expect(details.textContent).toContain('Only a device that approves new devices can rename it.')
+  })
+
+  it('uploads the names this app remembered, once, where the account has none', async () => {
+    shell(CONNECTED, {
+      cloud_devices: () => [NAMED_ME, { ...MAC_NAMED, name: null }],
+      app_backend_status: () => ({ ...appStatus, computer_names: { 'dev-mac': 'studio-mini' } }),
+      cloud_rename_device: (args) => ({ device_id: args?.deviceId, name: args?.name }),
+    })
+    const first = render(<PhoneAccountContent />)
+    await waitFor(() => expect(ran('cloud_rename_device').map((call) => call.args)).toEqual([{ deviceId: 'dev-mac', name: 'studio-mini' }]))
+    first.unmount()
+    queryClient.clear()
+
+    render(<PhoneAccountContent />)
+    await screen.findByText('This phone')
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(ran('cloud_rename_device')).toHaveLength(1)
+  })
+
+  it('lets a computer approve too when this phone is the only approver', async () => {
+    shell(CONNECTED, {
+      cloud_devices: () => [NAMED_ME, MAC_NAMED],
+      cloud_make_approver: () => CONNECTED,
+    })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText('Only this phone can approve new devices.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Let Work Mac approve' }))
+    await waitFor(() => expect(ran('cloud_make_approver').map((call) => call.args)).toEqual([{ deviceId: 'dev-mac' }]))
+  })
+
+  it('says a computer left the account when it can no longer approve, and lists the devices again', async () => {
+    let listed = [NAMED_ME, MAC_NAMED]
+    shell(CONNECTED, {
+      cloud_devices: () => listed,
+      cloud_make_approver: () => {
+        listed = [NAMED_ME]
+        throw new Error('That device is no longer in your account.')
+      },
+    })
+    render(<PhoneAccountContent />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Let Work Mac approve' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('That device is no longer in your account.')
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Details of Work Mac' })).toBeNull())
+  })
+
+  it('needs no note when two devices approve', async () => {
+    shell(CONNECTED, { cloud_devices: () => [NAMED_ME, { ...MAC_NAMED, signer: true }] })
+    render(<PhoneAccountContent />)
+    expect(await screen.findByText('Work Mac')).toBeTruthy()
+    expect(screen.queryByText(/can approve new devices\./)).toBeNull()
   })
 })
 
@@ -426,7 +583,7 @@ describe('approval sheet', () => {
     expect(match.disabled).toBe(false)
 
     // Asked for server only: client cannot be turned on, and a server-only device does not approve by default.
-    expect((within(sheet).getByRole('checkbox', { name: /Use as client/ }) as HTMLInputElement).disabled).toBe(true)
+    expect((within(sheet).getByRole('checkbox', { name: /can open my other computers/ }) as HTMLInputElement).disabled).toBe(true)
     fireEvent.click(within(sheet).getByRole('checkbox', { name: 'Can approve other devices' }))
     fireEvent.click(match)
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
@@ -442,6 +599,28 @@ describe('approval sheet', () => {
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
     expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: false, server: true, client: false })
     // Confirmed: the sheet closes without rejecting anything.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(ran('cloud_approve_reject')).toHaveLength(0)
+  })
+
+  it('keeps the sheet open after Face ID is cancelled, and Codes match asks again', async () => {
+    let tries = 0
+    const sheet = await review({
+      cloud_approve_begin: () => ({ code: '418207', server: true, client: false }),
+      cloud_approve_confirm: () => {
+        tries += 1
+        if (tries === 1) throw new Error('Cancelled.')
+        return CONNECTED
+      },
+    })
+    fireEvent.click(await within(sheet).findByRole('button', { name: 'Codes match' }))
+    expect(await within(sheet).findByText('Cancelled.')).toBeTruthy()
+    expect(ran('cloud_approve_reject')).toHaveLength(0)
+
+    const match = within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement
+    await waitFor(() => expect(match.disabled).toBe(false))
+    fireEvent.click(match)
+    await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(2))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(ran('cloud_approve_reject')).toHaveLength(0)
   })
@@ -483,7 +662,7 @@ describe('approval sheet', () => {
     await within(sheet).findByText('418 207')
     const approver = within(sheet).getByRole('checkbox', { name: 'Can approve other devices' })
     expect((approver as HTMLInputElement).checked).toBe(true)
-    fireEvent.click(within(sheet).getByRole('checkbox', { name: /Use as server/ }))
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: /My other devices can open/ }))
     fireEvent.click(within(sheet).getByRole('button', { name: 'Codes match' }))
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
     expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: true, server: false, client: true })
@@ -494,7 +673,7 @@ describe('approval sheet', () => {
       cloud_approve_begin: () => ({ code: '418207', server: false, client: true }),
     })
     await within(sheet).findByText('418 207')
-    fireEvent.click(within(sheet).getByRole('checkbox', { name: /Use as client/ }))
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: /can open my other computers/ }))
     expect(within(sheet).getByText('Choose at least one.')).toBeTruthy()
     expect((within(sheet).getByRole('button', { name: 'Codes match' }) as HTMLButtonElement).disabled).toBe(true)
   })

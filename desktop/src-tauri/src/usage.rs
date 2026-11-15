@@ -476,7 +476,7 @@ fn format_window_suffix(
         .map(|resets_at| format!(" \u{00B7} {}", format_reset_in(resets_at, now_unix)))
         .unwrap_or_default();
     // Compact: the fact that the limit is reached is the signal; the
-    // provider-specific reason string is Settings → Providers material.
+    // provider-specific reason string is Settings → Models material.
     let reached_suffix = rate_limit_reached_type
         .filter(|t| !t.is_empty())
         .map(|_| " \u{00B7} LIMIT REACHED")
@@ -1305,14 +1305,14 @@ mod tests {
     fn rows_render_one_line_per_connected_provider() {
         let body = UsageSummaryBody {
             items: vec![
-                item_ok("codex", "OpenAI Codex", 42.0, Some(2_000)),
+                item_ok("codex", "ChatGPT", 42.0, Some(2_000)),
                 item_ok("agy", "Antigravity Gemini Auth", 91.0, None),
             ],
             checked_at: 1_000,
         };
         let rows = format_summary_rows(&body, 1_000);
         assert_eq!(rows.len(), 2);
-        assert!(rows[0].text.contains("OpenAI Codex"));
+        assert!(rows[0].text.contains("ChatGPT"));
         assert!(rows[0].text.contains("42%"));
         assert!(rows[1].text.starts_with("\u{1F534}"));
     }
@@ -1465,11 +1465,11 @@ mod tests {
     #[test]
     fn has_critical_usage_detects_hot_providers() {
         let hot = UsageSummaryBody {
-            items: vec![item_ok("codex", "OpenAI Codex", 92.0, None)],
+            items: vec![item_ok("codex", "ChatGPT", 92.0, None)],
             checked_at: 1_000,
         };
         let cool = UsageSummaryBody {
-            items: vec![item_ok("codex", "OpenAI Codex", 10.0, None)],
+            items: vec![item_ok("codex", "ChatGPT", 10.0, None)],
             checked_at: 1_000,
         };
         assert!(has_critical_usage(&hot));
@@ -1478,7 +1478,7 @@ mod tests {
 
     #[test]
     fn stale_items_render_a_last_known_marker() {
-        let mut item = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
+        let mut item = item_ok("codex", "ChatGPT", 42.0, Some(2_000));
         item.stale = true;
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 1);
@@ -1488,7 +1488,7 @@ mod tests {
             rows[0].text
         );
         // Fresh items must not carry the marker.
-        let fresh = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
+        let fresh = item_ok("codex", "ChatGPT", 42.0, Some(2_000));
         let rows = format_item_rows(&fresh, 1_000, 3);
         assert!(!rows[0].text.contains("(old)"));
     }
@@ -1522,7 +1522,7 @@ mod tests {
         stale_hot.stale = true;
         let body = UsageSummaryBody {
             items: vec![
-                item_ok("codex", "OpenAI Codex", 10.0, None),
+                item_ok("codex", "ChatGPT", 10.0, None),
                 stale_hot,
                 item_ok("claude", "Claude OAuth", 90.0, None), // exactly at threshold
             ],
@@ -1571,20 +1571,20 @@ mod tests {
 
     #[test]
     fn notification_body_reads_grammatically_for_one_and_many() {
-        let one = format_notification_body(&["OpenAI Codex".to_string()]);
-        assert!(one.starts_with("OpenAI Codex is near"));
+        let one = format_notification_body(&["ChatGPT".to_string()]);
+        assert!(one.starts_with("ChatGPT is near"));
         let two = format_notification_body(&[
-            "OpenAI Codex".to_string(),
+            "ChatGPT".to_string(),
             "Claude OAuth".to_string(),
         ]);
-        assert!(two.starts_with("OpenAI Codex, Claude OAuth are near"));
+        assert!(two.starts_with("ChatGPT, Claude OAuth are near"));
     }
 
     #[test]
     fn rate_limit_reached_is_surfaced_compactly() {
         let item = UsageSummaryItem {
             provider: "codex".to_string(),
-            label: "OpenAI Codex".to_string(),
+            label: "ChatGPT".to_string(),
             status: "ok".to_string(),
             stale: false,
             retry_at: None,
@@ -1615,7 +1615,7 @@ mod tests {
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 1);
         // Compact: the marker alone; the provider-specific reason string
-        // stays in Settings → Providers, not the tray.
+        // stays in Settings → Models, not the tray.
         assert!(rows[0].text.ends_with("LIMIT REACHED"), "{}", rows[0].text);
         assert!(!rows[0].text.contains("workspace_member"));
     }
@@ -1678,7 +1678,7 @@ mod tests {
         }
         let item = UsageSummaryItem {
             provider: "codex".to_string(),
-            label: "OpenAI Codex".to_string(),
+            label: "ChatGPT".to_string(),
             status: "ok".to_string(),
             stale: false,
             retry_at: None,
@@ -1688,7 +1688,7 @@ mod tests {
         };
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 5); // header + 3 limits + "more" row
-        assert!(rows[0].text.contains("OpenAI Codex"), "header row leads");
+        assert!(rows[0].text.contains("ChatGPT"), "header row leads");
         assert!(
             rows.last().unwrap().text.contains("2 more"),
             "overflow row counts the hidden limits: {}",
@@ -1713,20 +1713,20 @@ mod tests {
     #[test]
     fn single_limit_omits_duplicate_or_missing_limit_name() {
         // limit_name == provider label → no "Codex · Codex" duplication.
-        let mut item = item_ok("codex", "OpenAI Codex", 50.0, None);
-        item.usage.as_mut().unwrap().limits[0].limit_name = Some("OpenAI Codex".to_string());
+        let mut item = item_ok("codex", "ChatGPT", 50.0, None);
+        item.usage.as_mut().unwrap().limits[0].limit_name = Some("ChatGPT".to_string());
         let rows = format_item_rows(&item, 1_000, 3);
-        assert!(rows[0].text.contains("OpenAI Codex \u{00B7} 50%"));
-        assert_eq!(rows[0].text.matches("OpenAI Codex").count(), 1);
+        assert!(rows[0].text.contains("ChatGPT \u{00B7} 50%"));
+        assert_eq!(rows[0].text.matches("ChatGPT").count(), 1);
         // Missing limit_name → same flat shape.
-        let item = item_ok("codex", "OpenAI Codex", 50.0, None);
+        let item = item_ok("codex", "ChatGPT", 50.0, None);
         let rows = format_item_rows(&item, 1_000, 3);
-        assert!(rows[0].text.contains("OpenAI Codex \u{00B7} 50%"));
+        assert!(rows[0].text.contains("ChatGPT \u{00B7} 50%"));
     }
 
     #[test]
     fn codex_primary_and_secondary_windows_render_as_five_hour_and_seven_day_rows() {
-        let mut item = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
+        let mut item = item_ok("codex", "ChatGPT", 42.0, Some(2_000));
         item.usage.as_mut().unwrap().limits[0]
             .primary
             .as_mut()
@@ -1792,7 +1792,7 @@ mod tests {
 
     #[test]
     fn stale_marker_lands_on_the_header_for_grouped_providers() {
-        let mut item = item_ok("codex", "OpenAI Codex", 10.0, None);
+        let mut item = item_ok("codex", "ChatGPT", 10.0, None);
         // Grow to two limits so the grouped path is taken.
         let extra = item.usage.as_ref().unwrap().limits[0].clone();
         item.usage.as_mut().unwrap().limits.push(extra);
@@ -1817,7 +1817,7 @@ mod tests {
     fn codex_spend_capped_item() -> UsageSummaryItem {
         UsageSummaryItem {
             provider: "codex".to_string(),
-            label: "OpenAI Codex".to_string(),
+            label: "ChatGPT".to_string(),
             status: "ok".to_string(),
             stale: false,
             retry_at: None,
@@ -1873,7 +1873,7 @@ mod tests {
         assert_eq!(
             *text,
             format!(
-                "\u{1F534} OpenAI Codex \u{00B7} Spend cap \u{00B7} 259% {} \u{00B7} resets 2d \u{00B7} 1,811.97 of 700 used",
+                "\u{1F534} ChatGPT \u{00B7} Spend cap \u{00B7} 259% {} \u{00B7} resets 2d \u{00B7} 1,811.97 of 700 used",
                 render_bar(259.0)
             )
         );
@@ -1910,7 +1910,7 @@ mod tests {
         assert_eq!(rows.len(), 3, "header + window + spend cap: {rows:?}");
         // A cap is orthogonal to the window: the header takes the cap's
         // red even though the window sits at 12%.
-        assert!(rows[0].text.starts_with("\u{1F534} OpenAI Codex"), "{}", rows[0].text);
+        assert!(rows[0].text.starts_with("\u{1F534} ChatGPT"), "{}", rows[0].text);
         assert!(rows[1].text.contains("Codex \u{00B7} 12%"), "{}", rows[1].text);
         assert!(
             rows[2].text.contains("Codex \u{00B7} Spend cap \u{00B7} 259%"),
@@ -1935,7 +1935,7 @@ mod tests {
         });
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].text, "\u{1F534} OpenAI Codex \u{00B7} usage limit reached");
+        assert_eq!(rows[0].text, "\u{1F534} ChatGPT \u{00B7} usage limit reached");
     }
 
     #[test]
@@ -1962,7 +1962,7 @@ mod tests {
     fn providers_without_spend_data_render_unchanged() {
         // Guardrail for the entry refactor: a plain window provider must
         // still collapse to one flat row with no spend wording.
-        let rows = format_item_rows(&item_ok("codex", "OpenAI Codex", 42.0, Some(2_000)), 1_000, 3);
+        let rows = format_item_rows(&item_ok("codex", "ChatGPT", 42.0, Some(2_000)), 1_000, 3);
         assert_eq!(rows.len(), 1);
         assert!(!rows[0].text.contains(SPEND_LABEL), "{}", rows[0].text);
     }
@@ -1981,8 +1981,8 @@ mod tests {
         retry_after: Option<i64>,
     ) -> UsageSummaryItem {
         let mut item = match usage {
-            Some(percent) => item_ok("codex", "OpenAI Codex", percent, Some(10_000)),
-            None => UsageSummaryItem { usage: None, ..item_ok("codex", "OpenAI Codex", 0.0, None) },
+            Some(percent) => item_ok("codex", "ChatGPT", percent, Some(10_000)),
+            None => UsageSummaryItem { usage: None, ..item_ok("codex", "ChatGPT", 0.0, None) },
         };
         item.status = "rate_limited".to_string();
         item.stale = stale;
@@ -2018,7 +2018,7 @@ mod tests {
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 1);
         let text = &rows[0].text;
-        assert!(text.contains("OpenAI Codex"), "{text}");
+        assert!(text.contains("ChatGPT"), "{text}");
         assert!(text.contains("rate limited"), "{text}");
         assert!(text.contains("retry in 1m"), "{text}");
         assert!(!text.contains("reconnect") && !text.contains("unavailable"), "{text}");
@@ -2070,7 +2070,7 @@ mod tests {
     }
 
     fn unavailable_with_last_good(percent: f64) -> UsageSummaryItem {
-        let mut item = item_ok("codex", "OpenAI Codex", percent, Some(10_000));
+        let mut item = item_ok("codex", "ChatGPT", percent, Some(10_000));
         item.status = "unavailable".to_string();
         item.stale = true;
         item
@@ -2153,7 +2153,7 @@ mod tests {
 
     #[test]
     fn unknown_status_with_usage_still_renders_the_usage() {
-        let mut item = item_ok("codex", "OpenAI Codex", 42.0, None);
+        let mut item = item_ok("codex", "ChatGPT", 42.0, None);
         item.status = "some_future_status".to_string();
         let rows = format_item_rows(&item, 1_000, 3);
         assert!(rows[0].text.contains("42%"), "{}", rows[0].text);

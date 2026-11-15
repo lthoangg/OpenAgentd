@@ -1,7 +1,6 @@
 /**
- * "See release notes" link plus the dialog it opens. Shared by the floating
- * update card and the Settings → Updates section so both show the same
- * Dialog (focus trap, Escape, focus return) instead of two hand-built modals.
+ * "See release notes" link plus the dialog it opens (focus trap, Escape,
+ * focus return), for Settings → About: its header and its Updates section.
  */
 import { useRef, useState } from 'react'
 import { useHeightGlide } from '@/hooks/useHeightGlide'
@@ -55,7 +54,7 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
         <DialogContent
           showCloseButton={false}
           aria-label="Release notes"
-          // Above the floating notices (z-60) the update card lives in.
+          // Above the floating notices (z-60).
           size="lg"
           padding="none"
           className="z-60 overflow-hidden"
@@ -87,7 +86,7 @@ export function ReleaseNotesButton({ version, fallbackNotes, className }: Releas
           <div ref={bodyClipRef} className="overflow-hidden">
             <div ref={bodyRef} className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
               <MarkdownBlock
-                content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes…'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
+                content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes…'}${error ? `\n\nCouldn't load GitHub release notes: ${error}` : ''}`}
               />
             </div>
           </div>

@@ -19,6 +19,7 @@ import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
 import type { FileRef } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
+import { parseShellOutcome } from './ToolCall/summary'
 import { canonicalToolName } from '@/utils/tool-names'
 import { Button } from '@/components/ui/button'
 import { Chip, type ChipTone } from '@/components/ui/chip'
@@ -151,6 +152,11 @@ function ShellResult({ result }: { result: string }) {
   const body = firstNewline >= 0 ? truncateForDisplay(result.slice(firstNewline + 1).trimStart()) : ''
 
   const success = statusLine.startsWith('[Succeeded')
+  // The bracketed line is the tool's protocol; the screen shows the exit code, as a terminal does.
+  const outcome = parseShellOutcome(result)
+  const statusText = !outcome ? statusLine
+    : outcome.exitCode !== null ? `exit ${outcome.exitCode}`
+      : statusLine.replace(/^\[|\]$/g, '')
 
   return (
     <div className="flex flex-col gap-1">
@@ -160,7 +166,7 @@ function ShellResult({ result }: { result: string }) {
           success ? 'text-(--accent-green-text)' : 'text-(--color-error)'
         }`}
       >
-        {statusLine}
+        {statusText}
       </span>
 
       {/* stdout / stderr output */}
@@ -538,6 +544,14 @@ const TODO_STATUS_COLOR: Record<string, string> = {
   pending: 'text-(--color-text-muted)',
 }
 
+/** The board's status ids in words. */
+const TODO_STATUS_LABEL: Record<string, string> = {
+  completed: 'Done',
+  cancelled: 'Cancelled',
+  in_progress: 'In progress',
+  pending: 'To do',
+}
+
 // Matches the backend's `_format_items` line shape:
 // `[task_1] [status] (priority) deps=[…] assigned=X claimed=Y content`
 const TODO_LINE_RE =
@@ -617,7 +631,7 @@ function describeTodoOutcome(outcome: string, tasks: TodoResultTask[]): string {
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
-    return <EmptyState fill={false} icon={ListTodo} title="No todos" className="py-3" />
+    return <EmptyState fill={false} icon={ListTodo} title="No tasks" className="py-3" />
   }
   const parsed = parseTodoList(result)
   if (!parsed) return <GenericResult result={result} />
@@ -669,7 +683,7 @@ function TodoListResult({ result }: { result: string }) {
                   </div>
                   {/* What the task is reads first; its ID trails, muted. */}
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs md:text-meta text-(--color-text-muted)">
-                    <span>{task.status}</span>
+                    <span>{TODO_STATUS_LABEL[task.status] ?? task.status}</span>
                     {task.priority && <span>{task.priority}</span>}
                     {agent && <span>{agent}</span>}
                     {task.deps && <span>after {task.deps}</span>}
@@ -857,7 +871,7 @@ const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
 const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 const SCHEDULE_TOOLS = new Set(['schedule'])
-const TEAM_TOOLS = new Set(['team', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
+const TEAM_TOOLS = new Set(['team'])
 
 /** A non-empty string field, or ``null``. */
 function str(value: unknown): string | null {

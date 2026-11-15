@@ -15,8 +15,10 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => true,
   MOBILE_QUERY: '(max-width: 767px), (max-height: 580px)',
 }))
+/** The connectors (MCP servers) the session's agent lists. */
+let agentServers: string[] = []
 mock.module('@/queries/useAgentsQuery', () => ({
-  useAgentsQuery: () => ({ data: { agents: [{ name: 'code', mcp_servers: [], tools: [] }] }, refetch: async () => {} }),
+  useAgentsQuery: () => ({ data: { agents: [{ name: 'code', mcp_servers: agentServers, tools: [] }] }, refetch: async () => {} }),
 }))
 mock.module('@/queries/useMcpQuery', () => ({
   useMcpServersQuery: () => ({ data: { servers: [] }, isLoading: false, isError: false, refetch: async () => {} }),
@@ -35,6 +37,7 @@ const realInnerHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight')
 
 beforeEach(() => {
   contentHeight = 1000
+  agentServers = []
   useUIStore.setState({ runPickerOpen: false, plusMenuOpen: false, plusMenuSection: null })
   Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true, writable: true })
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
@@ -88,11 +91,22 @@ describe('PlusMenu on a phone', () => {
     expect(opened.style.height).toBe('')
   })
 
-  it('keeps MCP servers on a page of its own, with a way back', () => {
+  it('has no Connectors row while the agent has no connector', () => {
+    wrap(<PlusMenu actions={actions} workspace="/repo" canAskSideQuestion />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
+    const opened = sheet('Add to message')!
+    expect(within(opened).getByRole('button', { name: /Ask aside/ })).toBeTruthy()
+    expect(within(opened).queryByRole('button', { name: 'Connectors' })).toBeNull()
+    expect(opened.textContent).not.toMatch(/MCP/)
+    expect(opened.querySelector('[role="separator"]')).toBeNull()
+  })
+
+  it('keeps Connectors on a page of its own, with a way back', () => {
+    agentServers = ['github']
     wrap(<PlusMenu actions={actions} workspace="/repo" />)
     fireEvent.click(screen.getByRole('button', { name: 'Add to message' }))
     const opened = sheet('Add to message')!
-    fireEvent.click(within(opened).getByRole('button', { name: 'MCP servers' }))
+    fireEvent.click(within(opened).getByRole('button', { name: 'Connectors' }))
     expect(opened.querySelector('[data-plus-page="tools"]')).not.toBeNull()
     fireEvent.click(within(opened).getByRole('button', { name: 'Add to message' }))
     expect(within(opened).getByRole('button', { name: 'Photos' })).toBeTruthy()

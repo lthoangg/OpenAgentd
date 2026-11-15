@@ -13,6 +13,7 @@ const createMutate = mock((..._args: unknown[]) => {})
 const updateMutate = mock((..._args: unknown[]) => {})
 
 mock.module('@/queries', () => ({
+  useScheduledTasksQuery: () => ({ data: { tasks: [] } }),
   useCreateScheduledTaskMutation: () => ({ mutate: createMutate, isPending: false }),
   useUpdateScheduledTaskMutation: () => ({ mutate: updateMutate, isPending: false }),
 }))
@@ -66,40 +67,38 @@ describe('scheduler forms on a touch keyboard: Enter moves to the next field', (
     window.matchMedia = realMatchMedia
   })
 
-  it('CreateTaskForm: Enter in the title advances focus and does not submit', async () => {
+  it('CreateTaskForm: Enter in the time advances focus and does not submit', async () => {
     const user = userEvent.setup()
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
-    const title = screen.getByLabelText('Task title') as HTMLInputElement
-    fireEvent.change(title, { target: { value: 'Valid title' } })
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Valid prompt' } })
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Valid prompt' } })
+    const time = screen.getByLabelText('Time') as HTMLInputElement
 
-    await user.click(title)
+    await user.click(time)
     await user.keyboard('{Enter}')
 
     expect(createMutate).not.toHaveBeenCalled()
-    expect(document.activeElement).not.toBe(title)
-    expect(document.activeElement).toBe(nextField(title) ?? null)
+    expect(document.activeElement === time).toBe(false)
+    expect(document.activeElement === (nextField(time) ?? null)).toBe(true)
   })
 
-  it('CreateTaskForm: Enter in the last input lands on the submit button without submitting', async () => {
+  it('CreateTaskForm: Enter in the last input passes "Back" and lands on the submit button without submitting', async () => {
     const user = userEvent.setup()
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
-    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Valid title' } })
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Valid prompt' } })
-    const maxRuns = screen.getByLabelText(/Max runs/) as HTMLInputElement
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Valid prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    const sessionId = screen.getByLabelText('Session ID') as HTMLInputElement
 
-    await user.click(maxRuns)
+    await user.click(sessionId)
     await user.keyboard('{Enter}')
 
     expect(createMutate).not.toHaveBeenCalled()
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Create task' }))
+    expect(document.activeElement === screen.getByRole('button', { name: 'Create task' })).toBe(true)
   })
 
   it('CreateTaskForm: only the submit button submits', async () => {
     const user = userEvent.setup()
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
-    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Valid title' } })
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Valid prompt' } })
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Valid prompt' } })
 
     await user.click(screen.getByRole('button', { name: 'Create task' }))
     expect(createMutate).toHaveBeenCalledTimes(1)
@@ -107,32 +106,32 @@ describe('scheduler forms on a touch keyboard: Enter moves to the next field', (
 
   it('CreateTaskForm: Enter inside the prompt textarea still inserts a newline (not intercepted)', () => {
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
-    const prompt = screen.getByLabelText('Prompt')
+    const prompt = screen.getByLabelText('What should it do?')
     // fireEvent returns false when preventDefault was called.
     expect(fireEvent.keyDown(prompt, { key: 'Enter' })).toBe(true)
   })
 
-  it('CreateTaskForm: single-line inputs show a Next key; the title keeps prose keyboard settings', () => {
+  it('CreateTaskForm: single-line inputs show a Next key; the name keeps prose keyboard settings', () => {
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
-    const title = screen.getByLabelText('Task title')
-    expect(title.getAttribute('enterkeyhint')).toBe('next')
-    expect(title.getAttribute('autocapitalize')).toBe('sentences')
-    expect(title.getAttribute('autocorrect')).toBe('on')
-    const interval = screen.getByLabelText('Every')
-    expect(interval.getAttribute('enterkeyhint')).toBe('next')
+    expect(screen.getByLabelText('Time').getAttribute('enterkeyhint')).toBe('next')
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    const name = screen.getByLabelText('Name')
+    expect(name.getAttribute('enterkeyhint')).toBe('next')
+    expect(name.getAttribute('autocapitalize')).toBe('sentences')
+    expect(name.getAttribute('autocorrect')).toBe('on')
   })
 
   it('EditTaskForm: Enter in the interval advances focus and does not submit', async () => {
     const user = userEvent.setup()
     renderWithQuery(<EditTaskForm task={TASK} onSuccess={() => {}} onCancel={() => {}} />)
-    const interval = screen.getByLabelText('Every') as HTMLInputElement
+    const interval = screen.getByLabelText('Interval') as HTMLInputElement
 
     await user.click(interval)
     await user.keyboard('{Enter}')
 
     expect(updateMutate).not.toHaveBeenCalled()
-    expect(document.activeElement).not.toBe(interval)
-    expect(document.activeElement).toBe(nextField(interval) ?? null)
+    expect(document.activeElement === interval).toBe(false)
+    expect(document.activeElement === (nextField(interval) ?? null)).toBe(true)
   })
 })
 
@@ -143,14 +142,12 @@ describe('scheduler forms with a mouse or trackpad', () => {
   })
   afterEach(() => cleanup())
 
-  it('CreateTaskForm: Enter in the title still submits, as before', async () => {
+  it('CreateTaskForm: Enter in the time still submits, as before', async () => {
     const user = userEvent.setup()
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
-    const title = screen.getByLabelText('Task title') as HTMLInputElement
-    fireEvent.change(title, { target: { value: 'Valid title' } })
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Valid prompt' } })
+    fireEvent.change(screen.getByLabelText('What should it do?'), { target: { value: 'Valid prompt' } })
 
-    await user.click(title)
+    await user.click(screen.getByLabelText('Time'))
     await user.keyboard('{Enter}')
 
     expect(createMutate).toHaveBeenCalledTimes(1)

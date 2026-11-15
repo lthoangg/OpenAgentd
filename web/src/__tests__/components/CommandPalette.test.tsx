@@ -147,19 +147,19 @@ describe("CommandPalette", () => {
   it("matches every word of the query across label, description, and keywords", async () => {
     const user = userEvent.setup()
     const commands: Command[] = [
-      { id: "reader", label: "Toggle Reader Mode", description: "Fold each turn", keywords: "compact transcript detailed", action: () => {} },
+      { id: "reader", label: "Toggle Simple View", description: "Fold each turn", keywords: "reader compact transcript detailed", action: () => {} },
       { id: "new-chat", label: "New Chat", description: "Start a new session", action: () => {} },
     ]
     render(<CommandPalette commands={commands} onClose={() => {}} />)
     const input = screen.getByPlaceholderText("Search commands…")
 
-    await user.type(input, "compact mode")
-    expect(screen.getByText("Toggle Reader Mode")).toBeTruthy()
+    await user.type(input, "reader view")
+    expect(screen.getByText("Toggle Simple View")).toBeTruthy()
     expect(screen.queryByText("New Chat")).toBeNull()
 
     await user.clear(input)
     await user.type(input, "reader chat")
-    expect(screen.queryByText("Toggle Reader Mode")).toBeNull()
+    expect(screen.queryByText("Toggle Simple View")).toBeNull()
   })
 
   it("ranks label matches above description matches, in one list", async () => {

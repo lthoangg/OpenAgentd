@@ -1,5 +1,6 @@
 /**
- * SessionMcpServers — MCP servers for the current session, one row each.
+ * SessionMcpServers — the current session's connectors (MCP servers), one
+ * row each. The screen says "Connectors"; the code keeps the protocol's name.
  *
  * Scope is deliberately narrow: is this server connected, and turn it on or
  * off. It replaced a full tool browser (searchable list of every tool with
@@ -36,7 +37,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
  * finds out on its own how to sign in, so no oauth block is needed, and plugin
  * servers count). Reconnect stays for URL servers with an oauth block. Only
  * while the server is on (an off server has nothing to connect).
- * Re-authorizing a server that works lives in Settings › MCP servers.
+ * Re-authorizing a server that works lives in Settings › Connectors.
  */
 function isUrlServer(server: ServerStatus): boolean {
   return server.transport === 'http' || server.transport === 'sse'
@@ -77,7 +78,7 @@ function ServerRow({
         className={cn(COMPACT_ROW, 'min-h-12')}
       >
         <span className={cn('min-w-0 flex-1 truncate font-mono', TEXT.label)}>{name}</span>
-        <Chip tone="warning" title="The agent lists this server, but mcp.json does not define it.">Not configured</Chip>
+        <Chip tone="warning" title="The agent lists this connector, but mcp.json does not define it.">Not configured</Chip>
       </li>
     )
   }
@@ -170,7 +171,7 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
     <>
       {!hasServers ? (
         <p className={cn(variant === 'menu' ? 'px-2 py-2' : 'px-4 py-4', TEXT.body)}>
-          No MCP servers for this agent. Add one under Manage, then list it in the
+          No connectors for this agent. Add one under Manage, then list it in the
           agent's config.
         </p>
       ) : isLoading ? (
@@ -178,7 +179,7 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
         // when data lands.
         <div
           role="status"
-          aria-label="Loading MCP servers"
+          aria-label="Loading connectors"
           className="space-y-2 px-4 py-3"
         >
           {agentServers.map((name) => (
@@ -195,7 +196,7 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
               </Button>
             }
           >
-            Couldn't load MCP servers.
+            Couldn't load connectors.
           </Callout>
         </div>
       ) : (
@@ -217,9 +218,9 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
 
   if (variant === 'menu') {
     return (
-      <section aria-label="MCP servers" data-mcp-servers="">
+      <section aria-label="Connectors" data-mcp-servers="">
         <div className="flex items-center justify-between gap-2 pl-2">
-          <h3 className="text-meta font-medium text-(--color-text-muted)">MCP servers</h3>
+          <h3 className="text-meta font-medium text-(--color-text-muted)">Connectors</h3>
           {manage}
         </div>
         {body}
@@ -228,7 +229,7 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
   }
 
   return (
-    <PanelSection title="MCP servers" flush actions={manage}>
+    <PanelSection title="Connectors" flush actions={manage}>
       {body}
     </PanelSection>
   )

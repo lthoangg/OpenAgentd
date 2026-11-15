@@ -40,13 +40,13 @@ describe('ViewErrorBoundary', () => {
     quiet.mockRestore()
   })
 
-  it('renders the view afresh on Try again', () => {
+  it('renders the view afresh on Retry', () => {
     const quiet = spyOn(console, 'error').mockImplementation(() => {})
     crash = true
     render(<Shell session="s1" />)
     crash = false
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
     expect(screen.getByText('transcript')).toBeTruthy()
     quiet.mockRestore()
@@ -78,7 +78,7 @@ describe('RouteErrorPage', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('Something went wrong')
     expect(screen.getByText('boom')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(reset).toHaveBeenCalledTimes(1)
   })
 
@@ -87,7 +87,7 @@ describe('RouteErrorPage', () => {
       Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true })
       const { unmount } = render(<RouteErrorPage error={new Error('boom')} reset={() => {}} />)
       fireEvent.click(screen.getByRole('button', { name: 'Copy error details' }))
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Could not copy' })).toBeTruthy())
+      await waitFor(() => expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeTruthy())
       unmount()
     }
   })

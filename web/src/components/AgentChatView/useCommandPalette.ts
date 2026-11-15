@@ -28,6 +28,7 @@ import { useAgentCommands } from './useAgentCommands'
 import { usePaletteSwitchCommands } from './usePaletteSwitchCommands'
 import { usePaletteServerCommands } from './usePaletteServerCommands'
 import { switchPagePath } from './paletteSwitchCommands'
+import { useConnectPhoneOffer } from '@/lib/connect-phone'
 
 export interface UseCommandPaletteArgs {
   workspace: string | null
@@ -133,6 +134,7 @@ export function useCommandPalette({
     [sessionIdState, openSideQuestions],
   )
 
+  const connectPhone = useConnectPhoneOffer()
   const agentCommands = useAgentCommands({
     toggleRunPicker: handleToggleRunPicker,
     toggleTasks: handleToggleTasks,
@@ -152,6 +154,7 @@ export function useCommandPalette({
     handleOpenPreview,
     handleOpenSideQuestions,
     goal,
+    connectPhone,
   })
   const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
   const serverCommands = usePaletteServerCommands()

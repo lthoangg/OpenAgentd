@@ -26,7 +26,8 @@ import {
   Smartphone,
   SquareTerminal,
 } from 'lucide-react'
-import { type PreviewInfo, type PreviewTarget, openPreview, previewMode, previewTargetKey } from '@/api/preview'
+import { useToastStore } from '@/stores/useToastStore'
+import { type PreviewInfo, type PreviewTarget, addRecentPreviewUrl, openPreview, previewMode, previewTargetKey, recentPreviewUrls } from '@/api/preview'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -37,8 +38,10 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { WORKSPACE_TREE_STALE_MS, workspaceFileListQueryOptions } from '@/queries/workspace-files'
 import { DOCK_ACTION_BUTTON_CLASS } from '../WorkspacePanel/dock-tab-styles'
-import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale, frameSize } from './devices'
+import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale, frameCaption, frameSize } from './devices'
+import { PreviewAddress } from './PreviewAddress'
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
+import { PreviewConsole } from './PreviewConsole'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { formatChord } from '@/lib/keyboard/chord'
@@ -46,7 +49,7 @@ import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
 import { NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD } from '@/lib/app-shortcuts'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { previewListenerKey, usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
-import { type PreviewComment, buildDesignFeedback, commentsFromFeedback, feedbackMatchesTarget, resolveSourceFile } from './preview-comments'
+import { type PreviewComment, buildDesignFeedback, commentsFromFeedback, feedbackMatchesTarget, resolveSourceFile, restoreComments } from './preview-comments'
 import {
   type DockCommand,
   type ElementDescriptor,
@@ -67,6 +70,12 @@ const RECOVER_RETRY_MS = 1500
 const AGENT_ACTIVITY_MS = 4000
 /** The loading bar gives up after this: a link that turned into a download never loads. */
 const LOADING_CAP_MS = 20_000
+/** Room under a framed page for the line that says its size. */
+const FRAME_CAPTION_PX = 20
+/** How long a Responsive page's size stays on screen after the panel was resized. */
+const RESIZE_CAPTION_MS = 1200
+/** How long Undo stays on offer after comments were removed, as for a deleted session. */
+const COMMENT_UNDO_MS = 10_000
 
 export interface PreviewTabViewProps {
   workspace: string
@@ -104,6 +113,9 @@ function useElementSize(ref: RefObject<HTMLElement | null>): { width: number; he
   return size
 }
 
+/** A phone's bar tool: 44px and round. Forced, or the dock button's own 28px touch size wins. */
+const PHONE_TOOL_CLASS = 'size-11! rounded-full! [&_svg]:size-5'
+
 function ToolbarButton({
   label,
   onClick,
@@ -137,7 +149,7 @@ function ToolbarButton({
             aria-label={label}
             aria-description={reason}
             aria-pressed={pressed}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, phone && 'size-11 rounded-full [&_svg]:size-5', pressed && 'bg-(--bg-key) text-(--color-text)', className)}
+            className={cn(DOCK_ACTION_BUTTON_CLASS, phone && PHONE_TOOL_CLASS, pressed && 'bg-(--bg-key) text-(--color-text)', className)}
           >
             {children}
           </button>
@@ -185,7 +197,6 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const [src, setSrc] = useState<string | null>(null)
   const [frameKey, setFrameKey] = useState(0)
   const [path, setPath] = useState('/')
-  const [urlDraft, setUrlDraft] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const [inspectorMissing, setInspectorMissing] = useState(false)
   // The page is the proxy's "Nothing is running" page: the dev server is not up.
@@ -225,9 +236,23 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   const preset = devicePreset(deviceId)
   const size = frameSize(preset, rotated)
-  const scale = fitScale(size, { width: stage.width - 16, height: stage.height - 16 })
+  const scale = fitScale(size, { width: stage.width - 16, height: stage.height - 16 - FRAME_CAPTION_PX })
   const scaleRef = useRef(scale)
   scaleRef.current = scale
+  // In Responsive the page is as wide as the panel: say its size for a moment while that changes.
+  const [resized, setResized] = useState(false)
+  const measuredRef = useRef(false)
+  useEffect(() => {
+    if (stage.width <= 0 || stage.height <= 0) return
+    // The first measurement is not a resize.
+    if (!measuredRef.current) {
+      measuredRef.current = true
+      return
+    }
+    setResized(true)
+    const timer = window.setTimeout(() => setResized(false), RESIZE_CAPTION_MS)
+    return () => window.clearTimeout(timer)
+  }, [stage.width, stage.height])
   const modeRef = useRef(mode)
   modeRef.current = mode
   const commentsRef = useRef(comments)
@@ -578,7 +603,6 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   }
 
   const submitUrl = (raw: string) => {
-    setUrlDraft(null)
     setAddressError(null)
     void import('./preview-address').then(({ parseAddress }) => {
       const input = parseAddress(raw, workspace)
@@ -586,6 +610,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       switch (input.kind) {
       case 'page':
         navigateTo(input.path)
+        // A page typed on the tab's own server is an address to offer again.
+        if (target.kind === 'url' && targetOrigin) addRecentPreviewUrl(workspace, `${targetOrigin}${input.path}`)
         return
       case 'invalid':
         setAddressError(input.message)
@@ -598,8 +624,10 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       case 'url':
         try {
           const u = new URL(input.url.includes('://') ? input.url : `http://${input.url}`)
-          if (target.kind === 'url' && u.origin === targetOrigin) navigateTo(`${u.pathname}${u.search}${u.hash}`)
-          else onOpenTarget?.({ kind: 'url', url: input.url })
+          if (target.kind === 'url' && u.origin === targetOrigin) {
+            navigateTo(`${u.pathname}${u.search}${u.hash}`)
+            addRecentPreviewUrl(workspace, u.href)
+          } else onOpenTarget?.({ kind: 'url', url: input.url })
         } catch {
           setAddressError(`Invalid URL: ${input.url}`)
         }
@@ -631,6 +659,36 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     setDraft(null)
   }
 
+  // Removing comments answers with Undo rather than asking first.
+  const offerUndo = (title: string, removed: PreviewComment[]) => {
+    useToastStore.getState().push({
+      tone: 'info',
+      title,
+      action: {
+        label: 'Undo',
+        onAction: () => {
+          const next = restoreComments(commentsRef.current, removed)
+          nextCommentRef.current = Math.max(...next.map((c) => c.n)) + 1
+          setComments(next)
+        },
+      },
+    }, COMMENT_UNDO_MS)
+  }
+
+  const removeComment = (id: string) => {
+    const removed = comments.find((c) => c.id === id)
+    if (!removed) return
+    setComments((prev) => prev.filter((c) => c.id !== id))
+    offerUndo(`Removed comment ${removed.n}`, [removed])
+  }
+
+  const clearComments = () => {
+    const removed = comments
+    setComments([])
+    nextCommentRef.current = 1
+    offerUndo(`Cleared ${removed.length} ${removed.length === 1 ? 'comment' : 'comments'}`, removed)
+  }
+
   const sendComments = () => {
     if (!comments.length) return
     const device = deviceLabel(preset, size, { width: stage.width, height: stage.height })
@@ -652,7 +710,22 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   const targetHost = targetOrigin ? targetOrigin.replace(/^[a-z]+:\/\//i, '') : null
   const downTitle = `Nothing is running on ${targetHost ?? 'this address'} yet`
   const consoleLabel = errorCount ? `Console (${errorCount} errors)` : 'Console'
-  const designLabel = designDisabled ? 'Comment (unavailable on this page)' : mode === 'inspect' ? `Stop commenting (Esc or ${designShortcut})` : `Comment on an element (${designShortcut})`
+  const designLabel = designDisabled
+    ? 'Comment (unavailable on this page)'
+    : phone
+      ? mode === 'inspect' ? 'Stop commenting' : 'Comment on an element'
+      : mode === 'inspect' ? `Stop commenting (Esc or ${designShortcut})` : `Comment on an element (${designShortcut})`
+  // While picking, a click no longer follows a link: say so, with the way out.
+  const commentingLine = mode === 'inspect' && (
+    <div role="status" className={cn('flex min-h-8 shrink-0 items-center gap-2 border-(--color-border-subtle) bg-(--bg-key) px-3 py-1 text-xs text-(--color-text-2)', phone ? 'order-last border-t' : 'border-b')}>
+      <MousePointerClick size={14} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
+      <p className="min-w-0 flex-1 truncate">{phone ? 'Tap an element to comment' : 'Click an element to comment'}</p>
+      {!phone && <kbd aria-hidden="true" className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-meta text-(--color-text-muted)">Esc</kbd>}
+      <Button type="button" size="xs" variant="default" className="shrink-0 pointer-coarse:h-9" onClick={() => setMode('browse')}>
+        Done
+      </Button>
+    </div>
+  )
   const openLabel = reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'
   const openDisabled = !pageUrl || reach === 'relay'
   // Back and Forward need the page's own script; say which thing is missing.
@@ -678,12 +751,15 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col">
+      {/* A phone's bar is last on screen (order-last); the line sits just above it. */}
+      {phone && commentingLine}
       {/* 40px (44px on touch): the address field is 32px (36px on touch), taller than the 28px tool buttons. */}
       {/* A phone puts the bar at the bottom, in thumb reach, as Safari does (mockup J7). */}
       <div
         data-preview-toolbar={phone ? 'bottom' : 'top'}
         className={cn(
-          'flex min-h-10 shrink-0 items-center gap-0.5 border-(--color-border-subtle) bg-(--bg-page) px-1 py-1',
+          // @container: the size label and the agent's name give way by the panel's width, not the window's.
+          '@container flex min-h-10 shrink-0 items-center gap-0.5 border-(--color-border-subtle) bg-(--bg-page) px-1 py-1',
           // Safari's bottom bar: the address as a full-width pill on top, the
           // tools spread under it in thumb reach.
           phone ? 'order-last flex-wrap justify-around gap-y-1 border-t px-2 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]' : 'border-b',
@@ -698,47 +774,15 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         <ToolbarButton label="Refresh" onClick={() => void reload()}>
           <RefreshCw size={14} aria-hidden="true" />
         </ToolbarButton>
-        <form
-          className={cn('relative min-w-0', phone ? 'order-first basis-full' : 'mx-1 flex-1')}
-          onSubmit={(event) => {
-            event.preventDefault()
-            submitUrl(urlDraft ?? displayUrl)
-          }}
-        >
-          <input
-            aria-label="Preview address"
-            value={urlDraft ?? displayUrl}
-            onChange={(event) => {
-              setUrlDraft(event.target.value)
-              setAddressError(null)
-            }}
-            onFocus={(event) => event.target.select()}
-            onBlur={() => setUrlDraft(null)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setUrlDraft(null)
-                event.currentTarget.blur()
-              }
-            }}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            inputMode="url"
-            enterKeyHint="go"
-            className={cn(
-              'w-full min-w-0 border text-(--color-text) outline-none transition-colors',
-              phone
-                ? 'h-10 rounded-full border-transparent bg-(--bg-key) px-4 text-center text-xs focus:border-(--color-text-subtle) focus:text-left'
-                : 'h-8 rounded-xs border-(--color-border) bg-(--bg-input) px-2 font-mono text-xs focus:border-(--color-text-subtle) pointer-coarse:h-9',
-            )}
-          />
-          {loading && !pageDown && (
-            // Safari's way: a thin sweep along the field's bottom edge.
-            <div role="progressbar" aria-label="Loading page" className={cn('pointer-events-none absolute bottom-px h-0.5 overflow-hidden rounded-full', phone ? 'inset-x-4' : 'inset-x-px')}>
-              <div className="oa-loading-bar h-full w-2/5 rounded-full bg-(--color-text-2)/60" />
-            </div>
-          )}
-        </form>
+        <PreviewAddress
+          url={displayUrl}
+          phone={phone}
+          loading={loading && !pageDown}
+          recent={() => recentPreviewUrls(workspace)}
+          files={filePathsRef.current}
+          onSubmit={submitUrl}
+          onEdit={() => setAddressError(null)}
+        />
         {agentAction && (
           <span
             role="status"
@@ -746,7 +790,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-2 text-meta font-medium text-(--color-text-2)"
           >
             <Bot size={12} aria-hidden="true" />
-            <span className="hidden sm:inline">Agent</span>
+            <span className="hidden @lg:inline">Agent</span>
             <span className="sr-only">is using this page: {agentAction}</span>
           </span>
         )}
@@ -758,13 +802,18 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           dense
           // rounded-xs: the address bar's corners, not the form trigger's rounded-md.
           // dense: 28px on touch too, so it fits the 32px toolbar.
-          className={phone ? 'h-11! shrink-0 gap-1 rounded-full! px-3 text-meta [&_svg]:size-5' : 'h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta'}
-          trigger={
+          // A phone's button is plain like the tools beside it, and takes the
+          // pressed keycap fill while a fixed size is chosen: the page is then
+          // not at the phone's own width.
+          className={phone ? cn('h-11! shrink-0 gap-1 rounded-full! px-3 text-meta [&_svg]:size-5', !size && 'bg-transparent! text-(--color-text-muted)!') : 'h-7 shrink-0 gap-1 rounded-xs px-1.5 text-meta'}
+          trigger={null}
+          // The icon always; the size's name once the panel has room for it.
+          renderValue={() => (
             <span className="flex items-center gap-1">
               <Smartphone size={12} aria-hidden="true" />
-              <span className="hidden sm:inline">{preset.label}</span>
+              <span className="hidden @lg:inline">{preset.label}</span>
             </span>
-          }
+          )}
         >
           {DEVICE_PRESETS.map((p) => (
             <DropdownItem key={p.id} value={p.id}>
@@ -777,6 +826,11 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             <RotateCw size={14} aria-hidden="true" />
           </ToolbarButton>
         )}
+        {phone && (
+          <ToolbarButton label={designLabel} onClick={() => toggleDesignRef.current()} disabled={designDisabled} pressed={mode === 'inspect'}>
+            <MousePointerClick size={14} aria-hidden="true" />
+          </ToolbarButton>
+        )}
         {phone ? (
           // Phones: the rarer tools share one menu, so the address keeps room.
           <Dropdown
@@ -786,17 +840,19 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
             trigger={
               <span className="relative flex items-center">
                 <MoreHorizontal size={14} aria-hidden="true" />
-                {errorCount > 0 && <span className="absolute -top-1 -right-1 size-1.5 rounded-full bg-(--color-error)" aria-hidden="true" />}
+                {errorCount > 0 && (
+                  <span data-console-errors="" aria-hidden="true" className="absolute -top-2 -right-2.5 min-w-4 rounded-full bg-(--color-error) px-1 text-center text-meta leading-4 font-semibold text-(--color-text-on-accent)">
+                    {errorCount > 99 ? '99+' : errorCount}
+                  </span>
+                )}
               </span>
             }
-            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11! justify-center! rounded-full! border-0 bg-transparent p-0! [&>span]:justify-center [&>svg]:hidden [&_svg]:size-5')}
+            // overflow-visible: the trigger's label truncates, which would cut the error count.
+            className={cn(DOCK_ACTION_BUTTON_CLASS, 'size-11! justify-center! rounded-full! border-0 bg-transparent p-0! [&>span]:justify-center [&>span]:overflow-visible [&>svg]:hidden [&_svg]:size-5')}
             panelClassName="w-56"
           >
             {[
-              <DropdownItem key="console" onSelect={() => setConsoleOpen((o) => !o)}>{consoleLabel}</DropdownItem>,
-              <DropdownItem key="design" disabled={designDisabled} onSelect={() => toggleDesignRef.current()}>
-                {mode === 'inspect' ? 'Stop commenting' : designDisabled ? 'Comment (unavailable on this page)' : 'Comment on an element'}
-              </DropdownItem>,
+              <DropdownItem key="console" onSelect={() => setConsoleOpen((o) => !o)}>{consoleOpen ? 'Hide console' : consoleLabel}</DropdownItem>,
               <DropdownItem key="open" disabled={openDisabled} onSelect={() => pageUrl && void openExternalUrl(pageUrl)}>{openLabel}</DropdownItem>,
             ].filter(Boolean)}
           </Dropdown>
@@ -840,6 +896,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         </ToolbarButton>
         )}
       </div>
+      {!phone && commentingLine}
       {(error || addressError || inspectorMissing) && (
         <div role={error || addressError ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-meta', error || addressError ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
           <p className="min-w-0 flex-1 break-words">
@@ -853,7 +910,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         </div>
       )}
       <div ref={stageRef} className="relative min-h-0 flex-1 overflow-hidden bg-(--bg-sidebar)">
-        <div className={cn('flex h-full w-full justify-center overflow-hidden', size && 'items-start p-2')}>
+        <div className={cn('flex h-full w-full overflow-hidden', size ? 'flex-col items-center justify-start p-2' : 'justify-center')}>
           <div
             ref={frameBoxRef}
             // White, a browser's default page, behind pages that set no background.
@@ -875,7 +932,17 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               />
             )}
           </div>
+          {size && (
+            <p data-frame-caption="" className="flex shrink-0 items-end font-mono text-meta text-(--color-text-muted)" style={{ height: FRAME_CAPTION_PX }}>
+              {frameCaption(size, scale)}
+            </p>
+          )}
         </div>
+        {!size && resized && !pageDown && (
+          <p role="status" className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-(--bg-card) px-2 py-0.5 font-mono text-meta text-(--color-text-2) shadow-(--shadow-depth)">
+            {frameCaption(stage, 1)}
+          </p>
+        )}
         {pageDown && (
           // The proxy's own page keeps retrying underneath; this says the same in the app's colours.
           <div className="absolute inset-0 bg-(--bg-sidebar)">
@@ -898,44 +965,17 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         )}
       </div>
       {consoleOpen && (
-        <section aria-label="Preview console" className="flex max-h-44 shrink-0 flex-col border-t border-(--color-border) bg-(--bg-page)">
-          <div className="flex h-7 shrink-0 items-center gap-2 pr-1 pl-3">
-            <p className="min-w-0 flex-1 text-meta text-(--color-text-muted)">
-              {consoleEntries.length} {consoleEntries.length === 1 ? 'entry' : 'entries'}
-            </p>
-            <Button type="button" variant="ghost" size="xs" onClick={() => setConsoleEntries([])} disabled={!consoleEntries.length}>
-              Clear
-            </Button>
-          </div>
-          {consoleEntries.length === 0 ? (
-            <EmptyState icon={SquareTerminal} title="No console output yet" fill={false} className="flex min-h-0 flex-1 justify-center overflow-y-auto py-4" />
-          ) : (
-            <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 font-mono text-meta">
-              {consoleEntries.map((entry, index) => (
-                <li
-                  key={index}
-                  className={cn(
-                    'border-b border-(--color-border-subtle) py-0.5 break-words whitespace-pre-wrap',
-                    entry.level === 'error' ? 'text-(--color-error)' : entry.level === 'warn' ? 'text-(--accent-orange-text)' : 'text-(--color-text-2)',
-                  )}
-                >
-                  {entry.message}
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
+        <PreviewConsole entries={consoleEntries} onClear={() => setConsoleEntries([])} onClose={() => setConsoleOpen(false)} />
       )}
       {comments.length > 0 && (
         <PreviewCommentList
           comments={comments}
-          onRemove={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
+          phone={phone}
+          onRemove={removeComment}
           onEdit={(id, text) => setComments((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)))}
-          onClear={() => {
-            setComments([])
-            nextCommentRef.current = 1
-          }}
+          onClear={clearComments}
           onSend={sendComments}
+          onShow={(n) => post({ type: 'show-pin', n })}
         />
       )}
     </div>

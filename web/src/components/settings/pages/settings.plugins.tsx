@@ -76,7 +76,7 @@ function PluginRow({ plugin }: { plugin: PluginStatus }) {
     <li className="flex flex-col gap-1.5 px-4 py-3.5">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="min-w-0 truncate font-mono text-xs font-semibold text-(--color-text)">{plugin.file}</span>
-        <Chip tone={failed ? 'error' : 'success'}>{failed ? 'Failed to load' : 'Loaded'}</Chip>
+        <Chip tone={failed ? 'error' : 'success'}>{failed ? "Couldn't load" : 'Loaded'}</Chip>
       </div>
       {(plugin.provider || plugin.hooks.length > 0) && (
         <p className={cn('flex flex-wrap gap-x-3 gap-y-0.5', TEXT.hint)}>
@@ -117,11 +117,11 @@ const BUNDLE_STATE: Record<PluginBundleState, { label: string; tone: ChipTone }>
   disabled: { label: 'Off', tone: 'neutral' },
 }
 
-/** What a bundle adds, in words ("2 skills · 1 MCP server · 1 tool"). */
+/** What a bundle adds, in words ("2 skills · 1 connector · 1 tool"). */
 function bundleContents(bundle: PluginBundle): string {
   return [
     bundle.skills.length > 0 ? plural(bundle.skills.length, 'skill') : null,
-    bundle.mcp_servers.length > 0 ? plural(bundle.mcp_servers.length, 'MCP server') : null,
+    bundle.mcp_servers.length > 0 ? plural(bundle.mcp_servers.length, 'connector') : null,
     bundle.tools.length > 0 ? plural(bundle.tools.length, 'tool') : null,
   ].filter(Boolean).join(' · ')
 }
@@ -220,7 +220,7 @@ function BundleDetails({ bundle, id }: { bundle: PluginBundle; id: string }) {
             </ul>
           )}
         </Detail>
-        <Detail label={counted('MCP servers', bundle.mcp_servers.length)}>
+        <Detail label={counted('Connectors', bundle.mcp_servers.length)}>
           {bundle.mcp_servers.length === 0 ? <None /> : (
             <ul className="space-y-3">
               {bundle.mcp_servers.map((server) => (
@@ -389,7 +389,7 @@ export function PluginsSettingsPage() {
   return (
     <SettingsPage
       title="Plugins"
-      description="Plugin folders add skills, MCP servers and tools to OpenAgentd."
+      description="Plugin folders add skills, connectors and tools to OpenAgentd."
       actions={
         <Tooltip>
           <TooltipTrigger
@@ -468,30 +468,26 @@ export function PluginsSettingsPage() {
             )}
           </PanelSection>
 
-          <PanelSection
-            aria-label="Single-file plugins"
-            title="Single-file plugins"
-            description={
-              <>
-                TypeScript and JavaScript plugins from{' '}
-                {dir ? <code className={CODE}><PathText path={dir} /></code> : 'the plugin folder'}. Restart OpenAgentd to load new or
-                changed plugins.
-              </>
-            }
-            actions={plugins.length > 0 ? <span className={cn('tabular-nums', TEXT.hint)}>{countLine(plugins.length, 'plugin', failedPlugins)}</span> : undefined}
-            flush={plugins.length > 0}
-            className={plugins.length === 0 ? 'border-dashed' : undefined}
-          >
-            {plugins.length === 0 ? (
-              <p className={cn('py-2 text-center', TEXT.body)}>
-                No single-file plugins. Put a .ts or .js file in the plugin folder.
-              </p>
-            ) : (
+          {/* Shown once such a plugin exists: an empty section says nothing a new person needs. */}
+          {plugins.length > 0 && (
+            <PanelSection
+              aria-label="Single-file plugins"
+              title="Single-file plugins"
+              description={
+                <>
+                  TypeScript and JavaScript plugins from{' '}
+                  {dir ? <code className={CODE}><PathText path={dir} /></code> : 'the plugin folder'}. Restart OpenAgentd to load new or
+                  changed plugins.
+                </>
+              }
+              actions={<span className={cn('tabular-nums', TEXT.hint)}>{countLine(plugins.length, 'plugin', failedPlugins)}</span>}
+              flush
+            >
               <ul className="divide-y divide-(--color-border-subtle)">
                 {plugins.map((p) => <PluginRow key={p.path} plugin={p} />)}
               </ul>
-            )}
-          </PanelSection>
+            </PanelSection>
+          )}
         </>
       )}
     </SettingsPage>

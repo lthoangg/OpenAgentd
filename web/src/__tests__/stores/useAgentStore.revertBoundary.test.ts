@@ -1041,7 +1041,7 @@ describe("redoAgent — restores ONE undone message step", () => {
     const stream = useAgentStore.getState().agentStreams.lead
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
     expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2"])
-    expect(useAgentStore.getState().error).toBe("Failed to redo: network down")
+    expect(useAgentStore.getState().error).toBe("Couldn't redo: network down")
   })
 
   it("clears local revert state when the server says there is nothing to redo", async () => {
@@ -1224,7 +1224,7 @@ describe("redoAllAgent — restores ALL undone messages back to live tip", () =>
     const stream = useAgentStore.getState().agentStreams.lead
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
     expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2"])
-    expect(useAgentStore.getState().error).toBe("Failed to redo: network down")
+    expect(useAgentStore.getState().error).toBe("Couldn't redo: network down")
   })
 
   it("clears local revert state when the server says there is nothing to redo", async () => {

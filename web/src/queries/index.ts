@@ -57,9 +57,7 @@ export {
 } from './useMcpQuery'
 export {
   useDeniedPathsSettingsQuery,
-  useSandboxSettingsQuery,
   useUpdateDeniedPathsSettingsMutation,
-  useUpdateSandboxSettingsMutation,
 } from './useDeniedPathsSettingsQuery'
 export {
   useProvidersQuery,

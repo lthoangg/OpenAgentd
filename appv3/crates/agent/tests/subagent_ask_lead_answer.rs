@@ -86,7 +86,7 @@ async fn the_lead_answer_ends_the_members_next_request() {
     lead.handle_user_message(UserMessage { content: "build it".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn finishes");
 
-    subagents::spawn_subagent(&sid, "worker", "pick a branch", None, None, None, &ws, &pool, &factory).await.expect("member spawned");
+    subagents::spawn_subagent(&sid, "worker", "pick a branch", &ws, &pool, &factory).await.expect("member spawned");
     let member = subagents::with_instance(&sid, "worker#1", |i| i.session.clone()).expect("member registered");
     wait_until("the member to wait on its lead", || member.state() == "waiting_lead").await;
     let asked = mock.calls.lock().unwrap().iter().filter(|(m, _, _)| is_member_call(m)).count();

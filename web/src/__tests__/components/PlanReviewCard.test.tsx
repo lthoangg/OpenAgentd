@@ -90,7 +90,7 @@ describe('PlanReviewCard', () => {
       <PlanReviewCard toolCallId="call-1" args='{"summary":"Adds the plan tab"}' result={PLACEHOLDER} done />,
     )
 
-    expect(screen.getByText('Waiting for your review')).toBeTruthy()
+    expect(screen.getByText('Needs you · a plan to review')).toBeTruthy()
     expect(screen.getByText('rev 3')).toBeTruthy()
     expect(screen.getByText('Adds the plan tab')).toBeTruthy()
     expect(container.querySelector('[data-question-waiting]')).not.toBeNull()

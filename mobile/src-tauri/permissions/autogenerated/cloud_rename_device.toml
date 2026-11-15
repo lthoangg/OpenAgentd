@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-rename-device"
+description = "Enables the cloud_rename_device command without any pre-configured scope."
+commands.allow = ["cloud_rename_device"]
+
+[[permission]]
+identifier = "deny-cloud-rename-device"
+description = "Denies the cloud_rename_device command without any pre-configured scope."
+commands.deny = ["cloud_rename_device"]

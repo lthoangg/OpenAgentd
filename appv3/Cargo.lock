@@ -165,7 +165,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "appv3-agent"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-api"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-cli"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -273,6 +273,7 @@ dependencies = [
  "clap",
  "dunce",
  "flate2",
+ "futures-util",
  "libc",
  "nix 0.31.3",
  "openagentd-cloud",
@@ -294,7 +295,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-core"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -317,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-db"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -336,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-jsplugin"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "appv3-core",
  "appv3-plugins",
@@ -367,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-kernel"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -377,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-mcp"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -406,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-memory"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "appv3-core",
  "dunce",
@@ -420,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-plugins"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "dunce",
  "serde_json",
@@ -430,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-preview"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -453,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-providers"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -484,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-terminal"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -497,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-tools"
-version = "3.55.0"
+version = "3.56.0"
 dependencies = [
  "anydoc",
  "appv3-core",

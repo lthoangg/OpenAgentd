@@ -2,7 +2,7 @@
  * Tests for the path denylist settings — API client + page rendering.
  */
 import { describe, it, expect, mock } from 'bun:test'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import {
@@ -166,29 +166,6 @@ describe('DeniedPathsSettingsPage', () => {
     }
   })
 
-  it('adds a new empty row when "Add pattern" is clicked', async () => {
-    const original = globalThis.fetch
-    globalThis.fetch = mock(
-      async () =>
-        new Response(JSON.stringify({ denied_patterns: ['**/.env'] }), {
-          status: 200,
-        }),
-    )
-    try {
-      renderWithQueryClient(<DeniedPathsSettingsPage />)
-      await waitFor(() => screen.getByDisplayValue('**/.env'))
-
-      const addBtn = screen.getByText('Add pattern')
-      fireEvent.click(addBtn)
-
-      // Should now have 2 pattern inputs (one filled, one empty)
-      const inputs = screen.getAllByRole('textbox')
-      expect(inputs.length).toBe(2)
-    } finally {
-      globalThis.fetch = original
-    }
-  })
-
   it('shows empty-state when server returns no patterns', async () => {
     const original = globalThis.fetch
     globalThis.fetch = mock(
@@ -198,7 +175,7 @@ describe('DeniedPathsSettingsPage', () => {
     try {
       renderWithQueryClient(<DeniedPathsSettingsPage />)
       await waitFor(() => {
-        expect(screen.getByText('No patterns')).toBeTruthy()
+        expect(screen.getByText('Nothing is blocked')).toBeTruthy()
       })
     } finally {
       globalThis.fetch = original

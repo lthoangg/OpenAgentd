@@ -9,6 +9,7 @@
  * streaming in this tab comes from ``useBtwStore`` through
  * ``useSideQuestions``.
  */
+import { failureToast } from '@/lib/failure-toast'
 import { useEffect, useRef, useState } from 'react'
 import { Copy, MessageCircleQuestion, Square, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
   const onClear = () => {
     // Failures surface as a toast; the dialog closes either way.
     return store.clear(sessionId).catch((err: unknown) => {
-      useToastStore.getState().push({ tone: 'error', title: 'Could not clear side questions', description: err instanceof Error ? err.message : String(err) })
+      useToastStore.getState().push(failureToast("Couldn't delete side questions", err))
     })
   }
   const onStop = (exchange: BtwExchange) => {
@@ -71,7 +72,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label="Clear side questions…"
+                aria-label="Delete side questions…"
                 disabled={exchanges.length === 0}
                 onClick={() => setConfirmClear(true)}
               >
@@ -85,7 +86,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
           open={confirmClear}
           onOpenChange={setConfirmClear}
           title="Delete all side questions?"
-          description="Every side question and answer of this session is deleted. They were never part of the chat, and this cannot be undone."
+          description="Every side question and answer of this session is deleted. They were never part of the chat, and this can't be undone."
           confirmLabel="Delete side questions"
           onConfirm={onClear}
         />

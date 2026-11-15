@@ -62,6 +62,14 @@ loopback caller on the private listener), like the rest of `/api/cloud/*`.
   /api/cloud/status` `connected` gains `recovered: true` (omitted otherwise)
   from the recovery until `POST /api/cloud/recovered/ack` (answers the
   status) or a restart. `agentd cloud recover` does the same from a terminal.
+- **Letting a device approve.** `POST /api/cloud/devices/approver`
+  `{ "device_id": string }` writes the next roster with that device a signer
+  (keys and roles unchanged) and answers the status. It needs the desktop
+  app's approval proof for `promote` on that device id (`X-Agentd-Approval`),
+  like `devices/remove`; without it 403 `Let a device approve others in the
+  OpenAgentd app on this computer.` An id that is not a device id is 400
+  `Malformed request.`; other failures read as the signer routes' do (403 when
+  this computer does not approve, 409 for a device not in the account).
 - **Status, summarized.** `signing_in` + `recovering` (bool, omitted when
   false), `connected` + `recovered` (bool, omitted when false), guest notice
   `wrong_recovery_code`. Remote callers still see only `state` and

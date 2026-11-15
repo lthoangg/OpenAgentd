@@ -8,8 +8,9 @@
 //! only answers the machine itself: an unproxied loopback caller on the
 //! private listener, never a relayed device or a LAN client.
 //!
-//! The routes that sign a roster, `approve/confirm`, `invite/add` and
-//! `devices/remove`, also need the desktop app's proof that the person
+//! The routes that sign a roster, `approve/confirm`, `invite/add`,
+//! `devices/remove` and `devices/approver` (let a device approve others
+//! too), also need the desktop app's proof that the person
 //! approved ([`super::approval`]): a loopback caller alone may be an
 //! agent's shell. So do `invite/start` and `invite/poll`, which sign
 //! nothing but hand out an invitation link (a bearer secret) and its
@@ -47,6 +48,7 @@ pub fn router() -> Router<AppState> {
         .route("/recovered/ack", post(recovered_ack))
         .route("/devices", get(devices))
         .route("/devices/name", post(rename_device))
+        .route("/devices/approver", post(make_approver))
         .route("/devices/remove", post(remove_device))
         .route("/pending", get(pending))
         .route("/approve/begin", post(approve_begin))
@@ -568,6 +570,16 @@ fn device_id(body: &[u8]) -> ApiResult<String> {
         return Err(ApiError::new(400, "Malformed request."));
     }
     Ok(b.device_id)
+}
+
+/// `{ device_id }`: lets a device of the account approve others too. Writes
+/// a roster, so it needs the app's proof for `promote` on that device id.
+async fn make_approver(ext: Extensions, headers: HeaderMap, body: axum::body::Bytes) -> ApiResult<Response> {
+    local_only(&ext)?;
+    let id = device_id(&body)?;
+    super::approval::require(&headers, openagentd_cloud::approval::Action::Promote, &id)?;
+    super::signer::make_approver(&id).await.map_err(signer_error)?;
+    status_json()
 }
 
 /// `{ device_id }`: opens a computer of the account through its link and

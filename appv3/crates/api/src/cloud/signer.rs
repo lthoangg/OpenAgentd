@@ -294,6 +294,16 @@ pub async fn remove(device_id: &str) -> Result<(), SignerError> {
     Ok(())
 }
 
+/// Lets `device_id` approve others too (the route checked the app's proof).
+/// Its keys and roles stay as they are.
+pub async fn make_approver(device_id: &str) -> Result<(), SignerError> {
+    let mut m = synced().await?;
+    let r = m.make_approver(device_id).await?;
+    tracing::info!("cloud_device_made_approver version={}", r.version());
+    wrote(&r);
+    Ok(())
+}
+
 /// The grant a confirm asks for, checked by `flows::confirm_approval`.
 pub fn grant(signer: bool, server: bool, client: bool) -> Grant {
     Grant { signer, roles: Roles { server, client } }

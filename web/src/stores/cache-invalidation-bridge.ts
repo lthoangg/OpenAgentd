@@ -1,7 +1,9 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useAgentStore'
 import type { LiveSubagent, SessionPageResponse, SessionResponse, SubagentsResponse } from '@/api/types'
-import { queryKeys } from '@/queries'
+// The keys module, not the ``@/queries`` barrel: the barrel re-exports hooks
+// that import this bridge, which would make an import cycle.
+import { queryKeys } from '@/queries/keys'
 
 type BridgeQueryClient = Pick<
   QueryClient,

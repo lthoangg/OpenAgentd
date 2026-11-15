@@ -46,6 +46,13 @@ Use static ESM imports and the `@/` alias for application modules. Keep
 same-origin `/api` desktop-token injection intact; do not attach native access
 tokens to arbitrary remote URLs.
 
+`bun run lint` enforces part of this: `fetch` is refused outside `src/api/`
+(the files that predate the rule are listed in `.oxlintrc.json`; move a
+backend call into `src/api/` rather than adding to that list), import cycles
+fail, and app code may not use `any` or call a hook conditionally. Import
+a module directly instead of through a barrel when the barrel would close a
+cycle.
+
 ## UI constraints
 
 - Read root `DESIGN.md` and reuse tokens from `src/styles/tokens.css` (palette,

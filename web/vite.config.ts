@@ -21,8 +21,8 @@ const isIgnoredCompilerNotice = (msg: unknown) => {
   const text =
     typeof msg === "string"
       ? msg
-      : msg && typeof msg === "object" && "message" in msg && typeof (msg as any).message === "string"
-        ? (msg as any).message
+      : msg && typeof msg === "object" && "message" in msg && typeof msg.message === "string"
+        ? msg.message
         : ""
   return (
     text.includes("react-compiler(Todo)") ||

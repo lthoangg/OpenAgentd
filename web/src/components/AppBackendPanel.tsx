@@ -361,7 +361,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     })
     setPending(false)
     if (!result.ok) {
-      onError(result.error)
+      // Back on the switching screen: nothing to say, the list is as it was.
+      if (!result.cancelled) onError(result.error)
       return false
     }
     setStatus(result.status)
@@ -409,7 +410,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     const result = await connectBundledBackend(currentBackendOrigin(status))
     setPending(false)
     if (!result.ok) {
-      setListError(result.error)
+      if (!result.cancelled) setListError(result.error)
       return
     }
     setStatus(result.status)

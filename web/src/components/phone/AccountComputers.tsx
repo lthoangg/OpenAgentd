@@ -185,7 +185,8 @@ export function AccountComputerRows({
     })
     setOpening(null)
     if (!result.ok) {
-      setError(result.error)
+      // Back on the switching screen: the list is as it was, free to pick another.
+      if (!result.cancelled) setError(result.error)
       return
     }
     if (result.reload) reloadForBackendSwitch()

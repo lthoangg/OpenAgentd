@@ -169,6 +169,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   beat, so an instant switch never flashes it), and the startup screen keeps
   the same words through the reload until the new server is up. A failed
   connect closes it and shows the error where you started.
+  Since `[v3.57.0]`, the screen has **Back** (top left on a phone; Escape and
+  Android Back too): it calls the switch off at once, with no error, and you
+  are back where you picked the server, free to pick another. Back goes away
+  only for the last moment, once the switch is committing. A computer of your
+  account that opens after Back is dropped and the app stays on the server
+  it was on. The startup screen's "Switching to …" after the reload has Back
+  too: it goes back to the server you came from (on a phone, your Computers).
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
   `/` is a new session and `/{session_id}` a session, and the app's labels no longer call it

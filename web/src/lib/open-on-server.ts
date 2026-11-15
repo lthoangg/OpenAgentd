@@ -43,8 +43,12 @@ export function sessionServerUnknown(): Promise<OpenOutcome> {
   return fail('This app no longer knows which computer that session is on. Choose the computer, then open the session from its list.')
 }
 
-async function afterSwitch(sessionId: string, result: { ok: true; reload: boolean } | { ok: false; error: string }): Promise<OpenOutcome> {
-  if (!result.ok) return fail(result.error)
+async function afterSwitch(
+  sessionId: string,
+  result: { ok: true; reload: boolean } | { ok: false; error: string; cancelled?: undefined } | { ok: false; cancelled: true },
+): Promise<OpenOutcome> {
+  // Back on the switching screen: the person stays where they were, no error.
+  if (!result.ok) return result.cancelled ? 'failed' : fail(result.error)
   requestSessionOpen(sessionId)
   if (!result.reload) return 'opened'
   const { reloadForBackendSwitch } = await import('@/lib/backend-switch')

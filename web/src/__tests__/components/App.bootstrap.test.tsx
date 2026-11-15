@@ -143,9 +143,18 @@ mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => isPhone }))
 mock.module('@/components/phone/LazyServersScreen', () => ({
   ServersScreen: () => <div data-testid="servers-screen">Servers</div>,
 }))
+// The startup screen's Back after a switch: the switch back itself is tested
+// in backend-switch.test.tsx.
+const realBackendSwitch = await import('@/lib/backend-switch')
+let returnOutcome: 'switching' | 'cancelled' | 'failed' = 'switching'
+const returnFromBackendSwitchMock = mock(async (..._args: unknown[]) => returnOutcome)
+mock.module('@/lib/backend-switch', () => ({ ...realBackendSwitch, returnFromBackendSwitch: returnFromBackendSwitchMock }))
 
 beforeEach(() => {
   isPhone = false
+  returnOutcome = 'switching'
+  returnFromBackendSwitchMock.mockClear()
+  window.sessionStorage.clear()
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
   window.localStorage.clear()
@@ -321,6 +330,38 @@ describe('App backend bootstrap', () => {
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false, token: 'desktop-token' }
     await waitFor(() => expect(routerMounted).toBe(true))
     expect(window.sessionStorage.getItem('openagentd.backendSwitch')).toBeNull()
+  })
+
+  it('has Back on "Switching to …" after the reload: it forgets the switch and goes back to the server it came from', async () => {
+    const from = { kind: 'server', baseUrl: 'http://192.168.1.20:4082', name: 'Studio' }
+    window.sessionStorage.setItem('openagentd.backendSwitch', JSON.stringify({ name: 'this computer', at: Date.now(), from }))
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
+    returnOutcome = 'failed'
+    render(<App />)
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(window.sessionStorage.getItem('openagentd.backendSwitch')).toBeNull()
+    expect(screen.getByText('Starting OpenAgentd…')).toBeTruthy()
+    await waitFor(() => expect(returnFromBackendSwitchMock).toHaveBeenCalledWith(from))
+    // It could not go back either: the server chooser, so nothing traps the person.
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+  })
+
+  it("has Back on a phone's \"Switching to …\" after the reload: it shows the Computers list", async () => {
+    isPhone = true
+    window.sessionStorage.setItem('openagentd.backendSwitch', JSON.stringify({ name: 'Mac', detail: 'Your computer', at: Date.now() }))
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false, backend_starting: true }
+    render(<App />)
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+    expect(screen.getByRole('status', { name: 'Loading OpenAgentd' }).textContent).toContain('Switching to Mac…')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(screen.getByTestId('servers-screen')).toBeTruthy()
+    expect(window.sessionStorage.getItem('openagentd.backendSwitch')).toBeNull()
+    expect(returnFromBackendSwitchMock).not.toHaveBeenCalled()
   })
 
   it('shows recovery immediately when the native shell reports a startup error', async () => {

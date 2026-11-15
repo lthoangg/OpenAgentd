@@ -65,6 +65,12 @@ const invokeMock = mock(async (...args: unknown[]) => {
     }
     return null
   }
+  // Starts the built-in server without moving the window (a switch's slow
+  // part, with Back still up); `app_use_bundled_backend` then moves it.
+  if (command === 'app_start_bundled_backend') {
+    statusPayload = { ...statusPayload, sidecar_running: true }
+    return null
+  }
   if (command === 'app_stop_bundled_backend') {
     statusPayload = {
       ...statusPayload,

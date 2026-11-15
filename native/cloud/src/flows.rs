@@ -163,9 +163,9 @@ pub struct Offer {
 }
 
 /// Polls until the person approves the device code, a signer offers it an
-/// invitation, the person denies it, or it expires. A person on the
-/// waitlist cannot approve, so this ends in [`FlowError::Expired`] for
-/// them; the UI says so.
+/// invitation, the person denies it, or it expires. A slow approval keeps
+/// it polling until then, and an unapproved code ends in
+/// [`FlowError::Expired`].
 ///
 /// A poll that gets no answer, `429 rate_limited` or a 5xx is tried again
 /// (after `Retry-After` when the cloud sends one) until the code expires;

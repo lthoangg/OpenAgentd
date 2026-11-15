@@ -332,7 +332,7 @@ fn login_with(roles: CloudRoles) -> Result<ExitCode> {
             let msg = match engine::notice(&e) {
                 appv3_api::cloud::Notice::Denied => "Sign-in was denied on the account page.".to_string(),
                 appv3_api::cloud::Notice::Expired => {
-                    "The sign-in code expired. If your browser said you are on the waitlist,\n    run agentd cloud login again once you are approved.".to_string()
+                    "The sign-in code expired. Run agentd cloud login again.".to_string()
                 }
                 appv3_api::cloud::Notice::JoinEnded => "The request to join was cancelled or expired.".to_string(),
                 appv3_api::cloud::Notice::CommitMismatch => "The request was cancelled: the codes did not match.".to_string(),
@@ -354,7 +354,6 @@ fn show_code(c: &openagentd_cloud::api::DeviceCode) {
     field("Device", &format!("{}   {}", bold(&c.fingerprint), dim("check the page shows the same")));
     println!();
     println!("  Waiting for approval… {}", dim(&format!("(Ctrl-C to cancel, expires in {} min)", c.expires_in / 60)));
-    println!("  {}", dim("If your browser says you are on the waitlist, you can finish once you are approved."));
 }
 
 /// Gets back into the account with its recovery code: this computer signs

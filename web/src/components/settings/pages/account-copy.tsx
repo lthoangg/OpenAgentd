@@ -19,7 +19,7 @@ export interface NoticeCopy {
 export const NOTICES: Record<CloudNotice, NoticeCopy> = {
   expired: {
     title: 'The sign-in code expired.',
-    body: 'If your browser said you are on the waitlist, you can finish once you are approved. Everything on this device keeps working.',
+    body: 'Sign in again to get a new code. Everything on this device keeps working.',
   },
   empty_account: {
     body: 'This account has no devices yet. Sign in again to set it up on this device.',
@@ -135,7 +135,6 @@ export function SigningInCopy({ url, userCode, fingerprint }: { url: string; use
         page shows this device:{' '}
         <strong className="font-mono text-(--color-text)">{fingerprint}</strong>.
       </p>
-      <p className="italic">If your browser says you are on the waitlist, you can finish once you are approved.</p>
     </>
   )
 }

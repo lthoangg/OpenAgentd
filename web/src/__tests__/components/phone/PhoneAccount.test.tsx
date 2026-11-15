@@ -227,7 +227,7 @@ describe('Account page', () => {
     expect(await screen.findByText('account.openagentd.dev/device')).toBeTruthy()
     expect(screen.getByText('WXYZ-1234')).toBeTruthy()
     expect(screen.getByText('AA11 BB22')).toBeTruthy()
-    expect(screen.getByText(/you can finish once you are approved/)).toBeTruthy()
+    expect(screen.queryByText(/waitlist/i)).toBeNull()
     expect(screen.getByRole('button', { name: 'Open page' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))

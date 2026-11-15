@@ -150,8 +150,7 @@ pub enum TokenPoll {
         session: Secret,
         account_id: String,
     },
-    /// Not yet (a slow approval, or a person on the waitlist, who cannot
-    /// approve until the account opens).
+    /// Not yet (a slow approval).
     Pending,
     /// Poll more slowly.
     SlowDown,

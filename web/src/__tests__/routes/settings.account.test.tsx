@@ -155,7 +155,7 @@ describe('AccountSettingsPage', () => {
     expect(sent).toEqual({ server: true, client: true })
     expect(screen.getByText('account.openagentd.dev/device')).toBeTruthy()
     expect(screen.getByText('k7f2 91ab')).toBeTruthy()
-    expect(screen.getByText(/you can finish once you are approved/)).toBeTruthy()
+    expect(screen.queryByText(/waitlist/i)).toBeNull()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
     const link = screen.getByRole('link', { name: 'Open page' })
     expect(link.getAttribute('href')).toBe('https://account.openagentd.dev/device')

@@ -11,7 +11,7 @@ describe('settings sections', () => {
       ['Basics', ['General', 'Models', 'Image and video', 'Desktop']],
       ['Agent', ['Agents', 'Skills', 'Connectors', 'Plugins', 'Memory']],
       ['Work', ['Sessions', 'Workspaces', 'Blocked files']],
-      ['Devices', ['Computers', 'Remote control']],
+      ['Devices', ['Switch computer', 'Remote control']],
       [null, ['About']],
     ])
     expect(SETTINGS_SECTIONS).toHaveLength(15)

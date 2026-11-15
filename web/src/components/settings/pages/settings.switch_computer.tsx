@@ -1,5 +1,5 @@
 /**
- * Settings → Computers — which computer's OpenAgentd this app talks to and,
+ * Settings → Switch computer — which computer's OpenAgentd this app talks to and,
  * in the desktop app, which devices may connect to this one ("Let other
  * devices connect": the local network, and the account's own devices). The
  * Server dialog shows the same list.
@@ -53,10 +53,10 @@ function DesktopConnectionSettings() {
   )
 }
 
-export function ComputersSettingsPage() {
+export function SwitchComputerSettingsPage() {
   return (
     <SettingsPage
-      title="Computers"
+      title="Switch computer"
       description="Which computer this app uses, and which devices can connect to it."
     >
       {isDesktopShell() ? <DesktopConnectionSettings /> : <AppBackendPanel active />}

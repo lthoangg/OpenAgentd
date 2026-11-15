@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
-import { ComputersSettingsPage } from '@/components/settings/pages/settings.computers'
+import { SwitchComputerSettingsPage } from '@/components/settings/pages/settings.switch_computer'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 
@@ -574,10 +574,10 @@ describe('AppBackendDialog', () => {
     expect(useCalls()).toHaveLength(0)
   })
 
-  it('renders the same list as the Settings → Computers page', async () => {
-    render(<ComputersSettingsPage />)
+  it('renders the same list as the Settings → Switch computer page', async () => {
+    render(<SwitchComputerSettingsPage />)
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Computers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Switch computer' })).toBeTruthy()
     expect(await screen.findByText('This computer')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Add a computer by address' })).toBeTruthy()

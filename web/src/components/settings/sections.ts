@@ -44,7 +44,7 @@ export type TopLevelSection = Extract<
   | 'sessions'
   | 'workspaces'
   | 'blocked_files'
-  | 'computers'
+  | 'switch_computer'
   | 'remote'
   | 'about'
 >
@@ -107,7 +107,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: 'workspaces', label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'work' },
   { id: 'blocked_files', label: 'Blocked files', description: 'Files and folders agents cannot read or change', keywords: ['denied paths', 'denied', 'deny'], icon: Shield, group: 'work' },
   // Devices
-  { id: 'computers', label: 'Computers', description: 'Which computer this app uses, and which devices can connect', keywords: ['server', 'connection', 'backend'], icon: Server, group: 'devices' },
+  { id: 'switch_computer', label: 'Switch computer', description: 'Which computer this app uses, and which devices can connect', keywords: ['computers', 'server', 'connection', 'backend'], icon: Server, group: 'devices' },
   { id: 'remote', label: 'Remote control', description: 'Optional: use this computer from your phone anywhere', keywords: ['account', 'cloud', 'sign in'], icon: UserRound, group: 'devices', capability: 'api.cloud' },
   // Footer
   { id: 'about', label: 'About', description: 'Version, updates and community', keywords: ['about openagentd'], icon: Info, group: 'footer' },

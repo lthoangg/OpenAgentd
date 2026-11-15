@@ -359,7 +359,7 @@ describe('useDesktopCommands', () => {
 
       listener?.({ payload: 'settings_connection' })
 
-      expect(openSettings).toHaveBeenCalledWith('computers')
+      expect(openSettings).toHaveBeenCalledWith('switch_computer')
     } finally {
       useSettingsStore.setState({ openSettings: originalOpenSettings })
     }

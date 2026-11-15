@@ -36,7 +36,7 @@ export const SETTINGS_SECTION_IDS = [
   'sessions',
   'workspaces',
   'blocked_files',
-  'computers',
+  'switch_computer',
   'remote',
   'about',
 ] as const

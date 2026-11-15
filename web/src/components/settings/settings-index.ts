@@ -41,10 +41,10 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'desktop', label: 'Show notifications in its bubble', keywords: ['pet', 'bubble', 'questions', 'finished'] },
   { section: 'desktop', label: 'Climb on windows', keywords: ['pet', 'jump', 'fall'] },
   // Server
-  { section: 'computers', label: 'This computer', keywords: ['built-in server', 'builtin', 'local', 'sidecar', 'backend', 'runs inside this app'], anchor: 'Computers' },
-  { section: 'computers', label: 'Add a computer by address', keywords: ['saved server', 'server url', 'add a server', 'remote', 'host', 'backend', 'switch', 'use', 'connect'] },
-  { section: 'computers', label: 'Access key', keywords: ['token', 'password', 'auth', 'server'], anchor: 'Add a computer by address' },
-  { section: 'computers', label: 'Access from other devices', keywords: ['network', 'lan', 'phone', 'qr', 'scan', 'share', 'remote access'] },
+  { section: 'switch_computer', label: 'This computer', keywords: ['built-in server', 'builtin', 'local', 'sidecar', 'backend', 'runs inside this app'], anchor: 'Computers' },
+  { section: 'switch_computer', label: 'Add a computer by address', keywords: ['saved server', 'server url', 'add a server', 'remote', 'host', 'backend', 'switch', 'use', 'connect'] },
+  { section: 'switch_computer', label: 'Access key', keywords: ['token', 'password', 'auth', 'server'], anchor: 'Add a computer by address' },
+  { section: 'switch_computer', label: 'Access from other devices', keywords: ['network', 'lan', 'phone', 'qr', 'scan', 'share', 'remote access'] },
   // Account
   { section: 'remote', label: 'Sign in', keywords: ['account', 'cloud', 'login', 'phone', 'remote', 'anywhere', 'optional', 'guest', 'connect your phone', 'pair', 'qr', 'scan'], anchor: 'Account' },
   { section: 'remote', label: 'Sign out', keywords: ['account', 'cloud', 'logout', 'remove this device'], anchor: 'Account' },

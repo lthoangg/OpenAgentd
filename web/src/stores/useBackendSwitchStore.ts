@@ -1,7 +1,7 @@
 /**
  * The server switch in progress, if any, for the "Switching to …" screen.
  *
- * Every entry point (Settings → Computers, the connection dialog, the
+ * Every entry point (Settings → Switch computer, the connection dialog, the
  * palette's Switch Server…) goes through `lib/backend-switch`, which starts
  * and ends the switch here. A switch to another origin reloads the window,
  * so the target is also handed to the next page load through

@@ -1,7 +1,7 @@
 /**
  * Settings → About OpenAgentd — app identity, this app's version, app
  * updates (desktop and mobile shells), and community links. The server's
- * version and its update sit on its row in Settings → Computers.
+ * version and its update sit on its row in Settings → Switch computer.
  */
 import { useEffect, useState } from 'react'
 import { AlertTriangle, ExternalLink, Globe, MessageSquare, Shield, Users, type LucideIcon } from 'lucide-react'

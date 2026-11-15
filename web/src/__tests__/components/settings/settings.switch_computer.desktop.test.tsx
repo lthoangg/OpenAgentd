@@ -1,5 +1,5 @@
 /**
- * Settings → Computers in the desktop app: "Your computers" above the servers.
+ * Settings → Switch computer in the desktop app: "Your computers" above the servers.
  * The account is the built-in server's, so its calls go through the shell
  * (`desktop_cloud_call`) even while the window shows another computer; the
  * list holds the account's servers but not this computer, with their dots
@@ -27,7 +27,7 @@ mock.module('@tauri-apps/api/core', () => ({
   },
 }))
 
-const { ComputersSettingsPage } = await import('@/components/settings/pages/settings.computers')
+const { SwitchComputerSettingsPage } = await import('@/components/settings/pages/settings.switch_computer')
 const { BUILTIN_STOPPED_COMPUTERS, CANNOT_OPEN_COMPUTERS } = await import('@/components/phone/AccountComputers')
 const { queryClient } = await import('@/lib/query-client')
 
@@ -118,7 +118,7 @@ afterEach(() => {
 function page() {
   return render(
     <QueryClientProvider client={queryClient}>
-      <ComputersSettingsPage />
+      <SwitchComputerSettingsPage />
     </QueryClientProvider>,
   )
 }

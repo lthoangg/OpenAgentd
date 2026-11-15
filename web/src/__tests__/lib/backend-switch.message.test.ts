@@ -9,7 +9,7 @@ describe('connectionFailureMessage', () => {
   it('names the setting that lets another device in, for a server on another computer', () => {
     const message = connectionFailureMessage('http://192.168.1.20:4082')
     expect(message).toContain('Let other devices connect')
-    expect(message).toContain('Settings → Computers')
+    expect(message).toContain('Settings → Switch computer')
     expect(message).toContain('same network')
     expect(message).not.toContain('--host')
     expect(message).not.toContain('LAN IP')

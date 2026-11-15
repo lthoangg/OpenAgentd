@@ -1,7 +1,7 @@
 /**
  * ServersScreen — the phone's bottom level: Computers → Sessions → a chat.
  *
- * One list of computers, as Settings → Computers lists them
+ * One list of computers, as Settings → Switch computer lists them
  * (``AppBackendPanel``, so connecting, keys and editing live in one place):
  * the ones of the phone's account and the ones added by address, under a
  * large "Computers" title that hands over to the bar's small one as it

@@ -232,11 +232,12 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Tidier Settings** `[v3.57.0]` — Settings has four groups, and each page's
   name matches what's on it. **Basics**: General, Models, Image and video,
   Desktop. **Agent**: Agents, Skills, Connectors, Plugins, Memory. **Work**:
-  Sessions, Workspaces, Blocked files. **Devices**: Computers, Remote
+  Sessions, Workspaces, Blocked files. **Devices**: Switch computer, Remote
   control. **About** sits on its own at the bottom of the sidebar.
   - **General** (was Appearance) has two headings: **Appearance** (theme,
     text size) and **Chat** (Detail, Open previews).
-  - **Computers** (was Server) has one **Let other devices connect** section.
+  - **Switch computer** (was Server; the same name as ⌘K → **Switch
+    Computer…**) has one **Let other devices connect** section.
     It holds the network switch, its port, and the switch that lets your
     account's devices connect directly. The network key is called **This
     computer's access key**, so it isn't confused with the access key of a
@@ -244,7 +245,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - **About** shows this app's version, updates and community links, and the
     community links are plain rows. The server's version and its **Update to
     vX**, or what to do where the server runs when it can't update itself,
-    are on the server's row in Computers.
+    are on the server's row in Switch computer.
   - **Remote control** has no headings named "Account". Signed out, the card
     is titled **Sign in**; closing and unavailable accounts show **Status**.
   - **One page, one way to save.** A page made only of switches and choices
@@ -262,7 +263,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     error and Retry while the other parts still work. The save bar also says
     why Save is off for Titles and Summaries.
   - Section ids follow the names (`/settings/models`, `/settings/connectors`,
-    `/settings/sessions`, `/settings/blocked_files`, `/settings/computers`,
+    `/settings/sessions`, `/settings/blocked_files`, `/settings/switch_computer`,
     `/settings/remote`). The old ids are gone *(deprecated)*: a link that
     uses one just opens Settings, and a remembered old section opens
     General. Search still finds every page by its earlier name.

@@ -1,6 +1,6 @@
 /**
  * Switching the app's backend: the steps behind every "Connect" and "Use
- * builtin" button. Settings → Computers (`AppBackendPanel`) and the command
+ * builtin" button. Settings → Switch computer (`AppBackendPanel`) and the command
  * palette's Switch Server… both call these, so a switch checks the server and
  * its key, clears the old session state, and shows the "Switching to …"
  * screen (`BackendSwitchScreen`) the same way from either.
@@ -60,7 +60,7 @@ export function connectionFailureMessage(baseUrl: string): string {
   } catch {
     // validateServerUrl already handles malformed URLs.
   }
-  return 'Nothing answered at that address. Check that OpenAgentd on that computer lets other devices connect (Settings → Computers → Let other devices connect in the desktop app, or agentd server start --public), that this device is on the same network, and that the address is that computer’s.'
+  return 'Nothing answered at that address. Check that OpenAgentd on that computer lets other devices connect (Settings → Switch computer → Let other devices connect in the desktop app, or agentd server start --public), that this device is on the same network, and that the address is that computer’s.'
 }
 
 export async function refreshBackendQueries(): Promise<void> {

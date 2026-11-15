@@ -104,7 +104,7 @@ export function usePaletteServerCommands(): Command[] {
             finish(result)
           })
         },
-        manage: () => useSettingsStore.getState().openSettings('computers'),
+        manage: () => useSettingsStore.getState().openSettings('switch_computer'),
         checkHealth,
       },
     )

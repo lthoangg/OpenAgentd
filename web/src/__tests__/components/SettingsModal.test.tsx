@@ -58,7 +58,7 @@ mock.module('@/components/settings/pages/settings.about', () => ({ AboutSettings
 mock.module('@/components/settings/pages/settings.general', () => ({
   GeneralSettingsPage: () => <div>general<span>Text size</span><button role="radio" aria-checked="false">Compact</button></div>,
 }))
-mock.module('@/components/settings/pages/settings.computers', () => ({ ComputersSettingsPage: () => <div>connection</div> }))
+mock.module('@/components/settings/pages/settings.switch_computer', () => ({ SwitchComputerSettingsPage: () => <div>connection</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
 mock.module('@/components/settings/pages/settings.agents.$name', () => ({ AgentEditorPage: () => <div>agent-edit</div> }))
 mock.module('@/components/settings/pages/settings.skills', () => ({ SkillsListPage: () => <div>skills</div> }))
@@ -373,11 +373,11 @@ describe('SettingsModal — icon rail below 900px with a mouse', () => {
   })
 })
 
-describe('SettingsModal — one name for the computers section', () => {
-  it('calls Settings → Computers by that name in the sidebar', () => {
+describe('SettingsModal — one name for the switch computer section', () => {
+  it('calls it Switch computer in the sidebar, as the palette does', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
-    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).getByRole('button', { name: 'Computers' })).toBeTruthy()
+    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).getByRole('button', { name: 'Switch computer' })).toBeTruthy()
     expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).queryByRole('button', { name: 'Server' })).toBeNull()
   })
 
@@ -394,7 +394,8 @@ describe('SettingsModal — one name for the computers section', () => {
     expect(first('mcp')).toContain('Connectors')
     expect(first('denied')).toContain('Blocked files')
     expect(first('retention')).toContain('Sessions')
-    expect(first('server')).toContain('Computers')
+    expect(first('server')).toContain('Switch computer')
+    expect(first('computers')).toContain('Switch computer')
   })
 })
 

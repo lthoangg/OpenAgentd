@@ -120,7 +120,7 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
       useSettingsStore.getState().openSettings('models')
       break
     case 'settings_connection':
-      useSettingsStore.getState().openSettings('computers')
+      useSettingsStore.getState().openSettings('switch_computer')
       break
   }
 }

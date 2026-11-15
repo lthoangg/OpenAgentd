@@ -1,4 +1,4 @@
-/** Settings → Computers: the switch for direct sessions with the account's devices. */
+/** Settings → Switch computer: the switch for direct sessions with the account's devices. */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'

@@ -1,5 +1,5 @@
 /**
- * DirectSessionsRow — the Settings → Computers switch for direct sessions:
+ * DirectSessionsRow — the Settings → Switch computer switch for direct sessions:
  * the account's devices reach this computer on the home network with their
  * account keys instead of through the relay. Shown only while this
  * computer is in an account as a server, as a row of "Let other devices

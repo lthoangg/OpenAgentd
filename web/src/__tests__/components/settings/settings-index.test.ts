@@ -66,7 +66,7 @@ describe('searchSettings', () => {
     expect(firstSection('providers')).toMatchObject({ section: 'models', label: 'Models' })
     expect(firstSection('denied')).toMatchObject({ section: 'blocked_files', label: 'Blocked files' })
     expect(firstSection('denied paths')).toMatchObject({ section: 'blocked_files', label: 'Blocked files' })
-    expect(firstSection('server')).toMatchObject({ section: 'computers', label: 'Computers' })
+    expect(firstSection('server')).toMatchObject({ section: 'switch_computer', label: 'Switch computer' })
     expect(firstSection('about openagentd')).toMatchObject({ section: 'about', label: 'About' })
   })
 
@@ -82,11 +82,11 @@ describe('searchSettings', () => {
 
   it('finds the list of computers by the words the Server page used, and names each result as the page does', () => {
     const settingsFor = (query: string) => searchSettings(query, SETTINGS_SECTIONS).filter((hit) => hit.kind === 'setting')
-    expect(settingsFor('built-in server')).toContainEqual(expect.objectContaining({ section: 'computers', label: 'This computer', anchor: 'Computers' }))
+    expect(settingsFor('built-in server')).toContainEqual(expect.objectContaining({ section: 'switch_computer', label: 'This computer', anchor: 'Computers' }))
     for (const query of ['saved server', 'server url', 'add a server', 'computer']) {
-      expect({ query, hits: settingsFor(query) }).toEqual({ query, hits: expect.arrayContaining([expect.objectContaining({ section: 'computers', label: 'Add a computer by address', anchor: 'Add a computer by address' })]) })
+      expect({ query, hits: settingsFor(query) }).toEqual({ query, hits: expect.arrayContaining([expect.objectContaining({ section: 'switch_computer', label: 'Add a computer by address', anchor: 'Add a computer by address' })]) })
     }
-    const labels = SETTINGS_INDEX.filter((entry) => entry.section === 'computers').map((entry) => entry.label)
+    const labels = SETTINGS_INDEX.filter((entry) => entry.section === 'switch_computer').map((entry) => entry.label)
     expect(labels.filter((label) => /server/i.test(label))).toEqual([])
   })
 
@@ -97,7 +97,7 @@ describe('searchSettings', () => {
 
   it('lists matching sections first, then settings whose name starts with the query', () => {
     const hits = searchSettings('server', SETTINGS_SECTIONS)
-    expect(hits[0]).toMatchObject({ kind: 'section', section: 'computers', label: 'Computers' })
+    expect(hits[0]).toMatchObject({ kind: 'section', section: 'switch_computer', label: 'Switch computer' })
     const settings = searchSettings('add', SETTINGS_SECTIONS).filter((hit) => hit.kind === 'setting').map((hit) => hit.label)
     expect(settings[0]).toBe('Add a computer by address')
     expect(settings.length).toBeGreaterThan(1)

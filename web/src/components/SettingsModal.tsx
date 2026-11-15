@@ -51,7 +51,7 @@ import { SettingsSearchField, SettingsSearchResults, useSettingsSearch } from '@
 import { revealSetting, type SettingsHit } from '@/components/settings/settings-index'
 import { AboutSettingsPage } from '@/components/settings/pages/settings.about'
 import { GeneralSettingsPage } from '@/components/settings/pages/settings.general'
-import { ComputersSettingsPage } from '@/components/settings/pages/settings.computers'
+import { SwitchComputerSettingsPage } from '@/components/settings/pages/settings.switch_computer'
 import { RemoteSettingsPage } from '@/components/settings/pages/settings.remote'
 import { PhoneRemoteSettingsPage } from '@/components/settings/pages/settings.remote.phone'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
@@ -262,8 +262,8 @@ function SectionContent({
       return <GeneralSettingsPage />
     case 'desktop':
       return <DesktopSettingsPage />
-    case 'computers':
-      return <ComputersSettingsPage />
+    case 'switch_computer':
+      return <SwitchComputerSettingsPage />
     case 'remote':
       // On the phone the account is the phone's own, not a server's.
       return isPhoneCloudShell() ? <PhoneRemoteSettingsPage /> : <RemoteSettingsPage />

@@ -1,7 +1,7 @@
 /**
  * The account's computers, as rows of the one list of computers
  * (`AppBackendPanel`'s `accountRows`): the phone's Computers screen and the
- * desktop app's Settings → Computers.
+ * desktop app's Settings → Switch computer.
  *
  * One row per server of the account (spec 3.4: sessions open only on
  * devices with the server role; this device and clients left out). A

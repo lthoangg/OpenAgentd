@@ -2,7 +2,7 @@
  * NetworkAccessCard — desktop-only switch that lets phones and other
  * computers on the LAN connect to the builtin backend with an access key,
  * without installing the CLI. Mounted by AppBackendPanel in the desktop shell
- * (Settings → Computers and the Server dialog).
+ * (Settings → Switch computer and the Server dialog).
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -83,7 +83,7 @@ export function FirewallHint({ os, port }: { os: OS; port: number }) {
 
 export function NetworkAccessCard({ extraRows }: {
   /**
-   * More ways in, as rows of the same section (Settings → Computers adds the
+   * More ways in, as rows of the same section (Settings → Switch computer adds the
    * account's devices connecting directly).
    */
   extraRows?: ReactNode

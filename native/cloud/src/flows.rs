@@ -55,6 +55,10 @@ pub enum FlowError {
     /// The device left the account it was added to.
     #[error("the number did not match; this device left the account")]
     WrongNumber,
+    /// Recovery: the code typed is not this account's recovery code (or
+    /// not a recovery code at all). Nothing was changed.
+    #[error("that is not this account's recovery code")]
+    WrongRecoveryCode,
     #[error("{0}")]
     Protocol(crate::Error),
 }
@@ -218,6 +222,11 @@ pub fn retry_wait(interval: Duration, e: &ApiError) -> Duration {
 pub struct Member {
     pub cloud: Cloud,
     pub roster: Option<Roster>,
+    /// Devices the cloud lists as departed (left or removed) that `K` may
+    /// still list ([`departed_ids`]). Every roster this device writes
+    /// leaves them out: dropping a device that is already gone grants
+    /// nothing, and it frees its place in the roster.
+    pub departed: Vec<String>,
 }
 
 /// What [`Member::sync`] found.
@@ -230,7 +239,7 @@ pub struct Sync {
 
 impl Member {
     pub fn new(cloud: Cloud, roster: Option<Roster>) -> Self {
-        Member { cloud, roster }
+        Member { cloud, roster, departed: Vec::new() }
     }
 
     pub fn account_id(&self) -> Option<&str> {
@@ -305,12 +314,15 @@ impl Member {
         }
     }
 
-    /// Signs and writes the next roster with `devices`.
-    pub async fn write(&mut self, devices: Vec<Device>) -> FlowResult<Roster> {
+    /// Signs and writes the next roster with `devices`, less the departed
+    /// ones (never this device).
+    pub async fn write(&mut self, mut devices: Vec<Device>) -> FlowResult<Roster> {
         self.sync().await?;
         if !self.is_signer() {
             return Err(FlowError::NotSigner);
         }
+        let me = self.cloud.device_id();
+        devices.retain(|d| d.id == me || !self.departed.contains(&d.id));
         let known = self.roster.as_ref().expect("synced");
         let next = roster::sign(&known.next_body(devices), &self.cloud.device_id(), &self.cloud.keys.sign);
         // Check our own writer against the rules before the cloud does.
@@ -326,6 +338,52 @@ impl Member {
         let devices = self.roster.as_ref().expect("synced").body.devices.iter().filter(|d| d.id != device_id).cloned().collect();
         self.write(devices).await
     }
+
+    /// Notes the departed devices from `GET /v1/devices` ([`departed_ids`]).
+    pub fn note_departed(&mut self, devices: &[crate::api::DeviceInfo]) {
+        if let Some(r) = self.roster.as_ref() {
+            self.departed = departed_ids(r, &self.cloud.device_id(), devices);
+        }
+    }
+
+    /// Whether `K` still lists a departed device, so a write would drop it.
+    pub fn lists_departed(&self) -> bool {
+        self.roster.as_ref().is_some_and(|r| r.body.devices.iter().any(|d| self.departed.contains(&d.id)))
+    }
+
+    /// Writes the roster without the departed devices, when `K` still
+    /// lists one (signer only). `None` when there is nothing to drop. No
+    /// device gains anything from it, so a signer may do it unprompted.
+    pub async fn drop_departed(&mut self) -> FlowResult<Option<Roster>> {
+        if !self.lists_departed() {
+            return Ok(None);
+        }
+        self.sync().await?;
+        if !self.lists_departed() || !self.is_signer() {
+            return Ok(None);
+        }
+        let devices = self.roster.as_ref().expect("synced").body.devices.clone();
+        self.write(devices).await.map(Some)
+    }
+}
+
+/// The devices `K` lists that the cloud says left or were removed, never
+/// `me`. The cloud's word is enough to stop counting a device, as it is to
+/// refuse its sessions: it can only take access away.
+pub fn departed_ids(roster: &Roster, me: &str, devices: &[crate::api::DeviceInfo]) -> Vec<String> {
+    devices.iter().filter(|d| d.departed() && d.device_id != me && roster.body.device(&d.device_id).is_some()).map(|d| d.device_id.clone()).collect()
+}
+
+/// The devices `K` lists that the cloud does not list as departed: what an
+/// app shows. A device the cloud does not list at all stays (an older cloud
+/// or a failed read hides nothing).
+pub fn active_devices<'a>(roster: &'a Roster, devices: &[crate::api::DeviceInfo]) -> Vec<&'a Device> {
+    roster.body.devices.iter().filter(|d| !devices.iter().any(|i| i.device_id == d.id && i.departed())).collect()
+}
+
+/// How many signers are left once the departed are not counted.
+pub fn active_signers(roster: &Roster, devices: &[crate::api::DeviceInfo]) -> usize {
+    active_devices(roster, devices).iter().filter(|d| d.signer).count()
 }
 
 // ---- Genesis (spec section 4.1) ----------------------------------------
@@ -391,6 +449,63 @@ pub async fn genesis(member: &mut Member, session: &Session, draft: GenesisDraft
     member.cloud.enroll_genesis(&session.session, &recovery_pub, &sig, &r.blob).await?;
     member.roster = Some(r.clone());
     Ok(r)
+}
+
+// ---- Recovery (spec section 4.4) -----------------------------------------
+
+/// `lines("agentd-cloud-recover-v1", account_id, base_version, version,
+/// b64(SHA-256(roster envelope)), device_id, b64(auth_pub))`: what the
+/// recovery key signs for `POST /v1/enroll/recover`.
+pub fn recover_message(account_id: &str, base_version: u64, roster: &Roster, device_id: &str, auth_pub: &[u8; 32]) -> Vec<u8> {
+    lines!["agentd-cloud-recover-v1", account_id, base_version, roster.version(), &roster.hash, device_id, &b64(auth_pub)]
+}
+
+/// Recovers the account with its recovery `code` when no device that
+/// approves is left: reads the current roster with the session (not
+/// spending it), signs the next one with the recovery key, listing this
+/// device alone, as a signer, with `member.cloud.roles`, and posts it. The
+/// cloud revokes every other device. The recovery key is derived from the
+/// code here and wiped when this returns; it stays the account's (a roster
+/// cannot change it), so the code keeps working.
+///
+/// A code that is not this account's is [`FlowError::WrongRecoveryCode`],
+/// found before anything is sent where it can be (the roster names the
+/// recovery key). An account without a roster is [`FlowError::EmptyAccount`],
+/// with the session unspent.
+pub async fn recover(member: &mut Member, session: &Session, code: &str) -> FlowResult<Roster> {
+    let recovery = Ed25519::from_seed(recovery::decode(code).map_err(|_| FlowError::WrongRecoveryCode)?);
+    if !member.cloud.roles.is_valid() {
+        return Err(FlowError::Roles);
+    }
+    let account = session.account_id.clone();
+    member.cloud.account_id = Some(account.clone());
+    let head = match member.cloud.enroll_roster(&session.session).await {
+        Ok(h) => h,
+        Err(e) if e.is("no_roster") => return Err(FlowError::EmptyAccount),
+        Err(e) => return Err(e.into()),
+    };
+    let known = roster::trust_head(&head.blob, &account)?;
+    if known.version() != head.version {
+        return Err(FlowError::Roster(roster::Rule::Version));
+    }
+    if known.body.recovery_pub != b64(&recovery.public()) {
+        return Err(FlowError::WrongRecoveryCode);
+    }
+    let me = Device::of(&member.cloud.keys, true, member.cloud.roles);
+    let next = roster::sign(&known.next_body(vec![me]), roster::RECOVERY, &recovery);
+    // Check our own roster against the rules before the cloud does.
+    let next = roster::verify(&next.blob, &account, Some(&known), Chain::Linked)?;
+    let auth_pub = member.cloud.keys.auth.public();
+    let sig = recovery.sign(&recover_message(&account, known.version(), &next, &member.cloud.device_id(), &auth_pub));
+    drop(recovery);
+    match member.cloud.enroll_recover(&session.session, known.version(), &next, &sig).await {
+        Ok(()) => {}
+        // The signature did not check out against the stored key.
+        Err(e) if e.status == 401 && e.is("unauthorized") => return Err(FlowError::WrongRecoveryCode),
+        Err(e) => return Err(e.into()),
+    }
+    member.roster = Some(next.clone());
+    Ok(next)
 }
 
 // ---- Joining with the 6-digit code (spec section 4.2, device N) ---------

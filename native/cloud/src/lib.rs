@@ -13,6 +13,7 @@
 //! - [`roster`]: building, signing, parsing and verifying rosters.
 //! - [`code`]: commit-reveal and the 6-digit code.
 //! - [`invite`]: invitation links and MACs.
+//! - [`names`]: device names, as plain text.
 //! - [`letter`]: sealed mailbox letters.
 //! - [`noise`]: the Noise IK handshake and transport of relay sessions.
 //! - [`account_state`]: what the cloud's account errors mean for a device.
@@ -38,6 +39,7 @@ pub mod keys;
 pub mod letter;
 pub mod link;
 pub mod mux;
+pub mod names;
 pub mod noise;
 pub mod recovery;
 pub mod relay;

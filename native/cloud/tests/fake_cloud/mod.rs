@@ -54,6 +54,10 @@ pub struct Account {
     pub revoked: Vec<String>,
     /// device id → declared kind.
     pub kinds: HashMap<String, String>,
+    /// device id → the name the account keeps for it.
+    pub names: HashMap<String, String>,
+    /// The recovery key's public half (b64), from genesis.
+    pub recovery_pub: Option<String>,
 }
 
 #[derive(Default)]
@@ -121,6 +125,8 @@ impl Fake {
             .route("/v1/device/token", post(device_token))
             .route("/v1/device/offer", post(device_offer))
             .route("/v1/enroll/genesis", post(genesis))
+            .route("/v1/enroll/roster", get(enroll_roster))
+            .route("/v1/enroll/recover", post(recover))
             .route("/v1/enroll/pending", post(pending_create).get(pending_list))
             .route("/v1/enroll/pending/{id}", get(pending_get).delete(pending_delete))
             .route("/v1/enroll/pending/{id}/na", post(pending_na))
@@ -129,6 +135,7 @@ impl Fake {
             .route("/v1/roster", get(roster_get).put(roster_put))
             .route("/v1/devices", get(devices))
             .route("/v1/devices/self/leave", post(leave))
+            .route("/v1/devices/{id}/name", axum::routing::put(device_name))
             .route("/v1/relay/token", post(relay_token))
             .route("/v1/relay/usage", get(relay_usage))
             .route("/v1/mailbox/{to}", post(mailbox_send))
@@ -316,8 +323,99 @@ async fn genesis(State(f): State<Fake>, headers: HeaderMap, Json(body): Json<Val
     let a = s.accounts.get_mut(&account).unwrap();
     a.roster = Some(r.blob.clone());
     a.version = 1;
+    a.recovery_pub = Some(body["recovery_pub"].as_str().unwrap().to_string());
     a.devices.insert(device, (body["auth_pub"].as_str().unwrap().to_string(), true, true));
     (StatusCode::CREATED, Json(json!({ "account_id": account, "version": 1 }))).into_response()
+}
+
+/// `GET /v1/enroll/roster`: the head, for a recovering device. The
+/// session is not spent.
+async fn enroll_roster(State(f): State<Fake>, headers: HeaderMap) -> Response {
+    let s = f.0.lock().unwrap();
+    let (account, _) = match session_of(&s, &headers) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let a = &s.accounts[&account];
+    if let Some(r) = problem(a) {
+        return r;
+    }
+    match &a.roster {
+        Some(blob) => Json(json!({ "version": a.version, "blob": blob, "revocation_floor": 0 })).into_response(),
+        None => err(409, "no_roster"),
+    }
+}
+
+/// `POST /v1/enroll/recover`, checked like the cloud does: the recovery
+/// key's signature, a roster signed by it, chained to the head, adding
+/// exactly this device as a signer. Devices it leaves out are revoked.
+async fn recover(State(f): State<Fake>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+    let mut s = f.0.lock().unwrap();
+    let (account, device) = match session_of(&s, &headers) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if let Some(r) = problem(&s.accounts[&account]) {
+        return r;
+    }
+    if body["device_id"] != json!(device) {
+        return err(403, "wrong_device");
+    }
+    let a = &s.accounts[&account];
+    let (Some(blob), Some(rpub)) = (a.roster.clone(), a.recovery_pub.clone()) else {
+        return err(409, "no_roster");
+    };
+    let roster_text = body["roster"].as_str().unwrap_or("");
+    let envelope = from_b64(roster_text).unwrap_or_default();
+    let message = lines![
+        "agentd-cloud-recover-v1",
+        &account,
+        body["base_version"].as_u64().unwrap_or(0),
+        body["version"].as_u64().unwrap_or(0),
+        &b64(&Sha256::digest(&envelope)),
+        &device,
+        body["auth_pub"].as_str().unwrap_or("")
+    ];
+    let sig: Option<[u8; 64]> = body["signature"].as_str().and_then(|v| from_b64_array(v).ok());
+    let pubkey: [u8; 32] = from_b64_array(&rpub).unwrap();
+    if !sig.is_some_and(|sig| keys::verify(&pubkey, &sig, &message)) {
+        return err(401, "unauthorized");
+    }
+    if body["base_version"].as_u64() != Some(a.version) {
+        return err(409, "version_conflict");
+    }
+    if a.devices.contains_key(&device) {
+        return err(409, "device_exists");
+    }
+    let known = roster::parse(&blob).unwrap();
+    let Ok(next) = roster::verify(roster_text, &account, Some(&known), Chain::Linked) else {
+        return err(400, "invalid_roster");
+    };
+    let change = roster::diff(&known.body, &next.body);
+    let added_ok = change.added == [device.clone()] && next.body.signer(&device).is_some_and(|d| d.auth == body["auth_pub"].as_str().unwrap_or(""));
+    if next.by != roster::RECOVERY || !added_ok {
+        return err(400, "invalid_roster");
+    }
+    spend(&mut s, &headers);
+    let a = s.accounts.get_mut(&account).unwrap();
+    a.devices.insert(device.clone(), (body["auth_pub"].as_str().unwrap().to_string(), true, true));
+    if let Some(k) = body["kind"].as_str() {
+        a.kinds.insert(device.clone(), k.to_string());
+    }
+    for removed in &change.removed {
+        if let Some(e) = a.devices.get_mut(removed) {
+            e.1 = false;
+        }
+        if !a.revoked.contains(removed) {
+            a.revoked.push(removed.clone());
+        }
+    }
+    a.roster = Some(next.blob.clone());
+    a.version = next.version();
+    let (version, revoked) = (a.version, a.revoked.clone());
+    drop(s);
+    f.notify_roster(version, revoked);
+    Json(json!({ "account_id": account, "version": version, "revocation_floor": version })).into_response()
 }
 
 async fn pending_create(State(f): State<Fake>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
@@ -596,9 +694,39 @@ async fn devices(State(f): State<Fake>, method: Method, uri: Uri, headers: Heade
     let list: Vec<Value> = s.accounts[&account]
         .devices
         .iter()
-        .map(|(id, (_, active, signer))| json!({ "device_id": id, "signer": signer, "added_at": 0, "revoked_at": if *active { Value::Null } else { json!(1) }, "kind": s.accounts[&account].kinds.get(id) }))
+        .map(|(id, (_, active, signer))| json!({ "device_id": id, "signer": signer, "added_at": 0, "revoked_at": if *active { Value::Null } else { json!(1) }, "kind": s.accounts[&account].kinds.get(id), "name": s.accounts[&account].names.get(id) }))
         .collect();
     (h, Json(json!({ "devices": list, "device_cap": openagentd_cloud::roster::MAX_DEVICES }))).into_response()
+}
+
+/// `PUT /v1/devices/{id}/name`: a device names itself; a signer any device.
+async fn device_name(State(f): State<Fake>, method: Method, uri: Uri, headers: HeaderMap, Path(id): Path<String>, body: axum::body::Bytes) -> Response {
+    let mut s = f.0.lock().unwrap();
+    let (account, device, signer, h) = signed_or_return!(s, method, uri, headers, &body, false);
+    if id != device && !signer {
+        return err(403, "not_signer");
+    }
+    let a = s.accounts.get_mut(&account).unwrap();
+    if !a.devices.get(&id).is_some_and(|e| e.1) {
+        return err(409, "unknown_device");
+    }
+    let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let name = match &v["name"] {
+        Value::Null => None,
+        Value::String(n) => {
+            let n = n.trim();
+            if n.is_empty() || n.chars().count() > 40 || n.chars().any(char::is_control) {
+                return err(400, "invalid_request");
+            }
+            Some(n.to_string())
+        }
+        _ => return err(400, "invalid_request"),
+    };
+    match &name {
+        Some(n) => a.names.insert(id.clone(), n.clone()),
+        None => a.names.remove(&id),
+    };
+    (h, Json(json!({ "device_id": id, "name": name }))).into_response()
 }
 
 /// Today's relay use: the account's active devices that ever opened presence,

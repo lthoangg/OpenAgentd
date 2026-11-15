@@ -24,7 +24,7 @@ implementation, fix the root cause, then run the surface's full suite.
 | Web `web/` | `cd web && bun test --parallel src/__tests__/<path>.test.tsx` | `make verify-web` (oxlint, `tsc -b` incl. tests, full suite) |
 | Shared native crate | `cd native/shell-core && cargo test <filter>` | `make verify-shell-core` |
 | Desktop shell | see `references/native.md` | `make verify-desktop` |
-| Mobile shell | — | `make verify-mobile` (check only) |
+| Mobile shell | — | `make verify-mobile` (check and clippy `-D warnings`) |
 | Scripts, installers, workflows | `.venv/bin/python -m pytest scripts/tests/<file> -q` | `make verify-scripts` |
 
 Crates are named `appv3-<dir>` (`appv3-api`, `appv3-agent`, `appv3-tools`, …);

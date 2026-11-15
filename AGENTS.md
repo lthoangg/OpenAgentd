@@ -127,7 +127,7 @@ make verify-web      # oxlint, app/test TypeScript (tsc -b), Bun tests
 make verify-docs     # Markdown links/frontmatter/Make references
 make verify-version  # synchronized release versions and catalogue metadata
 make verify-desktop  # locked desktop cargo check/test/clippy
-make verify-mobile   # locked mobile cargo check
+make verify-mobile   # locked mobile cargo check and clippy -D warnings
 make verify-shell-core # shared native crate fmt/clippy/test
 make verify          # portable v3 + scripts + web + docs + version checks
 make verify-native   # shell-core + desktop + mobile; native system dependencies required

@@ -94,10 +94,11 @@ verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both
 verify-desktop: ## Check, test, and lint the desktop Rust crate
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo check --locked
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo test --locked
-	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
+	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets -- -D warnings
 
-verify-mobile: ## Check the mobile Rust crate
+verify-mobile: ## Check and lint the mobile Rust crate
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
+	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo clippy --locked --all-targets -- -D warnings
 
 health: ## Rank web frontend god files + detect circular imports (text report)
 	python3 -m scripts.codehealth --lang ts

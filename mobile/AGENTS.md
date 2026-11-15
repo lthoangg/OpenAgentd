@@ -71,7 +71,7 @@ from any branch: `gh workflow run release-ios.yml --ref <branch> -f channel=inte
 ## Checks
 
 ```bash
-make verify-mobile  # from repository root; locked cargo check used by CI
+make verify-mobile  # from repository root; locked cargo check and clippy, as in CI
 ```
 
 iOS and Android builds and device behavior are not covered by CI. Run the

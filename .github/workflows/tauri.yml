@@ -143,7 +143,7 @@ jobs:
       # The desktop target is Linux-only here, so Clippy sees only portable
       # code paths supported by this runner.
       - name: Cargo clippy
-        run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
+        run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets -- -D warnings
 
   desktop-windows:
     name: Cargo check (desktop / Windows)
@@ -221,4 +221,4 @@ jobs:
         run: TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
 
       - name: Cargo clippy
-        run: TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo clippy --locked --all-targets
+        run: TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo clippy --locked --all-targets -- -D warnings

@@ -1,8 +1,12 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeAll, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ImageLightbox } from "@/components/ImageLightbox"
+import { FileLightbox } from "@/components/LazyFileLightbox"
 
+// The viewer loads on first use (a lazy surface the app prefetches while
+// idle); load it first, as the app has by the time anyone opens an image.
+beforeAll(async () => { await FileLightbox.preload() })
 afterEach(cleanup)
 
 describe("ImageLightbox", () => {

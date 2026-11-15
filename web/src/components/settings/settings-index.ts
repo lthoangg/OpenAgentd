@@ -9,8 +9,9 @@
  *
  * `label` is the text the page shows for the setting, so opening a result can
  * scroll to it and focus its control (`revealSetting`). A setting with no
- * page text of its own (a button in a list) sets `anchor`, or leaves the
- * result to open its section only.
+ * page text of its own (a button in a list) sets `anchor`: a heading or
+ * label the page always shows. `settings-index.anchors.test.ts` checks that
+ * every one of them is text in its section's page.
  */
 import type { SettingsSectionDef, TopLevelSection } from '@/components/settings/sections'
 
@@ -25,11 +26,11 @@ export interface SettingEntry {
 }
 
 export const SETTINGS_INDEX: readonly SettingEntry[] = [
-  // Appearance
+  // General
   { section: 'general', label: 'Theme', keywords: ['dark', 'light', 'system', 'color', 'colour', 'mode', 'appearance'] },
-  { section: 'general', label: 'Text size', keywords: ['font', 'compact', 'default', 'large', 'bigger', 'smaller', 'zoom', 'type'] },
-  { section: 'general', label: 'Detail', keywords: ['simple', 'full', 'reader', 'detailed', 'transcript', 'style', 'thinking', 'tool calls', 'chat layout'] },
-  { section: 'general', label: 'Open previews', keywords: ['previews', 'review panel', 'web page', 'browser', 'auto open', 'automatically', 'manually', 'on click', 'when i choose'] },
+  { section: 'general', label: 'Text size', keywords: ['font', 'compact', 'default', 'large', 'bigger', 'smaller', 'zoom', 'type', 'appearance'] },
+  { section: 'general', label: 'Detail', keywords: ['simple', 'full', 'reader', 'detailed', 'transcript', 'style', 'thinking', 'tool calls', 'chat layout', 'chat'] },
+  { section: 'general', label: 'Open previews', keywords: ['previews', 'review panel', 'web page', 'browser', 'auto open', 'automatically', 'manually', 'on click', 'when i choose', 'chat'] },
   // Desktop
   { section: 'desktop', label: 'Agent status in the notch', keywords: ['notch', 'island', 'menu bar', 'macos', 'status'] },
   { section: 'desktop', label: 'Show while OpenAgentd is in front', keywords: ['notch', 'frontmost', 'island'] },
@@ -40,19 +41,21 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'desktop', label: 'Movement', keywords: ['pet', 'calm', 'playful', 'chaotic', 'still'] },
   { section: 'desktop', label: 'Show notifications in its bubble', keywords: ['pet', 'bubble', 'questions', 'finished'] },
   { section: 'desktop', label: 'Climb on windows', keywords: ['pet', 'jump', 'fall'] },
-  // Server
+  // Switch computer
   { section: 'switch_computer', label: 'This computer', keywords: ['built-in server', 'builtin', 'local', 'sidecar', 'backend', 'runs inside this app'], anchor: 'Computers' },
   { section: 'switch_computer', label: 'Add a computer by address', keywords: ['saved server', 'server url', 'add a server', 'remote', 'host', 'backend', 'switch', 'use', 'connect'] },
-  { section: 'switch_computer', label: 'Access key', keywords: ['token', 'password', 'auth', 'server'], anchor: 'Add a computer by address' },
-  { section: 'switch_computer', label: 'Access from other devices', keywords: ['network', 'lan', 'phone', 'qr', 'scan', 'share', 'remote access'] },
-  // Account
-  { section: 'remote', label: 'Sign in', keywords: ['account', 'cloud', 'login', 'phone', 'remote', 'anywhere', 'optional', 'guest', 'connect your phone', 'pair', 'qr', 'scan'], anchor: 'Account' },
-  { section: 'remote', label: 'Sign out', keywords: ['account', 'cloud', 'logout', 'remove this device'], anchor: 'Account' },
+  { section: 'switch_computer', label: 'Access key of a computer you add', keywords: ['token', 'password', 'auth', 'server'], anchor: 'Add a computer by address' },
+  { section: 'switch_computer', label: 'Let other devices connect', keywords: ['network', 'lan', 'phone', 'qr', 'scan', 'share', 'remote access', 'access from other devices', 'network access', 'port'] },
+  { section: 'switch_computer', label: "This computer's access key", keywords: ['network key', 'regenerate', 'token', 'password', 'lan'], anchor: 'Let other devices connect' },
+  { section: 'switch_computer', label: "Let your account's devices connect directly", keywords: ['direct', 'home network', 'account devices', 'relay'], anchor: 'Let other devices connect' },
+  // Remote control
+  { section: 'remote', label: 'Sign in', keywords: ['account', 'cloud', 'login', 'phone', 'remote', 'anywhere', 'optional', 'guest', 'connect your phone', 'pair', 'qr', 'scan'] },
+  { section: 'remote', label: 'Devices', keywords: ['account', 'cloud', 'sign out', 'logout', 'add a device', 'remove this device', 'can add devices'] },
   // Agents, skills, connectors, plugins, memory
-  { section: 'agents', label: 'Agent model', keywords: ['model', 'thinking', 'reasoning', 'effort', 'subagent', 'system prompt', 'tools'], anchor: 'Agents' },
+  { section: 'agents', label: 'Agent model', keywords: ['model', 'thinking', 'reasoning', 'effort', 'subagent', 'main agent', 'system prompt', 'tools'], anchor: 'Agents' },
   { section: 'skills', label: 'Skill instructions', keywords: ['skill.md', 'instruction pack', 'new skill', 'create skill'], anchor: 'Skills' },
   { section: 'connectors', label: 'Connector tools', keywords: ['mcp server', 'model context protocol', 'stdio', 'http', 'oauth', 'restart', 'new server', 'new connector', 'tool'], anchor: 'Connectors' },
-  { section: 'plugins', label: 'Plugin folders', keywords: ['folder', 'bundle', 'skills', 'mcp servers', 'connectors', 'tools', 'permissions', 'enable', 'disable', 'reload', 'install', 'add plugin', 'agentd plugin add'], anchor: 'Plugin folders' },
+  { section: 'plugins', label: 'Plugin folders', keywords: ['folder', 'bundle', 'skills', 'mcp servers', 'connectors', 'tools', 'permissions', 'enable', 'disable', 'reload', 'install', 'add plugin', 'agentd plugin add'] },
   { section: 'plugins', label: 'Single-file plugins', keywords: ['hooks', 'extensions', 'python', 'typescript', 'javascript', 'provider'] },
   { section: 'memory', label: 'Memory pages', keywords: ['wiki', 'knowledge base', 'markdown', 'notes', 'remember'], anchor: 'Memory' },
   // Sessions: titles, summaries, goals, history
@@ -78,7 +81,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'models', label: 'Hide from pickers', keywords: ['hide a provider', 'hide', 'show', 'models list', 'visible models', 'picker'], anchor: 'Models' },
   { section: 'models', label: 'Sign out of a subscription', keywords: ['provider', 'oauth', 'chatgpt', 'copilot', 'codex', 'subscription', 'logout', 'reconnect'], anchor: 'Models' },
   // About
-  { section: 'about', label: 'Check for updates', keywords: ['version', 'update', 'download', 'restart', 'upgrade', 'release'], anchor: 'Updates' },
+  { section: 'about', label: 'Check for updates', keywords: ['version', 'update', 'download', 'restart', 'upgrade', 'release'], anchor: 'Version' },
   { section: 'about', label: 'Community and support', keywords: ['discord', 'facebook', 'website', 'help', 'feedback'] },
 ]
 
@@ -139,7 +142,7 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 function findByText(root: ParentNode, text: string): HTMLElement | null {
   const target = text.trim().toLowerCase()
   let found: HTMLElement | null = null
-  for (const el of root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, label, p, span, div, legend')) {
+  for (const el of root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, label, p, span, div, legend, button')) {
     if (el.textContent?.trim().toLowerCase() !== target) continue
     // A wrapper repeating its only child's text is not the match.
     if (found && el.contains(found)) continue
@@ -158,6 +161,11 @@ export function revealSetting(root: ParentNode | null, text: string): boolean {
   const label = findByText(root, text)
   if (!label) return false
   label.scrollIntoView?.({ block: 'center' })
+  // A button named by the setting is its own control.
+  if (label.matches(FOCUSABLE)) {
+    label.focus({ preventScroll: true })
+    return true
+  }
   let scope: HTMLElement | null = label
   for (let depth = 0; scope && depth < 4; depth += 1, scope = scope.parentElement) {
     const control = scope.querySelector<HTMLElement>(FOCUSABLE)

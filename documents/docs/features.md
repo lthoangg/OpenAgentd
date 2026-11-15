@@ -270,6 +270,12 @@ run from the terminal (the native Rust binary since v3.0.0).
     row at the bottom of the editor. In a connector's form, the first part is
     **Connection**, and its on/off option is **Turned on**, so "Status" means only the
     running connection.
+  - **Every search result lands on its setting.** Results scroll to text the
+    page shows: **Sign in** and **Devices** on Remote control, **Let other
+    devices connect** and **This computer's access key** on Switch computer,
+    and **Version** for Check for updates, which used to land on nothing in the
+    browser. A result named after a button, like **Add a computer by
+    address**, focuses that button.
   - Section ids follow the names (`/settings/models`, `/settings/connectors`,
     `/settings/sessions`, `/settings/blocked_files`, `/settings/switch_computer`,
     `/settings/remote`). The old ids are gone *(deprecated)*: a link that

@@ -147,6 +147,18 @@ describe('revealSetting', () => {
     expect(document.activeElement?.id).toBe('hover')
   })
 
+  it('focuses a button named by the setting itself (Add a computer by address)', () => {
+    const root = document.createElement('div')
+    root.innerHTML = '<h2>Computers</h2><button type="button">Use</button><button type="button">Add a computer by address</button>'
+    document.body.append(root)
+    try {
+      expect(revealSetting(root, 'Add a computer by address')).toBe(true)
+      expect(document.activeElement?.textContent).toBe('Add a computer by address')
+    } finally {
+      root.remove()
+    }
+  })
+
   it('reports a setting the page has not shown (yet)', () => {
     expect(revealSetting(page(), 'Nothing like this')).toBe(false)
     expect(revealSetting(null, 'Theme')).toBe(false)

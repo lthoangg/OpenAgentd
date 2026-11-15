@@ -50,6 +50,7 @@
     "allow-cloud-invite-add",
     "allow-cloud-invite-cancel",
     "allow-cloud-remove-device",
+    "allow-cloud-make-approver",
     "allow-cloud-sign-out",
     "allow-notification-take-taps",
     "allow-cloud-open-computer",

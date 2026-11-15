@@ -1506,6 +1506,18 @@ pub async fn cloud_remove_device(device_id: String) -> Result<Status, String> {
     Ok(status())
 }
 
+/// Lets a device approve others (its roles are unchanged), after Face ID.
+/// An unknown device is refused as "The request was cancelled or expired."
+#[tauri::command]
+pub async fn cloud_make_approver(device_id: String) -> Result<Status, String> {
+    with_sign_key(
+        "Let this device approve others",
+        async move |m: &mut Member| m.make_approver(&device_id).await.map(|_| ()),
+    )
+    .await?;
+    Ok(status())
+}
+
 // ---- Invitations (spec section 4.3) -----------------------------------------
 //
 // The phone shows a QR code only while the Add a device sheet is open. It

@@ -837,6 +837,7 @@ pub fn run() {
             cloud::cloud_invite_add,
             cloud::cloud_invite_cancel,
             cloud::cloud_remove_device,
+            cloud::cloud_make_approver,
             cloud::cloud_sign_out,
             cloud_poke,
             cloud::cloud_link_route,

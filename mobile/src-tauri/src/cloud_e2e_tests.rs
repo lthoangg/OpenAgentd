@@ -983,3 +983,38 @@ fn a_wrong_recovery_code_leaves_the_account_alone_and_an_empty_account_sets_up()
         assert!(matches!(s, Status::Guest { notice: None, .. }), "{s:?}");
     });
 }
+
+#[test]
+fn the_phone_lets_a_computer_approve_others_after_face_id() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        init_phone();
+        let computer = signed_in_with_a_computer(&fake, &base).await;
+        let id = computer.cloud.device_id();
+        let signer_of =
+            |rows: &[cloud::DeviceRow]| rows.iter().find(|d| d.device_id == id).unwrap().signer;
+        assert!(!signer_of(&cloud::cloud_devices().await.unwrap()));
+
+        // Face ID cancelled: nothing changes.
+        cloud::CANCEL_NEXT_UNLOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+        let cancelled = cloud::cloud_make_approver(id.clone()).await;
+        assert_eq!(cancelled.unwrap_err(), "Cancelled.");
+        assert!(!signer_of(&cloud::cloud_devices().await.unwrap()));
+
+        cloud::cloud_make_approver(id.clone()).await.unwrap();
+        let rows = cloud::cloud_devices().await.unwrap();
+        assert!(signer_of(&rows), "{rows:?}");
+        let row = rows.iter().find(|d| d.device_id == id).unwrap();
+        assert!(row.server && row.client, "its roles are unchanged");
+
+        // A device the account does not have is refused.
+        let stranger = DeviceKeys::generate().id();
+        assert!(cloud::cloud_make_approver(stranger).await.is_err());
+
+        cloud::cloud_sign_out().await.unwrap();
+    });
+}

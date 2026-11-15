@@ -51,6 +51,7 @@ pub async fn cloud_approval_proof(
             client,
         },
         "remove" => Action::Remove,
+        "promote" => Action::Promote,
         "invite" => Action::Invite,
         _ => return Err("Unknown action.".into()),
     };

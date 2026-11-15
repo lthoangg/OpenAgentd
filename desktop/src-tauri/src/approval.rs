@@ -51,6 +51,8 @@ pub enum Action {
         client: bool,
     },
     Remove,
+    /// Let a device of the account approve others too (`id`: its device id).
+    Promote,
     /// Show an invitation (`id`: `start`) or look at its candidates (`id`:
     /// its slot id). Signs no roster.
     Invite,
@@ -65,6 +67,7 @@ fn message(action: Action, id: &str) -> Vec<u8> {
             client,
         } => ("approve", [signer, server, client]),
         Action::Remove => ("remove", [false; 3]),
+        Action::Promote => ("promote", [false; 3]),
         Action::Invite => ("invite", [false; 3]),
     };
     format!(

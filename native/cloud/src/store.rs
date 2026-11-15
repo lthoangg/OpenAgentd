@@ -38,6 +38,10 @@ pub struct Identity {
     /// roster fetch and the device list (spec section 5.5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_contact: Option<u64>,
+    /// The device's name as it and the account last agreed on it: tells a
+    /// local rename from one made elsewhere. Not secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_synced: Option<String>,
 }
 
 impl fmt::Debug for Identity {
@@ -67,6 +71,7 @@ impl Identity {
             problem: None,
             departed: Vec::new(),
             last_contact: None,
+            name_synced: None,
         }
     }
 

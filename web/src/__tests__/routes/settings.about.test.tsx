@@ -44,7 +44,7 @@ mock.module('@tauri-apps/api/core', () => ({
   },
 }))
 
-import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
+import { AboutSettingsPage } from '@/components/settings/pages/settings.about'
 
 function renderHub(health?: { status: string; version: string; capabilities?: string[] }, seed?: (client: QueryClient) => void) {
   const queryClient = new QueryClient({
@@ -163,11 +163,13 @@ describe('AboutSettingsPage — desktop updates card', () => {
 // ── Version section ───────────────────────────────────────────────────────
 
 describe('AboutSettingsPage — version section', () => {
-  it('shows the client and server versions', async () => {
+  it("shows this app's version, and leaves the server's to its row in Computers", async () => {
     shellVersion = '1.2.3'
     renderHub({ status: 'ok', version: '1.2.3' })
     expect(screen.getAllByText('Desktop app').length).toBeGreaterThan(0)
-    await waitFor(() => expect(screen.getAllByText('v1.2.3')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByText('v1.2.3').length).toBeGreaterThan(0))
+    const version = screen.getByRole('heading', { level: 2, name: 'Version' }).closest('section')!
+    expect(version.textContent).not.toContain('Server')
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -208,32 +210,18 @@ describe('AboutSettingsPage — version section', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('says not connected without a server version', () => {
-    renderHub()
-    expect(screen.getByText('not connected')).toBeInTheDocument()
-  })
-
-  it('offers the server update from another device, and leaves the desktop app’s own server to Updates', async () => {
+  it('offers no server update: that is on the server row in Computers', async () => {
     const health = { status: 'ok', version: '1.2.3', capabilities: ['api.server_update'] }
     const update = {
       current: '1.2.3', latest: '1.3.0', available: true, can_upgrade: true, method: 'desktop_app', reason: null, check_error: null,
       in_progress: false, release_url: null, log: '', last: null,
     }
-    const on = (backend: Record<string, unknown>) => (client: QueryClient) => {
-      client.setQueryData(queryKeys.serverUpdate(), update)
-      client.setQueryData(queryKeys.backendStatus(), backend)
-    }
-
-    // A phone on a computer's desktop app.
     platform = { isTauri: true, os: 'android' }
-    const phone = renderHub(health, on({ base_url: 'http://192.168.1.20:4082', external: true, mode: 'external' }))
-    expect(await screen.findByRole('button', { name: 'Update to v1.3.0' })).toBeInTheDocument()
-    phone.unmount()
-
-    // The desktop app on its own built-in server.
-    platform = { isTauri: true, os: 'macos' }
-    renderHub(health, on({ base_url: 'http://127.0.0.1:51000', external: false, mode: 'bundled' }))
-    expect(await screen.findByText('v1.3.0 is out. This server comes with this app: update the app to update it.')).toBeInTheDocument()
+    renderHub(health, (client: QueryClient) => {
+      client.setQueryData(queryKeys.serverUpdate(), update)
+      client.setQueryData(queryKeys.backendStatus(), { base_url: 'http://192.168.1.20:4082', external: true, mode: 'external' })
+    })
+    await screen.findByRole('heading', { level: 2, name: 'Version' })
     expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
   })
 })

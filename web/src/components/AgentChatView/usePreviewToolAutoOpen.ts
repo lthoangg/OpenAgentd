@@ -1,7 +1,7 @@
 /**
  * Open the Preview tab when the agent's `preview` tool opens a page.
  *
- * Settings → Appearance can leave pages to the tool row's Open button
+ * Settings → General can leave pages to the tool row's Open button
  * (``previewOpen: 'click'``). Only calls that finish while this view is live count: calls already done
  * when the hook starts or is enabled (history, a session switch) are
  * skipped, and so are blocks without a recent client ``startedAt``. Each

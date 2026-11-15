@@ -13,7 +13,7 @@
 import { useState } from 'react'
 
 import type { AppBackendPrefill } from '@/components/AppBackendPanel'
-import { CANT_ADD_DEVICES } from '@/components/settings/pages/account-copy'
+import { CANT_ADD_DEVICES } from '@/components/settings/pages/remote-copy'
 import { INVITE_PREFIX } from '@/components/settings/pages/join-with-link'
 import { pickReachableUrl } from '@/hooks/useConnectLink'
 import { parseConnectLink } from '@/lib/connect-link'

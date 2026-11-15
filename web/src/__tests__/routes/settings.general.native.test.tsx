@@ -1,5 +1,5 @@
 /**
- * Settings → Appearance in the phone apps: each choice is the app's own
+ * Settings → General in the phone apps: each choice is the app's own
  * segmented control, as on every other platform, not the system's picker.
  */
 import '@testing-library/jest-dom'
@@ -24,7 +24,7 @@ afterEach(() => {
   delete document.documentElement.dataset.textSize
 })
 
-describe('Appearance in the phone apps', () => {
+describe('General in the phone apps', () => {
   it.each(['ios', 'android'])('picks the text size in the app’s own control on %s', async (os) => {
     platform.os = os
     const user = userEvent.setup()

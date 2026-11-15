@@ -530,7 +530,7 @@ describe('AppFooter Connect your phone', () => {
     renderWithQueryClient(<AppFooter />)
     fireEvent.click(await screen.findByRole('button', { name: 'Connect your phone' }))
 
-    expect(mockOpenSettings).toHaveBeenCalledWith('account')
+    expect(mockOpenSettings).toHaveBeenCalledWith('remote')
     expect(useConnectPhoneStore.getState().requested).toBe(1)
     expect(cloudCalls).not.toContain('POST /login')
   })
@@ -541,7 +541,7 @@ describe('AppFooter Connect your phone', () => {
     renderWithQueryClient(<AppFooter />)
     fireEvent.click(await screen.findByRole('button', { name: 'Connect your phone' }))
 
-    expect(mockOpenSettings).toHaveBeenCalledWith('account')
+    expect(mockOpenSettings).toHaveBeenCalledWith('remote')
     expect(useConnectPhoneStore.getState().requested).toBe(0)
   })
 

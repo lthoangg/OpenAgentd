@@ -1,7 +1,7 @@
 /**
  * ServersScreen — the phone's bottom level: Computers → Sessions → a chat.
  *
- * One list of computers, as Settings → Server lists them
+ * One list of computers, as Settings → Computers lists them
  * (``AppBackendPanel``, so connecting, keys and editing live in one place):
  * the ones of the phone's account and the ones added by address, under a
  * large "Computers" title that hands over to the bar's small one as it
@@ -48,8 +48,8 @@ import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { useScanAnyCode } from '@/components/phone/useScanAnyCode'
 import { AddScannedSheet } from '@/components/phone/AddScannedSheet'
-import { CANT_ADD_DEVICES } from '@/components/settings/pages/account-copy'
-import { PhoneAccountContent } from '@/components/settings/pages/settings.account.phone'
+import { CANT_ADD_DEVICES } from '@/components/settings/pages/remote-copy'
+import { PhoneAccountContent } from '@/components/settings/pages/settings.remote.phone'
 import { Button } from '@/components/ui/button'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 import { thisDeviceName } from '@/lib/device-words'

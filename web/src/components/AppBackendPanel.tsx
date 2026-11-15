@@ -1,7 +1,7 @@
 /**
  * AppBackendPanel — choose which computer's OpenAgentd this app talks to.
  *
- * One panel, three hosts: Settings → Server renders it as a page,
+ * One panel, three hosts: Settings → Computers renders it as a page,
  * `AppBackendDialog` wraps it for the places that need it before or outside
  * Settings (the loading screen, the footer health dot, a scanned connect
  * link), and the phone's Computers screen shows it as its list. All
@@ -144,7 +144,7 @@ interface AppBackendPanelProps {
   /** Fill the form and test it; the user still confirms with Connect. */
   prefill?: AppBackendPrefill | null
   /**
-   * Include desktop network access. The dialog does; Settings → Server shows
+   * Include desktop network access. The dialog does; Settings → Computers shows
    * its own "Access from other devices" card.
    */
   showNetworkAccess?: boolean

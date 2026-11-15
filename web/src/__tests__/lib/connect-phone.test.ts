@@ -9,11 +9,11 @@ describe('Connect your phone', () => {
     useSettingsStore.setState({ open: false, section: 'general' })
   })
 
-  it('opens Settings → Account with a sign-in request', () => {
+  it('opens Settings → Remote control with a sign-in request', () => {
     startConnectPhone()
 
     expect(useSettingsStore.getState().open).toBe(true)
-    expect(useSettingsStore.getState().section).toBe('account')
+    expect(useSettingsStore.getState().section).toBe('remote')
     expect(useConnectPhoneStore.getState().requested).toBe(1)
   })
 
@@ -29,7 +29,7 @@ describe('Connect your phone', () => {
   it('opens Account without a request while a sign-in is already under way', () => {
     startConnectPhone({ signIn: false })
 
-    expect(useSettingsStore.getState().section).toBe('account')
+    expect(useSettingsStore.getState().section).toBe('remote')
     expect(consumeConnectPhone()).toBe(false)
   })
 })

@@ -54,21 +54,21 @@ mock.module('framer-motion', () => ({
   }),
 }))
 
-mock.module('@/components/settings/pages/settings.index', () => ({ AboutSettingsPage: () => <div>hub</div> }))
+mock.module('@/components/settings/pages/settings.about', () => ({ AboutSettingsPage: () => <div>hub</div> }))
 mock.module('@/components/settings/pages/settings.general', () => ({
   GeneralSettingsPage: () => <div>general<span>Text size</span><button role="radio" aria-checked="false">Compact</button></div>,
 }))
-mock.module('@/components/settings/pages/settings.connection', () => ({ ConnectionSettingsPage: () => <div>connection</div> }))
+mock.module('@/components/settings/pages/settings.computers', () => ({ ComputersSettingsPage: () => <div>connection</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
 mock.module('@/components/settings/pages/settings.agents.$name', () => ({ AgentEditorPage: () => <div>agent-edit</div> }))
 mock.module('@/components/settings/pages/settings.skills', () => ({ SkillsListPage: () => <div>skills</div> }))
 mock.module('@/components/settings/pages/settings.skills.new', () => ({ NewSkillPage: () => <div>new-skill</div> }))
 mock.module('@/components/settings/pages/settings.skills.$name', () => ({ SkillEditorPage: () => <div>skill-edit</div> }))
-mock.module('@/components/settings/pages/settings.mcp', () => ({ McpListPage: () => <div>mcp</div> }))
-mock.module('@/components/settings/pages/settings.mcp.new', () => ({ NewMcpServerPage: () => <div>new-mcp</div> }))
-mock.module('@/components/settings/pages/settings.mcp.$name', () => ({ McpServerDetailPage: () => <div>mcp-edit</div> }))
-mock.module('@/components/settings/pages/settings.providers', () => ({ ProvidersSettingsPage: () => <div>providers</div> }))
-mock.module('@/components/settings/pages/settings.denied_paths', () => ({ DeniedPathsSettingsPage: () => <div>denied-paths</div> }))
+mock.module('@/components/settings/pages/settings.connectors', () => ({ ConnectorsListPage: () => <div>mcp</div> }))
+mock.module('@/components/settings/pages/settings.connectors.new', () => ({ NewConnectorPage: () => <div>new-mcp</div> }))
+mock.module('@/components/settings/pages/settings.connectors.$name', () => ({ ConnectorDetailPage: () => <div>mcp-edit</div> }))
+mock.module('@/components/settings/pages/settings.models', () => ({ ModelsSettingsPage: () => <div>providers</div> }))
+mock.module('@/components/settings/pages/settings.blocked_files', () => ({ BlockedFilesSettingsPage: () => <div>denied-paths</div> }))
 
 import { SettingsModal } from '@/components/SettingsModal'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -132,12 +132,12 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
 
 describe('SettingsModal — sections', () => {
   it('renders a section page on open, without a loading step, and switches sections in place', () => {
-    useSettingsStore.setState({ open: true, section: 'providers', selectedName: null })
+    useSettingsStore.setState({ open: true, section: 'models', selectedName: null })
     renderModal()
 
     expect(screen.getByText('providers')).toBeTruthy()
 
-    act(() => useSettingsStore.setState({ section: 'mcp' }))
+    act(() => useSettingsStore.setState({ section: 'connectors' }))
     expect(screen.getByText('mcp')).toBeTruthy()
   })
 })
@@ -151,7 +151,7 @@ describe('SettingsModal — phone navigation', () => {
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Back to Settings' })).toBeNull()
 
-    act(() => useSettingsStore.getState().setSection('providers'))
+    act(() => useSettingsStore.getState().setSection('models'))
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).toBeNull()
     expect(screen.getByText('providers')).toBeTruthy()
   })
@@ -240,17 +240,19 @@ describe('SettingsModal — prefers-reduced-motion', () => {
 })
 
 describe('SettingsModal — nav search and groups', () => {
-  it('groups the nav by who needs a page: Basics, Agent, Advanced', () => {
+  it('groups the nav as Basics, Agent, Work and Devices, with About apart at the bottom', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
 
     const nav = screen.getByRole('navigation', { name: 'Settings categories' })
     const groups = [...nav.querySelectorAll('[role=group]')].map((g) => g.getAttribute('aria-label'))
-    expect(groups).toEqual(['Basics', 'Agent', 'Advanced'])
+    expect(groups).toEqual(['Basics', 'Agent', 'Work', 'Devices'])
+    // About sits under the groups, in none of them.
+    expect(within(nav).getByRole('button', { name: 'About' }).closest('[role=group]')).toBeNull()
     // Four small pages are one, Sessions (the registry test counts all fifteen).
     expect(within(nav).getByRole('button', { name: 'Sessions' })).toBeTruthy()
     expect(within(nav).getByRole('button', { name: 'Blocked files' })).toBeTruthy()
-    for (const old of ['Session titles', 'Context', 'Goals', 'Retention', 'Providers', 'MCP servers', 'Denied paths']) {
+    for (const old of ['Session titles', 'Context', 'Goals', 'Retention', 'Providers', 'MCP servers', 'Denied paths', 'Server', 'Appearance']) {
       expect(within(nav).queryByRole('button', { name: old })).toBeNull()
     }
   })
@@ -272,7 +274,7 @@ describe('SettingsModal — nav search and groups', () => {
     expect(results.queryByRole('button', { name: 'Memory' })).toBeNull()
 
     act(() => { fireEvent.keyDown(search, { key: 'Enter' }) })
-    expect(useSettingsStore.getState().section).toBe('providers')
+    expect(useSettingsStore.getState().section).toBe('models')
   })
 
   it('finds a single setting, not only a section, and opens the section that holds it', () => {
@@ -282,7 +284,7 @@ describe('SettingsModal — nav search and groups', () => {
     act(() => { fireEvent.change(sidebar().getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'fallback order' } }) })
     const result = sidebar().getByRole('button', { name: 'Accounts and fallback order, in Models' })
     act(() => { fireEvent.click(result) })
-    expect(useSettingsStore.getState().section).toBe('providers')
+    expect(useSettingsStore.getState().section).toBe('models')
   })
 
   it('scrolls to the setting it opened and focuses its control', async () => {
@@ -290,7 +292,7 @@ describe('SettingsModal — nav search and groups', () => {
     renderModal()
 
     act(() => { fireEvent.change(sidebar().getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'text size' } }) })
-    act(() => { fireEvent.click(sidebar().getByRole('button', { name: 'Text size, in Appearance' })) })
+    act(() => { fireEvent.click(sidebar().getByRole('button', { name: 'Text size, in General' })) })
     expect(useSettingsStore.getState().section).toBe('general')
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Compact'))
   })
@@ -340,7 +342,7 @@ describe('SettingsModal — icon rail below 900px with a mouse', () => {
     const providers = within(sidebar()).getByRole('button', { name: 'Models' })
     expect(providers.querySelector('span.settings-rail\\:sr-only')?.textContent).toBe('Models')
     // Group headings go with the labels; the groups stay named for assistive tech.
-    expect(within(sidebar()).getAllByRole('group').length).toBe(3)
+    expect(within(sidebar()).getAllByRole('group').length).toBe(4)
   })
 
   it('names a section in an app tooltip, with what it holds', async () => {
@@ -364,19 +366,19 @@ describe('SettingsModal — icon rail below 900px with a mouse', () => {
     act(() => { fireEvent.click(within(sidebar()).getByRole('button', { name: 'Search settings' })) })
     const dialog = await screen.findByRole('dialog', { name: 'Search settings' })
     act(() => { fireEvent.change(within(dialog).getByRole('searchbox', { name: 'Search settings' }), { target: { value: 'dark' } }) })
-    act(() => { fireEvent.click(within(dialog).getByRole('button', { name: 'Theme, in Appearance' })) })
+    act(() => { fireEvent.click(within(dialog).getByRole('button', { name: 'Theme, in General' })) })
     expect(useSettingsStore.getState().section).toBe('general')
     // A boolean, not the element: a failing `toBeNull` pretty-prints the whole DOM node.
     await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]') === null).toBe(true))
   })
 })
 
-describe('SettingsModal — one name for the server section', () => {
-  it('calls Settings → Server by that name in the sidebar', () => {
+describe('SettingsModal — one name for the computers section', () => {
+  it('calls Settings → Computers by that name in the sidebar', () => {
     useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
     renderModal()
-    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).getByRole('button', { name: 'Server' })).toBeTruthy()
-    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).queryByRole('button', { name: 'Connection' })).toBeNull()
+    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).getByRole('button', { name: 'Computers' })).toBeTruthy()
+    expect(within(screen.getByRole('navigation', { name: 'Settings categories' })).queryByRole('button', { name: 'Server' })).toBeNull()
   })
 
   it('finds each section by the name it had before', () => {
@@ -392,7 +394,7 @@ describe('SettingsModal — one name for the server section', () => {
     expect(first('mcp')).toContain('Connectors')
     expect(first('denied')).toContain('Blocked files')
     expect(first('retention')).toContain('Sessions')
-    expect(first('server')).toContain('Server')
+    expect(first('server')).toContain('Computers')
   })
 })
 
@@ -418,7 +420,7 @@ describe('SettingsModal — on a phone', () => {
     expect(stack).not.toBeNull()
     expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(true)
 
-    act(() => useSettingsStore.getState().setSection('providers'))
+    act(() => useSettingsStore.getState().setSection('models'))
     expect(document.querySelector('[data-phone-stack-page]')?.hasAttribute('inert')).toBe(false)
     expect(screen.getByRole('heading', { name: 'Models' })).toBeTruthy()
     // The list is still there, under the section, for the pop.
@@ -430,7 +432,7 @@ describe('SettingsModal — on a phone', () => {
     useSettingsStore.setState({ open: false })
     act(() => useSettingsStore.getState().openSettings())
     renderModal()
-    act(() => useSettingsStore.getState().setSection('providers'))
+    act(() => useSettingsStore.getState().setSection('models'))
 
     const back = screen.getByRole('button', { name: 'Back to Settings' })
     expect(back.textContent).toBe('')
@@ -443,7 +445,7 @@ describe('SettingsModal — on a phone', () => {
     useSettingsStore.setState({ open: false })
     act(() => useSettingsStore.getState().openSettings())
     renderModal()
-    act(() => useSettingsStore.getState().setSection('providers'))
+    act(() => useSettingsStore.getState().setSection('models'))
 
     act(() => { fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }) })
     expect(useSettingsStore.getState().open).toBe(true)

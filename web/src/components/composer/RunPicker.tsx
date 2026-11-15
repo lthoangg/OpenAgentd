@@ -359,7 +359,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
           }}
           onReconnect={() => {
             onDone()
-            useSettingsStore.getState().openSettings('providers')
+            useSettingsStore.getState().openSettings('models')
           }}
           rowClass={rowClass}
         />

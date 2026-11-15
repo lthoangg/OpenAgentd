@@ -4,10 +4,10 @@
  * anchor its old section id opens (`useSettingsStore`).
  */
 import { SettingsPartsPage } from '@/components/settings/SettingsPartsPage'
-import { useSummariesPart } from '@/components/settings/pages/settings.context'
-import { useGoalsPart } from '@/components/settings/pages/settings.goals'
-import { useHistoryPart } from '@/components/settings/pages/settings.telemetry'
-import { useTitlesPart } from '@/components/settings/pages/settings.titles'
+import { useSummariesPart } from '@/components/settings/pages/sessions/summaries'
+import { useGoalsPart } from '@/components/settings/pages/sessions/goals'
+import { useHistoryPart } from '@/components/settings/pages/sessions/history'
+import { useTitlesPart } from '@/components/settings/pages/sessions/titles'
 
 export function SessionsSettingsPage() {
   const parts = [useTitlesPart(), useSummariesPart(), useGoalsPart(), useHistoryPart()]

@@ -32,7 +32,7 @@ function SignInChips({ server }: { server: string }) {
         </button>
       )}
       {(!canSignIn || connect.isError) && (
-        <button type="button" className={TOOL_CHIP_CLASS} onClick={() => openSettings('mcp-edit', server)}>
+        <button type="button" className={TOOL_CHIP_CLASS} onClick={() => openSettings('connectors-edit', server)}>
           Open in Settings
         </button>
       )}

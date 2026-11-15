@@ -48,7 +48,7 @@ interface McpServerDetailPageProps {
   onBack: () => void
 }
 
-export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) {
+export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) {
   const push = useToastStore((s) => s.push)
   const serverQ = useMcpServerQuery(name)
   const updateMut = useUpdateMcpServerMutation()

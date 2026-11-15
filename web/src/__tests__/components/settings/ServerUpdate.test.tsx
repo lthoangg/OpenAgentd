@@ -1,6 +1,6 @@
 /**
- * Settings → About → Version → Server: the update button and its note for
- * each state (available, updating, done, failed, cannot update here).
+ * The server's update under the row of the server in use (Settings →
+ * Computers, the Server dialog): the update button and its note for each state (available, updating, done, failed, cannot update here).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -13,6 +13,8 @@ mock.module('@/queries/useServerUpdateQuery', () => ({
   SERVER_UPDATE_CAPABILITY: 'api.server_update',
 }))
 const start = mock(async () => {})
+let desktop = false
+mock.module('@/lib/desktop-shell', () => ({ isDesktopShell: () => desktop }))
 
 const { ServerUpdateButton, ServerUpdateConfirm, ServerUpdateNote, ServerUpdateOnRow, blockedAdvice, useServerUpdateFlow } = await import('@/components/settings/ServerUpdate')
 const { useServerUpdateStore } = await import('@/stores/useServerUpdateStore')
@@ -176,11 +178,28 @@ describe('ServerUpdateOnRow', () => {
     expect(showOnRow().container.innerHTML).toBe('')
   })
 
-  it('adds nothing to the row when there is nothing to press', () => {
+  it('adds nothing to the row of a server that is up to date', () => {
     data = available({ available: false })
     expect(showOnRow().container.innerHTML).toBe('')
-    cleanup()
+  })
+
+  it('in the desktop app on its own server, leaves the update to the app', () => {
+    desktop = true
+    appClient.setQueryData(queryKeys.backendStatus(), { base_url: 'http://127.0.0.1:51000', external: false, mode: 'bundled' })
+    try {
+      data = available({ method: 'desktop_app' })
+      showOnRow()
+      expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
+      expect(screen.getByRole('status').textContent).toBe('v3.51.0 is out. This server comes with this app: update the app to update it.')
+    } finally {
+      desktop = false
+    }
+  })
+
+  it('says what to do instead under a server that cannot update itself, now that About has no Server row', () => {
     data = available({ can_upgrade: false, reason: 'foreground' })
-    expect(showOnRow().container.innerHTML).toBe('')
+    showOnRow()
+    expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain('update it where it runs: agentd upgrade')
   })
 })

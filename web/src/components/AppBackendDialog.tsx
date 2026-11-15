@@ -1,7 +1,7 @@
 /**
  * AppBackendDialog — the Server panel in an overlay, for places that need it
  * outside Settings: the loading screen (no server yet), the footer health
- * dot, and a scanned `openagentd://connect` link. Settings → Server renders
+ * dot, and a scanned `openagentd://connect` link. Settings → Computers renders
  * the same `AppBackendPanel` as a page. One close button, in the header.
  */
 import { Server } from 'lucide-react'

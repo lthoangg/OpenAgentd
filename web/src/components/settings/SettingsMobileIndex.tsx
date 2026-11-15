@@ -12,6 +12,7 @@
 import { ChevronRight } from 'lucide-react'
 
 import { PanelSection } from '@/components/ui/panel-section'
+import { SectionCard } from '@/components/ui/section-card'
 import { SETTINGS_GROUPS, type TopLevelSection } from '@/components/settings/sections'
 import { SettingsSearchField, SettingsSearchResults, useSettingsSearch } from '@/components/settings/SettingsSearch'
 import type { SettingsHit } from '@/components/settings/settings-index'
@@ -44,9 +45,7 @@ export function SettingsMobileIndex({
         {!search.searching && SETTINGS_GROUPS.map((group) => {
           const items = sections.filter((s) => s.group === group.id)
           if (items.length === 0) return null
-          return (
-            <PanelSection key={group.id} title={group.label} flush>
-              {items.map((item) => {
+          const rows = items.map((item) => {
                 const count = counts[item.id]
                 return (
                   <button
@@ -82,7 +81,18 @@ export function SettingsMobileIndex({
                     <ChevronRight size={ICON_SIZE} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
                   </button>
                 )
-              })}
+              })
+          // The footer group (About) has no heading.
+          if (group.label === null) {
+            return (
+              <SectionCard key={group.id}>
+                <div className="divide-y divide-(--color-border-subtle)">{rows}</div>
+              </SectionCard>
+            )
+          }
+          return (
+            <PanelSection key={group.id} title={group.label} flush>
+              {rows}
             </PanelSection>
           )
         })}

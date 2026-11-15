@@ -26,8 +26,8 @@ mock.module('@/hooks/use-mobile', () => ({
 
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
 import { SettingsPartsPage } from '@/components/settings/SettingsPartsPage'
-import { useTitlesPart } from '@/components/settings/pages/settings.titles'
-import { useSummariesPart } from '@/components/settings/pages/settings.context'
+import { useTitlesPart } from '@/components/settings/pages/sessions/titles'
+import { useSummariesPart } from '@/components/settings/pages/sessions/summaries'
 
 /** One part alone, in the shell the Sessions page gives it. */
 function TitlesSettingsPage() {

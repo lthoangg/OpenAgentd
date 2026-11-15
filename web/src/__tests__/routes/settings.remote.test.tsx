@@ -1,4 +1,4 @@
-/** Settings → Account: the optional cloud account, guest by default. */
+/** Settings → Remote control: the optional cloud account, guest by default. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -14,8 +14,8 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
-import { AccountSettingsPage } from '@/components/settings/pages/settings.account'
-import { NOTICES } from '@/components/settings/pages/account-copy'
+import { RemoteSettingsPage } from '@/components/settings/pages/settings.remote'
+import { NOTICES } from '@/components/settings/pages/remote-copy'
 import type { CloudStatus } from '@/api/cloud'
 import type { AppBackendStatus } from '@/lib/app-backend'
 import { queryClient as appQueryClient } from '@/lib/query-client'
@@ -80,7 +80,7 @@ afterEach(() => {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><AccountSettingsPage /></QueryClientProvider>)
+  return render(<QueryClientProvider client={queryClient}><RemoteSettingsPage /></QueryClientProvider>)
 }
 
 function serveStatus(status: CloudStatus) {
@@ -89,17 +89,32 @@ function serveStatus(status: CloudStatus) {
 
 const FORBIDDEN = { detail: 'Only this computer can change its account.' }
 
-describe('AccountSettingsPage', () => {
+describe('RemoteSettingsPage', () => {
   beforeEach(() => {
     useConnectPhoneStore.setState({ requested: 0, handled: 0 })
   })
 
-  it('titles the signed-out page once: the Sign in card sits under the page title', async () => {
+  it('titles the signed-out page once, with the Sign in card under a Sign in heading', async () => {
     serveStatus({ state: 'guest', notice: null })
     renderPage()
 
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { name: 'Remote control' })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 2, name: 'Sign in' })).toBeTruthy()
+  })
+
+  it('never heads a section "Account": the page is Remote control', async () => {
+    for (const status of [
+      { state: 'guest', notice: null },
+      { state: 'closing', fingerprint: 'f', deletes_at: null },
+      { state: 'unavailable', fingerprint: 'f' },
+    ] as const) {
+      serveStatus(status)
+      const { unmount } = renderPage()
+      await screen.findAllByRole('heading', { level: 2 })
+      expect(screen.queryByRole('heading', { name: 'Account' })).toBeNull()
+      unmount()
+    }
   })
 
   it('keeps the Devices heading once signed in', async () => {

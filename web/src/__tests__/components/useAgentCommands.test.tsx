@@ -293,7 +293,7 @@ describe("useAgentCommands — navigation", () => {
     expect(cmd.group).toBe("Navigation")
     expect(cmd.keywords).toContain("qr")
     cmd.action()
-    expect(openSettings).toHaveBeenCalledWith("account")
+    expect(openSettings).toHaveBeenCalledWith("remote")
     expect(useConnectPhoneStore.getState().requested).toBe(1)
 
     const signingIn = renderHook(() => useAgentCommands(makeArgs({ connectPhone: { signIn: false } })))

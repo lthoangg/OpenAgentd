@@ -1,7 +1,8 @@
 /**
- * Settings → Appearance — how OpenAgentd looks on this device: color theme,
- * text size, how much detail it shows (Simple or Full) and whether the
- * agent's previews open on their own. Each pick applies at once. The desktop
+ * Settings → General — how OpenAgentd looks on this device (Appearance:
+ * color theme and text size) and how chats show (Chat: how much detail,
+ * Simple or Full, and whether the agent's previews open on their own). Each
+ * pick applies at once. The desktop
  * app's notch status and pet live on Settings → Desktop.
  *
  * Each choice is the app's own segmented control on every platform, the
@@ -48,10 +49,10 @@ export function GeneralSettingsPage() {
 
   return (
     <SettingsPage
-      title="Appearance"
-      description="How OpenAgentd looks on this device."
+      title="General"
+      description="How OpenAgentd looks and how chats show on this device."
     >
-      <PanelSection title="Look" flush>
+      <PanelSection title="Appearance" flush>
         <PanelRow label="Theme" description="Follow the system, or always use light or dark.">
           <SegmentedChoice label="Theme" options={THEME_OPTIONS} value={preference} onChange={setPreference} />
         </PanelRow>
@@ -61,6 +62,8 @@ export function GeneralSettingsPage() {
         >
           <SegmentedChoice label="Text size" options={TEXT_SIZES} value={textSize} onChange={setTextSize} />
         </PanelRow>
+      </PanelSection>
+      <PanelSection title="Chat" flush>
         <PanelRow
           label="Detail"
           description="Simple shows answers and folds the work. Full shows every step and number."

@@ -49,15 +49,15 @@ describe('useSettingsSectionCounts', () => {
   it('counts connectors, skills and rules in words', async () => {
     serve({ skills: 4, connectors: [{ state: 'ready' }, { state: 'ready' }], rules: 1 })
     const { result } = counts()
-    await waitFor(() => expect(result.current.denied_paths).toBe('1 rule'))
-    await waitFor(() => expect(result.current.mcp).toBe('2 connectors'))
+    await waitFor(() => expect(result.current.blocked_files).toBe('1 rule'))
+    await waitFor(() => expect(result.current.connectors).toBe('2 connectors'))
     await waitFor(() => expect(result.current.skills).toBe('4 skills'))
   })
 
   it('says a connector needs sign-in before it counts them', async () => {
     serve({ skills: 0, connectors: [{ state: 'auth_required' }, { state: 'ready' }], rules: 0 })
     const { result } = counts()
-    await waitFor(() => expect(result.current.mcp).toBe('1 needs sign-in'))
+    await waitFor(() => expect(result.current.connectors).toBe('1 needs sign-in'))
   })
 
   it('says nothing beside a section that has none', () => {
@@ -68,6 +68,6 @@ describe('useSettingsSectionCounts', () => {
     client.setQueryData(queryKeys.settings.deniedPaths(), { denied_patterns: [] })
     const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
     const { result } = renderHook(() => useSettingsSectionCounts(), { wrapper })
-    expect(result.current).toEqual({ skills: null, mcp: null, denied_paths: null })
+    expect(result.current).toEqual({ skills: null, connectors: null, blocked_files: null })
   })
 })

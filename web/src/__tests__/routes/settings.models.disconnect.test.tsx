@@ -1,5 +1,5 @@
 /**
- * Tests for provider disconnect/reconnect in ProviderCard and ProvidersSettingsPage.
+ * Tests for provider disconnect/reconnect in ProviderCard and ModelsSettingsPage.
  *
  * Covers:
  * - "Hide from pickers" appears only for connected (or unreachable) providers
@@ -17,7 +17,7 @@ import { setupServer } from '@/__tests__/msw'
 
 import { cleanup } from '@testing-library/react'
 import { ToastStack } from '@/components/ToastStack'
-import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
+import { ModelsSettingsPage } from '@/components/settings/pages/settings.models'
 import { useToastStore } from '@/stores/useToastStore'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -58,7 +58,7 @@ function renderPage() {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <ProvidersSettingsPage />
+      <ModelsSettingsPage />
       <ToastStack />
     </QueryClientProvider>,
   )

@@ -53,7 +53,7 @@ async function pickFolderOnThisComputer(): Promise<string | null> {
   return typeof selected === 'string' ? selected : null
 }
 
-export function DeniedPathsSettingsPage() {
+export function BlockedFilesSettingsPage() {
   const { data, isLoading, error } = useDeniedPathsSettingsQuery()
   const updateMut = useUpdateDeniedPathsSettingsMutation()
   const platform = usePlatform()

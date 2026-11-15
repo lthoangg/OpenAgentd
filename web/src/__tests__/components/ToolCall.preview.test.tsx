@@ -127,7 +127,7 @@ describe('usePreviewToolAutoOpen', () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
-  it('leaves a page to its Open button when previews open on click (Settings → Appearance)', () => {
+  it('leaves a page to its Open button when previews open on click (Settings → General)', () => {
     useDisplayPrefsStore.setState({ previewOpen: 'click' })
     try {
       setBlocks([])

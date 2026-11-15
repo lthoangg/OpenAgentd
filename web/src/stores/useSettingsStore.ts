@@ -14,61 +14,54 @@ import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { useUIStore, _registerCloseSettings } from './useUIStore'
 
-export type SettingsSection =
-  | 'general'
-  | 'desktop'
-  | 'connection'
-  | 'account'
-  | 'about'
-  | 'agents'
-  | 'skills'
-  | 'skills-new'
-  | 'skills-edit'
-  | 'mcp'
-  | 'mcp-new'
-  | 'mcp-edit'
-  | 'providers'
-  | 'denied_paths'
-  | 'memory'
-  | 'telemetry'
-  | 'plugins'
-  // The former Automation page, split into one page per job.
-  | 'workspaces'
-  | 'goals'
-  | 'titles'
-  | 'context'
-  | 'media'
+/**
+ * Every page Settings can show. A section's id is its sidebar label in lower
+ * case (`blocked_files` is "Blocked files"); `-new` / `-edit` are the
+ * drill-down editors of a list.
+ */
+export const SETTINGS_SECTION_IDS = [
+  'general',
+  'models',
+  'media',
+  'desktop',
+  'agents',
+  'skills',
+  'skills-new',
+  'skills-edit',
+  'connectors',
+  'connectors-new',
+  'connectors-edit',
+  'plugins',
+  'memory',
+  'sessions',
+  'workspaces',
+  'blocked_files',
+  'computers',
+  'remote',
+  'about',
+] as const
+
+export type SettingsSection = (typeof SETTINGS_SECTION_IDS)[number]
+
+/** Whether `value` names a section (a saved or linked id may be stale). */
+export function isSettingsSection(value: unknown): value is SettingsSection {
+  return (SETTINGS_SECTION_IDS as readonly unknown[]).includes(value)
+}
 
 /**
  * Sections that are lists with `-new` / `-edit` drill-down views. Declared here
  * next to the union it describes, so the store and the section registry share
- * one definition instead of both hardcoding the same three prefixes.
+ * one definition instead of both hardcoding the same prefixes.
  */
-const DRILL_DOWN_FAMILIES = ['skills', 'mcp'] as const
+const DRILL_DOWN_FAMILIES = ['skills', 'connectors'] as const
 
 /**
  * Collapses a drill-down section to the list it belongs to. Used for restoring
- * persisted state (`agents-edit` without a valid `selectedName` would render an
+ * persisted state (an editor without a valid `selectedName` would render an
  * empty pane) and for sidebar highlighting.
  */
 export function parentSection(section: SettingsSection): SettingsSection {
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
-}
-
-/**
- * Pages that are now headings of Sessions (section id ``titles``). Their ids
- * still open: on Sessions, scrolled to the heading.
- */
-const MERGED_INTO_SESSIONS: Partial<Record<SettingsSection, string>> = {
-  context: 'Summaries',
-  goals: 'Goals',
-  telemetry: 'History',
-}
-
-/** The page a section id opens, and the heading on it to scroll to, if any. */
-export function resolveSection(section: SettingsSection): { section: SettingsSection; anchor: string | null } {
-  const anchor = MERGED_INTO_SESSIONS[section]
-  return anchor ? { section: 'titles', anchor } : { section, anchor: null }
 }
 
 interface SettingsStore {
@@ -80,8 +73,6 @@ interface SettingsStore {
   section: SettingsSection
   /** Name param for editor views (skills-edit, mcp-edit). */
   selectedName: string | null
-  /** A heading on the page to scroll to once it has rendered (a merged section id). Not persisted. */
-  anchor: string | null
   /**
    * Phones show either the grouped section list (`index`) or one section
    * full-screen. Desktop always shows sidebar + section and ignores this.
@@ -90,7 +81,7 @@ interface SettingsStore {
   mobileView: 'index' | 'section'
   /**
    * Opens the modal. Omit `section` to resume the last visited one; pass it
-   * explicitly to jump somewhere specific (e.g. `openSettings('providers')`
+   * explicitly to jump somewhere specific (e.g. `openSettings('models')`
    * from the missing-credentials prompt). On phones, omitting it opens the
    * section list; passing it opens that section directly.
    */
@@ -124,16 +115,13 @@ export const useSettingsStore = create<SettingsStore>()(
           if (pending.close) state.open = false
           else if (pending.index) state.mobileView = 'index'
           else if (pending.section) {
-            const target = resolveSection(pending.section)
-            state.section = target.section
-            state.anchor = target.anchor
+            state.section = pending.section
             state.selectedName = pending.name ?? null
             state.mobileView = 'section'
           }
         }),
         section: 'general',
         selectedName: null,
-        anchor: null,
         mobileView: 'index',
         openSettings: (section, name = null) => {
           if (get().open && section !== undefined && Object.keys(get().dirtyDrafts).length) {
@@ -145,9 +133,7 @@ export const useSettingsStore = create<SettingsStore>()(
             state.open = true
             // `undefined` means "resume where the user left off".
             if (section !== undefined) {
-              const target = resolveSection(section)
-              state.section = target.section
-              state.anchor = target.anchor
+              state.section = section
               state.selectedName = name ?? null
               state.mobileView = 'section'
             } else {
@@ -155,20 +141,17 @@ export const useSettingsStore = create<SettingsStore>()(
             }
           })
         },
-        setSection: (requested, name = null) =>
+        setSection: (section, name = null) =>
           set((state) => {
-            const { section, anchor } = resolveSection(requested)
             if (section === state.section && name === state.selectedName) {
               state.mobileView = 'section'
-              state.anchor = anchor
               return
             }
             if (Object.keys(state.dirtyDrafts).length) {
-              state.pendingNavigation = { section: requested, name }
+              state.pendingNavigation = { section, name }
               return
             }
             state.section = section
-            state.anchor = anchor
             state.selectedName = name ?? null
             state.mobileView = 'section'
           }),
@@ -196,10 +179,10 @@ export const useSettingsStore = create<SettingsStore>()(
       // `open` is deliberately excluded: the modal should never reappear on
       // its own after a reload.
       partialize: (state) => ({ section: parentSection(state.section) }),
-      // A section saved by a version that still had the merged pages.
+      // A section saved under an id that no longer exists opens General.
       merge: (persisted, current) => {
-        const saved = (persisted as { section?: SettingsSection } | undefined)?.section
-        return saved ? { ...current, section: resolveSection(saved).section } : current
+        const saved = (persisted as { section?: unknown } | undefined)?.section
+        return { ...current, section: isSettingsSection(saved) ? parentSection(saved) : 'general' }
       },
     },
   ),

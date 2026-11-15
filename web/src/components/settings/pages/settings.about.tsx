@@ -1,7 +1,7 @@
 /**
- * Settings → About OpenAgentd — app identity, client and server versions,
- * app updates (desktop and mobile shells), and community links. Appearance
- * lives in General and the backend in Connection.
+ * Settings → About OpenAgentd — app identity, this app's version, app
+ * updates (desktop and mobile shells), and community links. The server's
+ * version and its update sit on its row in Settings → Computers.
  */
 import { useEffect, useState } from 'react'
 import { AlertTriangle, ExternalLink, Globe, MessageSquare, Shield, Users, type LucideIcon } from 'lucide-react'
@@ -10,7 +10,6 @@ import { PRIVACY_URL } from '@/components/AiDataConsent'
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { ServerUpdateButton, ServerUpdateConfirm, ServerUpdateNote, useServerUpdateFlow } from '@/components/settings/ServerUpdate'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
@@ -19,14 +18,12 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SectionCard } from '@/components/ui/section-card'
 import { Seal, Wordmark } from '@/components/brand/Logo'
 import { isMobileApp } from '@/lib/mobile-app'
-import { isDesktopShell } from '@/lib/desktop-shell'
 import { getPlatform } from '@/hooks/use-platform'
 import { clientLabel, clientVersion, versionSkew, WEB_BUILD_VERSION } from '@/lib/app-version'
 import { checkForUpdates, downloadUpdate, hasInAppUpdates, installUpdate, updatesByPackage, type UpdateStatus } from '@/lib/updater'
-import { apiBaseUrl } from '@/api/base-url'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
-import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
+import { useHealthQuery } from '@/queries/useHealthQuery'
 import { errorMessage } from '@/utils/errors'
 
 // ── Identity ──────────────────────────────────────────────────────────────
@@ -91,25 +88,18 @@ function skewMessage(client: string, server: string): { warn: boolean; text: str
   return null
 }
 
+/**
+ * This app's version, and a word when it and its server are far enough
+ * apart to matter. The server's own version is on its row in Computers.
+ */
 function VersionSection({ client, server }: { client?: string; server?: string }) {
-  const backend = useBackendStatusQuery().data
-  const address = backend?.base_url || apiBaseUrl()
-  // The desktop app on its own built-in server: Updates, below, updates both.
-  const ownApp = isDesktopShell() && backend != null && !backend.external && backend.mode !== 'external'
   const skew = client && server ? skewMessage(client, server) : null
-  const update = useServerUpdateFlow()
 
   return (
     <PanelSection title="Version" flush>
       <PanelRow label={clientLabel()} description="The app on this device.">
         <span className="font-mono text-sm text-(--color-text)">{client ? `v${client}` : 'unknown'}</span>
       </PanelRow>
-      <PanelRow label="Server" description={<span className="font-mono break-all">{address}</span>}>
-        <span className="font-mono text-sm text-(--color-text)">{server ? `v${server}` : 'not connected'}</span>
-        <ServerUpdateButton onRequest={update.request} ownApp={ownApp} />
-      </PanelRow>
-      <ServerUpdateNote ownApp={ownApp} />
-      <ServerUpdateConfirm flow={update} />
       {skew ? (
         <p
           role={skew.warn ? 'alert' : 'status'}
@@ -300,33 +290,32 @@ function statusDescription(status: UpdateStatus | null, mobile = false): string 
 
 // ── Community ─────────────────────────────────────────────────────────────
 
-function CommunityLink({ href, icon: Icon, tint, title, body }: {
-  href: string
-  icon: LucideIcon
-  /** Brand tint for the icon chip. */
-  tint: string
-  title: string
-  body: string
-}) {
+const COMMUNITY_LINKS: readonly { href: string; icon: LucideIcon; title: string; body: string }[] = [
+  { href: WEBSITE_URL, icon: Globe, title: 'Website', body: 'Features, downloads, and setup guides at openagentd.dev.' },
+  { href: 'https://discord.gg/cz6GQHQUMg', icon: MessageSquare, title: 'Discord server', body: 'Join the chat, ask questions, and get help from the community.' },
+  { href: 'https://www.facebook.com/groups/1256361676707935', icon: Users, title: 'Facebook group', body: 'Connect with other OpenAgentd users and maintainers on Facebook.' },
+  { href: PRIVACY_URL, icon: Shield, title: 'Privacy policy', body: 'What the apps send to your server and the AI providers it uses.' },
+]
+
+/** One link of Community and support: a row like every other settings row. */
+function CommunityLink({ href, icon: Icon, title, body }: (typeof COMMUNITY_LINKS)[number]) {
   return (
     <button
       type="button"
       onClick={() => void openExternalUrl(href)}
       className={cn(
-        'flex items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-4 text-left',
-        'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/40',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
+        'flex w-full items-start gap-3 px-4 py-3 text-left sm:px-5',
+        'transition-colors duration-(--motion-instant) pointer-fine:hover:bg-(--bg-key)/40',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
       )}
     >
-      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-sm', tint)} aria-hidden="true">
-        <Icon size={16} />
-      </span>
+      <Icon size={16} className="mt-0.5 shrink-0 text-(--color-text-2)" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className={cn('flex items-center gap-1.5', TEXT.title)}>
+        <span className={cn('flex items-center gap-1.5', TEXT.label)}>
           <span>{title}</span>
           <ExternalLink size={12} className="text-(--color-text-subtle)" aria-hidden="true" />
         </span>
-        <span className={cn('mt-1 block', TEXT.hint)}>{body}</span>
+        <span className={cn('mt-0.5 block', TEXT.hint)}>{body}</span>
       </span>
     </button>
   )
@@ -348,42 +337,13 @@ export function AboutSettingsPage() {
       {hasInAppUpdates() && <UpdatesSection />}
       {updatesByPackage() && <PackageUpdatesSection />}
 
-      <section aria-labelledby="settings-community-heading" className="space-y-3">
-        <div className="select-none">
-          <h2 id="settings-community-heading" className={TEXT.title}>Community and support</h2>
-          <p className={cn('mt-1', TEXT.hint)}>Ask questions, share what you built, and follow along.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CommunityLink
-            href={WEBSITE_URL}
-            icon={Globe}
-            tint="bg-(--color-accent)/10 text-(--color-accent)"
-            title="Website"
-            body="Features, downloads, and setup guides at openagentd.dev."
-          />
-          <CommunityLink
-            href="https://discord.gg/cz6GQHQUMg"
-            icon={MessageSquare}
-            tint="bg-(--bg-key) text-(--color-text-2)"
-            title="Discord server"
-            body="Join the chat, ask questions, and get help from the community."
-          />
-          <CommunityLink
-            href="https://www.facebook.com/groups/1256361676707935"
-            icon={Users}
-            tint="bg-(--bg-key) text-(--color-text-2)"
-            title="Facebook group"
-            body="Connect with other OpenAgentd users and maintainers on Facebook."
-          />
-          <CommunityLink
-            href={PRIVACY_URL}
-            icon={Shield}
-            tint="bg-(--bg-key) text-(--color-text-2)"
-            title="Privacy policy"
-            body="What the apps send to your server and the AI providers it uses."
-          />
-        </div>
-      </section>
+      <PanelSection
+        title="Community and support"
+        description="Ask questions, share what you built, and follow along."
+        flush
+      >
+        {COMMUNITY_LINKS.map((link) => <CommunityLink key={link.href} {...link} />)}
+      </PanelSection>
     </SettingsPage>
   )
 }

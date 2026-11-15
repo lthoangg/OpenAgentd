@@ -16,7 +16,7 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
-import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
+import { BlockedFilesSettingsPage } from '@/components/settings/pages/settings.blocked_files'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -51,7 +51,7 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <DeniedPathsSettingsPage />
+      <BlockedFilesSettingsPage />
       <ToastStack />
     </QueryClientProvider>,
   )
@@ -60,7 +60,7 @@ function renderPage() {
 const patterns = (list: string[]) =>
   http.get('http://localhost/api/settings/denied-paths', () => HttpResponse.json({ denied_patterns: list }))
 
-describe('DeniedPathsSettingsPage', () => {
+describe('BlockedFilesSettingsPage', () => {
   it('is titled Blocked files and says what blocking covers', async () => {
     server.use(patterns([]))
     renderPage()

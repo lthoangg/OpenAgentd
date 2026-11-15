@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { OAuthLoginEvent, ProviderInfo } from '@/api/client'
-import { OAuthLoginDialog } from '@/components/settings/pages/settings.providers/OAuthLoginDialog'
+import { OAuthLoginDialog } from '@/components/settings/pages/settings.models/OAuthLoginDialog'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 

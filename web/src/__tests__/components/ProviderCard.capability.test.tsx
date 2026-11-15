@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ProviderInfo, StoredCredential } from '@/api/client'
-import { ProviderCard } from '@/components/settings/pages/settings.providers/ProviderCard'
+import { ProviderCard } from '@/components/settings/pages/settings.models/ProviderCard'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 

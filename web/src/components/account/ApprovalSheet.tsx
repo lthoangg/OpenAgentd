@@ -17,7 +17,7 @@ import { Loader2 } from 'lucide-react'
 
 import type { ApprovalView, Roles } from '@/api/cloud'
 import { RolesChoice } from '@/components/account/RolesChoice'
-import { groupCode } from '@/components/settings/pages/account-copy'
+import { groupCode } from '@/components/settings/pages/remote-copy'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Checkbox } from '@/components/ui/checkbox'

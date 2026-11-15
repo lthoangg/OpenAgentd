@@ -46,7 +46,7 @@ import {
   ScanCodeCopy,
   SigningInCopy,
   UnavailableCopy,
-} from '@/components/settings/pages/account-copy'
+} from '@/components/settings/pages/remote-copy'
 import { InvitedCopy, JoinWithLink } from '@/components/settings/pages/join-with-link'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
@@ -54,7 +54,6 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
-import { SectionCard } from '@/components/ui/section-card'
 import { useAppStatusWithNames } from '@/lib/account-computers'
 import { BUILT_IN_NAME_KEY, computerNameKey } from '@/lib/app-backend'
 import { canApproveHere } from '@/lib/approval-proof'
@@ -118,7 +117,7 @@ function DevicesSection({ status, onAdd, onSignOut, busy }: {
   // A remote viewer: these routes answer only this computer.
   if (isForbidden(devicesQ.error)) {
     return (
-      <PanelSection title="Account" flush>
+      <PanelSection title="Status" flush>
         <PanelRow label="Signed in" description={relayText(status.relay)} />
       </PanelSection>
     )
@@ -211,7 +210,7 @@ function BrowserWay({ status, readOnly }: { status: Extract<CloudStatus, { state
   )
 }
 
-export function AccountSettingsPage() {
+export function RemoteSettingsPage() {
   const statusQ = useCloudStatusQuery()
   const login = useCloudLoginMutation()
   const join = useCloudJoinMutation()
@@ -291,10 +290,8 @@ export function AccountSettingsPage() {
               {notice.body}
             </Callout>
           )}
-          {/* No heading: the page title already says Account. */}
-          <SectionCard>
-            <div className="px-3 py-3 md:px-4 md:py-4">
-              <Body>
+          <PanelSection title="Sign in">
+            <Body>
                 <p className="text-(--color-text)">Sign in to reach this computer from your phone, anywhere.</p>
                 {!readOnly && (
                   <>
@@ -338,9 +335,8 @@ export function AccountSettingsPage() {
                     </Collapsible>
                   </>
                 )}
-              </Body>
-            </div>
-          </SectionCard>
+            </Body>
+          </PanelSection>
         </>
       )
       break
@@ -470,7 +466,7 @@ export function AccountSettingsPage() {
       break
     case 'connected':
       content = readOnly ? (
-        <PanelSection title="Account" flush>
+        <PanelSection title="Status" flush>
           <PanelRow label="Signed in" description={relayText(status.relay)} />
         </PanelSection>
       ) : (
@@ -483,7 +479,7 @@ export function AccountSettingsPage() {
       break
     case 'closing':
       content = (
-        <PanelSection title="Account">
+        <PanelSection title="Status">
           <Body>
             <ClosingCopy deletesAt={status.deletes_at} />
             {!readOnly && signOutButton}
@@ -493,7 +489,7 @@ export function AccountSettingsPage() {
       break
     case 'unavailable':
       content = (
-        <PanelSection title="Account">
+        <PanelSection title="Status">
           <Body>
             <UnavailableCopy />
           </Body>

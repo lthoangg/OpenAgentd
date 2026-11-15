@@ -384,7 +384,7 @@ describe('RunPicker', () => {
       wrap(<RunPicker settings={settings({ accounts, providerInfo })} focus="model" onDone={onDone} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Reconnect Work…' }))
-      expect(openSettings).toHaveBeenCalledWith('providers')
+      expect(openSettings).toHaveBeenCalledWith('models')
       expect(onDone).toHaveBeenCalledTimes(1)
     } finally {
       useSettingsStore.setState({ openSettings: original })

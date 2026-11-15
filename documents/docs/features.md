@@ -229,6 +229,29 @@ run from the terminal (the native Rust binary since v3.0.0).
   "The coding agent that shows its work". The desktop **Help** menu starts
   with **OpenAgentd Website**, and the macOS About panel links to
   openagentd.dev instead of GitHub.
+- **Tidier Settings** `[v3.57.0]` — Settings has four groups, and each page's
+  name matches what's on it. **Basics**: General, Models, Image and video,
+  Desktop. **Agent**: Agents, Skills, Connectors, Plugins, Memory. **Work**:
+  Sessions, Workspaces, Blocked files. **Devices**: Computers, Remote
+  control. **About** sits on its own at the bottom of the sidebar.
+  - **General** (was Appearance) has two headings: **Appearance** (theme,
+    text size) and **Chat** (Detail, Open previews).
+  - **Computers** (was Server) has one **Let other devices connect** section.
+    It holds the network switch, its port, and the switch that lets your
+    account's devices connect directly. The network key is called **This
+    computer's access key**, so it isn't confused with the access key of a
+    computer you add.
+  - **About** shows this app's version, updates and community links, and the
+    community links are plain rows. The server's version and its **Update to
+    vX**, or what to do where the server runs when it can't update itself,
+    are on the server's row in Computers.
+  - **Remote control** has no headings named "Account". Signed out, the card
+    is titled **Sign in**; closing and unavailable accounts show **Status**.
+  - Section ids follow the names (`/settings/models`, `/settings/connectors`,
+    `/settings/sessions`, `/settings/blocked_files`, `/settings/computers`,
+    `/settings/remote`). The old ids are gone *(deprecated)*: a link that
+    uses one just opens Settings, and a remembered old section opens
+    General. Search still finds every page by its earlier name.
 - **Settings split into focused pages** `[v3.21.0]` — the long **Automation** page with
   collapsible groups is now four plain pages: **Workspaces** (workspace
   messages and groups), **Chat titles**, **Context** (summarization and idle

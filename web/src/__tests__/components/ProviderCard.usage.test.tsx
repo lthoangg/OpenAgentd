@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import type { ProviderInfo, StoredCredential } from '@/api/client'
-import { ProviderCard } from '@/components/settings/pages/settings.providers/ProviderCard'
+import { ProviderCard } from '@/components/settings/pages/settings.models/ProviderCard'
 import { queryKeys } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 

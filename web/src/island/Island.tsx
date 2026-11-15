@@ -166,7 +166,7 @@ function SessionRow({ session, actions }: { session: IslandSession; actions: Row
 /**
  * A server that dropped off: a click on the row tries to reach it again.
  * One that refused the saved access key would refuse it again, so its row
- * opens Settings → Server, where the key is fixed.
+ * opens Settings → Computers, where the key is fixed.
  */
 function ServerRow({ server, hit, onRetry, onFixKey, onLater }: {
   server: UnreachableServer

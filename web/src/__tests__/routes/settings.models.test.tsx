@@ -5,8 +5,8 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
 
 import { ToastStack } from '@/components/ToastStack'
-import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
-import { eagerlyWarmProviderModels } from '@/components/settings/pages/settings.providers/eagerModels'
+import { ModelsSettingsPage } from '@/components/settings/pages/settings.models'
+import { eagerlyWarmProviderModels } from '@/components/settings/pages/settings.models/eagerModels'
 import { queryKeys } from '@/queries'
 import type { ProvidersListBody } from '@/api/client'
 import { useToastStore } from '@/stores/useToastStore'
@@ -62,13 +62,13 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <ProvidersSettingsPage />
+      <ModelsSettingsPage />
       <ToastStack />
     </QueryClientProvider>,
   )
 }
 
-describe('ProvidersSettingsPage', () => {
+describe('ModelsSettingsPage', () => {
   it('warms configured provider models in parallel then invalidates registry once', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const provider = (id: string): ProvidersListBody['providers'][number] => ({
@@ -553,7 +553,7 @@ describe('ProvidersSettingsPage', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <ProvidersSettingsPage />
+        <ModelsSettingsPage />
       </QueryClientProvider>,
     )
 

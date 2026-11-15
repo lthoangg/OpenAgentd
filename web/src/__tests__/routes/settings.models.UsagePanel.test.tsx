@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 
 import type { ProviderUsageLimit } from '@/api/client'
-import { UsagePanel } from '@/components/settings/pages/settings.providers/UsagePanel'
+import { UsagePanel } from '@/components/settings/pages/settings.models/UsagePanel'
 
 afterEach(cleanup)
 

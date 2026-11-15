@@ -1,5 +1,5 @@
 /**
- * Text size (Settings → Appearance): three steps, remembered per device and
+ * Text size (Settings → General): three steps, remembered per device and
  * applied to <html> as ``data-text-size`` so every rem type step scales with
  * ``--oa-text-scale`` (index.css). Default is a step above the old density;
  * Compact keeps it.

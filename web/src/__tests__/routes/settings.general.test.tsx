@@ -1,6 +1,6 @@
 /**
- * Settings → Appearance: theme, text size, transcript style and where the
- * agent's previews open.
+ * Settings → General: theme and text size under Appearance; transcript
+ * detail and where the agent's previews open under Chat.
  */
 import '@testing-library/jest-dom'
 
@@ -21,10 +21,16 @@ afterEach(() => {
 })
 
 describe('GeneralSettingsPage — appearance', () => {
-  it('renders the page title and its sections', () => {
+  it('renders the page title and its sections: how it looks, then how chats show', () => {
     render(<GeneralSettingsPage />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Appearance' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: 'Look' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Appearance', 'Chat'])
+    const appearance = screen.getByRole('heading', { level: 2, name: 'Appearance' }).closest('section')!
+    expect(appearance.textContent).toContain('Theme')
+    expect(appearance.textContent).not.toContain('Detail')
+    const chat = screen.getByRole('heading', { level: 2, name: 'Chat' }).closest('section')!
+    expect(chat.textContent).toContain('Detail')
+    expect(chat.textContent).toContain('Open previews')
   })
 
   it('sets the text size at once, for the whole app', async () => {

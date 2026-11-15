@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import type { ProviderInfo } from '@/api/client'
 import { useProvidersQuery } from '@/queries'
-import { eagerlyWarmProviderModels } from './settings.providers/eagerModels'
+import { eagerlyWarmProviderModels } from './settings.models/eagerModels'
 import { SearchBar } from '@/components/ui/search-bar'
 import { Callout } from '@/components/ui/callout'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { useIsPhone } from '@/hooks/use-is-phone'
-import { ProviderCard } from './settings.providers/ProviderCard'
+import { ProviderCard } from './settings.models/ProviderCard'
 
 // ─── Filter types ───────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ function matchesQuery(p: ProviderInfo, query: string): boolean {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export function ProvidersSettingsPage() {
+export function ModelsSettingsPage() {
   const providersQ = useProvidersQuery()
   const queryClient = useQueryClient()
 

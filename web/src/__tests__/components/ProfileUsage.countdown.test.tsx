@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { renderHook, waitFor } from '@testing-library/react'
 
 import { ProviderUsageError } from '@/lib/provider-usage'
-import { useRetryCountdown } from '@/components/settings/pages/settings.providers/ProfileUsage'
+import { useRetryCountdown } from '@/components/settings/pages/settings.models/ProfileUsage'
 
 describe('useRetryCountdown', () => {
   it('counts down on its own, from the state it keeps (not from the error alone)', async () => {

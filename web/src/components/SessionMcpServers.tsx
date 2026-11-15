@@ -162,7 +162,7 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
   const hasServers = agentServers.length > 0
 
   const manage = (
-    <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('mcp')}>
+    <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('connectors')}>
       Manage
     </Button>
   )

@@ -7,7 +7,7 @@ import { setupServer } from '@/__tests__/msw'
 
 import { ToastStack } from '@/components/ToastStack'
 import { useToastStore } from '@/stores/useToastStore'
-import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
+import { NewConnectorPage } from '@/components/settings/pages/settings.connectors.new'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -39,7 +39,7 @@ function renderPage(onCreated: (name: string) => void = () => {}) {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <NewMcpServerPage onBack={() => {}} onCreated={onCreated} />
+      <NewConnectorPage onBack={() => {}} onCreated={onCreated} />
       <ToastStack />
     </QueryClientProvider>,
   )
@@ -48,7 +48,7 @@ function renderPage(onCreated: (name: string) => void = () => {}) {
 const address = () => screen.getByRole('textbox', { name: /^Address/ }) as HTMLInputElement
 const name = () => screen.getByRole('textbox', { name: /^Name/ }) as HTMLInputElement
 
-describe('NewMcpServerPage', () => {
+describe('NewConnectorPage', () => {
   it('asks how it connects, with a web address chosen and nothing filled in', () => {
     renderPage()
     expect(screen.getByText('New connector')).toBeTruthy()

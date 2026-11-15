@@ -28,7 +28,7 @@ interface NewMcpServerPageProps {
   onCreated: (name: string) => void
 }
 
-export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
+export function NewConnectorPage({ onBack, onCreated }: NewMcpServerPageProps) {
   const [draft, setDraft] = useState<McpServerDraft>(TEMPLATE)
   // The name follows the address until the person types one.
   const [nameTyped, setNameTyped] = useState(false)

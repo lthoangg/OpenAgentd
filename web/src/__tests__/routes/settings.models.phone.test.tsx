@@ -11,7 +11,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
 
 import { ToastStack } from '@/components/ToastStack'
-import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
+import { ModelsSettingsPage } from '@/components/settings/pages/settings.models'
 import type { ProvidersListBody } from '@/api/client'
 import { useToastStore } from '@/stores/useToastStore'
 
@@ -66,7 +66,7 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <ProvidersSettingsPage />
+      <ModelsSettingsPage />
       <ToastStack />
     </QueryClientProvider>,
   )

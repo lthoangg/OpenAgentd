@@ -28,7 +28,7 @@ import {
   groupCode,
   SigningInCopy,
   UnavailableCopy,
-} from '@/components/settings/pages/account-copy'
+} from '@/components/settings/pages/remote-copy'
 import { InvitedCopy } from '@/components/settings/pages/join-with-link'
 import { isNewDeviceStep, NewDeviceSignIn } from '@/components/phone/NewDeviceSignIn'
 import { thisDeviceName } from '@/lib/device-words'
@@ -219,7 +219,7 @@ export function PhoneAccountContent() {
       break
     case 'closing':
       content = (
-        <PanelSection title="Account">
+        <PanelSection title="Status">
           <Body>
             <ClosingCopy deletesAt={status.deletes_at} />
             {signOutButton}
@@ -229,7 +229,7 @@ export function PhoneAccountContent() {
       break
     case 'unavailable':
       content = (
-        <PanelSection title="Account">
+        <PanelSection title="Status">
           <Body>
             <UnavailableCopy />
             {signOutButton}
@@ -268,7 +268,7 @@ export function PhoneAccountContent() {
   )
 }
 
-export function PhoneAccountSettingsPage() {
+export function PhoneRemoteSettingsPage() {
   const status = usePhoneCloudStatus().data
   return (
     <SettingsPage

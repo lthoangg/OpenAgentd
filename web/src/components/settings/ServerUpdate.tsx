@@ -1,9 +1,9 @@
 /**
- * The server's update, under the Server row of Settings → About → Version:
- * "Update to vX" when the server can install it (the CLI background server,
- * or a desktop app that updates itself), or what to do where it runs when
- * it cannot. The same button and note sit under the row of the server in
- * use (`ServerUpdateOnRow`: the Servers screen, the Server dialog).
+ * The server's update, under the row of the server in use on Settings →
+ * Computers, the phone's Computers screen and the Server dialog
+ * (`ServerUpdateOnRow`): "Update to vX" when the server can install it (the
+ * CLI background server, or a desktop app that updates itself), or what to
+ * do where it runs when it cannot.
  * Following the update through the restart is `useServerUpdateStore`'s job,
  * so it carries on if the user leaves Settings.
  *
@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 import { SERVER_UPDATE_CAPABILITY, useServerUpdateQuery } from '@/queries/useServerUpdateQuery'
 import { useServerUpdateStore } from '@/stores/useServerUpdateStore'
+import { isDesktopShell } from '@/lib/desktop-shell'
+import { useBackendStatusQuery } from '@/queries/useHealthQuery'
 
 /** What to do instead when the server cannot be updated from here. */
 export function blockedAdvice(status: Pick<ServerUpdateStatus, 'latest' | 'reason'>, ownApp = false): string {
@@ -173,11 +175,17 @@ export function ServerUpdateNote({ ownApp = false }: { ownApp?: boolean }) {
   return null
 }
 
+/** This window is the desktop app on its own built-in server: the app's update updates both. */
+export function useOwnAppServer(): boolean {
+  const backend = useBackendStatusQuery().data
+  return isDesktopShell() && backend != null && !backend.external && backend.mode !== 'external'
+}
+
 /**
  * Under the row of the server in use: the update button and its note, when
- * there is something to press or a run to follow. Nothing otherwise, so a
- * server that cannot be updated from here adds no line to its row (About
- * says what to do instead).
+ * a newer server is out or a run is under way: "Update to vX", or what to do
+ * where the server runs when it cannot be updated from here. Nothing
+ * otherwise, so an up-to-date server adds no line to its row.
  *
  * The Servers screen and the Server dialog also show before the router and
  * its QueryClientProvider exist (App.tsx), so this brings the app's client
@@ -202,15 +210,15 @@ function OnRow() {
   const { data } = useServerUpdateQuery()
   const phase = useServerUpdateStore((s) => s.phase)
   const flow = useServerUpdateFlow()
-  const offered = Boolean(data?.available && data.can_upgrade && data.latest)
-  if (phase.kind === 'idle' && !offered) return null
+  const ownApp = useOwnAppServer()
+  if (phase.kind === 'idle' && !data?.available) return null
   return (
     // Part of the row above it, which drops the list's hairline between them.
     <div data-server-update-on-row="">
       <div className="flex justify-end px-4 pb-2 empty:hidden sm:px-5">
-        <ServerUpdateButton onRequest={flow.request} />
+        <ServerUpdateButton onRequest={flow.request} ownApp={ownApp} />
       </div>
-      <ServerUpdateNote />
+      <ServerUpdateNote ownApp={ownApp} />
       <ServerUpdateConfirm flow={flow} />
     </div>
   )

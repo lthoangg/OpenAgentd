@@ -35,7 +35,7 @@ import { cn } from '@/lib/utils'
 
 // Opened only to sign in with a subscription.
 const OAuthLoginDialog = lazySurface(
-  () => import('@/components/settings/pages/settings.providers/OAuthLoginDialog'),
+  () => import('@/components/settings/pages/settings.models/OAuthLoginDialog'),
   'OAuthLoginDialog',
 )
 

@@ -1,5 +1,5 @@
 /**
- * The signed-in Account screen's one list (Settings → Account, on a
+ * The signed-in Account screen's one list (Settings → Remote control, on a
  * computer and on a phone): every device of the account by its name, this
  * one first with Sign out, the others with one status line and Remove where
  * this device may remove. What used to be a separate Account panel (status,
@@ -20,7 +20,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ComputerDetailsDialog, deviceFacts, type ComputerFact } from '@/components/ComputerDetails'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
-import { CAN_ADD_DEVICES } from '@/components/settings/pages/account-copy'
+import { CAN_ADD_DEVICES } from '@/components/settings/pages/remote-copy'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'

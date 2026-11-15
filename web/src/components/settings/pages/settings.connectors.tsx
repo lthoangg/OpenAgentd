@@ -13,7 +13,7 @@ interface McpListPageProps {
   onNew: () => void
 }
 
-export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps) {
+export function ConnectorsListPage({ selectedName, onSelect, onNew }: McpListPageProps) {
   const { data, isLoading, isError, error, refetch } = useMcpServersQuery()
 
   const rows = useMemo<ListViewRow[]>(

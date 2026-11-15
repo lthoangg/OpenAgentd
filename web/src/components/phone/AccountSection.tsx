@@ -17,7 +17,7 @@ import { ChevronRight } from 'lucide-react'
 
 import { pendingLabel, type DeviceRow, type PendingRow, type PhoneCloudStatus } from '@/api/phone-cloud'
 import { ApprovalSheet } from '@/components/phone/ApprovalSheet'
-import { CAN_ADD_DEVICES, FEATURE_NAME, groupCode, noticeCopy } from '@/components/settings/pages/account-copy'
+import { CAN_ADD_DEVICES, FEATURE_NAME, groupCode, noticeCopy } from '@/components/settings/pages/remote-copy'
 import { kindNoun } from '@/lib/device-words'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'

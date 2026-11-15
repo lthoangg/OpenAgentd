@@ -23,7 +23,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { ServersScreen } = await import('@/components/phone/ServersScreen')
-const { PhoneAccountContent } = await import('@/components/settings/pages/settings.account.phone')
+const { PhoneAccountContent } = await import('@/components/settings/pages/settings.remote.phone')
 const { queryClient } = await import('@/lib/query-client')
 const { resetPhoneCloudPush, phoneCloudPollInterval } = await import('@/queries/phone-cloud')
 

@@ -15,7 +15,7 @@ mock.module('@/hooks/use-mobile', () => ({
 }))
 
 import { SettingsPartsPage } from '@/components/settings/SettingsPartsPage'
-import { useGoalsPart } from '@/components/settings/pages/settings.goals'
+import { useGoalsPart } from '@/components/settings/pages/sessions/goals'
 
 /** The Goals part alone, in the shell the Sessions page gives it. */
 function GoalsSettingsPage() {

@@ -15,7 +15,7 @@ mock.module('@/hooks/use-mobile', () => ({
 }))
 
 import { SettingsPartsPage } from '@/components/settings/SettingsPartsPage'
-import { useHistoryPart } from '@/components/settings/pages/settings.telemetry'
+import { useHistoryPart } from '@/components/settings/pages/sessions/history'
 
 /** The History part alone, in the shell the Sessions page gives it. */
 function TelemetrySettingsPage() {

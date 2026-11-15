@@ -23,8 +23,8 @@ describe('searchSettings', () => {
   it('finds a single setting by its name, or by a word people use for it', () => {
     expect(labelsFor('text size')).toContain('setting:general:Text size')
     expect(labelsFor('dark')).toContain('setting:general:Theme')
-    expect(labelsFor('gitignore')).toContain('setting:denied_paths:Blocked patterns')
-    expect(labelsFor('retention days')).toContain('setting:titles:Keep usage history for')
+    expect(labelsFor('gitignore')).toContain('setting:blocked_files:Blocked patterns')
+    expect(labelsFor('retention days')).toContain('setting:sessions:Keep usage history for')
   })
 
   it('finds the Detail setting by its new name and by every old one', () => {
@@ -38,7 +38,7 @@ describe('searchSettings', () => {
 
   it('finds the fallback order of accounts under Models', () => {
     for (const query of ['use first', 'rate limit', 'tried in this order', 'pinned']) {
-      expect(labelsFor(query)).toContain('setting:providers:Accounts and fallback order')
+      expect(labelsFor(query)).toContain('setting:models:Accounts and fallback order')
     }
   })
 
@@ -60,33 +60,33 @@ describe('searchSettings', () => {
 
   it('finds every renamed page by the name it had', () => {
     const firstSection = (query: string) => searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')
-    expect(firstSection('mcp')).toMatchObject({ section: 'mcp', label: 'Connectors' })
-    expect(firstSection('mcp servers')).toMatchObject({ section: 'mcp', label: 'Connectors' })
-    expect(firstSection('provider')).toMatchObject({ section: 'providers', label: 'Models' })
-    expect(firstSection('providers')).toMatchObject({ section: 'providers', label: 'Models' })
-    expect(firstSection('denied')).toMatchObject({ section: 'denied_paths', label: 'Blocked files' })
-    expect(firstSection('denied paths')).toMatchObject({ section: 'denied_paths', label: 'Blocked files' })
-    expect(firstSection('server')).toMatchObject({ section: 'connection', label: 'Server' })
+    expect(firstSection('mcp')).toMatchObject({ section: 'connectors', label: 'Connectors' })
+    expect(firstSection('mcp servers')).toMatchObject({ section: 'connectors', label: 'Connectors' })
+    expect(firstSection('provider')).toMatchObject({ section: 'models', label: 'Models' })
+    expect(firstSection('providers')).toMatchObject({ section: 'models', label: 'Models' })
+    expect(firstSection('denied')).toMatchObject({ section: 'blocked_files', label: 'Blocked files' })
+    expect(firstSection('denied paths')).toMatchObject({ section: 'blocked_files', label: 'Blocked files' })
+    expect(firstSection('server')).toMatchObject({ section: 'computers', label: 'Computers' })
     expect(firstSection('about openagentd')).toMatchObject({ section: 'about', label: 'About' })
   })
 
   it('finds Sessions by each of the four pages it replaced, and their settings by the old names', () => {
     for (const query of ['session titles', 'context', 'goals', 'retention']) {
-      expect(searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')).toMatchObject({ section: 'titles', label: 'Sessions' })
+      expect(searchSettings(query, SETTINGS_SECTIONS).find((hit) => hit.kind === 'section')).toMatchObject({ section: 'sessions', label: 'Sessions' })
     }
-    expect(labelsFor('token threshold')).toContain('setting:titles:Summarize when a session reaches')
-    expect(labelsFor('idle trigger')).toContain('setting:titles:Summarize idle sessions')
-    expect(labelsFor('keep forever')).toContain('setting:titles:Keep usage history forever')
-    expect(labelsFor('generate titles')).toContain('setting:titles:Name sessions automatically')
+    expect(labelsFor('token threshold')).toContain('setting:sessions:Summarize when a session reaches')
+    expect(labelsFor('idle trigger')).toContain('setting:sessions:Summarize idle sessions')
+    expect(labelsFor('keep forever')).toContain('setting:sessions:Keep usage history forever')
+    expect(labelsFor('generate titles')).toContain('setting:sessions:Name sessions automatically')
   })
 
   it('finds the list of computers by the words the Server page used, and names each result as the page does', () => {
     const settingsFor = (query: string) => searchSettings(query, SETTINGS_SECTIONS).filter((hit) => hit.kind === 'setting')
-    expect(settingsFor('built-in server')).toContainEqual(expect.objectContaining({ section: 'connection', label: 'This computer', anchor: 'Computers' }))
+    expect(settingsFor('built-in server')).toContainEqual(expect.objectContaining({ section: 'computers', label: 'This computer', anchor: 'Computers' }))
     for (const query of ['saved server', 'server url', 'add a server', 'computer']) {
-      expect({ query, hits: settingsFor(query) }).toEqual({ query, hits: expect.arrayContaining([expect.objectContaining({ section: 'connection', label: 'Add a computer by address', anchor: 'Add a computer by address' })]) })
+      expect({ query, hits: settingsFor(query) }).toEqual({ query, hits: expect.arrayContaining([expect.objectContaining({ section: 'computers', label: 'Add a computer by address', anchor: 'Add a computer by address' })]) })
     }
-    const labels = SETTINGS_INDEX.filter((entry) => entry.section === 'connection').map((entry) => entry.label)
+    const labels = SETTINGS_INDEX.filter((entry) => entry.section === 'computers').map((entry) => entry.label)
     expect(labels.filter((label) => /server/i.test(label))).toEqual([])
   })
 
@@ -97,7 +97,7 @@ describe('searchSettings', () => {
 
   it('lists matching sections first, then settings whose name starts with the query', () => {
     const hits = searchSettings('server', SETTINGS_SECTIONS)
-    expect(hits[0]).toMatchObject({ kind: 'section', section: 'connection', label: 'Server' })
+    expect(hits[0]).toMatchObject({ kind: 'section', section: 'computers', label: 'Computers' })
     const settings = searchSettings('add', SETTINGS_SECTIONS).filter((hit) => hit.kind === 'setting').map((hit) => hit.label)
     expect(settings[0]).toBe('Add a computer by address')
     expect(settings.length).toBeGreaterThan(1)

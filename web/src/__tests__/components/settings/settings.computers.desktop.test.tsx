@@ -1,5 +1,5 @@
 /**
- * Settings → Server in the desktop app: "Your computers" above the servers.
+ * Settings → Computers in the desktop app: "Your computers" above the servers.
  * The account is the built-in server's, so its calls go through the shell
  * (`desktop_cloud_call`) even while the window shows another computer; the
  * list holds the account's servers but not this computer, with their dots
@@ -27,7 +27,7 @@ mock.module('@tauri-apps/api/core', () => ({
   },
 }))
 
-const { ConnectionSettingsPage } = await import('@/components/settings/pages/settings.connection')
+const { ComputersSettingsPage } = await import('@/components/settings/pages/settings.computers')
 const { BUILTIN_STOPPED_COMPUTERS, CANNOT_OPEN_COMPUTERS } = await import('@/components/phone/AccountComputers')
 const { queryClient } = await import('@/lib/query-client')
 
@@ -118,7 +118,7 @@ afterEach(() => {
 function page() {
   return render(
     <QueryClientProvider client={queryClient}>
-      <ConnectionSettingsPage />
+      <ComputersSettingsPage />
     </QueryClientProvider>,
   )
 }
@@ -179,12 +179,19 @@ describe('the account’s computers on the desktop', () => {
     expect(await within(linux.closest('[data-server-row]') as HTMLElement).findByText('On your network')).toBeTruthy()
   })
 
-  it('shows the direct sessions switch, apart from network access', async () => {
+  it('puts the direct sessions switch with network access, under one Let other devices connect heading', async () => {
     shell()
     page()
     const toggle = await screen.findByRole('switch', { name: /connect directly on this network/i })
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
     expect(ran('desktop_cloud_call').some((call) => call.args?.path === '/direct/setting')).toBe(true)
+    const section = screen.getByRole('heading', { level: 2, name: 'Let other devices connect' }).closest('section')!
+    expect(section.contains(toggle)).toBe(true)
+    expect(within(section).getByRole('switch', { name: 'Allow devices on your network to connect' })).toBeTruthy()
+    // One heading for every way in; the old names are gone.
+    for (const old of ["Your account's devices", 'Access from other devices', 'Network access']) {
+      expect(screen.queryByRole('heading', { name: old })).toBeNull()
+    }
   })
 
   it('opens a computer through the shell and moves the window to it', async () => {

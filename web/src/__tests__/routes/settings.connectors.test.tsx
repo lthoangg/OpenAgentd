@@ -6,7 +6,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import type { ServerStatus } from '@/api/client'
-import { McpListPage } from '@/components/settings/pages/settings.mcp'
+import { ConnectorsListPage } from '@/components/settings/pages/settings.connectors'
 import { queryKeys } from '@/queries'
 
 afterEach(cleanup)
@@ -31,7 +31,7 @@ function renderList(servers: ServerStatus[], onSelect: (name: string) => void = 
   client.setQueryData(queryKeys.mcp.list(), { servers })
   return render(
     <QueryClientProvider client={client}>
-      <McpListPage onSelect={onSelect} onNew={() => {}} />
+      <ConnectorsListPage onSelect={onSelect} onNew={() => {}} />
     </QueryClientProvider>,
   )
 }
@@ -39,7 +39,7 @@ function renderList(servers: ServerStatus[], onSelect: (name: string) => void = 
 /** A server's row: the button that names it. */
 const serverRow = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name.replace(/[/.]/g, '\\$&')}\\b`) })
 
-describe('McpListPage — servers from plugins', () => {
+describe('ConnectorsListPage — servers from plugins', () => {
   const GITHUB = server('changelog-tools/github', { plugin: 'changelog-tools', tool_names: ['create_issue'] })
 
   it('labels a server with the plugin it comes from', () => {

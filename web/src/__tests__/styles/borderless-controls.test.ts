@@ -46,8 +46,6 @@ const ALLOW: Record<string, number> = {
   'components/FileCard.tsx': 1,
   'components/FilePreviewStrip.tsx': 3,
   'components/DesignFeedbackViews.tsx': 1,
-  // A standalone card in a grid of cards (each its own frame, no list around them).
-  'components/settings/pages/settings.index.tsx': 1,
 }
 
 // ── Scanner ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 /**
  * The macOS app keeps the system's own scroll bars, which follow System
- * Settings → Appearance → "Show scroll bars" (DESIGN.md → Native first). Any
+ * Settings → General → "Show scroll bars" (DESIGN.md → Native first). Any
  * ``::-webkit-scrollbar`` style turns WebKit's native overlay bars into
  * custom ones, so the app's thin bars must not reach the macOS app.
  */

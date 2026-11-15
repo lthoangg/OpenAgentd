@@ -14,7 +14,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => mock(() => undefined),
 }))
 
-import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
+import { ConnectorDetailPage } from '@/components/settings/pages/settings.connectors.$name'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -49,13 +49,13 @@ function renderPage(name = 'filesystem') {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <McpServerDetailPage name={name} onBack={() => {}} />
+      <ConnectorDetailPage name={name} onBack={() => {}} />
       <ToastStack />
     </QueryClientProvider>,
   )
 }
 
-describe('McpServerDetailPage', () => {
+describe('ConnectorDetailPage', () => {
   it('keeps MCP editor actions and fields touch-sized before desktop compact sizing', async () => {
     server.use(
       http.get('http://localhost/api/mcp/servers/filesystem', () => HttpResponse.json({
@@ -125,7 +125,7 @@ describe('McpServerDetailPage', () => {
   })
 })
 
-describe('McpServerDetailPage — a server from a plugin', () => {
+describe('ConnectorDetailPage — a server from a plugin', () => {
   const PLUGIN_SERVER = {
     name: 'changelog-tools/github',
     transport: 'stdio',
@@ -261,7 +261,7 @@ describe('McpServerDetailPage — a server from a plugin', () => {
   it('sends you to Plugins to turn it on or off', async () => {
     serveServer()
     renderPage('changelog-tools/github')
-    useSettingsStore.setState({ section: 'mcp-edit', selectedName: 'changelog-tools/github' })
+    useSettingsStore.setState({ section: 'connectors-edit', selectedName: 'changelog-tools/github' })
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open plugins' }))
 

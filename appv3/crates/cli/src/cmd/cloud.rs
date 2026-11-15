@@ -153,7 +153,7 @@ fn join(roles: CloudRoles) -> Result<ExitCode> {
     }
     println!();
     println!("  Join your account to reach this computer from your devices. {}", dim("(optional; local use needs no account)"));
-    println!("  On another computer in your account: OpenAgentd → Settings → Account → Add a device → Can't scan? Use a link.");
+    println!("  On another computer in your account: OpenAgentd → Settings → Remote control → Add a device → Can't scan? Use a link.");
     println!();
     let link = zeroize::Zeroizing::new(crate::ui::read_secret("  Invitation link (hidden): ")?);
     if openagentd_cloud::invite::parse_link(&link).is_err() {

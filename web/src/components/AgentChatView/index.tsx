@@ -1061,7 +1061,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             setupMessage={setupRequired?.message ?? null}
             hasConfiguredProvider={!needsModelSetup}
             missingProvider={modelReady.status === 'needs-provider' ? { label: modelReady.provider.label, model: modelReady.model } : null}
-            onOpenProviders={() => openSettings('providers')}
+            onOpenProviders={() => openSettings('models')}
             onChooseModel={() => { if (!useUIStore.getState().runPickerOpen) handleToggleRunPicker() }}
             onDismiss={dismissSetupRequired}
           />
@@ -1149,7 +1149,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
                 key={modelReady.status === 'needs-provider' ? modelReady.provider.id : 'needs-model'}
                 readiness={modelReady}
                 providers={providersQ.data.providers}
-                onOpenProviders={() => openSettings('providers')}
+                onOpenProviders={() => openSettings('models')}
               />
             ) : null}
             isMobile={isMobile}

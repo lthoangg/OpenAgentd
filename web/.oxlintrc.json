@@ -61,7 +61,7 @@
     {
       "files": [
         "src/api/**",
-        "src/components/settings/pages/settings.providers/credentialApi.ts",
+        "src/components/settings/pages/settings.models/credentialApi.ts",
         "src/components/FileViewerPanel.tsx",
         "src/hooks/useDeepLinkRouter.ts",
         "src/lib/server-probe.ts",

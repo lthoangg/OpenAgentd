@@ -11,7 +11,7 @@
  */
 import { useState } from 'react'
 
-import { Body } from '@/components/settings/pages/account-copy'
+import { Body } from '@/components/settings/pages/remote-copy'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Field } from '@/components/ui/field'

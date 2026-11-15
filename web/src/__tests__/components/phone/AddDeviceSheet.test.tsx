@@ -39,7 +39,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { AddDeviceSheet } = await import('@/components/phone/AddDeviceSheet')
-const { PhoneAccountContent } = await import('@/components/settings/pages/settings.account.phone')
+const { PhoneAccountContent } = await import('@/components/settings/pages/settings.remote.phone')
 const { queryClient } = await import('@/lib/query-client')
 
 import type { InvitePoll } from '@/api/phone-cloud'

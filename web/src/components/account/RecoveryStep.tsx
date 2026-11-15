@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 
-import { Body } from '@/components/settings/pages/account-copy'
+import { Body } from '@/components/settings/pages/remote-copy'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'

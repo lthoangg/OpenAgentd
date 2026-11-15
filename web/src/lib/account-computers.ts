@@ -2,7 +2,7 @@
  * The account's computers as data: which servers of the account this app
  * can open, their line, and whether the desktop's built-in server (which
  * holds its account) is up. `AccountComputersSection` draws them (the phone's
- * Servers screen, the desktop's Settings → Server), and the command palette
+ * Servers screen, the desktop's Settings → Computers), and the command palette
  * lists them; this module stays light so the palette does not load the
  * Servers UI.
  */

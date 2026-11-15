@@ -6,7 +6,7 @@ import {
   formatModelPriceBadge,
   formatModelPriceTooltip,
   formatTokenPrice,
-} from '@/components/settings/pages/settings.providers/ModelsPanel'
+} from '@/components/settings/pages/settings.models/ModelsPanel'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 

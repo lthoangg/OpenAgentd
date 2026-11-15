@@ -65,6 +65,7 @@ export function useHistoryPart(): SettingsPart {
       description: 'Traces and spend older than this are deleted as soon as you save, and the Usage view can no longer show them.',
       confirmLabel: 'Delete and save',
     },
+    title: 'History',
     loading: telemetryQ.isLoading,
     error: telemetryQ.error,
     body: (

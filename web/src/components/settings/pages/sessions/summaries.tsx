@@ -77,6 +77,8 @@ export function useSummariesPart(): SettingsPart {
 
   return {
     draft: { ...draft, canSave: draft.canSave && !thresholdError && !idlePercentError },
+    saveBlockedReason: thresholdError ? 'Fix the summary threshold to save.' : idlePercentError ? 'Fix how full an idle session must be to save.' : null,
+    title: 'Summaries',
     loading: summarizationQ.isLoading,
     error: summarizationQ.error,
     body: (
@@ -125,7 +127,7 @@ export function useSummariesPart(): SettingsPart {
                 max={100}
                 step={5}
                 placeholder={String(DEFAULT_IDLE_COMPACTION_PERCENT)}
-                aria-label="Idle trigger percent"
+                aria-label="Only once it is this full"
                 value={idlePercent === null ? '' : String(idlePercent)}
                 onChange={(e) => draft.patch({ idle_compaction_percent: parseOptionalInt(e.target.value) })}
                 className="h-9 w-20! md:w-24! no-spin text-right font-mono tabular-nums"

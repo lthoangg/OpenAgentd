@@ -71,6 +71,7 @@ export function useGoalsPart(): SettingsPart {
   return {
     draft: { ...draft, canSave: draft.canSave && !maxTurnsError && !tokenBudgetError },
     saveBlockedReason: maxTurnsError ? 'Fix turns per goal to save.' : tokenBudgetError ? 'Fix the token budget to save.' : null,
+    title: 'Goals',
     loading: goalsQ.isLoading,
     error: goalsQ.error,
     body: (

@@ -247,6 +247,20 @@ run from the terminal (the native Rust binary since v3.0.0).
     are on the server's row in Computers.
   - **Remote control** has no headings named "Account". Signed out, the card
     is titled **Sign in**; closing and unavailable accounts show **Status**.
+  - **One page, one way to save.** A page made only of switches and choices
+    applies each change right away (General, Desktop, Workspaces, Plugins).
+    A page with anything typed, like a field or an editor, saves everything on it from the
+    save bar (Sessions, Blocked files, Image and video, Memory and the
+    editors). The **Let agents message other workspaces** switch now applies
+    right away, like the groups below it. **Memory** uses the save bar, with
+    **Discard…** and ⌘S, instead of its own Save button.
+  - **Typed text is never lost without asking.** Memory asks **Discard
+    changes?** before it opens another page over unsaved edits. A fresh copy
+    of the page, for example after the agent saves it, no longer replaces what
+    you typed: Save reports the conflict instead. **New page** refuses a path
+    that already exists. On Sessions, a part that can't load shows its own
+    error and Retry while the other parts still work. The save bar also says
+    why Save is off for Titles and Summaries.
   - Section ids follow the names (`/settings/models`, `/settings/connectors`,
     `/settings/sessions`, `/settings/blocked_files`, `/settings/computers`,
     `/settings/remote`). The old ids are gone *(deprecated)*: a link that

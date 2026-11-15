@@ -59,6 +59,8 @@ export function useTitlesPart(): SettingsPart {
 
   return {
     draft: { ...draft, canSave: draft.canSave && !modelError },
+    saveBlockedReason: modelError ? 'Fix the model for titles to save.' : null,
+    title: 'Titles',
     loading: titlesQ.isLoading,
     error: titlesQ.error,
     body: (

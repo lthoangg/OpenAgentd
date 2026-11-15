@@ -138,7 +138,7 @@ describe('WorkspacesSettingsPage', () => {
     expect(screen.queryByText('Unsaved changes')).toBeNull()
   })
 
-  it('turns workspace messages off through the save bar', async () => {
+  it('turns workspace messages off the moment the switch turns, with no save bar', async () => {
     const bodies: unknown[] = []
     server.use(
       ...baseHandlers(null),
@@ -154,9 +154,11 @@ describe('WorkspacesSettingsPage', () => {
     // The switch sits in a 56px settings row whose label also toggles it.
     expect(toggle.closest('[class~="min-h-(--phone-control)"]')).not.toBeNull()
     fireEvent.click(toggle)
-    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
     await waitFor(() => expect(bodies).toEqual([{ enabled: false }]))
+    // Every control on Workspaces applies at once, as the groups do.
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+    expect(screen.queryByText('Unsaved changes')).toBeNull()
   })
 })
 
@@ -330,12 +332,12 @@ describe('Sessions settings: Summaries', () => {
     const toggle = await screen.findByRole('switch', { name: /summarize idle sessions/i })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
     // A row that cannot be used takes no room (it read "Turn on … to change this").
-    expect(screen.queryByLabelText('Idle trigger percent')).toBeNull()
+    expect(screen.queryByLabelText('Only once it is this full')).toBeNull()
     expect(screen.queryByText(/Turn on Summarize idle sessions/)).toBeNull()
     expect(screen.queryByText('Unsaved changes')).toBeNull()
 
     fireEvent.click(toggle)
-    const percent = await screen.findByLabelText('Idle trigger percent') as HTMLInputElement
+    const percent = await screen.findByLabelText('Only once it is this full') as HTMLInputElement
     expect(percent.disabled).toBe(false)
     expect(percent.placeholder).toBe('70')
   })
@@ -353,7 +355,7 @@ describe('Sessions settings: Summaries', () => {
     renderPage(<ContextSettingsPage />)
 
     fireEvent.click(await screen.findByRole('switch', { name: /summarize idle sessions/i }))
-    const percent = await screen.findByLabelText('Idle trigger percent')
+    const percent = await screen.findByLabelText('Only once it is this full')
     fireEvent.change(percent, { target: { value: '55' } })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
@@ -397,7 +399,7 @@ describe('Sessions settings: Summaries', () => {
     renderPage(<ContextSettingsPage />)
 
     fireEvent.click(await screen.findByRole('switch', { name: /summarize idle sessions/i }))
-    fireEvent.change(await screen.findByLabelText('Idle trigger percent'), { target: { value } })
+    fireEvent.change(await screen.findByLabelText('Only once it is this full'), { target: { value } })
 
     expect(await screen.findByText(/whole number from 1 to 100/i)).toBeTruthy()
     const save = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement

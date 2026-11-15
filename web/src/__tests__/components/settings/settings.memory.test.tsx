@@ -35,6 +35,8 @@ let mockFileData: FileData | undefined = {
   frontmatter: null,
 }
 let mockFileError: Error | null = null
+/** Per-path pages, for tests that open more than one; otherwise every path reads `mockFileData`. */
+let mockFiles: Record<string, FileData> | null = null
 
 mock.module('@/queries', () => ({
   useMemoryTreeQuery: () => ({
@@ -42,8 +44,8 @@ mock.module('@/queries', () => ({
     isLoading: false,
     refetch: mock(() => Promise.resolve()),
   }),
-  useMemoryFileQuery: () => ({
-    data: mockFileData,
+  useMemoryFileQuery: (path: string | null) => ({
+    data: mockFiles ? (path ? mockFiles[path] : undefined) : mockFileData,
     isLoading: false,
     isError: mockFileError !== null,
     error: mockFileError,
@@ -80,6 +82,7 @@ describe('MemorySettingsPage', () => {
     cleanup()
     mockSaveMutate.mockClear()
     mockFileError = null
+    mockFiles = null
     mockFileData = {
       path: 'preferences.md',
       content: '# Preferences\nInitial text\n',
@@ -157,10 +160,65 @@ describe('MemorySettingsPage', () => {
     expect(screen.queryByPlaceholderText('Markdown content…')).toBeNull()
     expect(screen.getByText("Couldn't load preferences.md")).toBeDefined()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()
-    const saveBtn = screen.getByRole('button', { name: /Save/ }) as HTMLButtonElement
-    expect(saveBtn.disabled).toBe(true)
-    fireEvent.click(saveBtn)
+    // Nothing to save: the save bar shows only for edits to a loaded page.
+    expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull()
     expect(mockSaveMutate).not.toHaveBeenCalled()
+  })
+
+  it('saves from the settings save bar, which offers Discard too', async () => {
+    render(<MemorySettingsPage />)
+    expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull()
+    const textarea = screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'Edited' } })
+
+    expect(await screen.findByText('Unsaved changes')).toBeDefined()
+    expect(screen.getByRole('button', { name: /Discard/ })).toBeDefined()
+  })
+
+  it('asks before opening another page over unsaved edits, and keeps them on Cancel', async () => {
+    mockFiles = {
+      'preferences.md': { path: 'preferences.md', content: 'Prefs', etag: '"a"', frontmatter: null },
+      'topics/db.md': { path: 'topics/db.md', content: 'Database notes', etag: '"b"', frontmatter: null },
+    }
+    render(<MemorySettingsPage />)
+    const textarea = () => screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement
+    await waitFor(() => expect(textarea().value).toBe('Prefs'))
+    fireEvent.change(textarea(), { target: { value: 'Prefs, edited' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'topics/db.md' }))
+
+    expect(await screen.findByText('Discard changes?')).toBeDefined()
+    expect(textarea().value).toBe('Prefs, edited')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(textarea().value).toBe('Prefs, edited')
+
+    // Discarding opens the other page.
+    fireEvent.click(screen.getByRole('button', { name: 'topics/db.md' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
+    await waitFor(() => expect(textarea().value).toBe('Database notes'))
+  })
+
+  it('opens another page at once when nothing is edited', async () => {
+    mockFiles = {
+      'preferences.md': { path: 'preferences.md', content: 'Prefs', etag: '"a"', frontmatter: null },
+      'topics/db.md': { path: 'topics/db.md', content: 'Database notes', etag: '"b"', frontmatter: null },
+    }
+    render(<MemorySettingsPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'topics/db.md' }))
+    expect(screen.queryByText('Discard changes?')).toBeNull()
+    await waitFor(() => expect((screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement).value).toBe('Database notes'))
+  })
+
+  it('keeps typed edits when the page is fetched again', async () => {
+    const { rerender } = render(<MemorySettingsPage />)
+    const textarea = screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'Mine' } })
+
+    // The agent saved the page: a new snapshot arrives.
+    mockFileData = { path: 'preferences.md', content: 'Theirs', etag: '"etag-456"', frontmatter: null }
+    rerender(<MemorySettingsPage />)
+
+    expect((screen.getByPlaceholderText('Markdown content…') as HTMLTextAreaElement).value).toBe('Mine')
   })
 
   it('runs lint and displays findings banner', async () => {
@@ -239,5 +297,15 @@ describe('MemorySettingsPage', () => {
     })
     const callArgs = mockSaveMutate.mock.calls[0][0] as any
     expect(callArgs.path).toBe('topics/notes.md')
+  })
+
+  it('refuses to create a page over one that exists', async () => {
+    render(<MemorySettingsPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'New page' }))
+    fireEvent.change(await screen.findByPlaceholderText('topics/new-page.md'), { target: { value: 'topics/db' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('topics/db.md already exists')
+    expect(mockSaveMutate).not.toHaveBeenCalled()
   })
 })

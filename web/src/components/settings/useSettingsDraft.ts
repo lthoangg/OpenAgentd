@@ -1,5 +1,6 @@
 /**
- * useSettingsDraft — the single save contract for every settings page.
+ * useSettingsDraft — the save contract for every settings page that waits
+ * for the save bar (the rule is in `SaveBar.tsx`).
  *
  * Before this hook, settings pages hand-rolled their own draft state and
  * `dirty` comparison, which meant users could not predict whether an edit had

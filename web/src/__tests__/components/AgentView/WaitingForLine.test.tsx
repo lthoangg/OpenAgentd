@@ -1,21 +1,18 @@
 /**
  * The line at a transcript's live end while work is still coming back to it:
- * how many sessions it waits for, and a list (inline on desktop) that opens
- * each one.
+ * how many sessions it waits for, and a list (a popover on desktop) that
+ * opens each one.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import type { WaitingItem } from '@/api/types'
-import { resetWaitingOpenState, WaitingForLine } from '@/components/AgentView/WaitingForLine'
+import { WaitingForLine } from '@/components/AgentView/WaitingForLine'
 import { queryKeys } from '@/queries'
 import { OPEN_SESSION_EVENT, type OpenSessionRequest } from '@/utils/workspace-messages'
 
-afterEach(() => {
-  cleanup()
-  resetWaitingOpenState()
-})
+afterEach(cleanup)
 
 const WORKER: WaitingItem = { kind: 'subagent', session_id: 'sub-1', title: 'Port the settings tests', label: 'worker#1', workspace: '', state: 'working' }
 const EXPLORER: WaitingItem = { kind: 'subagent', session_id: 'sub-2', title: 'Map the retry paths', label: 'explorer#1', workspace: '', state: 'working' }
@@ -30,7 +27,7 @@ function renderLine(items: WaitingItem[] | undefined, sessionId = 'lead-1') {
 }
 
 const line = () => screen.queryByRole('button', { name: /^Waiting for/ })
-const list = () => screen.queryByRole('region', { name: 'Sessions this one waits for' })
+const list = () => screen.queryByRole('dialog', { name: 'Waiting for' })
 
 describe('WaitingForLine', () => {
   it('counts subagents and other workspaces as sessions, and says how many need you', () => {
@@ -78,48 +75,15 @@ describe('WaitingForLine', () => {
     expect(within(list()!).getAllByRole('button').map((row) => row.textContent)).toEqual(['Port the settings testsSubagent · worker#1Running'])
   })
 
-  it('opens the list inline, not in a popover, and folds it on a second click', () => {
+  it('opens the list in a popover outside the transcript, and closes it on Escape', async () => {
     renderLine([WORKER, CLOUD])
-    expect(line()?.getAttribute('aria-expanded')).toBe('false')
-    expect(line()?.hasAttribute('aria-haspopup')).toBe(false)
+    expect(line()?.getAttribute('aria-haspopup')).toBe('dialog')
     fireEvent.click(line()!)
     expect(line()?.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.queryByRole('dialog')).toBeNull()
-    // The button names the region it controls, and the region sits in the line.
-    expect(list()?.id).toBe(line()!.getAttribute('aria-controls')!)
-    expect(document.querySelector('[data-waiting-for]')?.contains(list())).toBe(true)
-    fireEvent.click(line()!)
-    expect(line()?.getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('folds on Escape from inside the list and hands focus back to the line', () => {
-    renderLine([WORKER])
-    fireEvent.click(line()!)
-    const row = within(list()!).getByRole('button')
-    row.focus()
-    fireEvent.keyDown(row, { key: 'Escape' })
-    expect(line()?.getAttribute('aria-expanded')).toBe('false')
-    expect(document.activeElement).toBe(line())
-  })
-
-  it('keeps the list open per session across a remount, and starts closed elsewhere', () => {
-    const first = renderLine([WORKER])
-    fireEvent.click(line()!)
-    first.view.unmount()
-    renderLine([WORKER])
-    expect(line()?.getAttribute('aria-expanded')).toBe('true')
-    cleanup()
-    renderLine([WORKER], 'lead-2')
-    expect(line()?.getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('forgets the open list once there is nothing left to wait for', async () => {
-    const { client } = renderLine([WORKER])
-    fireEvent.click(line()!)
-    act(() => client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [] }))
-    // A boolean: bun prints a whole DOM node when such a check misses, slowly.
-    await waitFor(() => expect(line() === null).toBe(true))
-    act(() => client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [EXPLORER] }))
+    // The list floats in a portal: nothing is added to the transcript.
+    expect(list() !== null).toBe(true)
+    expect(document.querySelector('[data-waiting-for]')?.contains(list())).toBe(false)
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
     await waitFor(() => expect(line()?.getAttribute('aria-expanded')).toBe('false'))
   })
 
@@ -131,8 +95,9 @@ describe('WaitingForLine', () => {
       renderLine([WORKER, CLOUD])
       fireEvent.click(line()!)
       fireEvent.click(screen.getByRole('button', { name: /Port the settings tests/ }))
-      // Inline, the list stays open: coming back finds it as it was left.
-      expect(line()?.getAttribute('aria-expanded')).toBe('true')
+      // Opening one closes the list.
+      expect(line()?.getAttribute('aria-expanded')).toBe('false')
+      fireEvent.click(line()!)
       fireEvent.click(screen.getByRole('button', { name: /Add the offer route/ }))
     } finally {
       window.removeEventListener(OPEN_SESSION_EVENT, listen)

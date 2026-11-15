@@ -9,7 +9,6 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 
 import type { ContentBlock } from '@/api/types'
 import { AgentView } from '@/components/AgentView'
-import { resetWaitingOpenState } from '@/components/AgentView/WaitingForLine'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 
@@ -40,10 +39,7 @@ beforeEach(() => {
   useAgentStore.setState({ sessionId: 's1', parentSessionId: null, isLoadingHistory: false })
 })
 
-afterEach(() => {
-  cleanup()
-  resetWaitingOpenState()
-})
+afterEach(cleanup)
 
 describe('AgentView: what a finished answer waits for', () => {
   it('shows the line under the last answer once its turn has closed', () => {

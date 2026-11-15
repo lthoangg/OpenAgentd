@@ -3015,8 +3015,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   that owed a reply ends the wait for it.
   From `[v3.56.0]` the line shows while the main agent is still running too, in one
   place after the transcript, so it never jumps or doubles when the turn ends. On
-  the desktop it opens the list inline under the line (Enter or Space toggles it,
-  and it stays open after a row opens a session); a phone keeps the sheet. Idle
+  the desktop it opened the list inline under the line; from `[v3.57.0]` it opens
+  a popover again, so the transcript stays put, and a phone keeps the sheet. Idle
   sessions are left out: the line, the list and the Goal tab count only sessions
   that are running or need you.
 - **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`

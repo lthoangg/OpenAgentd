@@ -17,7 +17,7 @@
  *
  * Under the list: the phone's account (`AccountSection`, there before any
  * computer answers, so a phone can sign in and approve devices first). One
- * **Scan QR code** (in the guest's Account card and under the list) reads
+ * **Scan QR code** (under the list) reads
  * both an account invitation and a computer's connect code
  * (`useScanAnyCode`).
  *
@@ -171,7 +171,7 @@ export function ServersScreen({ active, onOpenSessions }: {
             controlRef={panel}
             onScanQr={scan}
           />
-          <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} onScan={scan} />
+          <AccountSection active={active} devices={devices} onOpen={() => setAccountOpen(true)} />
           {connected && isPhoneCloudShell() && <ConnectionDiagnosticsRow />}
         </div>
       </PullToRefresh>

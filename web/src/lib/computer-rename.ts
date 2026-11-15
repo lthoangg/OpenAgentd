@@ -1,16 +1,19 @@
 /**
- * Renaming the computer the app is on. Its name lives on the computer
- * (`PUT /api/server/name`), so it is changed through the connection the app
- * has to it, then remembered in the shell under that computer's key so the
- * lists show it at once.
+ * Renaming devices. A device of the account has one name, kept by the
+ * account (`renameAccountDevice`): every device and the account pages show
+ * it. A computer also calls itself by a name (`PUT /api/server/name`), which
+ * it keeps in step with the account's; renaming a computer here changes that
+ * one too, through the connection the app has to it or its link, and the
+ * shell remembers it under that computer's key so the lists show it at once.
  *
  * Both read and write the app's own `queryClient`: the Servers screen shows
  * before the router (and its `QueryClientProvider`) exists.
  */
 import { apiBaseUrl } from '@/api/base-url'
 import { setServerName } from '@/api/client/server-name'
-import { renameCloudComputer } from '@/api/phone-cloud'
+import { phoneCloudRenameDevice, renameCloudComputer } from '@/api/phone-cloud'
 import { computerNameKey, rememberComputerName, type AppBackendStatus } from '@/lib/app-backend'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 import { SERVER_NAME_CAPABILITY, type ServerNameOf } from '@/queries/useServerNameQuery'
@@ -54,4 +57,44 @@ export async function renameAccountComputer(status: AppBackendStatus | null, dev
   const next = await rememberComputerName(deviceId, saved.name ?? '')
   if (next) queryClient.setQueryData(queryKeys.backendStatus(), next)
   return next
+}
+
+/** A device of the account, as far as renaming it goes. */
+export interface RenamedDevice {
+  device_id: string
+  me: boolean
+  server: boolean
+  /** Absent: an older shell or server, which keeps no account names. */
+  name?: string | null
+}
+
+/**
+ * Name a device of the account; an empty name leaves it unnamed (a
+ * computer then goes back to its own name). The account keeps the name, so
+ * every device shows it. A computer's own name follows: this computer's
+ * through its server (the desktop's account route does both), another's in
+ * the background through the app's connection or its link (and the computer
+ * takes the account's name by itself the next time it checks in). A device
+ * from an older shell or server is renamed the old way, on the computer only.
+ */
+export async function renameAccountDevice(status: AppBackendStatus | null, device: RenamedDevice, name: string): Promise<void> {
+  if (device.name === undefined) {
+    await renameAccountComputer(status, device.device_id, name)
+    return
+  }
+  const wanted = name.trim() || null
+  // Loaded on use: `@/api/cloud` stays out of the startup bundle.
+  const saved = isDesktopShell()
+    ? await (await import('@/api/cloud')).cloudRenameDevice(device.device_id, wanted)
+    : await phoneCloudRenameDevice(device.device_id, wanted)
+  void queryClient.invalidateQueries({ queryKey: queryKeys.cloud.devices() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.phoneCloud.devices() })
+  if (device.me) {
+    // This computer's server took the name too.
+    if (isDesktopShell()) void queryClient.invalidateQueries({ queryKey: queryKeys.serverName() })
+    return
+  }
+  if (device.server) {
+    void renameAccountComputer(status, device.device_id, saved.name ?? '').catch(() => undefined)
+  }
 }

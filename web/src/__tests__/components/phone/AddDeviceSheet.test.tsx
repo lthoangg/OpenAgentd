@@ -219,7 +219,8 @@ describe('joining with an invitation on a phone', () => {
   it('joins with a scanned invitation and shows what to compare', async () => {
     scanned = LINK
     render(<PhoneAccountContent />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Scan invitation' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scan invitation' }))
     await waitFor(() => expect(ran('cloud_join_invite')).toHaveLength(1))
     expect(ran('cloud_join_invite')[0]?.args).toEqual({ link: LINK })
     expect(await screen.findByText('iOS · 5D1E 0A77')).toBeTruthy()
@@ -228,7 +229,8 @@ describe('joining with an invitation on a phone', () => {
   it('refuses a QR code that is not an invitation', async () => {
     scanned = 'openagentd://connect?url=http://192.168.1.20:4082'
     render(<PhoneAccountContent />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Scan invitation' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scan invitation' }))
     expect(await screen.findByText(/That QR code is not an invitation/)).toBeTruthy()
     expect(ran('cloud_join_invite')).toHaveLength(0)
   })
@@ -236,6 +238,7 @@ describe('joining with an invitation on a phone', () => {
   it('joins with a pasted link, and keeps Sign in for a new account or the 6-digit code', async () => {
     render(<PhoneAccountContent />)
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Other ways to sign in' }))
     fireEvent.click(screen.getByRole('button', { name: 'Paste link' }))
     fireEvent.change(screen.getByLabelText('Invitation link'), { target: { value: LINK } })
     fireEvent.click(screen.getByRole('button', { name: 'Join' }))

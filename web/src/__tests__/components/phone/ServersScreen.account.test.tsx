@@ -116,38 +116,25 @@ const headings = () => screen.queryAllByRole('heading', { level: 2 }).map((h) =>
 const rowOf = (name: string) => screen.getByText(name).closest('[data-server-row]') as HTMLElement
 
 describe('Account section', () => {
-  it('offers a guest the account under the one list of computers', async () => {
+  it('offers a guest one Sign in row under the one list of computers; the offer itself is in the sheet', async () => {
     shell(GUEST)
     render(<ServersScreen active onOpenSessions={() => {}} />)
 
-    expect(await screen.findByText('Use your computers from anywhere')).toBeTruthy()
-    expect(screen.getByText('Sign in, and the computers in your account show up here. No address or access key to type.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
-    // One scanner for an invitation, in place of "I have an invitation" on a phone.
-    expect(screen.queryByRole('button', { name: 'I have an invitation' })).toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Scan QR code' })).toHaveLength(2)
-    expect(screen.getByRole('button', { name: 'Not now' })).toBeTruthy()
+    const row = await screen.findByRole('button', { name: /Sign in\s*Use your computers from anywhere/ })
+    // The offer shows once: in the sheet, not here too.
+    expect(screen.queryByText('Sign in to use your computers from anywhere.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Scan QR code' })).toHaveLength(1)
     const nas = await screen.findByText('Home NAS')
     // The screen's large title heads the list; Account is the only section under it.
     expect(headings()).toEqual(['Account'])
     const account = screen.getByRole('heading', { level: 2, name: 'Account' })
     expect(nas.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
 
-  it('folds into an Account row after Not now, for good, and the row opens the sheet', async () => {
-    shell(GUEST)
-    const first = render(<ServersScreen active onOpenSessions={() => {}} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
-    expect(screen.queryByText('Use your computers from anywhere')).toBeNull()
-    expect(screen.getByText('Not signed in')).toBeTruthy()
-    first.unmount()
-
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-    const row = await screen.findByRole('button', { name: /Account\s*Not signed in/ })
-    expect(screen.queryByText('Use your computers from anywhere')).toBeNull()
     fireEvent.click(row)
     const sheet = await screen.findByRole('dialog', { name: 'Account' })
-    expect(within(sheet).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(sheet).getByText('Sign in to use your computers from anywhere.')).toBeTruthy()
+    expect(within(sheet).getAllByRole('button', { name: 'Sign in' })).toHaveLength(1)
   })
 
   it('shows the notice that made the phone a guest again', async () => {
@@ -169,8 +156,9 @@ describe('Account section', () => {
     const signingIn: PhoneCloudStatus = { state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600 }
     shell(GUEST, { cloud_sign_in: () => { status = signingIn; return signingIn } })
     render(<ServersScreen active onOpenSessions={() => {}} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Sign in\s*Use your computers/ }))
     const sheet = await screen.findByRole('dialog', { name: 'Account' })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Sign in' }))
     expect(await within(sheet).findByText('WXYZ-1234')).toBeTruthy()
   })
 
@@ -423,23 +411,14 @@ describe('one QR scanner for all three kinds of code', () => {
     // Closing the sheet costs happy-dom a few busy seconds on a loaded machine.
   }, 15_000)
 
-  it('fills the add form from a connect code, from either button', async () => {
+  it('fills the add form from a connect code', async () => {
     scanned = 'openagentd://connect?url=http%3A%2F%2F192.168.1.40%3A4082&key=k'
     shell(GUEST)
     render(<ServersScreen active onOpenSessions={() => {}} />)
     await screen.findByText('Home NAS')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Scan QR code' }))
     expect(await screen.findByText('Scanned from another device. Check the address, then connect.')).toBeTruthy()
     expect(ran('cloud_join_invite')).toHaveLength(0)
-  })
-
-  it('joins with an invitation scanned from the other button too', async () => {
-    scanned = INVITE
-    shell(GUEST, { cloud_join_invite: () => { status = INVITED; return INVITED } })
-    render(<ServersScreen active onOpenSessions={() => {}} />)
-    await screen.findByText('Home NAS')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Scan QR code' })[1])
-    await waitFor(() => expect(ran('cloud_join_invite')).toHaveLength(1))
   })
 
   it('names all three kinds when the code is none of them', async () => {

@@ -11,7 +11,10 @@ import {
   cloudLogin,
   cloudLoginCancel,
   cloudLogout,
+  cloudMakeApprover,
   cloudPickNumber,
+  cloudRecover,
+  cloudRecoveredAck,
   cloudRemoveDevice,
   getCloudDevices,
   getCloudPending,
@@ -79,6 +82,19 @@ export const useCloudRemoveDevice = () =>
     const proof = await approvalProof({ action: 'remove', id: deviceId }, 'remove a device from your account')
     if (!proof) throw new Error('Not confirmed. Nothing was removed.')
     return cloudRemoveDevice(deviceId, proof)
+  })
+
+/** Recovers the account with its recovery code (then a browser sign-in). */
+export const useCloudRecover = () =>
+  useCloudMutation(({ code, roles }: { code: string; roles: Roles }) => cloudRecover(code, roles))
+export const useCloudRecoveredAck = () => useCloudMutation(cloudRecoveredAck)
+/** Lets another device approve too, once the person confirms in the desktop app. */
+export const useCloudMakeApprover = () =>
+  useCloudMutation(async (deviceId: string) => {
+    if (!canApproveHere()) throw new Error(APPROVE_ELSEWHERE)
+    const proof = await approvalProof({ action: 'promote', id: deviceId }, 'let a device approve others in your account')
+    if (!proof) throw new Error('Not confirmed. Nothing was changed.')
+    return cloudMakeApprover(deviceId, proof)
   })
 
 export const useCloudApproveBegin = () => useMutation({ mutationFn: (enrollmentId: string) => cloudApproveBegin(enrollmentId) })

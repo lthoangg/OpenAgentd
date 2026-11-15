@@ -67,8 +67,13 @@ export const NOTICES: Record<CloudNotice, NoticeCopy> = {
     tone: 'warning',
   },
   unreachable: { body: "Couldn't reach OpenAgentd. Check your network and try again.", tone: 'warning' },
+  wrong_recovery_code: {
+    title: "That recovery code doesn't match this account.",
+    body: 'Nothing was changed. Check the code you saved and try again.',
+    tone: 'warning',
+  },
   failed: {
-    body: "Something went wrong with this computer's account keys. Sign in again to start over.",
+    body: 'Something went wrong while signing in on this device. Sign in again to start over.',
     tone: 'warning',
   },
 }

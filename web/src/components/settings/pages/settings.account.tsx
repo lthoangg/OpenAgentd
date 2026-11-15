@@ -1,35 +1,36 @@
 /**
  * Settings → Account — this computer's optional OpenAgentd Cloud account.
- * Guest is the default and is never blocked or nagged. **Sign in** is the
- * way in, with the two sharing choices (both on, under
- * **Options**): on an empty account this computer creates it (after the
- * recovery code); otherwise a phone scans the QR code the sign-in step
- * shows and the person picks the phone's number here, or a device already
- * in the account approves it after comparing a 6-digit code (the browser
- * way, folded under the QR code). **Connect your phone** (footer, palette)
- * opens this page and signs in at once (`lib/connect-phone`). An invitation
- * link is the alternative. Once connected, a
- * computer that approves devices lists the account's devices and the
- * pending requests, and approves one with the code and Touch ID; in the
- * desktop app it also shows an invitation QR code (**Add a device**) that a
- * phone scans to join, added only after Add and Touch ID. Only this
- * computer may change its account; anyone else (a phone viewing a remote
- * server) sees the status and a hint.
+ * Guest is the default and is never blocked or nagged.
  *
- * A device's row is its name and one status line (`DeviceRows`); its
- * system, key and role are under Details, where this computer is renamed
- * while the app is on its own server, and (in the desktop app) any other
- * computer of the account through its link.
+ * Signed out: one sentence and **Sign in**. On an empty account this
+ * computer creates it (after the recovery code); otherwise a phone scans the
+ * QR code the sign-in step shows and the person picks the phone's number
+ * here, or a device already in the account approves it after comparing a
+ * 6-digit code (the browser way, under "Can't use your phone?"). The rest
+ * sits under **Other ways to sign in**: an invitation link, and the recovery
+ * code for an account whose only approving phone is lost. A computer signs
+ * in with both sharing choices on (the CLI still offers roles). **Connect
+ * your phone** (footer, palette) opens this page and signs in at once
+ * (`lib/connect-phone`).
+ *
+ * Signed in: one list of the account's devices (`DeviceRows`), this
+ * computer first with Sign out; its status, key, role and remote sessions
+ * are under its Details. A computer that approves devices adds and removes
+ * them, approves pending requests with the code and Touch ID, and lets
+ * another device approve too; a note says when it is the only one that can.
+ * Only this computer may change its account; anyone else (a phone viewing a
+ * remote server) sees the status and a hint.
  */
 import { useEffect, useState, type ReactNode } from 'react'
 
-import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, type CloudPending, type CloudStatus, type RelayState, type Roles } from '@/api/cloud'
+import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, cloudRenameDevice, type CloudPending, type CloudStatus, type RelayState } from '@/api/cloud'
 import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
 import { DesktopAddDeviceSheet } from '@/components/account/DesktopAddDeviceSheet'
 import { DesktopApprovalSheet } from '@/components/account/DesktopApprovalSheet'
-import { DeviceRows } from '@/components/account/DeviceRows'
+import { DeviceRows, onlyApproverIsMe, type ListedDevice } from '@/components/account/DeviceRows'
+import { RecoveredNote, RecoverWithCode } from '@/components/account/RecoverWithCode'
 import { RecoveryStep } from '@/components/account/RecoveryStep'
-import { COMPUTER_ROLES, RolesChoice, rolesAsked, rolesLabel } from '@/components/account/RolesChoice'
+import { COMPUTER_ROLES, rolesAsked } from '@/components/account/RolesChoice'
 import { ApiValidationError } from '@/api/client/_shared'
 import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { SettingsPage } from '@/components/settings/SettingsPage'
@@ -39,7 +40,6 @@ import {
   GUEST_DESCRIPTION,
   groupCode,
   noticeCopy,
-  OfferCopy,
   PICK_NUMBER,
   SCANNED_COPY,
   ScanCodeCopy,
@@ -57,7 +57,7 @@ import { useAppStatusWithNames } from '@/lib/account-computers'
 import { BUILT_IN_NAME_KEY, computerNameKey } from '@/lib/app-backend'
 import { canApproveHere } from '@/lib/approval-proof'
 import { consumeConnectPhone, useConnectPhoneStore } from '@/lib/connect-phone'
-import { NAME_NEEDS_UPDATE, renameAccountComputer, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
+import { NAME_NEEDS_UPDATE, renameAccountComputer, renameAccountDevice, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import {
   useCloudCancelMutation,
@@ -66,8 +66,11 @@ import {
   useCloudJoinMutation,
   useCloudLoginMutation,
   useCloudLogoutMutation,
+  useCloudMakeApprover,
   useCloudPendingQuery,
   useCloudPickNumber,
+  useCloudRecover,
+  useCloudRecoveredAck,
   useCloudRemoveDevice,
   useCloudStatusQuery,
 } from '@/queries/cloud'
@@ -75,65 +78,96 @@ import {
 function relayText(relay: RelayState): string {
   switch (relay.state) {
     case 'online':
-      return 'Reachable from your devices through your account'
+      return 'Reachable from your devices'
     case 'connecting':
       return 'Connecting…'
     case 'offline':
       return 'Offline, retrying'
     case 'off':
-      return 'Your other devices cannot open this computer'
+      return 'Your other devices cannot open it'
     case 'taken_over':
-      return 'Taken over: another copy of this computer uses its account keys. Retrying every few minutes'
+      return 'Another copy of this computer is using its account. Retrying every few minutes'
     case 'paused': {
       const until = relay.until === null
         ? ''
         : ` until ${new Date(relay.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-      return `Paused: today's relay allowance is used up${until}`
+      return `Paused: today's allowance is used up${until}`
     }
   }
 }
 
 const isForbidden = (error: unknown) => error instanceof ApiValidationError && error.status === 403
 
-/** The account's devices; an approver can add a device and remove the others. */
-function DevicesSection({ canRemove, onAdd }: { canRemove: boolean; onAdd?: () => void }) {
+const RENAME_NEEDS_APPROVER = 'Only a device that approves new devices can rename it.'
+
+/** The account's devices, this computer first; an approver adds, removes, and lets another approve. */
+function DevicesSection({ status, onAdd, onSignOut, busy }: {
+  status: Extract<CloudStatus, { state: 'connected' }>
+  onAdd: () => void
+  onSignOut: () => void
+  busy: boolean
+}) {
   const devicesQ = useCloudDevicesQuery(true)
   const remove = useCloudRemoveDevice()
+  const promote = useCloudMakeApprover()
   const app = useAppStatusWithNames()
-  // Removing signs the account's device list: only the desktop app can prove the person asked.
+  // Removing and promoting sign the account's device list: only the desktop app can prove the person asked.
   const here = canApproveHere()
   // A remote viewer: these routes answer only this computer.
-  if (isForbidden(devicesQ.error)) return null
-  const devices = devicesQ.data ?? []
-  // In the desktop app the account is the built-in server's: this computer's
-  // name is the one remembered for it.
-  const me = isDesktopShell() ? devices.find((device) => device.me) : undefined
+  if (isForbidden(devicesQ.error)) {
+    return (
+      <PanelSection title="Account" flush>
+        <PanelRow label="Signed in" description={relayText(status.relay)} />
+      </PanelSection>
+    )
+  }
+  const devices = devicesQ.data
+  // An older server keeps no account names: in the desktop app this
+  // computer's name is the one remembered for its built-in server.
+  const me = isDesktopShell() ? devices?.find((device) => device.me) : undefined
   const ownName = app?.computer_names?.[BUILT_IN_NAME_KEY]
   const names = me && ownName ? { ...app?.computer_names, [me.device_id]: ownName } : app?.computer_names
   const onOwnServer = me !== undefined && computerNameKey(app) === BUILT_IN_NAME_KEY
+  const rename = (device: ListedDevice) => {
+    if (device.name !== undefined) {
+      if (!device.me && !status.signer) return null
+      return (name: string) => renameAccountDevice(app, device, name)
+    }
+    if (device.me) return onOwnServer && serverInUseKeepsName() ? async (name: string) => { await renameComputerInUse(app, name) } : null
+    if (device.server && isDesktopShell()) return async (name: string) => { await renameAccountComputer(app ?? null, device.device_id, name) }
+    return null
+  }
+  const renameHint = (device: ListedDevice) => {
+    if (rename(device)) return undefined
+    if (device.name !== undefined) return RENAME_NEEDS_APPROVER
+    if (device.me) return onOwnServer ? NAME_NEEDS_UPDATE : 'Switch to this computer to rename it.'
+    return device.server ? 'Open this computer to rename it.' : undefined
+  }
   return (
     <>
-      <PanelSection
-        title="Devices"
-        description={canRemove && !here ? REMOVE_ELSEWHERE : undefined}
-        flush
-        actions={onAdd && here && <Button size="sm" variant="primary" onClick={onAdd}>Add a device</Button>}
-      >
-        {devicesQ.isLoading && <PanelRow label="Loading devices…" />}
-        <DeviceRows
-          devices={devices}
-          names={names}
-          selfLabel="This computer"
-          onRemove={canRemove && here ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
-          removeEffect="It stops reaching your devices through your account."
-          renameSelf={onOwnServer && serverInUseKeepsName() ? {
-            name: ownName ?? '',
-            save: async (name) => { await renameComputerInUse(app, name) },
-          } : null}
-          selfRenameHint={me === undefined ? undefined : onOwnServer ? NAME_NEEDS_UPDATE : 'Switch to this computer to rename it.'}
-          onRenameComputer={isDesktopShell() ? async (deviceId, name) => { await renameAccountComputer(app ?? null, deviceId, name) } : undefined}
-        />
-      </PanelSection>
+      <DeviceRows
+        devices={devices}
+        loading={devicesQ.isLoading}
+        names={names}
+        selfLabel="This computer"
+        selfLine={relayText(status.relay)}
+        selfFacts={[
+          { label: 'Status', value: relayText(status.relay) },
+          { label: 'Remote sessions', value: String(status.sessions) },
+        ]}
+        meSigner={status.signer}
+        canChange={here}
+        changeElsewhere={REMOVE_ELSEWHERE}
+        onAdd={status.signer ? onAdd : undefined}
+        onRemove={status.signer ? (deviceId) => remove.mutateAsync(deviceId) : undefined}
+        removeEffect="It stops reaching your devices through your account."
+        onMakeApprover={status.signer ? (deviceId) => promote.mutateAsync(deviceId) : undefined}
+        rename={rename}
+        renameHint={renameHint}
+        uploadName={(deviceId, name) => cloudRenameDevice(deviceId, name)}
+        onSignOut={onSignOut}
+        signOutDisabled={busy}
+      />
       {(devicesQ.error ?? remove.error) && (
         <Callout tone="error" role="alert">{(devicesQ.error ?? remove.error)?.message}</Callout>
       )}
@@ -160,6 +194,20 @@ function PendingSection({ onReview }: { onReview: (row: CloudPending) => void })
   )
 }
 
+/** The browser page and its code, with Open page. */
+function BrowserWay({ status, readOnly }: { status: Extract<CloudStatus, { state: 'signing_in' }>; readOnly: boolean }) {
+  return (
+    <>
+      <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
+      {!readOnly && status.url.startsWith('https://') && (
+        <a href={status.url} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
+          Open page
+        </a>
+      )}
+    </>
+  )
+}
+
 export function AccountSettingsPage() {
   const statusQ = useCloudStatusQuery()
   const login = useCloudLoginMutation()
@@ -168,17 +216,21 @@ export function AccountSettingsPage() {
   const logout = useCloudLogoutMutation()
   const pickNumber = useCloudPickNumber()
   const confirmRecovery = useCloudConfirmRecovery()
+  const recover = useCloudRecover()
+  const recoveredAck = useCloudRecoveredAck()
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
-  const [roles, setRoles] = useState<Roles>(COMPUTER_ROLES)
+  const [otherWays, setOtherWays] = useState(false)
   const [withLink, setWithLink] = useState(false)
-  const [options, setOptions] = useState(false)
+  const [withCode, setWithCode] = useState(false)
   const [browserWay, setBrowserWay] = useState(false)
   const [reviewing, setReviewing] = useState<CloudPending | null>(null)
   const [adding, setAdding] = useState(false)
 
   const status: CloudStatus | undefined = statusQ.data
-  const mutations = [login, join, cancel, logout, pickNumber]
-  const noRole = !roles.server && !roles.client
+  const connected = status?.state === 'connected'
+  // Shared with the devices list (one query): for the sign-out warning.
+  const devicesQ = useCloudDevicesQuery(connected)
+  const mutations = [login, join, cancel, logout, pickNumber, recover]
   // Not this computer: the status stays visible, the buttons give way to a hint.
   const readOnly = mutations.some((m) => isForbidden(m.error))
   const failure = mutations.map((m) => m.error).find((e) => e && !isForbidden(e))
@@ -194,11 +246,24 @@ export function AccountSettingsPage() {
     if (state === 'guest') signIn(COMPUTER_ROLES)
   }, [connectRequested, state, signIn])
 
-  const signOutButton = (
-    <Button size="sm" disabled={busy} onClick={() => setConfirmingSignOut(true)}>Sign out</Button>
+  /** From a waiting step: stop it, and open the recovery code under Other ways. */
+  const useRecoveryCode = () => {
+    cancel.mutate()
+    setOtherWays(true)
+    setWithCode(true)
+  }
+  const lostPhone = !readOnly && (
+    <p>
+      <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={useRecoveryCode}>
+        Lost your phone? Use your recovery code
+      </Button>
+    </p>
   )
   const cancelButton = (
     <Button size="sm" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
+  )
+  const signOutButton = (
+    <Button size="sm" disabled={busy} onClick={() => setConfirmingSignOut(true)}>Sign out</Button>
   )
 
   let content: ReactNode = null
@@ -214,38 +279,47 @@ export function AccountSettingsPage() {
           )}
           <PanelSection title="Account">
             <Body>
-              <OfferCopy />
+              <p className="text-(--color-text)">Sign in to reach this computer from your phone, anywhere.</p>
               {!readOnly && (
                 <>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button variant="primary" size="sm" disabled={busy || noRole} onClick={() => login.mutate(roles)}>
+                  <div>
+                    <Button variant="primary" size="sm" disabled={busy} onClick={() => login.mutate(COMPUTER_ROLES)}>
                       {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
                     </Button>
-                    <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={options} onClick={() => setOptions((open) => !open)}>
-                      Options
-                    </Button>
                   </div>
-                  <Collapsible open={options}>
-                    <RolesChoice value={roles} onChange={setRoles} disabled={busy} />
+                  <Button variant="link" size="sm" className="h-auto p-0" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+                    Other ways to sign in
+                  </Button>
+                  <Collapsible open={otherWays} innerClassName="space-y-4">
+                    {withLink ? (
+                      <JoinWithLink
+                        busy={busy}
+                        onJoin={(link) => join.mutate({ link, roles: COMPUTER_ROLES })}
+                        hint="On another computer in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
+                      />
+                    ) : (
+                      <p>
+                        Have an invitation link?{' '}
+                        <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithLink(true)}>
+                          Join with a link
+                        </Button>
+                      </p>
+                    )}
+                    {withCode ? (
+                      <RecoverWithCode
+                        device="computer"
+                        busy={busy}
+                        onRecover={(code) => recover.mutate({ code, roles: COMPUTER_ROLES })}
+                        onCancel={() => setWithCode(false)}
+                      />
+                    ) : (
+                      <p>
+                        <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithCode(true)}>
+                          Lost your phone? Use your recovery code
+                        </Button>
+                      </p>
+                    )}
                   </Collapsible>
-                  <p>
-                    Your phone scans a code to add this computer. No phone? You can sign in in the browser instead;
-                    on a new account, this computer sets it up.
-                  </p>
-                  {withLink ? (
-                    <JoinWithLink
-                      busy={busy || noRole}
-                      onJoin={(link) => join.mutate({ link, roles })}
-                      hint="On another computer in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
-                    />
-                  ) : (
-                    <p>
-                      Have an invitation link?{' '}
-                      <Button variant="link" size="sm" className="h-auto p-0" disabled={busy} onClick={() => setWithLink(true)}>
-                        Join with a link instead
-                      </Button>
-                    </p>
-                  )}
                 </>
               )}
             </Body>
@@ -255,7 +329,15 @@ export function AccountSettingsPage() {
       break
     }
     case 'signing_in':
-      content = (
+      content = status.recovering ? (
+        <PanelSection title="Recovering your account">
+          <Body>
+            <p className="font-medium text-(--color-text)">Sign in in the browser to finish.</p>
+            <BrowserWay status={status} readOnly={readOnly} />
+            {!readOnly && <div>{cancelButton}</div>}
+          </Body>
+        </PanelSection>
+      ) : (
         <PanelSection title="Signing in">
           <Body>
             {status.add_link ? (
@@ -271,37 +353,14 @@ export function AccountSettingsPage() {
                   Can&apos;t use your phone? Sign in in the browser
                 </Button>
                 <Collapsible open={browserWay} innerClassName="space-y-3">
-                  <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
-                  {!readOnly && status.url.startsWith('https://') && (
-                    <a
-                      href={status.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={buttonVariants({ variant: 'primary', size: 'sm' })}
-                    >
-                      Open page
-                    </a>
-                  )}
+                  <BrowserWay status={status} readOnly={readOnly} />
+                  {lostPhone}
                 </Collapsible>
               </>
             ) : (
               <>
-                <SigningInCopy url={status.url} userCode={status.user_code} fingerprint={status.fingerprint} />
-                {!readOnly && (
-                  <div className="flex flex-wrap gap-2">
-                    {status.url.startsWith('https://') && (
-                      <a
-                        href={status.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={buttonVariants({ variant: 'primary', size: 'sm' })}
-                      >
-                        Open page
-                      </a>
-                    )}
-                    {cancelButton}
-                  </div>
-                )}
+                <BrowserWay status={status} readOnly={readOnly} />
+                {!readOnly && <div>{cancelButton}</div>}
               </>
             )}
           </Body>
@@ -337,6 +396,7 @@ export function AccountSettingsPage() {
               </p>
             )}
             {!readOnly && cancelButton}
+            {lostPhone}
           </Body>
         </PanelSection>
       )
@@ -392,34 +452,17 @@ export function AccountSettingsPage() {
       )
       break
     case 'connected':
-      content = (
-        <PanelSection title="Account" flush actions={!readOnly && signOutButton}>
-          <PanelRow label="Status" description={relayText(status.relay)} />
-          <PanelRow label="This device">
-            <span className="font-mono text-xs text-(--color-text-2)">{status.fingerprint}</span>
-          </PanelRow>
-          {status.server !== undefined && (
-            <PanelRow label="Sharing">
-              <span className="text-xs text-(--color-text-2)">{rolesLabel({ server: status.server, client: status.client ?? false })}</span>
-            </PanelRow>
-          )}
-          <PanelRow label="Role">
-            <span className="text-xs text-(--color-text-2)">{status.signer ? 'Approves devices' : 'Member'}</span>
-          </PanelRow>
-          <PanelRow label="Remote sessions">
-            <span className="text-xs tabular-nums text-(--color-text-2)">{status.sessions}</span>
-          </PanelRow>
+      content = readOnly ? (
+        <PanelSection title="Account" flush>
+          <PanelRow label="Signed in" description={relayText(status.relay)} />
         </PanelSection>
+      ) : (
+        <>
+          {status.recovered && <RecoveredNote device="computer" busy={recoveredAck.isPending} onDone={() => recoveredAck.mutate()} />}
+          <DevicesSection status={status} onAdd={() => setAdding(true)} onSignOut={() => setConfirmingSignOut(true)} busy={busy} />
+          {status.signer && <PendingSection onReview={setReviewing} />}
+        </>
       )
-      if (!readOnly) {
-        content = (
-          <>
-            {content}
-            <DevicesSection canRemove={status.signer} onAdd={status.signer ? () => setAdding(true) : undefined} />
-            {status.signer && <PendingSection onReview={setReviewing} />}
-          </>
-        )
-      }
       break
     case 'closing':
       content = (
@@ -444,6 +487,7 @@ export function AccountSettingsPage() {
       break
   }
 
+  const onlyApprover = connected && status.signer && onlyApproverIsMe(devicesQ.data)
   return (
     <SettingsPage
       title="Account"
@@ -466,7 +510,16 @@ export function AccountSettingsPage() {
         open={confirmingSignOut}
         onOpenChange={setConfirmingSignOut}
         title="Sign out of your account?"
-        description="This device stops being reachable through your account. Local sessions and settings stay."
+        description={
+          <>
+            This device stops being reachable through your account. Local sessions and settings stay.
+            {onlyApprover && (
+              <span className="mt-2 block">
+                This computer is the only device that can approve others. Let another device approve first, or keep your recovery code.
+              </span>
+            )}
+          </>
+        }
         confirmLabel="Sign out"
         onConfirm={() => logout.mutateAsync().catch(() => undefined)}
       />

@@ -11,12 +11,12 @@
  * added by address is its own row, even when it is the same machine: the
  * two are listed together and never merged.
  *
- * A row is titled by the name its computer gave for itself (its host name,
- * or what you called it), once the app has been on it; until then by its
- * system and key. The system, the key and the role are under **Details**
- * (a button, or the row's ⋯ on touch), where any computer is also renamed:
- * the name lives on the computer, so it is changed over the connection to
- * it (the computer in use) or over its link in the background (any other).
+ * A row is titled by the name the account keeps for the computer (an
+ * older shell: the name it gave for itself once the app had been on it);
+ * else by its system and key. The system, the key and the role are under
+ * **Details** (a button, or the row's ⋯ on touch), where any computer is
+ * also renamed: in the account, and on the computer itself over the
+ * connection to it or its link, in the background.
  *
  * The phone's account lives in its shell; the desktop's in this computer's
  * own OpenAgentd (`api/cloud.ts` always calls that one). So on the desktop,
@@ -56,7 +56,7 @@ import {
 } from '@/lib/account-computers'
 import type { AppBackendStatus } from '@/lib/app-backend'
 import { connectAccountComputer, currentBackendOrigin, reloadForBackendSwitch } from '@/lib/backend-switch'
-import { NAME_NEEDS_UPDATE, renameAccountComputer, serverInUseKeepsName } from '@/lib/computer-rename'
+import { NAME_NEEDS_UPDATE, renameAccountDevice, serverInUseKeepsName } from '@/lib/computer-rename'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { cn } from '@/lib/utils'
 
@@ -201,7 +201,10 @@ export function AccountComputerRows({
   const detailed = computers.find((computer) => computer.device.device_id === detailsId) ?? null
   // The computer in use is renamed over the connection to it, any other over its link.
   const detailedOnBridge = detailed !== null && onExternal && app?.account_device?.device_id === detailed.device.device_id
-  const detailedName = detailed ? app?.computer_names?.[detailed.device.device_id] ?? null : null
+  // The account's name for it; an older shell keeps none, then what the computer called itself.
+  const detailedName = detailed
+    ? (detailed.device.name !== undefined ? detailed.device.name : app?.computer_names?.[detailed.device.device_id]) ?? null
+    : null
   const rows = (
     <>
         {computers.map((computer) => {
@@ -266,10 +269,10 @@ export function AccountComputerRows({
           server: isServer(detailed.device),
           client: detailed.device.client ?? false,
         }) : []}
-        rename={detailed && (!detailedOnBridge || serverInUseKeepsName()) ? {
+        rename={detailed && (detailed.device.name !== undefined || !detailedOnBridge || serverInUseKeepsName()) ? {
           name: detailedName ?? '',
           save: async (name) => {
-            await renameAccountComputer(app, detailed.device.device_id, name)
+            await renameAccountDevice(app, { ...detailed.device, me: false, server: true }, name)
             await onRenamed?.()
           },
         } : null}

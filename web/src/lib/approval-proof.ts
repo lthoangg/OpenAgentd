@@ -4,6 +4,8 @@ import { getPlatform } from '@/hooks/use-platform'
 export type ApprovalAction =
   | { action: 'approve'; id: string; signer: boolean; server: boolean; client: boolean }
   | { action: 'remove'; id: string }
+  /** Let a device of the account approve others too (`id`: its device id). */
+  | { action: 'promote'; id: string }
   /** Show an invitation (`id`: `start`) or look at its candidates (its slot id); no confirmation asked. */
   | { action: 'invite'; id: string }
 

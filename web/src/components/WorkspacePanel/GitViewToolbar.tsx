@@ -2,7 +2,7 @@
  * GitViewToolbar — the single 32px toolbar under the Git review tab. On a
  * phone it grows around its tabs, which take the phone's control step.
  *
- * One segmented control on every platform — Uncommitted and History — plus
+ * One segmented control on every platform — Changes and History — plus
  * the Changes view's expand-all on the right, and on a phone (which has no
  * pane menu to hold it) Refresh. History is the commit list
  * (stored as ``commits``). The segments are real ARIA tabs; the caller
@@ -67,8 +67,8 @@ export function GitViewToolbar({
         }}
         className={cn('min-w-0', mobile && 'flex-1')}
       >
-        <TabsList size="sm" aria-label="Changes view" className={mobile ? 'w-full' : undefined}>
-          <TabsTrigger {...trigger('changes')}>Uncommitted ({changedCount})</TabsTrigger>
+        <TabsList size="sm" aria-label="Git view" className={mobile ? 'w-full' : undefined}>
+          <TabsTrigger {...trigger('changes')}>Changes ({changedCount})</TabsTrigger>
           <TabsTrigger {...trigger('commits')}>
             <span className="inline-flex items-center gap-1">
               History
@@ -103,7 +103,7 @@ export function GitViewToolbar({
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
         )}
-        {onRefresh && <DockRefreshButton label="Refresh changes" onClick={onRefresh} />}
+        {onRefresh && <DockRefreshButton label="Refresh Git status" onClick={onRefresh} />}
       </div>
     </div>
   )

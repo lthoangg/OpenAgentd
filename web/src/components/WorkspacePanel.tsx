@@ -584,7 +584,7 @@ export function WorkspacePanel({
   const subTab = gitState.subTab
   // Git's own queries run only while its tab shows in a pane on screen.
   const reviewShown = shownPanes.some((pane) => activeTabs[pane]?.id === REVIEW_TAB_ID)
-  // Each Changes view (changes, commits) keeps its place across tab switches.
+  // Each Git view (changes, commits) keeps its place across tab switches.
   const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
   const expandedCommitSha = gitState.expandedCommitSha
   const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
@@ -951,7 +951,7 @@ export function WorkspacePanel({
     resizeSplit(bar.path, node.sizes.map((size, index) => (bar.shown.includes(index) ? share : size)))
   }
 
-  /** Show in Changes: the Changes list with this file's diff open. */
+  /** Reveal in Git: the Changes list with this file's diff open. */
   const revealInGit = useCallback((path: string) => {
     const store = useGitPanelStore.getState()
     store.setSubTab(workspace, 'changes')

@@ -387,4 +387,10 @@ describe('memory', () => {
     expect(restoreDockPanes({ tabs: 'nope' })).toBeNull()
     expect(restoreDockPanes({ v: 2, tabs: [], panes: {}, layout: { axis: 'row', children: [{ pane: 'a' }, { pane: 'a' }] } })).toBeNull()
   })
+
+  it("gives a remembered review tab today's name, not the one it was saved with", () => {
+    const saved = JSON.parse(JSON.stringify(serializeDockPanes(withTabs(REVIEW_TAB))))
+    saved.tabs[0].title = 'Changes'
+    expect(restoreDockPanes(saved)!.tabs[0].title).toBe('Git')
+  })
 })

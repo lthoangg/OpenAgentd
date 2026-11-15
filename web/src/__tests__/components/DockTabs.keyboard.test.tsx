@@ -96,7 +96,7 @@ async function renderDock({ open = true, exited = false, terminals = 3, git = tr
   if (terminals > 0) await waitFor(() => expect(screen.getByRole('button', { name: `Terminal ${terminals}` })).toBeTruthy())
   if (git && terminals > 0 && open) {
     // ⌃⌥↑ sends the Changes tab into a new pane above the terminals.
-    await act(async () => { screen.getByRole('button', { name: 'Changes' }).click() })
+    await act(async () => { screen.getByRole('button', { name: 'Git' }).click() })
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true, altKey: true, bubbles: true, cancelable: true }))
     })
@@ -119,7 +119,7 @@ function press(key: string, mods: { shiftKey?: boolean } = {}, target: EventTarg
 describe('dock tab keys', () => {
   it('Ctrl+N picks the tab at that position of the focused pane and Ctrl+9 the last', async () => {
     await renderDock()
-    expect(isActive('Changes')).toBe(true)
+    expect(isActive('Git')).toBe(true)
     // Git's pane has only Git: nothing at position 2.
     await press('2')
     expect(isActive('Terminal 1')).toBe(true)
@@ -136,12 +136,12 @@ describe('dock tab keys', () => {
     await press('6')
     expect(isActive('Terminal 1')).toBe(true)
     // The other pane keeps its own active tab.
-    expect(isActive('Changes')).toBe(true)
+    expect(isActive('Git')).toBe(true)
   })
 
   it('does nothing while the dock is closed', async () => {
     await renderDock({ open: false })
-    const git = screen.getByRole('button', { name: 'Changes', hidden: true })
+    const git = screen.getByRole('button', { name: 'Git', hidden: true })
     expect(git.getAttribute('aria-current')).toBe('true')
     await press('3')
     await press('Tab')
@@ -224,7 +224,7 @@ describe('dock tab menu', () => {
     expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
     // Git is in another pane: it stays.
-    expect(screen.getByRole('button', { name: 'Changes' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
     expect(isActive('Terminal 2')).toBe(true)
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
@@ -254,7 +254,7 @@ describe('dock tab menu', () => {
 
     await act(async () => { screen.getByRole('button', { name: 'Close terminals' }).click() })
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Terminal 2' })).toBeNull())
-    expect(screen.getByRole('button', { name: 'Changes' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
     // The active Terminal 3 was among them: the kept tab takes over.
     expect(isActive('Terminal 1')).toBe(true)
@@ -269,7 +269,7 @@ describe('dock tab menu', () => {
     expect(screen.queryByRole('button', { name: 'Terminal 1' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Terminal 2' })).toBeNull()
     // Changes, in another pane, stays.
-    expect(screen.getByRole('button', { name: 'Changes' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
     expect(isActive('Terminal 3')).toBe(true)
 
     fireEvent.contextMenu(tab('Terminal 3'))
@@ -277,7 +277,7 @@ describe('dock tab menu', () => {
     // The pane goes with its tabs; Git, in another pane, stays.
     expect(screen.queryByRole('button', { name: 'Terminal 3' })).toBeNull()
     expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
-    expect(isActive('Changes')).toBe(true)
+    expect(isActive('Git')).toBe(true)
   })
 
   // A tab splits off to any side: right and down from its menu, all four by key.
@@ -318,15 +318,15 @@ describe('closing tabs', () => {
     expect(screen.getAllByRole('group', { name: /^Pane \d/ })).toHaveLength(2)
     await act(async () => { tab('Close Terminal 3').click() })
     expect(screen.queryAllByRole('group', { name: /^Pane \d/ })).toHaveLength(0)
-    expect(isActive('Changes')).toBe(true)
+    expect(isActive('Git')).toBe(true)
   })
 
   it('shows the launcher once the last tab closes, and Ctrl+W there closes the dock', async () => {
     const onRequestClose = mock(() => {})
     await renderDock({ terminals: 0, onRequestClose })
     await press('w')
-    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
-    expect(screen.getByRole('button', { name: /^Changes \(/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Git \(/ })).toBeTruthy()
     expect(onRequestClose).not.toHaveBeenCalled()
 
     await press('w')

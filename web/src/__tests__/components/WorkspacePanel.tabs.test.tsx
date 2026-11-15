@@ -115,7 +115,7 @@ async function openDiffTabFor(user: ReturnType<typeof userEvent.setup>, path: st
   await user.click(screen.getByRole('menuitem', { name: 'Open diff in tab' }))
 }
 
-const tabStrip = () => screen.getByRole('button', { name: 'Changes' }).closest('.scrollbar-none') as HTMLElement
+const tabStrip = () => screen.getByRole('button', { name: 'Git' }).closest('.scrollbar-none') as HTMLElement
 
 describe('Review dock diff tabs', () => {
   it('opens a changed file diff as a full-height tab from the row menu', async () => {
@@ -126,7 +126,7 @@ describe('Review dock diff tabs', () => {
 
     const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
     expect(diffTab.getAttribute('aria-current')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Changes' }).getAttribute('aria-current')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBeNull()
     expect(await screen.findByText('const before = 2')).toBeTruthy()
     expect(screen.getByText('const after = 3')).toBeTruthy()
     // The list never loads a body; the tab fetches only its own file.
@@ -141,7 +141,7 @@ describe('Review dock diff tabs', () => {
     await renderPanel()
 
     await openDiffTabFor(user, 'src/app.ts')
-    await user.click(screen.getByRole('button', { name: 'Changes' }))
+    await user.click(screen.getByRole('button', { name: 'Git' }))
     await openDiffTabFor(user, 'src/app.ts')
 
     expect(within(tabStrip()).getAllByRole('button', { name: 'app.ts diff' })).toHaveLength(1)
@@ -224,14 +224,14 @@ describe('Review dock diff tabs', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Open file' }))
     // Opened from the list it is a preview tab; keep it, or the diff would replace it.
     await user.dblClick(screen.getByRole('button', { name: 'app.ts' }))
-    await user.click(screen.getByRole('button', { name: 'Changes' }))
+    await user.click(screen.getByRole('button', { name: 'Git' }))
     // [Git, app.ts] → the diff opens right after Git: [Git, app.ts diff, app.ts].
     await openDiffTabFor(user, 'src/app.ts')
     await user.click(screen.getByRole('button', { name: 'Close app.ts diff' }))
 
     expect(screen.queryByRole('button', { name: 'app.ts diff' })).toBeNull()
     // Git was on show before the diff, not its neighbour app.ts.
-    expect(screen.getByRole('button', { name: 'Changes' }).getAttribute('aria-current')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
   })
 
   it('middle-click closes a closable tab', async () => {
@@ -333,13 +333,13 @@ describe('Review dock commit tabs', () => {
   })
 })
 
-describe('Changes view toolbar', () => {
+describe('Git view toolbar', () => {
   it('is a real tablist wired to the view panel', async () => {
     await renderPanel()
 
-    const tablist = screen.getByRole('tablist', { name: 'Changes view' })
+    const tablist = screen.getByRole('tablist', { name: 'Git view' })
     const tabs = within(tablist).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Uncommitted (1)', 'History'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Changes (1)', 'History'])
     const panel = screen.getByRole('tabpanel')
     expect(tabs[0].getAttribute('aria-controls')).toBe(panel.id)
     expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0].id)
@@ -431,7 +431,7 @@ describe('Review dock tabs keep their scroll position', () => {
     const diffScroller = () => screen.getByText('const before = 2').closest('.overflow-y-auto') as HTMLElement
     await scrollTo(diffScroller(), 240)
 
-    await user.click(screen.getByRole('button', { name: 'Changes' }))
+    await user.click(screen.getByRole('button', { name: 'Git' }))
     expect(screen.queryByText('const before = 2')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'app.ts diff' }))
 
@@ -447,7 +447,7 @@ describe('Review dock tabs keep their scroll position', () => {
     await waitFor(() => expect(fileScroller()).toBeTruthy())
     await scrollTo(fileScroller()!, 120)
 
-    await user.click(screen.getByRole('button', { name: 'Changes' }))
+    await user.click(screen.getByRole('button', { name: 'Git' }))
     expect(fileScroller()).toBeNull()
     await user.click(screen.getByRole('button', { name: 'app.ts' }))
 

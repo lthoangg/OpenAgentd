@@ -155,14 +155,14 @@ describe('AppFooter', () => {
     expect(screen.queryByText(/^\*/)).toBeNull()
   })
 
-  it('names the branch action "Open Changes" with its shortcut, in the muted tone', async () => {
+  it('names the branch action "Open Git" with its shortcut, in the muted tone', async () => {
     renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
     const branch = await screen.findByRole('button', { name: /^Git branch main/ })
 
     fireEvent.mouseEnter(branch.parentElement!)
     const tooltip = await screen.findByRole('tooltip')
-    const action = within(tooltip).getByText(/^Open Changes \(.+\)$/)
-    expect(action.textContent).toMatch(/^Open Changes \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
+    const action = within(tooltip).getByText(/^Open Git \(.+\)$/)
+    expect(action.textContent).toMatch(/^Open Git \((⌘⇧G|⇧⌘G|Ctrl\+Shift\+G)\)$/)
     expect(action.className).toContain('text-(--color-text-muted)')
   })
 

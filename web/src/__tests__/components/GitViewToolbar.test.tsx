@@ -52,11 +52,11 @@ describe('GitViewToolbar', () => {
     for (const subTab of ['changes', 'commits'] as const) {
       renderToolbar({ subTab, allExpanded: false, onRefresh })
       const names = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
-      expect(names.at(-1)).toBe('Refresh changes')
+      expect(names.at(-1)).toBe('Refresh Git status')
       cleanup()
     }
     renderToolbar({ onRefresh })
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Git status' }))
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
@@ -67,7 +67,7 @@ describe('GitViewToolbar', () => {
 
   it('keeps the Changes / History tabs short enough for the 32px toolbar on touch', () => {
     renderToolbar()
-    const tablist = screen.getByRole('tablist', { name: 'Changes view' })
+    const tablist = screen.getByRole('tablist', { name: 'Git view' })
     expect(tablist.className).toContain('pointer-coarse:data-[orientation=horizontal]:h-7')
     expect(tablist.className).not.toContain('h-10.5')
   })

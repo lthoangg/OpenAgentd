@@ -129,7 +129,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "open-plan").description).toMatch(/^Needs you/)
   })
 
-  it("names Ctrl+D Toggle Review Panel and lists Open Changes only for project workspaces", () => {
+  it("names Ctrl+D Toggle Review Panel and lists Open Git only for project workspaces", () => {
     const noGit = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(noGit.result.current, "workspace-files").label).toBe("Toggle Review Panel")
     expect(byId(noGit.result.current, "workspace-files").description).toBe("Show or hide the Review panel and its open tabs")
@@ -138,7 +138,7 @@ describe("useAgentCommands — shortcut labels", () => {
     const handleOpenGit = mock(() => {})
     const withGit = renderHook(() => useAgentCommands(makeArgs({ handleOpenGit })))
     const cmd = byId(withGit.result.current, "open-git")
-    expect(cmd.label).toBe("Open Changes")
+    expect(cmd.label).toBe("Open Git")
     expect(cmd.shortcut).toBe("Ctrl+Shift+G")
     cmd.action()
     expect(handleOpenGit).toHaveBeenCalledTimes(1)

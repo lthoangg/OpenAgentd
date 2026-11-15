@@ -2362,6 +2362,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Changes** on a tab's menu), with **Uncommitted (N)** and **History**
     inside; the plan's tab reads **Plan**; the phone's page is **Review
     panel** and its rows keep the desktop's names.
+    From `[v3.57.0]` the view is **Git** again (tab, launcher, **Open Git**,
+    **Reveal in Git**), with **Changes (N)** and **History** inside; a tab a
+    session remembered under the old name shows the new one.
   - Sending while the agent works has the same three labels on a phone as
     on desktop, each with its one-line explanation: **Steer**, **Queue until
     done**, **Stop and send** (the phone said "Steer now" and "Send after

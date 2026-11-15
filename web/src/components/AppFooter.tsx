@@ -246,7 +246,7 @@ export const AppFooter = memo(function AppFooter({
               />
               <TooltipContent>
                 <span className="block">{branchTooltip}</span>
-                <span className="block text-(--color-text-muted)">{`Open Changes (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
+                <span className="block text-(--color-text-muted)">{`Open Git (${shortcutLabel(APP_SHORTCUTS.openGit, os)})`}</span>
               </TooltipContent>
             </Tooltip>
           </>

@@ -529,6 +529,22 @@ describe('names and approvers kept by the account', () => {
     await waitFor(() => expect(ran('cloud_make_approver').map((call) => call.args)).toEqual([{ deviceId: 'dev-mac' }]))
   })
 
+  it('says a computer left the account when it can no longer approve, and lists the devices again', async () => {
+    let listed = [NAMED_ME, MAC_NAMED]
+    shell(CONNECTED, {
+      cloud_devices: () => listed,
+      cloud_make_approver: () => {
+        listed = [NAMED_ME]
+        throw new Error('That device is no longer in your account.')
+      },
+    })
+    render(<PhoneAccountContent />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Let Work Mac approve' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('That device is no longer in your account.')
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Details of Work Mac' })).toBeNull())
+  })
+
   it('needs no note when two devices approve', async () => {
     shell(CONNECTED, { cloud_devices: () => [NAMED_ME, { ...MAC_NAMED, signer: true }] })
     render(<PhoneAccountContent />)

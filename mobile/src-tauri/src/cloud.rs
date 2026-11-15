@@ -750,6 +750,7 @@ async fn flow_error(e: FlowError) -> String {
         FlowError::Problem(p) => on_problem(p).await,
         FlowError::NotSigner => "This phone cannot approve devices.".into(),
         FlowError::JoinEnded => "The request was cancelled or expired.".into(),
+        FlowError::NotInAccount => "That device is no longer in your account.".into(),
         FlowError::CommitMismatch => {
             "Request cancelled. If you didn't start it, someone may be trying to join your account."
                 .into()

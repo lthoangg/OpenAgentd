@@ -289,6 +289,10 @@ fn signer_error(e: super::signer::SignerError) -> ApiError {
                 FlowError::NotSigner => ApiError::new(403, "This computer cannot approve devices."),
                 FlowError::Roles => ApiError::new(400, "A device can only get the roles it asked for, and needs at least one."),
                 FlowError::JoinEnded | FlowError::TimedOut => ApiError::new(409, "The request was cancelled or expired."),
+                // A stable code beside the words, for a page that acts on it.
+                FlowError::NotInAccount => {
+                    ApiError::with_detail(409, serde_json::json!({ "code": "device_not_in_account", "message": "That device is no longer in your account." }))
+                }
                 FlowError::InviteCompromised => ApiError::new(409, "Someone else has this invitation, so nobody was added. Show a new one."),
                 FlowError::CommitMismatch => ApiError::new(409, "Request cancelled. If you didn't start it, someone may be trying to join your account."),
                 FlowError::Roster(rule) => ApiError::new(502, format!("The account's device list failed a check ({rule}). Nothing was changed.")),

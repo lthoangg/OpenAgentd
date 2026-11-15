@@ -443,6 +443,24 @@ describe('AccountSettingsPage', () => {
     expect(proofCalls).toEqual([{ action: 'promote', id: 'ph', signer: false, server: false, client: false, reason: 'let a device approve others in your account' }])
   })
 
+  it('says a device left the account when it can no longer be made an approver, and lists the devices again', async () => {
+    inDesktopApp()
+    let listed = [SELF, { device_id: 'ph', fingerprint: 'D00D 0001', signer: false, server: false, client: true, me: false, kind: 'ios', name: "Hoang's iPhone" }]
+    serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
+    server.use(
+      http.get(DEVICES_URL, () => HttpResponse.json(listed)),
+      http.post(APPROVER_URL, () => {
+        listed = [SELF]
+        return HttpResponse.json({ detail: { code: 'device_not_in_account', message: 'That device is no longer in your account.' } }, { status: 409 })
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: "Let Hoang's iPhone approve" }))
+    expect((await screen.findByRole('alert')).textContent).toContain('That device is no longer in your account.')
+    await waitFor(() => expect(screen.queryByRole('button', { name: "Details of Hoang's iPhone" })).toBeNull())
+  })
+
   it('warns at sign-out when this computer is the only approver', async () => {
     serveStatus({ state: 'connected', fingerprint: 'k7f2 91ab', signer: true, server: true, client: true, relay: { state: 'online' }, sessions: 0 })
     renderPage()

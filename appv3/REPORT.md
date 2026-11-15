@@ -69,7 +69,10 @@ loopback caller on the private listener), like the rest of `/api/cloud/*`.
   like `devices/remove`; without it 403 `Let a device approve others in the
   OpenAgentd app on this computer.` An id that is not a device id is 400
   `Malformed request.`; other failures read as the signer routes' do (403 when
-  this computer does not approve, 409 for a device not in the account).
+  this computer does not approve). A device not in the account, or one that
+  left it though the roster still lists it, is 409 with an object detail:
+  `{ "code": "device_not_in_account", "message": "That device is no longer
+  in your account." }` (the web keys on `code`).
 - **Status, summarized.** `signing_in` + `recovering` (bool, omitted when
   false), `connected` + `recovered` (bool, omitted when false), guest notice
   `wrong_recovery_code`. Remote callers still see only `state` and

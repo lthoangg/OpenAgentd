@@ -34,6 +34,10 @@ pub enum FlowError {
     EmptyAccount,
     #[error("the request to join was cancelled or expired")]
     JoinEnded,
+    /// The device named is not in the account, or has left it (signed out
+    /// or revoked, though the roster may still list it). Nothing changed.
+    #[error("that device is no longer in the account")]
+    NotInAccount,
     #[error("the joining device's commitment did not match; the request was cancelled")]
     CommitMismatch,
     #[error("this device cannot approve devices")]
@@ -343,9 +347,16 @@ impl Member {
     /// with its entry a signer, keys and roles unchanged.
     pub async fn make_approver(&mut self, device_id: &str) -> FlowResult<Roster> {
         self.sync().await?;
+        // A device that left is still in `K` until a signer drops it: ask
+        // the cloud, so it is never made an approver.
+        let listed = self.cloud.devices().await?;
+        self.note_departed(&listed);
+        if self.departed.iter().any(|id| id == device_id) {
+            return Err(FlowError::NotInAccount);
+        }
         let mut devices = self.roster.as_ref().expect("synced").body.devices.clone();
         let Some(d) = devices.iter_mut().find(|d| d.id == device_id) else {
-            return Err(FlowError::JoinEnded);
+            return Err(FlowError::NotInAccount);
         };
         d.signer = true;
         self.write(devices).await

@@ -659,5 +659,19 @@ async fn an_approver_can_let_another_device_approve_too() {
     let other = join(&fake, &base, &mut phone, &account).await;
     let mut other = other;
     assert!(matches!(other.make_approver(&other.cloud.device_id()).await, Err(FlowError::NotSigner)));
-    assert!(matches!(phone.make_approver("AAAAAAAAAAAAAAAAAAAAAA").await, Err(FlowError::JoinEnded)));
+    assert!(matches!(phone.make_approver("AAAAAAAAAAAAAAAAAAAAAA").await, Err(FlowError::NotInAccount)));
+}
+
+#[tokio::test]
+async fn a_device_that_left_cannot_be_made_an_approver() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let server = join(&fake, &base, &mut phone, &account).await;
+    server.cloud.leave().await.unwrap();
+    // The roster still lists it; the cloud says it left.
+    assert!(phone.roster.as_ref().unwrap().body.device(&server.cloud.device_id()).is_some());
+    let v = fake.account(&account).version;
+    assert!(matches!(phone.make_approver(&server.cloud.device_id()).await, Err(FlowError::NotInAccount)));
+    assert_eq!(fake.account(&account).version, v, "nothing written");
 }

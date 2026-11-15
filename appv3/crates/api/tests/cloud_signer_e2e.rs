@@ -280,6 +280,12 @@ async fn a_computer_creates_the_account_and_approves_the_others() {
     assert_eq!(fake.account(&account).version, version + 1);
     let (s, _) = proved(&app, "/api/cloud/devices/approver", json!({ "device_id": "not a device id" }), Some(approval::proof(&KEY, Action::Promote, "not a device id"))).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
+    // A device id the account does not have: a stable code, and plain words.
+    let gone = "AAAAAAAAAAAAAAAAAAAAAA";
+    let (s, v) = proved(&app, "/api/cloud/devices/approver", json!({ "device_id": gone }), Some(approval::proof(&KEY, Action::Promote, gone))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert_eq!(v["detail"]["code"], "device_not_in_account");
+    assert_eq!(v["detail"]["message"], "That device is no longer in your account.");
     let version = fake.account(&account).version;
     let approve_mac = approval::proof(&KEY, Action::Approve { signer: false, server: false, client: false }, &ci_id);
     let other_device = approval::proof(&KEY, Action::Remove, &server_id);

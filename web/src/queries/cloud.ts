@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   APPROVE_ELSEWHERE,
+  DEVICE_NOT_IN_ACCOUNT,
   REMOVE_ELSEWHERE,
   cloudApproveBegin,
   cloudApproveConfirm,
   cloudApproveReject,
   cloudConfirmRecovery,
+  cloudErrorCode,
   cloudJoin,
   cloudLogin,
   cloudLoginCancel,
@@ -89,13 +91,21 @@ export const useCloudRecover = () =>
   useCloudMutation(({ code, roles }: { code: string; roles: Roles }) => cloudRecover(code, roles))
 export const useCloudRecoveredAck = () => useCloudMutation(cloudRecoveredAck)
 /** Lets another device approve too, once the person confirms in the desktop app. */
-export const useCloudMakeApprover = () =>
-  useCloudMutation(async (deviceId: string) => {
+export const useCloudMakeApprover = () => {
+  const queryClient = useQueryClient()
+  return useCloudMutation(async (deviceId: string) => {
     if (!canApproveHere()) throw new Error(APPROVE_ELSEWHERE)
     const proof = await approvalProof({ action: 'promote', id: deviceId }, 'let a device approve others in your account')
     if (!proof) throw new Error('Not confirmed. Nothing was changed.')
-    return cloudMakeApprover(deviceId, proof)
+    try {
+      return await cloudMakeApprover(deviceId, proof)
+    } catch (error) {
+      // The device left: the list still showing it is stale.
+      if (cloudErrorCode(error) === DEVICE_NOT_IN_ACCOUNT) void queryClient.invalidateQueries({ queryKey: queryKeys.cloud.devices() })
+      throw error
+    }
   })
+}
 
 export const useCloudApproveBegin = () => useMutation({ mutationFn: (enrollmentId: string) => cloudApproveBegin(enrollmentId) })
 

@@ -1011,9 +1011,12 @@ fn the_phone_lets_a_computer_approve_others_after_face_id() {
         let row = rows.iter().find(|d| d.device_id == id).unwrap();
         assert!(row.server && row.client, "its roles are unchanged");
 
-        // A device the account does not have is refused.
+        // A device the account does not have is refused, in plain words.
         let stranger = DeviceKeys::generate().id();
-        assert!(cloud::cloud_make_approver(stranger).await.is_err());
+        assert_eq!(
+            cloud::cloud_make_approver(stranger).await.unwrap_err(),
+            "That device is no longer in your account."
+        );
 
         cloud::cloud_sign_out().await.unwrap();
     });

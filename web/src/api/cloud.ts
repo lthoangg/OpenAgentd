@@ -208,6 +208,15 @@ export const cloudRemoveDevice = (deviceId: string, proof: string) =>
 export const cloudRenameDevice = (deviceId: string, name: string | null) =>
   cloudCall<{ device_id: string; name: string | null }>('/devices/name', 'POST', { device_id: deviceId, name })
 /** Lets another device approve others too; the same kind of proof as `devices/remove`. */
+/** The stable code of a refusal: the device named left the account (or never was in it). */
+export const DEVICE_NOT_IN_ACCOUNT = 'device_not_in_account'
+
+/** The `code` of an error from an account route whose detail carries one. */
+export function cloudErrorCode(error: unknown): string | null {
+  const detail = (error as { detail?: unknown } | null)?.detail
+  return detail && typeof detail === 'object' && typeof (detail as { code?: unknown }).code === 'string' ? (detail as { code: string }).code : null
+}
+
 export const cloudMakeApprover = (deviceId: string, proof: string) =>
   cloudRequest('/devices/approver', 'POST', { device_id: deviceId }, proof)
 /**

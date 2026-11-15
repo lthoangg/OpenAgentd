@@ -15,6 +15,7 @@ pub mod engine;
 pub mod invite;
 pub mod ledger;
 pub mod letters;
+pub mod names;
 pub mod routes;
 pub mod signer;
 
@@ -34,6 +35,8 @@ use openagentd_cloud::store::{self as idstore, FileStore, Identity, SecretStore}
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+
+pub use names::push_own_name;
 
 /// Where a host keeps its account: a file only the user can read.
 pub fn identity_store() -> FileStore {
@@ -57,6 +60,8 @@ pub enum Notice {
     WrongNumber,
     /// The text pasted is not an invitation link.
     InviteInvalid,
+    /// Recovery: the code typed is not this account's recovery code.
+    WrongRecoveryCode,
     SignedOut,
     /// No longer happens (any device may create the account); kept so an
     /// older page still reads the status.
@@ -119,6 +124,10 @@ pub enum Status {
         /// for this computer's own callers only (`routes::status`).
         #[serde(skip_serializing_if = "Option::is_none")]
         add_link: Option<String>,
+        /// Signing in to recover the account with its recovery code (no
+        /// scan code then): the person approves this code in the browser.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        recovering: bool,
     },
     /// A new account (no device in it yet): show the recovery code once,
     /// then ask two of its groups (1-based) back. Only this computer sees it.
@@ -154,6 +163,11 @@ pub enum Status {
         client: bool,
         relay: RelayState,
         sessions: usize,
+        /// This computer recovered the account with its recovery code and
+        /// the person has not seen that yet (`POST /api/cloud/recovered/ack`
+        /// or a restart ends it).
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        recovered: bool,
     },
     Closing {
         fingerprint: String,
@@ -193,6 +207,9 @@ struct Host {
     /// The last contact with the cloud (Unix ms, 0: never), as the ledger
     /// has it: direct sessions need it within 7 days.
     last_contact: AtomicU64,
+    /// This host recovered the account and the person has not acknowledged
+    /// it yet (the status says so while it is set).
+    recovered: AtomicBool,
 }
 
 fn host() -> &'static Host {
@@ -210,6 +227,7 @@ fn host() -> &'static Host {
         direct_sessions: Sessions::default(),
         direct_ok: AtomicBool::new(false),
         last_contact: AtomicU64::new(0),
+        recovered: AtomicBool::new(false),
     })
 }
 
@@ -270,10 +288,17 @@ pub(crate) fn private_port() -> Option<u16> {
 
 pub fn status() -> Status {
     let mut s = host().status.lock().expect("cloud status").clone();
-    if let Status::Connected { sessions, .. } = &mut s {
+    if let Status::Connected { sessions, recovered, .. } = &mut s {
         *sessions = host().sessions.count() + host().direct_sessions.count();
+        *recovered = host().recovered.load(Ordering::Relaxed);
     }
     s
+}
+
+/// The person saw that the account was recovered here.
+pub fn ack_recovered() -> Status {
+    host().recovered.store(false, Ordering::Relaxed);
+    status()
 }
 
 fn set_status(s: Status) {
@@ -358,7 +383,29 @@ pub fn begin_sign_in(roles: Roles) -> Status {
     status()
 }
 
+/// Recovers the account with its recovery `code` in the background (`POST
+/// /api/cloud/recover`): signs in in the browser (no scan code), then the
+/// roster is rewritten with this computer alone as the device that
+/// approves. The caller checked the code's shape.
+pub fn begin_recover(code: zeroize::Zeroizing<String>, roles: Roles) -> Status {
+    let mut slot = host().sign_in.lock().expect("cloud sign-in");
+    if slot.as_ref().is_some_and(|h| !h.is_finished()) || !matches!(status(), Status::Guest { .. }) {
+        return status();
+    }
+    *slot = Some(tokio::spawn(async move {
+        let outcome = engine::recover(Endpoints::current(), http(), roles, &code, |e| on_event_as(e, true)).await;
+        drop(code);
+        finish_join_as(outcome, true);
+    }));
+    drop(slot);
+    status()
+}
+
 fn on_event(event: engine::Event<'_>) {
+    on_event_as(event, false)
+}
+
+fn on_event_as(event: engine::Event<'_>, recovering: bool) {
     match event {
         engine::Event::Code { code, add_link } => set_status(Status::SigningIn {
             user_code: code.user_code.clone(),
@@ -366,6 +413,7 @@ fn on_event(event: engine::Event<'_>) {
             fingerprint: code.fingerprint.clone(),
             expires_in: code.expires_in,
             add_link: add_link.map(String::from),
+            recovering,
         }),
         engine::Event::Joining { fingerprint, code } => set_status(Status::Joining { fingerprint, code }),
         engine::Event::Invited { fingerprint, kind } => set_status(Status::Invited { fingerprint, kind: kind.map(String::from) }),
@@ -412,6 +460,12 @@ pub fn begin_join(link: zeroize::Zeroizing<String>, roles: Roles) -> Result<Stat
 }
 
 fn finish_join(outcome: Result<engine::Outcome, FlowError>) {
+    finish_join_as(outcome, false)
+}
+
+/// Ends a sign-in, join or recovery (`recovered`: the account was
+/// recovered with its recovery code).
+fn finish_join_as(outcome: Result<engine::Outcome, FlowError>, recovered: bool) {
     match outcome {
         Ok(engine::Outcome::Joined(identity)) => {
             if let Err(e) = idstore::save(&identity_store(), &identity) {
@@ -419,7 +473,8 @@ fn finish_join(outcome: Result<engine::Outcome, FlowError>) {
                 set_status(guest(Some(Notice::Failed)));
                 return;
             }
-            tracing::info!("cloud_joined");
+            tracing::info!("{}", if recovered { "cloud_recovered" } else { "cloud_joined" });
+            host().recovered.store(recovered, Ordering::Relaxed);
             spawn_run(identity);
         }
         Ok(engine::Outcome::EmptyAccount { member, session }) => {
@@ -508,13 +563,14 @@ pub async fn sign_out() -> Status {
     if let Err(e) = store.clear() {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
+    host().recovered.store(false, Ordering::Relaxed);
     set_status(guest(Some(Notice::SignedOut)));
     status()
 }
 
 fn spawn_run(identity: Identity) {
     let fingerprint = fingerprint_of(&identity);
-    set_status(Status::Connected { fingerprint, signer: false, server: false, client: false, relay: RelayState::Connecting, sessions: 0 });
+    set_status(Status::Connected { fingerprint, signer: false, server: false, client: false, relay: RelayState::Connecting, sessions: 0, recovered: false });
     let handle = tokio::spawn(run(identity));
     if let Some(old) = host().run.lock().expect("cloud run").replace(handle) {
         old.abort();
@@ -648,6 +704,7 @@ impl HostHandler for Handler {
 fn forget(notice: Notice) {
     set_direct_ok(false);
     close_everywhere(4001);
+    host().recovered.store(false, Ordering::Relaxed);
     controller::publish(None);
     controller::forget_addresses();
     if let Err(e) = identity_store().clear() {
@@ -700,6 +757,7 @@ fn set_relay(relay_state: RelayState, member: &Member, fingerprint: &str) {
         client: me.is_some_and(|d| d.client),
         relay: relay_state,
         sessions: 0,
+        recovered: false,
     });
 }
 
@@ -810,11 +868,26 @@ fn apply_sync(member: &Member, shared: &RwLock<Roster>, sync: openagentd_cloud::
 /// The least time between two check-ins with the cloud.
 const CONTACT_EVERY: Duration = Duration::from_secs(60);
 
+static CONTACT_EVERY_MS: AtomicU64 = AtomicU64::new(CONTACT_EVERY.as_millis() as u64);
+
+/// Shortens the time between check-ins (tests only).
+#[doc(hidden)]
+pub fn set_contact_every(every: Duration) {
+    CONTACT_EVERY_MS.store(every.as_millis() as u64, Ordering::Relaxed);
+}
+
+/// Whether the last check-in (`last`) is too recent for another.
+fn contact_too_soon(last: &Option<tokio::time::Instant>) -> bool {
+    last.is_some_and(|t| t.elapsed() < Duration::from_millis(CONTACT_EVERY_MS.load(Ordering::Relaxed)))
+}
+
 /// After a verified roster fetch: reads the device list, notes the devices
 /// it shows as revoked, and records the contact (spec 5.5, "Last contact
-/// with the cloud"). At most once a minute.
-async fn contact(member: &Member, shared: &RwLock<Roster>, ledger: &RwLock<ledger::Ledger>, me: &str, last: &mut Option<tokio::time::Instant>) {
-    if last.is_some_and(|t| t.elapsed() < CONTACT_EVERY) {
+/// with the cloud"). At most once a minute. A signer then writes the
+/// roster without the devices that left (it needs no prompt: nothing is
+/// granted), and every device keeps its name and the account's the same.
+async fn contact(member: &mut Member, shared: &RwLock<Roster>, ledger: &RwLock<ledger::Ledger>, me: &str, last: &mut Option<tokio::time::Instant>) {
+    if contact_too_soon(last) {
         return;
     }
     match member.cloud.devices().await {
@@ -828,8 +901,29 @@ async fn contact(member: &Member, shared: &RwLock<Roster>, ledger: &RwLock<ledge
                 persist_ledger(&l);
                 note_contact(&l);
             }
+            member.note_departed(&devices);
+            drop_departed(member, shared).await;
+            names::sync(&member.cloud, &devices).await;
         }
         Err(e) => tracing::info!("cloud_contact_failed code={}", e.code),
+    }
+}
+
+/// Writes the roster without the devices that left, when this host is a
+/// signer and `K` still lists one. Failures are tried again at the next
+/// contact.
+async fn drop_departed(member: &mut Member, shared: &RwLock<Roster>) {
+    if !member.is_signer() || !member.lists_departed() {
+        return;
+    }
+    let dropped = member.departed.clone();
+    match member.drop_departed().await {
+        Ok(Some(r)) => {
+            tracing::info!("cloud_departed_dropped version={}", r.version());
+            apply_sync(member, shared, openagentd_cloud::flows::Sync { changed: true, removed: dropped });
+        }
+        Ok(None) => {}
+        Err(e) => tracing::info!("cloud_departed_drop_failed reason={}", engine::reason(&e)),
     }
 }
 
@@ -871,7 +965,7 @@ async fn run(identity: Identity) {
         match member.sync().await {
             Ok(sync) => {
                 apply_sync(&member, &shared, sync);
-                contact(&member, &shared, &ledger, &me, &mut last_contact).await;
+                contact(&mut member, &shared, &ledger, &me, &mut last_contact).await;
                 set_direct_ok(member.is_server());
             }
             Err(FlowError::Problem(p)) => {
@@ -957,13 +1051,13 @@ async fn run(identity: Identity) {
                     }
                     // A contact is a signed roster fetch, then the device
                     // list (spec 5.5), at most once a minute.
-                    if note == RosterNote::Contact && last_contact.is_some_and(|t| t.elapsed() < CONTACT_EVERY) {
+                    if note == RosterNote::Contact && contact_too_soon(&last_contact) {
                         continue;
                     }
                     match member.sync().await {
                         Ok(sync) => {
                             apply_sync(&member, &shared, sync);
-                            contact(&member, &shared, &ledger, &me, &mut last_contact).await;
+                            contact(&mut member, &shared, &ledger, &me, &mut last_contact).await;
                         }
                         Err(FlowError::Problem(p)) => {
                             let _ = stop_tx.send(());

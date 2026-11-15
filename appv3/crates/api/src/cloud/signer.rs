@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use openagentd_cloud::api::Cloud;
+use openagentd_cloud::api::{Cloud, DeviceInfo};
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{self, Approval, FlowError, Grant, Member, Pace};
 use openagentd_cloud::keys::{self, Roles};
@@ -52,6 +52,9 @@ pub struct DeviceRow {
     pub me: bool,
     /// Self-reported by the device ("macos", "ios", …); a label only.
     pub kind: Option<String>,
+    /// The name the account keeps for the device (plain text, never
+    /// trusted); `None` when it has none.
+    pub name: Option<String>,
     /// For a server: whether its presence socket is open now (the cloud's
     /// relay usage view; a server it does not list is offline). `None` for
     /// other devices, or when the cloud could not say.
@@ -98,6 +101,15 @@ pub(super) fn member() -> Result<Member, SignerError> {
     Ok(Member::new(Cloud::new(super::http(), Endpoints::current(), keys, id.account_id.clone()), Some(known)))
 }
 
+/// Notes which devices the cloud lists as departed, so a roster written
+/// next leaves them out. A failed read never fails the write: the devices
+/// are then left in, as before.
+pub(super) async fn note_departed(m: &mut Member) {
+    if let Ok(devices) = m.cloud.devices().await {
+        m.note_departed(&devices);
+    }
+}
+
 /// Brings `K` up to date and stores it; the connection loop hears of it.
 pub(super) async fn synced() -> Result<Member, SignerError> {
     let mut m = member()?;
@@ -107,6 +119,7 @@ pub(super) async fn synced() -> Result<Member, SignerError> {
     }
     match sync {
         Ok(s) => {
+            note_departed(&mut m).await;
             // Links out see a computer added a moment ago.
             super::controller::publish(Some(&m));
             if s.changed {
@@ -127,10 +140,14 @@ pub(super) fn wrote(r: &roster::Roster) {
     super::poke_roster();
 }
 
-pub fn device_rows(r: &roster::Roster, me: &str, kinds: &HashMap<String, Option<String>>, online: Option<&HashMap<String, bool>>) -> Vec<DeviceRow> {
-    r.body
-        .devices
-        .iter()
+/// The rows of the devices the roster lists, from the cloud's device list
+/// `infos` (kinds and names). A device the cloud lists as departed is left
+/// out; one it does not list at all stays (an older cloud or a failed read
+/// hides nothing).
+pub fn device_rows(r: &roster::Roster, me: &str, infos: &[DeviceInfo], online: Option<&HashMap<String, bool>>) -> Vec<DeviceRow> {
+    let info = |id: &str| infos.iter().find(|i| i.device_id == id);
+    flows::active_devices(r, infos)
+        .into_iter()
         .map(|d| DeviceRow {
             device_id: d.id.clone(),
             fingerprint: keys::fingerprint(&d.id).unwrap_or_default(),
@@ -138,7 +155,8 @@ pub fn device_rows(r: &roster::Roster, me: &str, kinds: &HashMap<String, Option<
             server: d.server,
             client: d.client,
             me: d.id == me,
-            kind: kinds.get(&d.id).cloned().flatten(),
+            kind: info(&d.id).and_then(|i| i.kind.clone()),
+            name: info(&d.id).and_then(|i| i.name.as_deref().and_then(openagentd_cloud::names::clean)),
             online: if d.server { online.map(|o| o.get(&d.id).copied().unwrap_or(false)) } else { None },
         })
         .collect()
@@ -149,12 +167,31 @@ pub fn device_rows(r: &roster::Roster, me: &str, kinds: &HashMap<String, Option<
 /// list, the dots are only a hint). The cloud allows 60 usage reads per
 /// device per 10 minutes: the desktop reads every 30 s while the list shows.
 pub async fn devices() -> Result<Vec<DeviceRow>, SignerError> {
-    let m = synced().await?;
+    let mut m = synced().await?;
     let (devices, usage) = tokio::join!(m.cloud.devices(), m.cloud.relay_usage());
-    let kinds: HashMap<String, Option<String>> = devices.map(|ds| ds.into_iter().map(|d| (d.device_id, d.kind)).collect()).unwrap_or_default();
+    let infos = devices.unwrap_or_default();
+    m.note_departed(&infos);
+    let kinds: HashMap<String, Option<String>> = infos.iter().map(|d| (d.device_id.clone(), d.kind.clone())).collect();
     super::controller::set_kinds(&kinds);
     let online = usage.ok().and_then(|u| u.online());
-    Ok(m.roster.as_ref().map(|r| device_rows(r, &m.cloud.device_id(), &kinds, online.as_ref())).unwrap_or_default())
+    Ok(m.roster.as_ref().map(|r| device_rows(r, &m.cloud.device_id(), &infos, online.as_ref())).unwrap_or_default())
+}
+
+/// Names `device_id` in the account (`None` clears it) and answers the name
+/// the account stored. Any device may name itself; naming another needs a
+/// signer (the cloud checks). Naming this computer also names it here.
+/// Nothing is signed: no roster is written, so no approval is asked.
+pub async fn rename(device_id: &str, name: Option<&str>) -> Result<Option<String>, SignerError> {
+    let m = member()?;
+    let stored = m.cloud.set_device_name(device_id, name).await?;
+    if device_id == m.cloud.device_id() {
+        if let Err(e) = super::names::adopt(stored.clone()) {
+            // The next contact merges the two again.
+            tracing::warn!("cloud_name_adopt_failed error={e}");
+        }
+        super::names::store_synced(stored.clone());
+    }
+    Ok(stored)
 }
 
 /// Requests to join that a signer can approve: sign-ins that committed
@@ -223,6 +260,7 @@ pub async fn approve_confirm(enrollment_id: &str, grant: Grant) -> Result<(), Si
         open.remove(enrollment_id).expect("checked")
     };
     let mut m = member()?;
+    note_departed(&mut m).await;
     let r = flows::confirm_approval(&mut m, approval, grant).await?;
     tracing::info!("cloud_device_approved version={}", r.version());
     wrote(&r);
@@ -298,5 +336,32 @@ mod tests {
         let mut bad = pending(&a, Roles::BOTH, None);
         bad.pubs = b64(br#"{"v":1}"#);
         assert!(pending_rows(vec![bad]).is_empty());
+    }
+
+    fn info(k: &DeviceKeys, name: Option<&str>, revoked_at: Option<u64>) -> DeviceInfo {
+        DeviceInfo { device_id: k.id(), signer: false, added_at: Some(0), revoked_at, kind: Some("macos".into()), name: name.map(String::from) }
+    }
+
+    #[test]
+    fn rows_hide_departed_devices_and_carry_names() {
+        use openagentd_cloud::roster::{sign, Body, Device};
+        let (me, phone, left, unlisted) = (DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate(), DeviceKeys::generate());
+        let body = Body::genesis("acct", &[7; 32], Device::of(&me, true, Roles::BOTH));
+        let devices =
+            vec![Device::of(&me, true, Roles::BOTH), Device::of(&phone, true, Roles::CLIENT), Device::of(&left, false, Roles::BOTH), Device::of(&unlisted, false, Roles::SERVER)];
+        let r = sign(&Body { devices, ..body }, &me.id(), &me.sign);
+        let infos = [info(&me, Some("studio"), None), info(&phone, Some("  Hoang's\u{202e} iPhone "), None), info(&left, Some("old"), Some(1))];
+        let rows = device_rows(&r, &me.id(), &infos, None);
+        let ids: Vec<&str> = rows.iter().map(|d| d.device_id.as_str()).collect();
+        assert_eq!(ids, [me.id().as_str(), phone.id().as_str(), unlisted.id().as_str()], "the one that left is hidden; the one the cloud does not list stays");
+        assert_eq!(rows[0].name.as_deref(), Some("studio"));
+        assert!(rows[0].me && !rows[1].me);
+        assert_eq!(rows[1].name.as_deref(), Some("Hoang's iPhone"), "a name is cleaned as it is read");
+        assert_eq!((rows[2].name.as_deref(), rows[2].kind.as_deref()), (None, None));
+        // A failed device read hides nothing and names nothing.
+        let rows = device_rows(&r, &me.id(), &[], None);
+        assert_eq!(rows.len(), 4);
+        assert!(rows.iter().all(|d| d.name.is_none()));
+        assert_eq!(serde_json::to_value(&rows[0]).unwrap()["name"], serde_json::Value::Null, "the key is always there");
     }
 }

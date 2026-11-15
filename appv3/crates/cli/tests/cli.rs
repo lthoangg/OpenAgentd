@@ -115,6 +115,18 @@ fn cloud_approve_refuses_without_a_terminal_or_under_an_agent() {
     assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
 }
 
+#[test]
+fn cloud_recover_needs_a_person_at_a_terminal() {
+    let sb = Sandbox::new();
+    // The recovery code is never taken from a pipe or an agent's shell: it signs a roster.
+    let o = sb.run(&["cloud", "recover"]);
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert!(stderr(&o).contains("Run this in Terminal"), "{}", stderr(&o));
+    let o = sb.run_with(&["cloud", "recover"], &[("AGENTD_AGENT", "1")]);
+    assert_eq!(code(&o), 1, "{}", stderr(&o));
+    assert!(stderr(&o).contains("An agent cannot approve devices"), "{}", stderr(&o));
+}
+
 /// A cloud that hands out one device code and denies it on the first poll.
 fn denying_cloud() -> String {
     use axum::routing::post;

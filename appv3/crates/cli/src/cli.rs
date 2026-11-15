@@ -131,6 +131,13 @@ pub enum CloudCmd {
     },
     /// Approve a device that signed in (when this computer approves devices)
     Approve,
+    /// Get back into your account with its recovery code when no device that
+    /// approves is left. This computer then approves devices, and the others
+    /// are signed out
+    Recover {
+        #[command(flatten)]
+        roles: CloudRoles,
+    },
     /// Show whether this computer is signed in and reachable
     Status,
     /// Sign out and erase this computer's account keys (local data stays)
@@ -660,6 +667,14 @@ mod tests {
         assert!(bare.action.is_none() && bare.provider.is_none());
         assert_eq!(kind(&["auth", "nope"]), ErrorKind::InvalidValue);
         assert_eq!(kind(&["auth", "logout", "nope"]), ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn cloud_recover_asks_for_roles_as_login_does() {
+        let Some(Command::Cloud(CloudCmd::Recover { roles })) = parse(&["cloud", "recover"]).unwrap() else { panic!("not recover") };
+        assert_eq!(roles.roles(), openagentd_cloud::keys::Roles::SERVER, "serves only unless asked, as login does");
+        let Some(Command::Cloud(CloudCmd::Recover { roles })) = parse(&["cloud", "recover", "--client"]).unwrap() else { panic!("not recover") };
+        assert_eq!(roles.roles(), openagentd_cloud::keys::Roles::BOTH);
     }
 
     #[test]

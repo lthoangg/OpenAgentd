@@ -14,6 +14,62 @@ v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.
 
+### Account names, recovery code and departed devices (v3.56.0)
+
+All of these are local-only routes unless said otherwise (an unproxied
+loopback caller on the private listener), like the rest of `/api/cloud/*`.
+
+- **Device names.** `GET /api/cloud/devices` rows gain `name: string | null`,
+  the name the account keeps for the device (cleaned as it is read: one
+  line, at most 40 characters). Devices the cloud lists as departed (left,
+  or removed) are no longer listed; a device the cloud does not list at all
+  stays. `POST /api/cloud/devices/name` `{ "device_id": string, "name":
+  string | null }` (an empty or blank name is `null`) answers `{ "device_id",
+  "name" }` with the stored name. A device may always name itself; naming
+  another needs this computer to approve devices. Naming this computer also
+  sets its server name (`computer_name`; `null` gives it the host name back).
+  No roster is written and no approval proof is asked. Errors (`detail`):
+  403 `Only a device that approves others can rename this device.`, 409
+  `That device is no longer in your account.`, 429 `Too many renames. Try
+  again in a few minutes.`, 400 `Use 1 to 40 characters, on one line.`, 400
+  `Malformed request.` for an id that is not a device id.
+- **Name sync.** A signed-in computer keeps its server name and the
+  account's name for it the same: `PUT /api/server/name` also pushes the new
+  name to the account in the background (the response never waits for the
+  cloud), and each check-in with the cloud (at most once a minute) merges
+  three values with `name_synced`, the name both last agreed on, now stored
+  in `<state>/cloud/identity.json`: never agreed, the account's name wins,
+  else this computer's is pushed; agreed before, a change made here is
+  pushed, else a change made in the account is taken here (no name there:
+  the host name again). A computer so names itself right after it joins.
+  The cloud now receives the server name (it used to stay on the computer).
+- **Departed devices.** At each check-in a computer that approves devices
+  writes the roster without the devices that left or were removed, with no
+  prompt (it grants nothing): `cloud_departed_dropped version=…` in the log,
+  tried again at the next check-in on failure. Every roster a signer route
+  here writes (approve, add by invitation, remove) leaves them out too.
+- **Recovery code.** `POST /api/cloud/recover` `{ "code": string, "server"?:
+  bool, "client"?: bool }` (roles default to both, like `/login`) signs this
+  computer in with a browser code only (no scan code) and, once the person
+  approves it, rewrites the roster with this computer alone, as a device
+  that approves; every other device is signed out and the recovery code stays
+  valid. The status answers `signing_in` with `recovering: true` (omitted
+  otherwise). 400 `That is not a recovery code. Check it and type it again.`
+  for a code of the wrong shape (checked before any sign-in; the code is
+  never logged). A code that is not the account's ends in guest with the new
+  notice `wrong_recovery_code`, nothing changed. An account with no devices
+  goes on to `recovery` (create it), as `/login` does. `GET
+  /api/cloud/status` `connected` gains `recovered: true` (omitted otherwise)
+  from the recovery until `POST /api/cloud/recovered/ack` (answers the
+  status) or a restart. `agentd cloud recover` does the same from a terminal.
+- **Status, summarized.** `signing_in` + `recovering` (bool, omitted when
+  false), `connected` + `recovered` (bool, omitted when false), guest notice
+  `wrong_recovery_code`. Remote callers still see only `state` and
+  `fingerprint` of `signing_in`.
+
+There is no schema change. `identity.json` gains `name_synced` (a string,
+absent until set); older files read as before.
+
 ### Workspace `git` flag, and renamed labels and page names (v3.56.0)
 
 `GET /api/agent/workspace/tree` adds `"git": true|false` to every repository
@@ -1685,8 +1741,8 @@ blocked; a critical one still stops the server.
   characters (U+202A–202E, U+2066–2069, U+200E, U+200F, U+061C) are dropped,
   and it is cut at 40
   characters. An empty name restores the default. 422 when `name` is not a
-  string. The apps remember the name per computer; the cloud service never
-  receives it, and it decides nothing (the device key does).
+  string. The apps remember the name per computer; a signed-in computer also
+  tells its account (v3.56.0), and it decides nothing (the device key does).
 
 ## 4. Layout
 

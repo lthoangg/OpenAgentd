@@ -9,6 +9,8 @@
 //! phone shows (only at a terminal, where someone can type). `join` takes an
 //! invitation link instead. `approve` lets this computer, when it is the
 //! one that approves devices, add a device that signed in.
+//! `recover` gets back into the account with its recovery code when no
+//! device that approves is left.
 
 use crate::cli::{CloudCmd, CloudRoles};
 use crate::net::{display_host, http_get_with_headers, http_post_with_headers, resolve_addr, server_settings};
@@ -31,6 +33,7 @@ pub fn cloud(cmd: &CloudCmd) -> Result<ExitCode> {
         CloudCmd::Join { roles } => join(*roles),
         CloudCmd::Login { roles } => login(*roles),
         CloudCmd::Approve => approve(),
+        CloudCmd::Recover { roles } => recover(*roles),
         CloudCmd::Status => status(),
         CloudCmd::Logout { yes } => logout(*yes),
     }
@@ -255,12 +258,7 @@ fn login_with(roles: CloudRoles) -> Result<ExitCode> {
                         Err(_) => pick = None,
                     }
                 }
-                field("Open", &cyan(&c.url));
-                field("Code", &bold(&c.user_code));
-                field("Device", &format!("{}   {}", bold(&c.fingerprint), dim("check the page shows the same")));
-                println!();
-                println!("  Waiting for approval… {}", dim(&format!("(Ctrl-C to cancel, expires in {} min)", c.expires_in / 60)));
-                println!("  {}", dim("If your browser says you are on the waitlist, you can finish once you are approved."));
+                show_code(c);
             }
             engine::Event::Joining { code: None, .. } => {
                 println!("  {} Signed in.", green("✓"));
@@ -341,6 +339,81 @@ fn login_with(roles: CloudRoles) -> Result<ExitCode> {
                 appv3_api::cloud::Notice::WrongNumber => {
                     "That is not the number your phone showed, so this computer left the account.\n    Run agentd cloud login to try again.".to_string()
                 }
+                _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
+            };
+            println!("\n  {} {msg}\n", yellow("!"));
+            Ok(ExitCode::FAILURE)
+        }
+    }
+}
+
+/// The page, code and fingerprint a person signs in with in the browser.
+fn show_code(c: &openagentd_cloud::api::DeviceCode) {
+    field("Open", &cyan(&c.url));
+    field("Code", &bold(&c.user_code));
+    field("Device", &format!("{}   {}", bold(&c.fingerprint), dim("check the page shows the same")));
+    println!();
+    println!("  Waiting for approval… {}", dim(&format!("(Ctrl-C to cancel, expires in {} min)", c.expires_in / 60)));
+    println!("  {}", dim("If your browser says you are on the waitlist, you can finish once you are approved."));
+}
+
+/// Gets back into the account with its recovery code: this computer signs
+/// in in the browser, then becomes the account's only device, one that
+/// approves. The code is read hidden, checked before any sign-in, and never
+/// printed or kept. Only a person at a terminal does this: it signs a roster.
+fn recover(roles: CloudRoles) -> Result<ExitCode> {
+    if let Some(code) = require_person() {
+        return Ok(code);
+    }
+    let store = identity_store();
+    if already_signed_in(&store)? {
+        return Ok(ExitCode::SUCCESS);
+    }
+    let roles = roles.roles();
+    println!();
+    println!("  Get back into your account with its recovery code. {}", dim("(for when no device that approves is left)"));
+    println!("  {}", dim("Every other device is signed out, and this computer approves devices from now on."));
+    field("Use as", roles_line(roles));
+    println!();
+    let code = zeroize::Zeroizing::new(crate::ui::read_secret("  Recovery code (hidden): ")?);
+    if recovery::decode(&code).is_err() {
+        println!("\n  {} That is not a recovery code. Check it and type it again.\n", yellow("!"));
+        return Ok(ExitCode::FAILURE);
+    }
+    let rt = runtime()?;
+    let outcome = until_ctrl_c(
+        &rt,
+        engine::recover(Endpoints::current(), http(), roles, &code, |event| {
+            if let engine::Event::Code { code: c, .. } = event {
+                println!();
+                show_code(c);
+            }
+        }),
+    );
+    drop(code);
+    let Some(outcome) = outcome else {
+        println!("  Cancelled.\n");
+        return Ok(ExitCode::FAILURE);
+    };
+    match outcome {
+        Ok(engine::Outcome::Joined(identity)) => {
+            idstore::save(&store, &identity)?;
+            println!();
+            println!("  {} Back in your account. This computer now approves devices.", green("✓"));
+            println!("  Your other devices were signed out: sign them in again.");
+            println!("  {}", dim("Your recovery code stays the same."));
+            notify_server();
+            println!();
+            Ok(ExitCode::SUCCESS)
+        }
+        Ok(engine::Outcome::EmptyAccount { .. }) => {
+            println!("\n  {} This account has no devices yet, so there is nothing to recover. Run agentd cloud login to set it up.\n", yellow("!"));
+            Ok(ExitCode::FAILURE)
+        }
+        Err(e) => {
+            let msg = match engine::notice(&e) {
+                appv3_api::cloud::Notice::Denied => "Sign-in was denied on the account page.".to_string(),
+                appv3_api::cloud::Notice::Expired => "The sign-in code expired. Run agentd cloud recover again.".to_string(),
                 _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));

@@ -3,8 +3,9 @@
  * agent works: the running mark Sessions uses, the step it is on and the time
  * the turn has taken (mockup J4 4.1). The line itself (``PhoneStatusLine``)
  * also holds the side questions' "btw" pill. Stop is the Send slot's ■ under it. Steps count the
- * turn's tool calls. Hidden off a phone and while the agent is not working
- * (a question waiting on the user is not "running").
+ * turn's tool calls, and the time runs from the turn's prompt. Hidden off a
+ * phone and while the agent is not working (a question waiting on the user
+ * is not "running").
  */
 import { useEffect, useState } from 'react'
 import type { ContentBlock } from '@/api/types'
@@ -24,29 +25,56 @@ export function runBarLabel(steps: number, elapsedMs: number, simple = false): s
   return steps > 0 ? `Running · step ${steps} · ${time}` : `Running · ${time}`
 }
 
+type TurnStream = { blocks: readonly ContentBlock[]; currentBlocks: readonly ContentBlock[]; _turnStartedAt?: number | null }
+
 /**
- * The tool calls of the stream's trailing turn: back from the end to its
- * prompt (any user block, the boundary the Full transcript draws). Both the
- * live blocks and the stored ones count: a resume, a reload, or a compaction
- * partway through the turn moves its earlier calls into ``blocks``.
+ * Walks the stream's trailing turn back from its end: ``visit`` gets each
+ * block until the turn's prompt (any user block, the boundary the Full
+ * transcript draws), which is returned; null when the loaded rows hold none.
+ * The live blocks and the stored ones both belong to it: a resume, a reload,
+ * or a compaction partway through the turn moves its earlier blocks into
+ * ``blocks``.
  */
-export function turnToolCount(stream: { blocks: readonly ContentBlock[]; currentBlocks: readonly ContentBlock[] }): number {
-  let count = 0
+function walkTurn(stream: TurnStream, visit: (block: ContentBlock) => void): ContentBlock | null {
   for (const list of [stream.currentBlocks, stream.blocks]) {
     for (let i = list.length - 1; i >= 0; i--) {
       const block = list[i]
-      if (block.type === 'user') return count
-      if (block.type === 'tool') count += 1
+      if (block.type === 'user') return block
+      visit(block)
     }
   }
+  return null
+}
+
+/** The tool calls of the stream's trailing turn. */
+export function turnToolCount(stream: TurnStream): number {
+  let count = 0
+  walkTurn(stream, (block) => {
+    if (block.type === 'tool') count += 1
+  })
   return count
+}
+
+/**
+ * When the trailing turn began (epoch ms): its prompt's time, as the
+ * transcript times it. A reload or resume resets the stream's own mark to
+ * the reconnect, so that is only the fallback. A prompt older than the
+ * loaded page is the session's pinned prompt.
+ */
+export function turnStartedAt(stream: TurnStream, pinnedPrompt: ContentBlock | null): number | null {
+  const prompt = walkTurn(stream, () => {}) ?? pinnedPrompt
+  const promptAt = prompt?.timestamp?.getTime()
+  return promptAt !== undefined && Number.isFinite(promptAt) ? promptAt : stream._turnStartedAt ?? null
 }
 
 export function RunBar() {
   const isPhone = useIsPhone()
   const simple = useSimpleDetail()
   const working = useAgentStore((s) => s.isAgentWorking && s.leadName != null && s.agentStreams[s.leadName]?.status === 'working')
-  const startedAt = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?._turnStartedAt ?? null : null))
+  const startedAt = useAgentStore((s) => {
+    const stream = s.leadName ? s.agentStreams[s.leadName] : undefined
+    return stream ? turnStartedAt(stream, s.pinnedPrompt) : null
+  })
   const steps = useAgentStore((s) => {
     const stream = s.leadName ? s.agentStreams[s.leadName] : undefined
     return stream ? turnToolCount(stream) : 0

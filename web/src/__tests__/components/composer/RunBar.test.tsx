@@ -13,7 +13,7 @@ import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ leadName: null, agentStreams: {}, isAgentWorking: false })
+  useAgentStore.setState({ leadName: null, agentStreams: {}, isAgentWorking: false, pinnedPrompt: null })
   useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
 })
 
@@ -90,6 +90,46 @@ describe('RunBar', () => {
     it('not the calls of an earlier, finished turn', () => {
       renderWith([user('u1'), tool('a'), tool('b'), text('t1')], [user('u2'), tool('c')])
       expect(screen.getByText(/^Running · step 1 · /)).toBeTruthy()
+    })
+  })
+
+  describe("times the running turn from its prompt, not from the stream's own start mark", () => {
+    // A reload or a resume sets the stream's mark to the moment it reconnected.
+    const reconnectedJustNow = () => Date.now()
+    const ago = (ms: number) => new Date(Date.now() - ms)
+    const user = (id: string, at?: Date) => ({ id, type: 'user', content: 'go', ...(at ? { timestamp: at } : {}) })
+    const tool = (id: string) => ({ id, type: 'tool', content: '' })
+    const compaction = (id: string) => ({ id, type: 'compaction', content: 'summary' })
+    const renderWith = (blocks: unknown[], currentBlocks: unknown[], turnStartedAt: number | null = reconnectedJustNow()) => {
+      const lead = { ...stream('working', 0), blocks, currentBlocks, _turnStartedAt: turnStartedAt }
+      useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: lead as never } })
+      render(<RunBar />)
+    }
+
+    it('after a reload, with the prompt in the stored rows', () => {
+      renderWith([user('u1', ago(192_000)), tool('a'), tool('b')], [])
+      expect(screen.getByText(/^Running · step 2 · 3:1\d$/)).toBeTruthy()
+    })
+
+    it('after a reload whose loaded page starts past the prompt, from the pinned prompt', () => {
+      useAgentStore.setState({ pinnedPrompt: user('u1', ago(192_000)) as never })
+      renderWith([tool('a'), tool('b')], [])
+      expect(screen.getByText(/^Running · step 2 · 3:1\d$/)).toBeTruthy()
+    })
+
+    it('after a resume, with the prompt stored and new calls live', () => {
+      renderWith([user('u1', ago(192_000)), tool('a')], [tool('b')])
+      expect(screen.getByText(/^Running · step 2 · 3:1\d$/)).toBeTruthy()
+    })
+
+    it('across a compaction partway through the turn', () => {
+      renderWith([user('u1', ago(192_000)), tool('a'), compaction('c1'), tool('b')], [])
+      expect(screen.getByText(/^Running · step 2 · 3:1\d$/)).toBeTruthy()
+    })
+
+    it("falls back to the stream's mark when the prompt has no time", () => {
+      renderWith([user('u1'), tool('a')], [], Date.now() - 65_000)
+      expect(screen.getByText(/^Running · step 1 · 1:0\d$/)).toBeTruthy()
     })
   })
 })

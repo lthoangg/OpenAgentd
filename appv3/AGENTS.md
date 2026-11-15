@@ -23,6 +23,10 @@ v2's and now differs where `REPORT.md` says.
   terminal, the QuickJS plugin host, and the plugin folder reader
   (manifest, skills, MCP servers, permissions).
 - `cli`: the `agentd` binary (`server serve` is the sidecar entry point).
+- Layers, lowest first: `core`/`kernel`/`plugins` → `db`/`memory`/`jsplugin`
+  → `providers` → `tools` → `terminal`/`preview` → `agent` → `mcp` → `api`
+  → `cli`. A crate depends only on lower layers;
+  `cli/tests/crate_layers.rs` enforces it and lists where a new crate goes.
 - `crates/*/data/`: data each crate compiles in (tool definitions, prompts,
   the provider catalog, built-in skills and commands, MIME types).
   `crates/agent/data/sse_events.json` lists every SSE event type per stream
@@ -88,6 +92,9 @@ From the repository root:
 ```bash
 make verify-v3   # cargo fmt --check, clippy -D warnings, all tests
 ```
+
+Every crate opts into `[workspace.lints]` in `Cargo.toml` (`dbg!`, `todo!`,
+`unimplemented!` are denied); a new crate adds `[lints] workspace = true`.
 
 While iterating, run `cargo fmt --all` (see `rustfmt.toml`) and focused
 crates, e.g. `cargo test -p appv3-api`, from this directory. Integration

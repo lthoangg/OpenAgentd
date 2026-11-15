@@ -1,7 +1,12 @@
-//! The phone's optional OpenAgentd Cloud account: sign-in, the account's
+//! The phone's optional account for Remote control: sign-in, the account's
 //! first roster (genesis) with its recovery code, approving computers with
 //! the 6-digit code behind Face ID, the device list, and the relay bridge
 //! to a computer.
+//!
+//! A phone or iPad that is not in an account yet shows a scan-to-add QR
+//! code (spec 4.3.1) next to its sign-in code: the person's other phone
+//! scans it and adds it, and the person then picks the number that phone
+//! shows (`cloud_pick_number`). Until then it is in no account.
 //!
 //! The phone is a client (spec 3.4: it opens sessions, never serves them)
 //! and usually a signer. It may be the account's first device, or join an
@@ -21,7 +26,8 @@ use openagentd_cloud::account_state::AccountProblem;
 use openagentd_cloud::api::{Cloud, DeviceInfo, Refusal};
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{
-    self, Approval, FlowError, GenesisDraft, JoinStep, Member, Pace, Session, Withdraw,
+    self, Approval, FlowError, GenesisDraft, JoinStep, Member, Offer, Pace, ScanCode, Session,
+    SignIn, Withdraw,
 };
 use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
 use openagentd_cloud::address_book::AddressBook;
@@ -143,7 +149,7 @@ struct FileKeys(openagentd_cloud::store::FileStore);
 /// passcode is turned off (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`),
 /// and it does not come back with a new passcode.
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-const SIGN_KEY_GONE: &str = "This iPhone can't approve any more: its approval key was removed when the passcode was turned off. Use another approver.";
+const SIGN_KEY_GONE: &str = "This iPhone can't add devices any more: its key was removed when the passcode was turned off. Use another phone that can add devices.";
 
 /// Tests: the next `unlock_sign` fails as if the person cancelled Face ID.
 #[cfg(all(test, not(target_os = "ios")))]
@@ -195,6 +201,8 @@ pub enum Notice {
     CommitMismatch,
     /// The cloud's answer did not match the invitation's `confirm`.
     ConfirmMismatch,
+    /// Scan to add: the person picked a number the other phone did not show.
+    WrongNumber,
     /// The scanned or pasted text is not an invitation link.
     InviteInvalid,
     SignedOut,
@@ -238,6 +246,11 @@ pub enum Status {
         /// code (`cloud_recover`) rather than in joining.
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         recovering: bool,
+        /// The scan-to-add QR code's content (spec 4.3.1), for a sign-in
+        /// that is not a recovery. A bearer secret until it is used: shown
+        /// on this step only, never logged.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        add_link: Option<String>,
     },
     /// A new account: show the recovery code once, then ask for two groups.
     Recovery {
@@ -254,6 +267,17 @@ pub enum Status {
     Invited {
         fingerprint: String,
         kind: Option<String>,
+    },
+    /// Scan to add: another phone scanned this device's code; the person
+    /// taps Add there.
+    Scanned {
+        fingerprint: String,
+    },
+    /// Scan to add: the other phone added this device. The person picks the
+    /// number it shows among `choices` (`cloud_pick_number`) within two
+    /// minutes; until then nothing is stored.
+    Confirming {
+        choices: [String; 3],
     },
     Connected {
         fingerprint: String,
@@ -285,6 +309,8 @@ struct Phone {
     /// The account, once signed in. Held across network calls.
     member: tokio::sync::Mutex<Option<Member>>,
     sign_in: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    /// Scan to add: where the number the person picks goes.
+    number: Mutex<Option<tokio::sync::oneshot::Sender<String>>>,
     genesis: Mutex<Option<Genesis>>,
     approvals: tokio::sync::Mutex<HashMap<String, Approval>>,
     /// The one open invitation, while the Add a device sheet shows it.
@@ -412,6 +438,7 @@ pub fn init(data_dir: std::path::PathBuf) {
         status: Mutex::new(guest(None)),
         member: tokio::sync::Mutex::new(None),
         sign_in: Mutex::new(None),
+        number: Mutex::new(None),
         genesis: Mutex::new(None),
         approvals: tokio::sync::Mutex::new(HashMap::new()),
         invite: tokio::sync::Mutex::new(None),
@@ -748,24 +775,21 @@ async fn erase(problem: AccountProblem) -> String {
 async fn flow_error(e: FlowError) -> String {
     match e {
         FlowError::Problem(p) => on_problem(p).await,
-        FlowError::NotSigner => "This phone cannot approve devices.".into(),
-        FlowError::JoinEnded => "The request was cancelled or expired.".into(),
+        FlowError::NotSigner => CANT_ADD.into(),
+        FlowError::JoinEnded => CODE_TIMED_OUT.into(),
         FlowError::NotInAccount => "That device is no longer in your account.".into(),
-        FlowError::CommitMismatch => {
-            "Request cancelled. If you didn't start it, someone may be trying to join your account."
-                .into()
-        }
+        FlowError::CommitMismatch => NOT_ADDED.into(),
         FlowError::InviteCompromised => {
             "Someone else has this invitation, so nobody was added. Show a new one.".into()
         }
         FlowError::ConfirmMismatch => {
-            "The account's answer did not match the invitation. Nothing was changed.".into()
+            "Not added: the answer didn't match. Nothing was changed. Try again.".into()
         }
         FlowError::Roles => {
-            "A device can only get the roles it asked for, and needs at least one.".into()
+            "It can only get the uses it asked for, and needs at least one.".into()
         }
         FlowError::Roster(rule) => {
-            format!("The account's device list failed a check ({rule}). Nothing was changed.")
+            format!("Your account's list of devices failed a check ({rule}). Nothing was changed.")
         }
         FlowError::Api(a) if refusal_message(&a).is_some() => {
             refusal_message(&a).unwrap_or_default()
@@ -777,6 +801,14 @@ async fn flow_error(e: FlowError) -> String {
         other => other.to_string(),
     }
 }
+
+/// The one expiry wording, everywhere a code ran out.
+pub const CODE_TIMED_OUT: &str = "This code timed out. Show a new one.";
+/// A phone without the key that adds devices.
+pub const CANT_ADD: &str = "This iPhone can't add devices. Use the phone you set up first.";
+/// The codes did not match: nothing was added. Calm on purpose; the person
+/// most likely mistyped or started over.
+pub const NOT_ADDED: &str = "Not added. Try again on the device you're adding.";
 
 /// Syncs the roster; keeps the stored copy current.
 async fn refresh() -> Result<(), String> {
@@ -839,6 +871,7 @@ fn notice_of(e: &FlowError) -> Notice {
         FlowError::JoinEnded => Notice::JoinEnded,
         FlowError::CommitMismatch => Notice::CommitMismatch,
         FlowError::ConfirmMismatch => Notice::ConfirmMismatch,
+        FlowError::WrongNumber => Notice::WrongNumber,
         FlowError::WrongRecoveryCode => Notice::WrongRecoveryCode,
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::Problem(AccountProblem::Deleted) => Notice::Deleted,
@@ -875,7 +908,7 @@ fn refusal_message(a: &openagentd_cloud::api::ApiError) -> Option<String> {
             "OpenAgentd is getting too many requests from this network. Try again in a few minutes."
                 .into()
         }
-        Refusal::TooManyPending => "3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.".into(),
+        Refusal::TooManyPending => "3 devices are already waiting to join; wait a few minutes or turn them down on a phone that can add devices.".into(),
         Refusal::DeviceLimit => "Your account has 10 devices; remove one first.".into(),
         Refusal::DeviceExists => {
             "This device is already in your account or waiting to join.".into()
@@ -952,14 +985,30 @@ fn spawn_sign_in(recover: Option<Zeroizing<String>>) {
             Ok(c) => c,
             Err(e) => return end(e.into()),
         };
+        // Not a recovery: the same code also shows as a QR code another
+        // phone of the account scans (spec 4.3.1). A recovery shows none:
+        // the person is here because no such phone is left.
+        let scan = recover.is_none().then(|| flows::scan_code(&cloud, &code));
         set_status(Status::SigningIn {
             user_code: code.user_code.clone(),
             url: code.url.clone(),
             fingerprint: fingerprint.clone(),
             expires_in: code.expires_in,
             recovering: recover.is_some(),
+            add_link: scan.as_ref().map(|s| s.link().to_string()),
         });
-        let session = match flows::wait_for_session(&cloud, &code).await {
+        let session = match &scan {
+            None => flows::wait_for_session(&cloud, &code).await,
+            Some(scan) => match flows::wait_for_sign_in(&cloud, &code).await {
+                Ok(SignIn::Session(s)) => Ok(s),
+                Ok(SignIn::Offered(offer)) => {
+                    return join_scanned(cloud, scan, offer, fingerprint).await;
+                }
+                Err(e) => Err(e),
+            },
+        };
+        drop(scan);
+        let session = match session {
             Ok(s) => s,
             Err(e) => return end(e),
         };
@@ -1019,6 +1068,84 @@ fn spawn_sign_in(recover: Option<Zeroizing<String>>) {
             old.abort();
         }
     }
+}
+
+/// Scan to add on this device (spec 4.3.1): another phone scanned its code
+/// and offered an invitation. Claim it, wait until that phone adds this one,
+/// then keep the account only if the person picks the number it shows.
+/// Until then nothing is stored and no link starts; a wrong pick, Cancel
+/// (the task is aborted) or two minutes without a pick leave the account,
+/// and the keys go with the dropped member.
+async fn join_scanned(cloud: Cloud, scan: &ScanCode, offer: Offer, fingerprint: String) {
+    let end = |e: FlowError| set_status(guest_after(&e));
+    let mut member = Member::new(cloud, None);
+    let claim = match flows::claim_offer(&mut member, scan, offer).await {
+        Ok(c) => c,
+        Err(e) => return end(e),
+    };
+    let withdraw = Withdraw::scanned(&member.cloud, &claim.enrollment_id);
+    set_status(Status::Scanned { fingerprint });
+    let scanned = match flows::await_scanned(&mut member, claim, Pace::default()).await {
+        Ok(s) => {
+            withdraw.keep();
+            s
+        }
+        Err(e) => {
+            withdraw.now().await;
+            return end(e);
+        }
+    };
+    let leave = Withdraw::leave(&member.cloud);
+    let (pick, picked) = tokio::sync::oneshot::channel();
+    if let Ok(p) = phone() {
+        *p.number.lock().expect("number") = Some(pick);
+    }
+    set_status(Status::Confirming {
+        choices: openagentd_cloud::invite::number_choices(&scanned.number),
+    });
+    let answer = tokio::time::timeout(flows::NUMBER_TIMEOUT, picked).await;
+    if let Ok(p) = phone() {
+        p.number.lock().expect("number").take();
+    }
+    let outcome = match answer {
+        Ok(Ok(n)) if n.trim() == scanned.number => Ok(()),
+        Ok(Ok(_)) => Err(FlowError::WrongNumber),
+        // No pick in two minutes: not added, like a cancel.
+        Ok(Err(_)) | Err(_) => Err(FlowError::JoinEnded),
+    };
+    if let Err(e) = outcome {
+        leave.now().await;
+        return end(e);
+    }
+    leave.keep();
+    if let Err(e) = finish(member).await {
+        eprintln!("cloud: could not store the account keys: {e}");
+        set_status(guest(Some(Notice::Failed)));
+    }
+}
+
+/// Scan to add: the number the person picked on this device. One answer
+/// only: a wrong one leaves the account. Answers the status once the join
+/// has settled (connected, or guest with `wrong_number`).
+#[tauri::command]
+pub async fn cloud_pick_number(number: String) -> Result<Status, String> {
+    let p = phone()?;
+    let pick = p
+        .number
+        .lock()
+        .expect("number")
+        .take()
+        .ok_or("No number to pick. Show a new code.")?;
+    let _ = pick.send(number);
+    // Storing the keys (or leaving) takes a moment; the page then shows
+    // the result without waiting for its next poll.
+    for _ in 0..200 {
+        if !matches!(status(), Status::Confirming { .. }) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    Ok(status())
 }
 
 /// Stores the keys of a member that just joined or set up the account.
@@ -1101,12 +1228,16 @@ pub fn cloud_cancel() -> Result<Status, String> {
     if let Some(h) = p.sign_in.lock().expect("sign-in").take() {
         h.abort();
     }
+    // Aborting drops the scanned member: its armed leave goes out.
+    p.number.lock().expect("number").take();
     p.genesis.lock().expect("genesis").take();
     if matches!(
         status(),
         Status::SigningIn { .. }
             | Status::Joining { .. }
             | Status::Invited { .. }
+            | Status::Scanned { .. }
+            | Status::Confirming { .. }
             | Status::Recovery { .. }
     ) {
         set_status(guest(None));
@@ -1264,7 +1395,7 @@ pub async fn cloud_rename_device(
 /// What a refused rename says, in plain words.
 fn rename_refusal(e: &openagentd_cloud::api::ApiError) -> Option<&'static str> {
     if e.is("not_signer") {
-        Some("Only a device that approves others can rename this device.")
+        Some("Only a phone that can add devices can rename this device.")
     } else if e.is("unknown_device") {
         Some("That device is no longer in your account.")
     } else if e.is("rate_limited") {
@@ -1601,7 +1732,7 @@ pub async fn cloud_invite_start() -> Result<InviteView, String> {
 #[tauri::command]
 pub async fn cloud_add_scanned(link: String) -> Result<u64, String> {
     if link.len() > 512 || openagentd_cloud::invite::parse_add_link(&link).is_err() {
-        return Err("That is not an OpenAgentd sign-in code.".into());
+        return Err("That is not an OpenAgentd code. Scan it again.".into());
     }
     let link = zeroize::Zeroizing::new(link);
     let p = phone()?;
@@ -1610,13 +1741,13 @@ pub async fn cloud_add_scanned(link: String) -> Result<u64, String> {
     let mut guard = p.member.lock().await;
     let member = guard
         .as_mut()
-        .ok_or("Sign in on this phone before adding a computer.")?;
+        .ok_or("Sign in on this phone before adding a device.")?;
     // Serialize replacement with an older offer's eventual store.
     if let Some(old) = p.invite.lock().await.take() {
         flows::cancel_invite(member, old).await.map_err(|e| e.to_string())?;
     }
     if generation != p.invite_generation.load(Ordering::SeqCst) {
-        return Err("This sign-in was cancelled.".into());
+        return Err("Cancelled.".into());
     }
     match flows::offer_scanned(member, &link).await {
         Ok(invite) => {
@@ -1624,12 +1755,12 @@ pub async fn cloud_add_scanned(link: String) -> Result<u64, String> {
             if generation != p.invite_generation.load(Ordering::SeqCst) {
                 drop(slot);
                 let _ = flows::cancel_invite(member, invite).await;
-                return Err("This sign-in was cancelled.".into());
+                return Err("Cancelled.".into());
             }
             *slot = Some(invite);
             Ok(generation)
         }
-        Err(FlowError::Api(e)) if e.is("already_decided") => Err("Someone else answered this code. Cancel on the computer, then sign in again to show a new code.".into()),
+        Err(FlowError::Api(e)) if e.is("already_decided") => Err("Someone else answered this code first. Show a new one.".into()),
         Err(e) => {
             drop(guard);
             Err(flow_error(e).await)
@@ -1707,12 +1838,12 @@ pub async fn cloud_invite_add(
         let slot = p.invite.lock().await;
         let invite = slot
             .as_ref()
-            .ok_or("The invitation ended. Show a new one.")?;
+            .ok_or(CODE_TIMED_OUT)?;
         match flows::check_candidates(member, invite).await {
             Ok(flows::Candidates::One(c)) if c.enrollment_id == enrollment_id => {
                 grant_of(c.roles, approver, server, client)?
             }
-            _ => return Err("The invitation ended. Show a new one.".into()),
+            _ => return Err(CODE_TIMED_OUT.into()),
         }
     };
     let number = with_sign_key(
@@ -2385,7 +2516,7 @@ mod tests {
     fn missing_passcode_and_missing_key_say_what_to_do() {
         assert!(NO_PASSCODE.starts_with("Set a passcode on this iPhone"));
         assert!(SIGN_KEY_GONE.contains("passcode was turned off"));
-        assert!(SIGN_KEY_GONE.contains("another approver"));
+        assert!(SIGN_KEY_GONE.contains("another phone that can add devices"));
         // A build that keeps keys in a file needs no passcode.
         assert_eq!(keys_unavailable(), None);
     }
@@ -2427,6 +2558,7 @@ mod tests {
             fingerprint: "f".into(),
             expires_in: 600,
             recovering,
+            add_link: None,
         };
         let s = serde_json::to_value(signing_in(false)).unwrap();
         assert!(s.get("recovering").is_none(), "{s}");
@@ -2546,7 +2678,7 @@ mod tests {
         };
         assert_eq!(
             rename_refusal(&refused(403, "not_signer")),
-            Some("Only a device that approves others can rename this device.")
+            Some("Only a phone that can add devices can rename this device.")
         );
         assert_eq!(
             rename_refusal(&refused(409, "unknown_device")),

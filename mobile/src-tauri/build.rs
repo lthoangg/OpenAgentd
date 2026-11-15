@@ -22,6 +22,7 @@ fn main() {
                 "set_app_theme",
                 "cloud_status",
                 "cloud_sign_in",
+                "cloud_pick_number",
                 "cloud_recover",
                 "cloud_recovered_ack",
                 "cloud_join_invite",

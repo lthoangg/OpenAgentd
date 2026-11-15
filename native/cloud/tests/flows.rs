@@ -642,3 +642,22 @@ async fn a_departed_signer_does_not_count_as_an_approver() {
     second.cloud.leave().await.unwrap();
     assert_eq!(flows::active_signers(&r, &phone.cloud.devices().await.unwrap()), 1);
 }
+
+#[tokio::test]
+async fn an_approver_can_let_another_device_approve_too() {
+    let fake = Fake::new();
+    let base = fake.serve().await;
+    let (mut phone, account, _) = phone_with_code(&fake, &base).await;
+    let mut server = join(&fake, &base, &mut phone, &account).await;
+    assert!(!server.is_signer());
+    let r = phone.make_approver(&server.cloud.device_id()).await.unwrap();
+    assert!(r.body.signer(&server.cloud.device_id()).is_some());
+    assert_eq!(r.body.device(&server.cloud.device_id()).unwrap().roles(), Roles::SERVER, "roles unchanged");
+    server.sync().await.unwrap();
+    assert!(server.is_signer());
+    // A member cannot.
+    let other = join(&fake, &base, &mut phone, &account).await;
+    let mut other = other;
+    assert!(matches!(other.make_approver(&other.cloud.device_id()).await, Err(FlowError::NotSigner)));
+    assert!(matches!(phone.make_approver("AAAAAAAAAAAAAAAAAAAAAA").await, Err(FlowError::JoinEnded)));
+}

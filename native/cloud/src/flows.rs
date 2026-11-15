@@ -339,6 +339,18 @@ impl Member {
         self.write(devices).await
     }
 
+    /// Lets `device_id` approve others too (signer only): the next roster
+    /// with its entry a signer, keys and roles unchanged.
+    pub async fn make_approver(&mut self, device_id: &str) -> FlowResult<Roster> {
+        self.sync().await?;
+        let mut devices = self.roster.as_ref().expect("synced").body.devices.clone();
+        let Some(d) = devices.iter_mut().find(|d| d.id == device_id) else {
+            return Err(FlowError::JoinEnded);
+        };
+        d.signer = true;
+        self.write(devices).await
+    }
+
     /// Notes the departed devices from `GET /v1/devices` ([`departed_ids`]).
     pub fn note_departed(&mut self, devices: &[crate::api::DeviceInfo]) {
         if let Some(r) = self.roster.as_ref() {

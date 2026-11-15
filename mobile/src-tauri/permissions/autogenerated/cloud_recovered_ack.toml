@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloud-recovered-ack"
+description = "Enables the cloud_recovered_ack command without any pre-configured scope."
+commands.allow = ["cloud_recovered_ack"]
+
+[[permission]]
+identifier = "deny-cloud-recovered-ack"
+description = "Denies the cloud_recovered_ack command without any pre-configured scope."
+commands.deny = ["cloud_recovered_ack"]

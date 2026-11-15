@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use openagentd_cloud::account_state::AccountProblem;
-use openagentd_cloud::api::{Cloud, Refusal};
+use openagentd_cloud::api::{Cloud, DeviceInfo, Refusal};
 use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{
     self, Approval, FlowError, GenesisDraft, JoinStep, Member, Pace, Session, Withdraw,
@@ -27,6 +27,7 @@ use openagentd_cloud::keys::{self, DeviceKeys, Ed25519, Roles, Seed};
 use openagentd_cloud::address_book::AddressBook;
 use openagentd_cloud::diag::{Diagnostics, Event};
 use openagentd_cloud::link::{DownReason, Link, LinkDeps, LinkError, LinkState, Poke, Route, Target};
+use openagentd_cloud::names;
 use openagentd_cloud::recovery;
 use openagentd_cloud::relay::{self, TunnelEnd};
 use openagentd_cloud::roster;
@@ -211,6 +212,8 @@ pub enum Notice {
     AccountUnavailable,
     /// No answer from the cloud.
     Unreachable,
+    /// Recovery: the code typed is not this account's recovery code.
+    WrongRecoveryCode,
     Failed,
 }
 
@@ -231,6 +234,10 @@ pub enum Status {
         url: String,
         fingerprint: String,
         expires_in: u64,
+        /// True while this sign-in ends in recovery with the recovery
+        /// code (`cloud_recover`) rather than in joining.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        recovering: bool,
     },
     /// A new account: show the recovery code once, then ask for two groups.
     Recovery {
@@ -251,6 +258,11 @@ pub enum Status {
     Connected {
         fingerprint: String,
         signer: bool,
+        /// True after this phone recovered the account, until
+        /// `cloud_recovered_ack` or the app restarts: the page tells the
+        /// person that every other device was signed out.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        recovered: bool,
     },
     Closing {
         fingerprint: String,
@@ -279,6 +291,9 @@ struct Phone {
     invite: tokio::sync::Mutex<Option<flows::Invite>>,
     /// Cancels an offer still in flight when the sheet closes or another scan starts.
     invite_generation: std::sync::atomic::AtomicU64,
+    /// This phone recovered the account in this app run and the page has
+    /// not acknowledged it yet (`Status::Connected.recovered`).
+    recovered: std::sync::atomic::AtomicBool,
     /// Relay links and their bridges, by computer device id.
     links: tokio::sync::Mutex<HashMap<String, AccountLink>>,
     /// Where each computer may be reached directly (spec 5.5), by device
@@ -401,6 +416,7 @@ pub fn init(data_dir: std::path::PathBuf) {
         approvals: tokio::sync::Mutex::new(HashMap::new()),
         invite: tokio::sync::Mutex::new(None),
         invite_generation: std::sync::atomic::AtomicU64::new(0),
+        recovered: std::sync::atomic::AtomicBool::new(false),
         links: tokio::sync::Mutex::new(HashMap::new()),
         addresses: Mutex::new(read_json(&data_dir.join("cloud").join("direct.json"))),
         bridge_ports: Mutex::new(read_json(&data_dir.join("cloud").join("bridges.json"))),
@@ -428,6 +444,13 @@ fn phone() -> Result<&'static Phone, String> {
 fn set_status(s: Status) {
     if let Some(p) = PHONE.get() {
         *p.status.lock().expect("cloud status") = s;
+    }
+}
+
+/// Whether this phone recovered the account and the page has not been told.
+fn set_recovered(on: bool) {
+    if let Some(p) = PHONE.get() {
+        p.recovered.store(on, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -503,6 +526,9 @@ fn connected_status(member: &Member) -> Status {
     Status::Connected {
         fingerprint: member.cloud.keys.fingerprint(),
         signer: member.is_signer(),
+        recovered: PHONE
+            .get()
+            .is_some_and(|p| p.recovered.load(std::sync::atomic::Ordering::SeqCst)),
     }
 }
 
@@ -704,6 +730,7 @@ async fn erase(problem: AccountProblem) -> String {
     forget_bridge_secrets(None);
     *p.member.lock().await = None;
     let _ = p.keys.clear();
+    set_recovered(false);
     publish_push_context(None);
     let notice = if problem == AccountProblem::Deleted {
         Notice::Deleted
@@ -811,6 +838,7 @@ fn notice_of(e: &FlowError) -> Notice {
         FlowError::JoinEnded => Notice::JoinEnded,
         FlowError::CommitMismatch => Notice::CommitMismatch,
         FlowError::ConfirmMismatch => Notice::ConfirmMismatch,
+        FlowError::WrongRecoveryCode => Notice::WrongRecoveryCode,
         FlowError::Protocol(openagentd_cloud::Error::Invite) => Notice::InviteInvalid,
         FlowError::Problem(AccountProblem::Deleted) => Notice::Deleted,
         FlowError::Problem(AccountProblem::Closing { .. }) => Notice::AccountClosing,
@@ -911,7 +939,11 @@ pub fn cloud_join_invite(link: String) -> Result<Status, String> {
     }
 }
 
-fn spawn_sign_in() {
+/// Signs in through the browser. `recover`: the account's recovery code;
+/// the phone then takes the account over with it instead of joining (every
+/// other device is signed out). The code stays in this task and is wiped
+/// with it; it is never logged.
+fn spawn_sign_in(recover: Option<Zeroizing<String>>) {
     let task = tauri::async_runtime::spawn(async move {
         let (cloud, fingerprint) = new_cloud();
         let end = |e: FlowError| set_status(guest_after(&e));
@@ -924,26 +956,35 @@ fn spawn_sign_in() {
             url: code.url.clone(),
             fingerprint: fingerprint.clone(),
             expires_in: code.expires_in,
+            recovering: recover.is_some(),
         });
         let session = match flows::wait_for_session(&cloud, &code).await {
             Ok(s) => s,
             Err(e) => return end(e),
         };
         let mut member = Member::new(cloud, None);
-        // A request that does not end in joining is withdrawn (also when
-        // the sheet closes and this task is aborted).
-        let joined = flows::join_with_code(&mut member, &session, Pace::default(), |step| {
-            set_status(Status::Joining {
-                fingerprint: fingerprint.clone(),
-                code: match step {
-                    JoinStep::Requested => None,
-                    JoinStep::Code(c) => Some(c.to_string()),
-                },
+        let recovering = recover.is_some();
+        let outcome = match &recover {
+            Some(code) => flows::recover(&mut member, &session, code)
+                .await
+                .map(|_| ()),
+            // A request that does not end in joining is withdrawn (also
+            // when the sheet closes and this task is aborted).
+            None => flows::join_with_code(&mut member, &session, Pace::default(), |step| {
+                set_status(Status::Joining {
+                    fingerprint: fingerprint.clone(),
+                    code: match step {
+                        JoinStep::Requested => None,
+                        JoinStep::Code(c) => Some(c.to_string()),
+                    },
+                })
             })
-        })
-        .await;
-        match joined {
-            Ok(_) => {}
+            .await
+            .map(|_| ()),
+        };
+        drop(recover);
+        match outcome {
+            Ok(()) => {}
             Err(FlowError::EmptyAccount) => {
                 // This phone sets the account up: show the recovery code first.
                 let draft = GenesisDraft::new();
@@ -963,8 +1004,12 @@ fn spawn_sign_in() {
             }
             Err(e) => return end(e),
         }
+        if recovering {
+            set_recovered(true);
+        }
         if let Err(e) = finish(member).await {
             eprintln!("cloud: could not store the account keys: {e}");
+            set_recovered(false);
             set_status(guest(Some(Notice::Failed)));
         }
     });
@@ -976,6 +1021,10 @@ fn spawn_sign_in() {
 }
 
 /// Stores the keys of a member that just joined or set up the account.
+///
+/// The phone's own name in the account stays unset: iOS does not give an
+/// app the device's name, so it is not guessed (the person may name this
+/// phone from Settings → Account, `cloud_rename_device`).
 async fn finish(member: Member) -> Result<(), String> {
     let p = phone()?;
     let id = identity_of(&member);
@@ -1001,11 +1050,48 @@ pub fn cloud_sign_in() -> Result<Status, String> {
     phone()?;
     match status() {
         Status::Guest { .. } => {
-            spawn_sign_in();
+            spawn_sign_in(None);
             Ok(status())
         }
         s => Ok(s),
     }
+}
+
+/// Signs in and takes the account over with its recovery code, for a person
+/// who has no device that approves any more: this phone becomes the
+/// account's only device and an approver, and every other device is signed
+/// out. The code is checked for its shape first (nothing is sent for a
+/// mistyped one) and is never logged. A wrong one ends as the guest notice
+/// `wrong_recovery_code`.
+#[tauri::command]
+pub fn cloud_recover(code: String) -> Result<Status, String> {
+    let code = Zeroizing::new(code);
+    if let Some(why) = keys_unavailable() {
+        return Err(why);
+    }
+    phone()?;
+    if code.len() > 256 || recovery::decode(&code).is_err() {
+        return Err("That is not a recovery code. Check it and type it again.".into());
+    }
+    match status() {
+        Status::Guest { .. } => {
+            spawn_sign_in(Some(code));
+            Ok(status())
+        }
+        s => Ok(s),
+    }
+}
+
+/// The page told the person about the recovery: `recovered` goes away.
+#[tauri::command]
+pub fn cloud_recovered_ack() -> Result<Status, String> {
+    let p = phone()?;
+    set_recovered(false);
+    let mut slot = p.status.lock().expect("cloud status");
+    if let Status::Connected { recovered, .. } = &mut *slot {
+        *recovered = false;
+    }
+    Ok(slot.clone())
 }
 
 #[tauri::command]
@@ -1074,22 +1160,29 @@ pub struct DeviceRow {
     pub me: bool,
     /// "macos", "linux", "windows", "ios", "android" when the cloud says.
     pub kind: Option<String>,
+    /// The name the account keeps for the device (plain text, never
+    /// trusted); `None` when unnamed.
+    pub name: Option<String>,
     /// For a server: whether its presence socket is open now (the cloud's
     /// relay usage view; a server it does not list is offline). `None` for
     /// other devices, or when the cloud could not say.
     pub online: Option<bool>,
 }
 
-/// The device list: the verified roster, labelled with the cloud's kinds and
-/// its online flags (`online`: `None` when that call failed or did not say).
+/// The device list: the verified roster, less the devices the cloud lists as
+/// departed (a device it does not list stays, and so does this one),
+/// labelled with the cloud's kinds and names and its online flags (`online`:
+/// `None` when that call failed or did not say).
 fn device_rows(
     devices: &[roster::Device],
     me: &str,
-    kinds: &HashMap<String, Option<String>>,
+    infos: &[DeviceInfo],
     online: Option<&HashMap<String, bool>>,
 ) -> Vec<DeviceRow> {
+    let info = |id: &str| infos.iter().find(|i| i.device_id == id);
     devices
         .iter()
+        .filter(|d| d.id == me || !info(&d.id).is_some_and(DeviceInfo::departed))
         .map(|d| DeviceRow {
             device_id: d.id.clone(),
             fingerprint: keys::fingerprint(&d.id).unwrap_or_default(),
@@ -1097,7 +1190,8 @@ fn device_rows(
             server: d.server,
             client: d.client,
             me: d.id == me,
-            kind: kinds.get(&d.id).cloned().flatten(),
+            kind: info(&d.id).and_then(|i| i.kind.clone()),
+            name: info(&d.id).and_then(|i| i.name.clone()),
             online: if d.server {
                 online.map(|o| o.get(&d.id).copied().unwrap_or(false))
             } else {
@@ -1111,24 +1205,74 @@ fn device_rows(
 pub async fn cloud_devices() -> Result<Vec<DeviceRow>, String> {
     refresh().await?;
     let p = phone()?;
-    let guard = p.member.lock().await;
-    let member = guard.as_ref().ok_or("Not signed in.")?;
+    let mut guard = p.member.lock().await;
+    let member = guard.as_mut().ok_or("Not signed in.")?;
     // A failed usage call never fails the list: the dots are only a hint.
     let (devices, usage) = tokio::join!(member.cloud.devices(), member.cloud.relay_usage());
-    let kinds: HashMap<String, Option<String>> = devices
-        .map(|ds| ds.into_iter().map(|d| (d.device_id, d.kind)).collect())
-        .unwrap_or_default();
+    let infos = devices.unwrap_or_default();
+    // The next roster this phone writes (an approval, an added or removed
+    // device: each asks Face ID anyway) leaves departed devices out. The
+    // phone never asks Face ID just for that; a computer that approves
+    // drops them in the background.
+    if !infos.is_empty() {
+        member.note_departed(&infos);
+    }
     let online = usage.ok().and_then(|u| u.online());
     let me = member.cloud.device_id();
     let rows = member
         .roster
         .as_ref()
-        .map(|r| device_rows(&r.body.devices, &me, &kinds, online.as_ref()))
+        .map(|r| device_rows(&r.body.devices, &me, &infos, online.as_ref()))
         .unwrap_or_default();
-    if !kinds.is_empty() {
+    if !infos.is_empty() {
+        let kinds = infos.into_iter().map(|d| (d.device_id, d.kind)).collect();
         *p.kinds.lock().expect("kinds") = kinds;
     }
     Ok(rows)
+}
+
+/// Names a device in the account (`None` or an empty name clears it).
+/// This phone may name itself with no more than its own key (no Face ID);
+/// another device needs this phone to approve devices. Answers
+/// `{ "device_id", "name" }`, the name as the account keeps it.
+#[tauri::command]
+pub async fn cloud_rename_device(
+    device_id: String,
+    name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let p = phone()?;
+    let name = name.as_deref().and_then(names::clean);
+    let guard = p.member.lock().await;
+    let member = guard.as_ref().ok_or("Not signed in.")?;
+    match member
+        .cloud
+        .set_device_name(&device_id, name.as_deref())
+        .await
+    {
+        Ok(stored) => Ok(serde_json::json!({ "device_id": device_id, "name": stored })),
+        Err(e) => {
+            drop(guard);
+            Err(match rename_refusal(&e) {
+                Some(words) => words.to_string(),
+                None => flow_error(e.into()).await,
+            })
+        }
+    }
+}
+
+/// What a refused rename says, in plain words.
+fn rename_refusal(e: &openagentd_cloud::api::ApiError) -> Option<&'static str> {
+    if e.is("not_signer") {
+        Some("Only a device that approves others can rename this device.")
+    } else if e.is("unknown_device") {
+        Some("That device is no longer in your account.")
+    } else if e.is("rate_limited") {
+        Some("Too many renames. Try again in a few minutes.")
+    } else if e.is("invalid_request") {
+        Some("Use 1 to 40 characters, on one line.")
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1631,6 +1775,7 @@ pub async fn cloud_sign_out() -> Result<Status, String> {
     tauri::async_runtime::spawn_blocking(|| phone().and_then(|p| p.keys.clear()))
         .await
         .map_err(|e| e.to_string())??;
+    set_recovered(false);
     publish_push_context(None);
     set_status(guest(Some(Notice::SignedOut)));
     Ok(status())
@@ -2262,6 +2407,30 @@ mod tests {
             s,
             serde_json::json!({"state": "recovery", "code": "X", "check": [2, 9]})
         );
+        // `recovering` and `recovered` only appear when true.
+        let signing_in = |recovering| Status::SigningIn {
+            user_code: "ABCD".into(),
+            url: "u".into(),
+            fingerprint: "f".into(),
+            expires_in: 600,
+            recovering,
+        };
+        let s = serde_json::to_value(signing_in(false)).unwrap();
+        assert!(s.get("recovering").is_none(), "{s}");
+        let s = serde_json::to_value(signing_in(true)).unwrap();
+        assert_eq!(s["recovering"], true);
+        let connected = |recovered| Status::Connected {
+            fingerprint: "f".into(),
+            signer: true,
+            recovered,
+        };
+        let s = serde_json::to_value(connected(false)).unwrap();
+        assert_eq!(
+            s,
+            serde_json::json!({"state": "connected", "fingerprint": "f", "signer": true})
+        );
+        let s = serde_json::to_value(connected(true)).unwrap();
+        assert_eq!(s["recovered"], true);
     }
 
     #[test]
@@ -2292,6 +2461,7 @@ mod tests {
                 Notice::AccountUnavailable,
             ),
             (refused(400, "invalid_request", None), Notice::Failed),
+            (FlowError::WrongRecoveryCode, Notice::WrongRecoveryCode),
         ];
         for (e, n) in cases {
             assert_eq!(notice_of(&e), n, "{e:?}");
@@ -2342,24 +2512,79 @@ mod tests {
         (devices, [phone.id(), mac.id(), linux.id()])
     }
 
+    fn info(id: &str, kind: Option<&str>, name: Option<&str>, departed: bool) -> DeviceInfo {
+        DeviceInfo {
+            device_id: id.into(),
+            signer: false,
+            added_at: Some(0),
+            revoked_at: departed.then_some(1),
+            kind: kind.map(String::from),
+            name: name.map(String::from),
+        }
+    }
+
+    #[test]
+    fn a_refused_rename_says_why_in_plain_words() {
+        let refused = |status: u16, code: &str| openagentd_cloud::api::ApiError {
+            status,
+            code: code.into(),
+            body: None,
+            retry_after: None,
+        };
+        assert_eq!(
+            rename_refusal(&refused(403, "not_signer")),
+            Some("Only a device that approves others can rename this device.")
+        );
+        assert_eq!(
+            rename_refusal(&refused(409, "unknown_device")),
+            Some("That device is no longer in your account.")
+        );
+        assert_eq!(
+            rename_refusal(&refused(429, "rate_limited")),
+            Some("Too many renames. Try again in a few minutes.")
+        );
+        assert_eq!(
+            rename_refusal(&refused(400, "invalid_request")),
+            Some("Use 1 to 40 characters, on one line.")
+        );
+        assert_eq!(rename_refusal(&refused(500, "boom")), None);
+    }
+
     #[test]
     fn servers_get_the_clouds_online_flag_and_unlisted_ones_are_offline() {
         let (devices, [phone, mac, linux]) = three_devices();
-        let kinds = HashMap::from([(mac.clone(), Some("macos".to_string()))]);
+        let infos = [info(&mac, Some("macos"), Some("Studio"), false)];
         let online = HashMap::from([(mac.clone(), true)]);
-        let rows = device_rows(&devices, &phone, &kinds, Some(&online));
+        let rows = device_rows(&devices, &phone, &infos, Some(&online));
         let of = |id: &str| rows.iter().find(|r| r.device_id == id).unwrap().clone();
         assert_eq!(of(&phone).online, None, "a client has no presence");
         assert!(of(&phone).me);
         assert_eq!(of(&mac).online, Some(true));
         assert_eq!(of(&mac).kind.as_deref(), Some("macos"));
+        assert_eq!(of(&mac).name.as_deref(), Some("Studio"));
+        assert_eq!(of(&linux).name, None, "unnamed");
         assert_eq!(of(&linux).online, Some(false), "never opened presence");
+    }
+
+    #[test]
+    fn departed_devices_are_not_listed_but_unlisted_ones_stay() {
+        let (devices, [phone, mac, linux]) = three_devices();
+        // The cloud lists the mac as departed and says nothing of the linux box.
+        let infos = [info(&mac, Some("macos"), None, true)];
+        let rows = device_rows(&devices, &phone, &infos, None);
+        let ids: Vec<&str> = rows.iter().map(|r| r.device_id.as_str()).collect();
+        assert_eq!(ids, [phone.as_str(), linux.as_str()]);
+        // This phone stays whatever the cloud says of it.
+        let infos = [info(&phone, None, None, true)];
+        assert!(device_rows(&devices, &phone, &infos, None)
+            .iter()
+            .any(|r| r.me));
     }
 
     #[test]
     fn a_failed_or_silent_usage_call_leaves_online_unknown() {
         let (devices, [phone, mac, linux]) = three_devices();
-        let rows = device_rows(&devices, &phone, &HashMap::new(), None);
+        let rows = device_rows(&devices, &phone, &[], None);
         assert_eq!(rows.len(), 3, "the list itself still comes back");
         assert!(rows.iter().all(|r| r.online.is_none()), "{rows:?}");
         assert!(rows.iter().any(|r| r.device_id == mac) && rows.iter().any(|r| r.device_id == linux));

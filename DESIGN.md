@@ -1565,6 +1565,27 @@ primitives in `components/ui/`:
   provider and each row shows only the model; typing `openai:` still finds
   them. The run chip is the one label: it names the model alone, in sans,
   with the ID in its tooltip (Composer → the run chip).
+- **Plain words for Remote control.** Adding a device and using your
+  computers from anywhere are first-run screens, so every word on that path
+  is an everyday one. Shared strings live in
+  `components/settings/pages/account-copy.tsx` (`FEATURE_NAME`,
+  `CODE_TIMED_OUT`, `CAN_ADD_DEVICES`, `CANT_ADD_DEVICES`); the phone shell's
+  own messages in `mobile/src-tauri/src/cloud.rs` match them.
+
+  | Instead of | Say |
+  |---|---|
+  | OpenAgentd Cloud, the cloud | Remote control, or nothing at all |
+  | signer, approves devices, Can approve other devices, Let it approve new devices | Can add devices (one wording everywhere) |
+  | enrollment, pending, roster, joining | wants to join / adding / added |
+  | fingerprint, key | Device ID, and only under a Details row or on the Sign in with Google step, where the account page shows it too |
+  | relay, 6-digit code | nothing on the main path (a Details row, or the Google fallback) |
+  | device | the actual thing: iPhone, iPad, computer. The account reports an iPhone and an iPad both as `ios`, so a device seen only through the account is an "iPhone or iPad" |
+  | Request cancelled. If you didn't start it, someone may be trying to join your account. | Not added. Try again on the device you're adding. |
+  | The sign-in code expired, The invitation ended | This code timed out. Show a new one. |
+  | This phone cannot approve devices | This iPhone can't add devices. Use the phone you set up first. |
+
+  "Your OpenAgentd account" stays the name of what a person signs in to. Code
+  identifiers, hostnames, API paths and storage keys keep "cloud".
 - **One name per thing.** Workspace (not project or repo), Worktree,
   Rename, Tasks, Scheduled tasks, Review panel, Changes (its Git view, with
   Uncommitted and History inside), Side questions, Find file, Session,

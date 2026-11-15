@@ -110,7 +110,7 @@ export function ApprovalSheet({
         </DialogHeader>
         <div className="mt-4 space-y-3 text-xs leading-relaxed text-(--color-text-2)">
           {rejected ? (
-            <p role="status">Request cancelled. If you didn&apos;t start it, someone may be trying to join your account.</p>
+            <p role="status">Not added. Try again on the device you&apos;re adding.</p>
           ) : (
             <>
               {begin.isPending && (
@@ -130,7 +130,7 @@ export function ApprovalSheet({
               {view && (
                 <label className="flex items-center gap-2">
                   <Checkbox checked={approves} onCheckedChange={setApprover} disabled={busy} />
-                  Can approve other devices
+                  Can add devices
                 </label>
               )}
               {failure && <Callout tone="error" role="alert">{failure.message}</Callout>}

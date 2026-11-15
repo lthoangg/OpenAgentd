@@ -99,7 +99,7 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
-    expect(screen.getAllByRole('heading', { name: 'Account' })).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { name: 'Remote control' })).toHaveLength(1)
   })
 
   it('keeps the Devices heading once signed in', async () => {
@@ -107,7 +107,7 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Devices' })).toBeTruthy()
-    expect(screen.getAllByRole('heading', { name: 'Account' })).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { name: 'Remote control' })).toHaveLength(1)
   })
 
   it('offers one Sign in and one sentence, with the other ways folded under one link', async () => {
@@ -215,7 +215,7 @@ describe('AccountSettingsPage', () => {
 
     expect(await screen.findByText("You're back in.")).toBeTruthy()
     await screen.findByRole('button', { name: /^Details of / })
-    expect(screen.queryByText(/can approve new devices/)).toBeNull()
+    expect(screen.queryByText(/can add devices/)).toBeNull()
   })
 
   it('opens the recovery code again after a wrong one', async () => {
@@ -345,7 +345,7 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText(/Your phone scanned this computer/)).toBeTruthy()
-    expect(screen.getByText(/choose Add/)).toBeTruthy()
+    expect(screen.getByText(/Tap Add on your phone/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
 
@@ -358,7 +358,7 @@ describe('AccountSettingsPage', () => {
     }))
     renderPage()
 
-    expect(await screen.findByText('Which number does your phone show?')).toBeTruthy()
+    expect(await screen.findByText('Which number is on your phone?')).toBeTruthy()
     expect(screen.getByText(/No number on your phone\?/)).toBeTruthy()
     expect(screen.getAllByRole('button').filter((b) => /^\d\d$/.test(b.textContent ?? '')).map((b) => b.textContent)).toEqual(['12', '47', '83'])
     fireEvent.click(screen.getByRole('button', { name: '47' }))
@@ -371,7 +371,7 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText(/Finish on its own screen/)).toBeTruthy()
-    expect(screen.queryByText('Which number does your phone show?')).toBeNull()
+    expect(screen.queryByText('Which number is on your phone?')).toBeNull()
   })
 
   it('hides Open page for a url that is not https', async () => {
@@ -386,7 +386,7 @@ describe('AccountSettingsPage', () => {
     serveStatus({ state: 'joining', fingerprint: 'k7f2 91ab', code: '418207' })
     renderPage()
 
-    expect(await screen.findByText('Approve this computer on a device already in your account: Settings → Account → Pending approvals.')).toBeTruthy()
+    expect(await screen.findByText('On a phone that can add devices, open OpenAgentd and tap Review. Add this computer there.')).toBeTruthy()
     expect(screen.getByText('418 207')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
@@ -395,7 +395,7 @@ describe('AccountSettingsPage', () => {
     serveStatus({ state: 'joining', fingerprint: 'k7f2 91ab', code: null })
     renderPage()
 
-    expect(await screen.findByText(/Approve this computer on a device already in your account/)).toBeTruthy()
+    expect(await screen.findByText(/open OpenAgentd and tap Review. Add this computer there/)).toBeTruthy()
     expect(screen.queryByText(/Code to compare/)).toBeNull()
   })
 
@@ -417,8 +417,8 @@ describe('AccountSettingsPage', () => {
     expect(document.body.textContent).not.toMatch(/relay|fingerprint/i)
     fireEvent.click(screen.getByRole('button', { name: 'Details of This computer' }))
     const details = await screen.findByRole('dialog', { name: 'This computer' })
-    expect(details.textContent).toContain('Keyk7f2 91ab')
-    expect(details.textContent).toContain('approves devices')
+    expect(details.textContent).toContain('Device IDk7f2 91ab')
+    expect(details.textContent).toContain('can add devices')
     expect(details.textContent).toContain('Remote sessions3')
     expect(details.textContent).toContain(`Status${text}`)
   })
@@ -436,9 +436,9 @@ describe('AccountSettingsPage', () => {
     )
     renderPage()
 
-    expect(await screen.findByText('Only this computer can approve new devices.')).toBeTruthy()
+    expect(await screen.findByText('Only this computer can add devices.')).toBeTruthy()
     expect(screen.getByText(/Keep your recovery code safe, or let/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: "Let Hoang's iPhone approve" }))
+    fireEvent.click(screen.getByRole('button', { name: "Let Hoang's iPhone add devices" }))
     await waitFor(() => expect(promoted).toEqual({ body: { device_id: 'ph' }, proof: 'app-proof' }))
     expect(proofCalls).toEqual([{ action: 'promote', id: 'ph', signer: false, server: false, client: false, reason: 'let a device approve others in your account' }])
   })
@@ -456,7 +456,7 @@ describe('AccountSettingsPage', () => {
     )
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: "Let Hoang's iPhone approve" }))
+    fireEvent.click(await screen.findByRole('button', { name: "Let Hoang's iPhone add devices" }))
     expect((await screen.findByRole('alert')).textContent).toContain('That device is no longer in your account.')
     await waitFor(() => expect(screen.queryByRole('button', { name: "Details of Hoang's iPhone" })).toBeNull())
   })
@@ -466,7 +466,7 @@ describe('AccountSettingsPage', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
-    expect(await screen.findByText(/This computer is the only device that can approve others/)).toBeTruthy()
+    expect(await screen.findByText(/This computer is the only device that can add devices/)).toBeTruthy()
   })
 
   it('renames any device in the account, this computer included', async () => {
@@ -498,7 +498,7 @@ describe('AccountSettingsPage', () => {
     ])))
     renderPage()
 
-    expect(await screen.findByText(/can approve new devices\./)).toBeTruthy()
+    expect(await screen.findByText(/can add devices\./)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Add a device' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
     expect(screen.queryByRole('button', { name: /^Let / })).toBeNull()
@@ -550,18 +550,18 @@ describe('AccountSettingsPage', () => {
   })
 
   it.each([
-    ['expired', 'The sign-in code expired.', 'Sign in again'],
+    ['expired', 'This code timed out. Show a new one.', 'Sign in again'],
     ['empty_account', /This account has no devices yet/, 'Sign in'],
     ['revoked', 'This device was removed from your account.', 'Sign in'],
     ['deleted', 'Account deleted.', 'Sign in'],
     ['denied', 'Sign-in was denied on the account page.', 'Sign in'],
-    ['commit_mismatch', 'The request was cancelled: the codes did not match.', 'Sign in'],
-    ['join_ended', 'The request to join ended: it was cancelled, expired, or the invitation was used.', 'Sign in'],
-    ['confirm_mismatch', /did not match the invitation/, 'Sign in'],
+    ['commit_mismatch', 'Not added. Try again.', 'Sign in'],
+    ['join_ended', 'Not added. It was cancelled, timed out, or the code was used. Try again.', 'Sign in'],
+    ['confirm_mismatch', /the answer didn't match/, 'Sign in'],
     ['invite_invalid', 'That is not an invitation link. Copy it again from the inviting device.', 'Sign in'],
     ['signed_out', 'Signed out. Local sessions and settings are unchanged.', 'Sign in'],
     ['rate_limited', 'OpenAgentd is getting too many requests from this network. Try again in a few minutes.', 'Sign in'],
-    ['too_many_pending', '3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.', 'Sign in'],
+    ['too_many_pending', '3 devices are already waiting to join; wait a few minutes or turn them down on a device that can add devices.', 'Sign in'],
     ['device_limit', 'Your account has 10 devices; remove one first.', 'Sign in'],
     ['device_exists', /already in your account or waiting to join/, 'Sign in'],
     ['account_closing', 'Account scheduled for deletion.', 'Sign in'],
@@ -569,7 +569,7 @@ describe('AccountSettingsPage', () => {
     ['unreachable', "Couldn't reach OpenAgentd. Check your network and try again.", 'Sign in'],
     ['failed', /Something went wrong while signing in on this device/, 'Sign in'],
     ['wrong_recovery_code', "That recovery code doesn't match this account.", 'Sign in'],
-    ['wrong_number', /not the number your phone showed/, 'Sign in'],
+    ['wrong_number', /wasn't the number on your phone/, 'Sign in'],
   ] as const)('shows the %s notice to a guest', async (notice, text, button) => {
     serveStatus({ state: 'guest', notice })
     renderPage()
@@ -599,7 +599,7 @@ describe('AccountSettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText(/Manage this computer's account with/)).toBeTruthy()
-    expect(screen.getByText('agentd cloud login')).toBeTruthy()
+    expect(screen.getByText('agentd remote login')).toBeTruthy()
     // The status stays; only the actions go.
     expect(screen.getByText('Sign in to reach this computer from your phone, anywhere.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
@@ -694,7 +694,7 @@ describe('a computer that creates the account or approves devices', () => {
     fireEvent.change(screen.getByLabelText('Type group 1'), { target: { value: 'AAAA' } })
     fireEvent.change(screen.getByLabelText('Type group 3'), { target: { value: 'CCCC' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(await screen.findByText('Only this computer can approve new devices.')).toBeTruthy()
+    expect(await screen.findByText('Only this computer can add devices.')).toBeTruthy()
     expect(sent).toEqual({ first: 'AAAA', second: 'CCCC' })
   })
 
@@ -723,14 +723,14 @@ describe('a computer that creates the account or approves devices', () => {
     expect(screen.getByText('This computer')).toBeTruthy()
     expect(screen.queryByText('Server')).toBeNull()
     expect(screen.queryByText('Approver')).toBeNull()
-    expect(await screen.findByText('Pending approvals')).toBeTruthy()
+    expect(await screen.findByText('Wants to join')).toBeTruthy()
     expect(screen.getByText('Asks to open your computers')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Remove Linux · C1C1 0000' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Details of Linux · C1C1 0000' }))
     const details = await screen.findByRole('dialog', { name: 'Linux · C1C1 0000' })
     expect(details.textContent).toContain('SystemLinux')
-    expect(details.textContent).toContain('KeyC1C1 0000')
+    expect(details.textContent).toContain('Device IDC1C1 0000')
     expect(details.textContent).toContain('SharingCan be opened by your devices')
   })
 
@@ -783,8 +783,8 @@ describe('a computer that creates the account or approves devices', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Details of studio-mini' }))
     const details = await screen.findByRole('dialog', { name: 'studio-mini' })
-    expect(details.textContent).toContain('KeyAA11 BB22')
-    expect(details.textContent).toContain('SharingCan be opened, and opens other computers · approves devices')
+    expect(details.textContent).toContain('Device IDAA11 BB22')
+    expect(details.textContent).toContain('SharingCan be opened, and opens other computers · can add devices')
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Work' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -838,7 +838,7 @@ describe('a computer that creates the account or approves devices', () => {
     expect(serverBox.checked).toBe(false)
     expect(serverBox.disabled).toBe(true)
     // A device that opens sessions has someone at it: it approves too by default.
-    expect((screen.getByRole('checkbox', { name: 'Can approve other devices' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('checkbox', { name: 'Can add devices' }) as HTMLInputElement).checked).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Codes match' }))
     await waitFor(() => expect(confirmed).toEqual({ enrollment_id: 'enr-1', signer: true, server: false, client: true }))
     // The app confirmed with the person, then proved exactly this request.
@@ -905,7 +905,7 @@ describe('a computer that creates the account or approves devices', () => {
     )
     renderPage()
 
-    expect(await screen.findByText('Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.')).toBeTruthy()
+    expect(await screen.findByText('Approve in the OpenAgentd app on this computer, or run agentd remote approve in Terminal.')).toBeTruthy()
     expect(screen.getByText('Remove devices in the OpenAgentd app on this computer.')).toBeTruthy()
     expect(screen.getByText('Asks to open your computers')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Review' })).toBeNull()
@@ -984,7 +984,7 @@ describe('a computer that creates the account or approves devices', () => {
       const sheet = await screen.findByRole('dialog')
       expect(screen.getByText('This computer checks every device before it joins.')).toBeTruthy()
       expect(await screen.findByText('iOS · 5D1E 0A77')).toBeTruthy()
-      expect(screen.getByText('Add it only if the new device shows the same.')).toBeTruthy()
+      expect(screen.getByText('Add it only if the new device shows the same device ID.')).toBeTruthy()
       expect(to('/invite/start')[0].proof).toBe('app-proof')
       expect(to('/invite/poll')[0]).toEqual({ url: POLL_URL, body: { slot_id: SLOT }, proof: 'app-proof' })
       expect(proofCalls.slice(0, 2)).toEqual([
@@ -1037,7 +1037,7 @@ describe('a computer that creates the account or approves devices', () => {
       expect(screen.getByText(INVITE)).toBeTruthy()
       fireEvent.click(screen.getByRole('button', { name: 'Show QR code' }))
       fireEvent.click(screen.getByRole('button', { name: 'Use a 6-digit code instead' }))
-      expect(screen.getByText(/compare the 6-digit code on both screens/)).toBeTruthy()
+      expect(screen.getByText(/check the number on both screens/)).toBeTruthy()
     })
 
     it('says someone else has the invitation when two devices prove it', async () => {

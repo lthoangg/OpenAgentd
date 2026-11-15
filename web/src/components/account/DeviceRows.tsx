@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ComputerDetailsDialog, deviceFacts, type ComputerFact } from '@/components/ComputerDetails'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
+import { CAN_ADD_DEVICES } from '@/components/settings/pages/account-copy'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
@@ -60,7 +61,7 @@ function nextApprover(devices: ListedDevice[]): ListedDevice | null {
 function otherLine(device: ListedDevice): string | undefined {
   const parts = [
     device.online === true ? 'Online' : device.online === false ? "Can't reach" : null,
-    device.signer ? 'Approves new devices' : null,
+    device.signer ? CAN_ADD_DEVICES : null,
   ].filter(Boolean)
   return parts.length > 0 ? parts.join(' · ') : undefined
 }
@@ -201,21 +202,21 @@ export function DeviceRows({
     const only = signers[0]
     const one = selfLabel.replace(/^This /, '')
     note = only.me ? (
-      <Callout tone="info" role="status" title={`Only this ${one} can approve new devices.`}>
+      <Callout tone="info" role="status" title={`Only this ${one} can add devices.`}>
         <span className="block">
           {next
-            ? <>Keep your recovery code safe, or let <bdi>{spoken(next)}</bdi> approve too.</>
+            ? <>Keep your recovery code safe, or let <bdi>{spoken(next)}</bdi> add devices too.</>
             : 'Keep your recovery code safe.'}
         </span>
         {next && promote && (
           // One span: the button's flex gap would space the name apart.
           <Button className="mt-2" variant="primary" size="sm" disabled={promoting !== null} onClick={() => { void makeApprover(next.device_id) }}>
-            <span>Let <bdi>{spoken(next)}</bdi> approve</span>
+            <span>Let <bdi>{spoken(next)}</bdi> add devices</span>
           </Button>
         )}
       </Callout>
     ) : (
-      <Callout tone="info" role="status" title={<>Only <bdi>{spoken(only)}</bdi> can approve new devices.</>}>
+      <Callout tone="info" role="status" title={<>Only <bdi>{spoken(only)}</bdi> can add devices.</>}>
         Keep your recovery code safe.
       </Callout>
     )
@@ -272,7 +273,7 @@ export function DeviceRows({
         {detailed && !detailed.me && !detailed.signer && promote ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={promoting !== null} onClick={() => { void makeApprover(detailed.device_id) }}>
-              Let it approve new devices
+              Let it add devices
             </Button>
           </div>
         ) : null}

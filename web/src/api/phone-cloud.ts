@@ -1,5 +1,5 @@
 /**
- * The phone's own OpenAgentd Cloud account. Unlike `api/cloud.ts` (a server's
+ * The phone's own account for Remote control. Unlike `api/cloud.ts` (a server's
  * account, over `/api/cloud`), this one belongs to the phone and lives in the
  * app shell: every call is a Tauri command (`mobile/src-tauri/src/cloud.rs`).
  * Guest is the default; nothing here may block a guest.
@@ -16,6 +16,8 @@ export type PhoneNotice =
   | 'join_ended'
   | 'commit_mismatch'
   | 'confirm_mismatch'
+  /** Scan to add: the person picked a number the other phone did not show. */
+  | 'wrong_number'
   | 'invite_invalid'
   | 'signed_out'
   | 'rate_limited'
@@ -32,12 +34,21 @@ export type PhoneCloudStatus =
   /** `supported: false` (Android for now): hide every account control. */
   | { state: 'guest'; notice: PhoneNotice | null; supported: boolean; retry_after?: number }
   /** `recovering`: signing in to recover the account with its recovery code. */
-  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number; recovering?: boolean }
+  /**
+   * `add_link`: the scan-to-add QR code (spec 4.3.1) for the same sign-in,
+   * absent on a recovery and from an older shell. A bearer secret: shown on
+   * this step only.
+   */
+  | { state: 'signing_in'; user_code: string; url: string; fingerprint: string; expires_in: number; recovering?: boolean; add_link?: string }
   /** A new account: the code is shown once, then groups `check` (1-based) are asked back. */
   | { state: 'recovery'; code: string; check: [number, number] }
   | { state: 'joining'; fingerprint: string; code: string | null }
   /** Claimed an invitation: the other phone adds this one once the person compares these. */
   | { state: 'invited'; fingerprint: string; kind: string | null }
+  /** Scan to add: another phone scanned this one's code; the person taps Add there. */
+  | { state: 'scanned'; fingerprint: string }
+  /** Scan to add: added; the person picks the number the other phone shows, within two minutes. */
+  | { state: 'confirming'; choices: [string, string, string] }
   /** `recovered`: this phone just recovered the account, until `phoneCloudRecoveredAck`. */
   | { state: 'connected'; fingerprint: string; signer: boolean; recovered?: boolean }
   | { state: 'closing'; fingerprint: string; deletes_at: number | null }
@@ -118,6 +129,8 @@ export const getPhoneCloudStatus = () => call<PhoneCloudStatus>('cloud_status')
 export const phoneCloudSignIn = () => call<PhoneCloudStatus>('cloud_sign_in')
 /** Joins with an invitation (scanned or pasted). The link works like a password. */
 export const phoneCloudJoinInvite = (link: string) => call<PhoneCloudStatus>('cloud_join_invite', { link })
+/** Scan to add: the number the person picked. One answer only; a wrong one leaves the account. */
+export const phoneCloudPickNumber = (number: string) => call<PhoneCloudStatus>('cloud_pick_number', { number })
 export const phoneCloudCancel = () => call<PhoneCloudStatus>('cloud_cancel')
 export const phoneCloudConfirmRecovery = (first: string, second: string) =>
   call<PhoneCloudStatus>('cloud_confirm_recovery', { first, second })

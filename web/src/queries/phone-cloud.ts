@@ -19,6 +19,7 @@ import {
   phoneCloudCancel,
   phoneCloudConfirmRecovery,
   phoneCloudMakeApprover,
+  phoneCloudPickNumber,
   phoneCloudRecover,
   phoneCloudRecoveredAck,
   phoneCloudPushRegister,
@@ -46,7 +47,9 @@ export const PHONE_CLOUD_PENDING_POLL_MS = 5000
  */
 export function phoneCloudPollInterval(status: PhoneCloudStatus | undefined): number | false {
   const state = status?.state
-  return state === 'signing_in' || state === 'joining' || state === 'invited' || state === 'recovery' ? PHONE_CLOUD_POLL_MS : false
+  return state === 'signing_in' || state === 'joining' || state === 'invited' || state === 'scanned' || state === 'confirming' || state === 'recovery'
+    ? PHONE_CLOUD_POLL_MS
+    : false
 }
 
 /** The fingerprint whose push token this launch already handed to the account. */
@@ -149,6 +152,7 @@ function useStatusMutation<V = void>(mutationFn: (variables: V) => Promise<Phone
 
 export const usePhoneSignIn = () => useStatusMutation(phoneCloudSignIn)
 export const usePhoneCancel = () => useStatusMutation(phoneCloudCancel)
+export const usePhonePickNumber = () => useStatusMutation((number: string) => phoneCloudPickNumber(number))
 export const usePhoneSignOut = () => useStatusMutation(phoneCloudSignOut)
 export const usePhoneRecover = () => useStatusMutation((code: string) => phoneCloudRecover(code))
 export const usePhoneRecoveredAck = () => useStatusMutation(phoneCloudRecoveredAck)

@@ -203,7 +203,7 @@ def test_app_says_why_it_uses_face_id():
     plist = INFO_IOS_PLIST.read_text()
     assert (
         "<key>NSFaceIDUsageDescription</key>\n"
-        "  <string>Confirm changes to your OpenAgentd account.</string>"
+        "  <string>Confirm adding or removing devices in your OpenAgentd account.</string>"
     ) in plist
 
 

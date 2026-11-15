@@ -93,7 +93,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   // Basics
   { id: 'general', label: 'Appearance', description: 'Theme, text size, detail and previews', icon: SlidersHorizontal, group: 'basics' },
   { id: 'providers', label: 'Models', description: 'The accounts and API keys your models come from', keywords: ['providers', 'provider'], icon: KeyRound, group: 'basics' },
-  { id: 'account', label: 'Account', description: 'Optional: reach this computer from your phone anywhere', icon: UserRound, group: 'basics', capability: 'api.cloud' },
+  { id: 'account', label: 'Remote control', description: 'Optional: use this computer from your phone anywhere', icon: UserRound, group: 'basics', capability: 'api.cloud' },
   { id: 'desktop', label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'basics', desktopOnly: true },
   { id: 'about', label: 'About', description: 'Version, updates and community', keywords: ['about openagentd'], icon: Info, group: 'basics' },
   // Agent

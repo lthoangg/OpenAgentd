@@ -8,7 +8,7 @@ describe('settings sections', () => {
     const byGroup = SETTINGS_GROUPS.map((group) => [group.label, SETTINGS_SECTIONS.filter((s) => s.group === group.id).map((s) => s.label)])
 
     expect(byGroup).toEqual([
-      ['Basics', ['Appearance', 'Models', 'Account', 'Desktop', 'About']],
+      ['Basics', ['Appearance', 'Models', 'Remote control', 'Desktop', 'About']],
       ['Agent', ['Agents', 'Skills', 'Connectors', 'Plugins', 'Memory']],
       ['Advanced', ['Sessions', 'Workspaces', 'Blocked files', 'Image and video', 'Server']],
     ])

@@ -43,8 +43,8 @@ export function deviceFacts(device: {
   const uses = rolesLabel(device)
   return [
     ...(system ? [{ label: 'System', value: system }] : []),
-    { label: 'Key', value: device.fingerprint, mono: true },
-    { label: 'Sharing', value: device.signer ? `${uses} · approves devices` : uses },
+    { label: 'Device ID', value: device.fingerprint, mono: true },
+    { label: 'Sharing', value: device.signer ? `${uses} · can add devices` : uses },
   ]
 }
 

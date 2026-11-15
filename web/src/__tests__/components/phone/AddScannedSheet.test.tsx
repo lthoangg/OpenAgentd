@@ -25,7 +25,7 @@ mock.module('@tauri-apps/api/core', () => ({
     throw new Error(`unexpected command: ${command}`)
   },
 }))
-const { AddComputerSheet } = await import('@/components/phone/AddComputerSheet')
+const { AddScannedSheet: AddComputerSheet } = await import('@/components/phone/AddScannedSheet')
 const { queryClient } = await import('@/lib/query-client')
 const LINK = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
 const CANDIDATE = { enrollment_id: 'request-1', fingerprint: '3F9A 21C4', kind: 'macos', server: true, client: true }
@@ -44,16 +44,17 @@ afterEach(async () => {
   queryClient.clear()
 })
 
-describe('AddComputerSheet', () => {
+describe('AddScannedSheet', () => {
   it('offers the code once, waits for the tap and native approval, then shows the number', async () => {
     render(<StrictMode><AddComputerSheet link={LINK} onClose={() => {}} /></StrictMode>)
-    expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Add this computer?' })).toBeTruthy()
     expect(ran('cloud_add_scanned')).toHaveLength(1)
     expect(ran('cloud_add_scanned')[0]?.args).toEqual({ link: LINK })
     expect(ran('cloud_invite_add')).toHaveLength(0)
-    // The roles are under Options; changing one there still counts.
+    // The device ID and roles are under Details; changing one there still counts.
     expect(screen.queryByRole('checkbox', { name: /can open my other computers/ })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    expect(screen.getByText('macOS · 3F9A 21C4')).toBeTruthy()
     fireEvent.click(screen.getByRole('checkbox', { name: /can open my other computers/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(finishAdd).not.toBeNull())
@@ -64,12 +65,13 @@ describe('AddComputerSheet', () => {
     finishAdd?.({ state: 'connected', signer: true, fingerprint: 'phone', number: '47' })
     expect(await screen.findByText('47')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Pick this number on the computer' })).toBeTruthy()
+    expect(screen.getByText('This makes sure the computer in front of you is the one being added.')).toBeTruthy()
     expect(ran('cloud_invite_cancel')).toHaveLength(0)
   })
 
-  it('adds with what the computer asked for when Options stays closed', async () => {
+  it('adds with what the computer asked for when Details stays closed', async () => {
     render(<AddComputerSheet link={LINK} onClose={() => {}} />)
-    expect(await screen.findByText('macOS · 3F9A 21C4')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Add this computer?' })).toBeTruthy()
     expect(screen.queryByRole('checkbox')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(finishAdd).not.toBeNull())
@@ -78,28 +80,28 @@ describe('AddComputerSheet', () => {
     expect(await screen.findByText('47')).toBeTruthy()
   })
 
-  it('shows the approver choice under Options too', async () => {
+  it('shows Can add devices under Details too', async () => {
     poll = { state: 'candidate', candidate: { ...CANDIDATE, client: false } }
     render(<AddComputerSheet link={LINK} onClose={() => {}} />)
-    await screen.findByText('macOS · 3F9A 21C4')
-    expect(screen.queryByRole('checkbox', { name: 'Can approve other devices' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }))
-    expect((screen.getByRole('checkbox', { name: 'Can approve other devices' }) as HTMLInputElement).checked).toBe(false)
+    await screen.findByRole('heading', { name: 'Add this computer?' })
+    expect(screen.queryByRole('checkbox', { name: 'Can add devices' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    expect((screen.getByRole('checkbox', { name: 'Can add devices' }) as HTMLInputElement).checked).toBe(false)
   })
 
   it('keeps Add disabled until the computer claims', async () => {
     poll = { state: 'waiting' }
     const view = render(<AddComputerSheet link={LINK} onClose={() => {}} />)
-    expect(await screen.findByText('Waiting for the computer…')).toBeTruthy()
+    expect(await screen.findByText('Waiting for the device…')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Add' }) as HTMLButtonElement).disabled).toBe(true)
     view.unmount()
     await waitFor(() => expect(ran('cloud_invite_cancel')).toHaveLength(1))
   })
 
-  it('says to cancel on the computer when someone else answered first', async () => {
-    offerError = 'Someone else answered this code. Cancel on the computer, then sign in again to show a new code.'
+  it('says to show a new code when someone else answered first', async () => {
+    offerError = 'Someone else answered this code first. Show a new one.'
     render(<AddComputerSheet link={LINK} onClose={() => {}} />)
-    expect((await screen.findByRole('alert')).textContent).toContain('Cancel on the computer')
+    expect((await screen.findByRole('alert')).textContent).toContain('Show a new one.')
     expect(ran('cloud_invite_add')).toHaveLength(0)
   })
 
@@ -118,10 +120,34 @@ describe('AddComputerSheet', () => {
   it('does not show a number if Face ID was cancelled', async () => {
     addError = 'Approval cancelled.'
     render(<AddComputerSheet link={LINK} onClose={() => {}} />)
-    await screen.findByText('macOS · 3F9A 21C4')
+    await screen.findByRole('heading', { name: 'Add this computer?' })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     expect((await screen.findByRole('alert')).textContent).toContain('Approval cancelled.')
-    expect(screen.queryByLabelText('Number to pick')).toBeNull()
+    expect(screen.queryByLabelText('Number to tap')).toBeNull()
     expect((screen.getByRole('button', { name: 'Add' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('names a new iPhone or iPad in plain words, and shows the number to tap on it', async () => {
+    poll = { state: 'candidate', candidate: { enrollment_id: 'request-2', fingerprint: 'AB12 CD34', kind: 'ios', server: false, client: true } }
+    render(<AddComputerSheet link={LINK} onClose={() => {}} />)
+    expect(await screen.findByRole('heading', { name: 'Add this iPhone or iPad?' })).toBeTruthy()
+    expect(screen.getByText('It can use your computers.')).toBeTruthy()
+    // The device ID and roles stay out of sight until Details.
+    expect(screen.queryByText(/AB12 CD34/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(finishAdd).not.toBeNull())
+    // A phone asks to use computers: it can add devices too, by default.
+    expect(ran('cloud_invite_add')[0]?.args).toEqual({ enrollmentId: 'request-2', approver: true, server: false, client: true })
+    finishAdd?.({ state: 'connected', signer: true, fingerprint: 'phone', number: '42' })
+    expect(await screen.findByRole('heading', { name: 'Tap this number on the iPhone or iPad' })).toBeTruthy()
+    expect(screen.getByLabelText('Number to tap').textContent).toBe('42')
+    expect(screen.getByText('This makes sure the iPhone or iPad in your hand is the one being added.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy()
+  })
+
+  it('says the code timed out when it ended before anyone was added', async () => {
+    poll = { state: 'ended' }
+    render(<AddComputerSheet link={LINK} onClose={() => {}} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('This code timed out. Show a new one.')
   })
 })

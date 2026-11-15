@@ -169,8 +169,8 @@ export function AccountComputerRows({
       <div data-account-note="" className={cn(ROW_PAD, 'space-y-1 text-xs leading-relaxed text-(--color-text-2)')}>
         <p className="font-medium text-(--color-text)">No computers in your account yet</p>
         <p>{isDesktopShell()
-          ? 'On another computer, open OpenAgentd, go to Settings → Account and sign in to your account.'
-          : 'On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.'}</p>
+          ? 'On another computer, open OpenAgentd, go to Settings → Remote control and sign in to your account.'
+          : 'On your computer, open OpenAgentd, go to Settings → Remote control and sign in. Then scan its code from this phone.'}</p>
       </div>
     )
   }

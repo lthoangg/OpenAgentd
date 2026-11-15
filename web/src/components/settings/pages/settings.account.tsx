@@ -1,5 +1,5 @@
 /**
- * Settings → Account — this computer's optional OpenAgentd Cloud account.
+ * Settings → Remote control — this computer's optional account for Remote control.
  * Guest is the default and is never blocked or nagged.
  *
  * Signed out: one sentence and **Sign in**. On an empty account this
@@ -37,6 +37,7 @@ import { SettingsPage } from '@/components/settings/SettingsPage'
 import {
   Body,
   ClosingCopy,
+  FEATURE_NAME,
   GUEST_DESCRIPTION,
   groupCode,
   noticeCopy,
@@ -99,7 +100,7 @@ function relayText(relay: RelayState): string {
 
 const isForbidden = (error: unknown) => error instanceof ApiValidationError && error.status === 403
 
-const RENAME_NEEDS_APPROVER = 'Only a device that approves new devices can rename it.'
+const RENAME_NEEDS_APPROVER = 'Only a device that can add devices can rename it.'
 
 /** The account's devices, this computer first; an approver adds, removes, and lets another approve. */
 function DevicesSection({ status, onAdd, onSignOut, busy }: {
@@ -184,9 +185,9 @@ function PendingSection({ onReview }: { onReview: (row: CloudPending) => void })
   if (rows.length === 0) return null
   // Approving signs the account's device list: only the desktop app can prove the person asked.
   const here = canApproveHere()
-  const description = here ? 'A device is asking to join your account. Only approve a request you started.' : APPROVE_ELSEWHERE
+  const description = here ? 'A device wants to join your account. Only add a device you are adding right now.' : APPROVE_ELSEWHERE
   return (
-    <PanelSection title="Pending approvals" description={description} flush>
+    <PanelSection title="Wants to join" description={description} flush>
       {rows.map((row) => (
         <PanelRow key={row.enrollment_id} label={pendingLabel(row)} description={rolesAsked(row)}>
           {here && <Button size="sm" variant="primary" onClick={() => onReview(row)}>Review</Button>}
@@ -310,7 +311,7 @@ export function AccountSettingsPage() {
                         <JoinWithLink
                           busy={busy}
                           onJoin={(link) => join.mutate({ link, roles: COMPUTER_ROLES })}
-                          hint="On another computer in your account, open Settings → Account → Add a device, choose Can't scan? Use a link, and paste the link here."
+                          hint="On another computer in your account, open Settings → Remote control → Add a device, choose Can't scan? Use a link, and paste the link here."
                         />
                       ) : (
                         <p>
@@ -404,7 +405,7 @@ export function AccountSettingsPage() {
       content = (
         <PanelSection title="Joining">
           <Body>
-            <p>Approve this computer on a device already in your account: Settings → Account → Pending approvals.</p>
+            <p>On a phone that can add devices, open OpenAgentd and tap Review. Add this computer there.</p>
             {status.code && (
               <p>
                 Code to compare:{' '}
@@ -506,14 +507,14 @@ export function AccountSettingsPage() {
   const onlyApprover = connected && status.signer && onlyApproverIsMe(devicesQ.data)
   return (
     <SettingsPage
-      title="Account"
-      description={status && status.state !== 'guest' ? 'Optional: reach this computer from your phone anywhere.' : GUEST_DESCRIPTION}
+      title={FEATURE_NAME}
+      description={status && status.state !== 'guest' ? 'Optional: use this computer from your phone anywhere.' : GUEST_DESCRIPTION}
       loading={statusQ.isLoading}
       error={statusQ.error}
     >
       {readOnly && (
         <Callout tone="info" role="status">
-          Manage this computer&apos;s account with <code className="font-mono">agentd cloud login</code> on that computer.
+          Manage this computer&apos;s account with <code className="font-mono">agentd remote login</code> on that computer.
         </Callout>
       )}
       {failure instanceof Error && (
@@ -531,7 +532,7 @@ export function AccountSettingsPage() {
             This device stops being reachable through your account. Local sessions and settings stay.
             {onlyApprover && (
               <span className="mt-2 block">
-                This computer is the only device that can approve others. Let another device approve first, or keep your recovery code.
+                This computer is the only device that can add devices. Let another one add devices first, or keep your recovery code.
               </span>
             )}
           </>

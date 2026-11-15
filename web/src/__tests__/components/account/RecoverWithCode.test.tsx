@@ -52,7 +52,7 @@ describe('RecoveredNote', () => {
     let done = 0
     render(<RecoveredNote device="phone" busy={false} onDone={() => { done += 1 }} />)
 
-    expect(screen.getByText(/This phone now approves new devices/)).toBeTruthy()
+    expect(screen.getByText(/This phone can now add devices/)).toBeTruthy()
     expect(screen.getByText('Your recovery code stays the same. Keep it somewhere safe.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'OK' }))
     expect(done).toBe(1)

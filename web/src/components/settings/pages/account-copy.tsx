@@ -10,6 +10,16 @@ import type { CloudNotice } from '@/api/cloud'
 
 export const GUEST_DESCRIPTION = 'Optional. Everything works without an account.'
 
+/** The one name of the feature, wherever a person reads it (DESIGN.md, "Plain words"). */
+export const FEATURE_NAME = 'Remote control'
+/** The one expiry wording, wherever a code ran out. */
+export const CODE_TIMED_OUT = 'This code timed out. Show a new one.'
+/** The one wording of the signer role, wherever a person reads it. */
+export const CAN_ADD_DEVICES = 'Can add devices'
+/** A phone that cannot add devices tried to. */
+export const CANT_ADD_DEVICES = "This iPhone can't add devices. Use the phone you set up first."
+
+
 export interface NoticeCopy {
   title?: string
   body: string
@@ -17,10 +27,7 @@ export interface NoticeCopy {
 }
 
 export const NOTICES: Record<CloudNotice, NoticeCopy> = {
-  expired: {
-    title: 'The sign-in code expired.',
-    body: 'Sign in again to get a new code. Everything on this device keeps working.',
-  },
+  expired: { body: CODE_TIMED_OUT },
   empty_account: {
     body: 'This account has no devices yet. Sign in again to set it up on this device.',
   },
@@ -34,24 +41,24 @@ export const NOTICES: Record<CloudNotice, NoticeCopy> = {
     body: 'This device was signed out and keeps working on its own. Your local sessions and settings are unchanged.',
   },
   denied: { body: 'Sign-in was denied on the account page.' },
-  commit_mismatch: { body: 'The request was cancelled: the codes did not match.' },
+  commit_mismatch: { body: 'Not added. Try again.' },
   confirm_mismatch: {
-    body: "The account's answer did not match the invitation, so this device did not join. Nothing was changed.",
+    body: "Not added: the answer didn't match. Nothing was changed. Try again.",
     tone: 'warning',
   },
   wrong_number: {
-    body: 'That is not the number your phone showed, so this computer left the account again. Sign in to try again.',
+    body: "Not added. That wasn't the number on your phone. Sign in to try again.",
     tone: 'warning',
   },
   invite_invalid: { body: 'That is not an invitation link. Copy it again from the inviting device.' },
-  join_ended: { body: 'The request to join ended: it was cancelled, expired, or the invitation was used.' },
+  join_ended: { body: 'Not added. It was cancelled, timed out, or the code was used. Try again.' },
   signed_out: { body: 'Signed out. Local sessions and settings are unchanged.' },
   rate_limited: {
     body: 'OpenAgentd is getting too many requests from this network. Try again in a few minutes.',
     tone: 'warning',
   },
   too_many_pending: {
-    body: '3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.',
+    body: '3 devices are already waiting to join; wait a few minutes or turn them down on a device that can add devices.',
     tone: 'warning',
   },
   device_limit: { body: 'Your account has 10 devices; remove one first.', tone: 'warning' },
@@ -132,8 +139,8 @@ export function SigningInCopy({ url, userCode, fingerprint }: { url: string; use
       <p>
         Open <strong className="text-(--color-text)">{displayUrl(url)}</strong> and enter{' '}
         <strong className="font-mono text-(--color-text)">{userCode}</strong>. Check that the
-        page shows this device:{' '}
-        <strong className="font-mono text-(--color-text)">{fingerprint}</strong>.
+        page shows the same device ID:{' '}
+        <strong className="font-mono text-(--color-text)">{fingerprint}</strong>
       </p>
     </>
   )
@@ -153,8 +160,8 @@ export function ScanCodeCopy({ minutes }: { minutes: number }) {
   )
 }
 
-export const SCANNED_COPY = 'Your phone scanned this computer. On your phone, check it shows this device and choose Add.'
-export const PICK_NUMBER = 'Which number does your phone show?'
+export const SCANNED_COPY = 'Your phone scanned this computer. Tap Add on your phone.'
+export const PICK_NUMBER = 'Which number is on your phone?'
 
 export function ClosingCopy({ deletesAt }: { deletesAt: number | null }) {
   return (

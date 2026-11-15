@@ -159,9 +159,12 @@ App Store only (not needed for TestFlight):
   a seeded server; check each image. Real UI only, short factual captions.
 - URLs: Privacy `https://openagentd.dev/privacy/`, Support
   `https://openagentd.dev/support/`. The app links Privacy in About.
-- App Privacy: Data Not Collected, matching `mobile/src-tauri/PrivacyInfo.xcprivacy`
-  and the site, published on the website (the API cannot set it; without it the
-  submission fails with `APP_DATA_USAGES_REQUIRED`). Fill the Accessibility labels.
+- App Privacy: the optional OpenAgentd Cloud sign-in (since 3.56.0) collects email,
+  user ID, device ID, device names (other user content), usage data, and coarse
+  location, all linked and none for tracking. Keep the label, the
+  `NSPrivacyCollectedDataTypes` in `mobile/src-tauri/PrivacyInfo.xcprivacy`, and the
+  site in step; publish the label on the website (the API cannot set it; without it
+  the submission fails with `APP_DATA_USAGES_REQUIRED`). Fill the Accessibility labels.
 - Submitting from the CLI: rename the open App Store version to the release
   version, attach the build by version and number, add the version to the
   existing review submission (`POST /v1/reviewSubmissionItems`), then send it

@@ -3,6 +3,10 @@
 //! in, a phone that set up the account approves it with the 6-digit code,
 //! and the server keeps running, in the account. Throw-away `HOME`/XDG
 //! roots and synthetic keys only.
+//!
+//! Unix only, like serve_shutdown.rs: on Windows the daemon inherits the
+//! CLI's captured stdout pipe, so `wait_with_output()` never returns.
+#![cfg(unix)]
 
 #[path = "../../../../native/cloud/tests/fake_cloud/mod.rs"]
 mod fake_cloud;

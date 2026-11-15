@@ -175,6 +175,9 @@ fn an_unknown_mode_is_refused() {
 
 /// `server start --cloud` starts the server, then signs in as `agentd cloud
 /// login` does; the server keeps running whatever the sign-in's outcome.
+// Unix only, like serve_shutdown.rs: on Windows the daemon inherits the
+// CLI's captured stdout pipe, so the test's `output()` never sees it close.
+#[cfg(unix)]
 #[test]
 fn start_with_cloud_signs_in_once_the_server_answers() {
     let sb = Sandbox::new();

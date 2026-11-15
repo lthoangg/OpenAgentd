@@ -1,4 +1,5 @@
-//! `agentd cloud`: this computer's OpenAgentd Cloud account.
+//! `agentd remote` (once `agentd cloud`, still an alias): this computer's
+//! account for Remote control.
 //!
 //! Optional: local use and LAN pairing never need it. Signing in lets the
 //! person's other devices reach this computer from anywhere through the
@@ -135,7 +136,7 @@ fn already_signed_in(store: &idstore::FileStore) -> Result<bool> {
     if let Some(id) = idstore::load(store)? {
         if id.account_id.is_some() {
             println!("\n  This computer is already signed in ({}).", bold(&id.keys()?.fingerprint()));
-            println!("  {}\n", dim("Run agentd cloud logout first to use another account."));
+            println!("  {}\n", dim("Run agentd remote logout first to use another account."));
             return Ok(true);
         }
     }
@@ -263,8 +264,8 @@ fn login_with(roles: CloudRoles) -> Result<ExitCode> {
             engine::Event::Joining { code: None, .. } => {
                 println!("  {} Signed in.", green("✓"));
                 println!();
-                println!("  Approve this computer on a device already in your account:");
-                println!("  OpenAgentd → Settings → Account → Pending approvals.");
+                println!("  Add this computer from a phone that can add devices: open OpenAgentd,");
+                println!("  tap Review, and check the number.");
                 println!("  {}", dim("Waiting for approval…"));
             }
             engine::Event::Joining { code: Some(c), .. } => {
@@ -309,7 +310,7 @@ fn login_with(roles: CloudRoles) -> Result<ExitCode> {
             }
             println!();
             println!("  {} This account has no devices yet. This computer would create it and be", yellow("!"));
-            println!("    the device that approves the others (agentd cloud approve). Its signing key");
+            println!("    the device that adds the others (agentd remote approve). Its signing key");
             println!("    is kept in a file only you can read.");
             let answer = prompt("  Create the account here? [y/N] ")?;
             if !matches!(answer.as_str(), "y" | "Y" | "yes") {
@@ -331,14 +332,10 @@ fn login_with(roles: CloudRoles) -> Result<ExitCode> {
         Err(e) => {
             let msg = match engine::notice(&e) {
                 appv3_api::cloud::Notice::Denied => "Sign-in was denied on the account page.".to_string(),
-                appv3_api::cloud::Notice::Expired => {
-                    "The sign-in code expired. Run agentd cloud login again.".to_string()
-                }
+                appv3_api::cloud::Notice::Expired => "This code timed out. Run agentd remote login to show a new one.".to_string(),
                 appv3_api::cloud::Notice::JoinEnded => "The request to join was cancelled or expired.".to_string(),
-                appv3_api::cloud::Notice::CommitMismatch => "The request was cancelled: the codes did not match.".to_string(),
-                appv3_api::cloud::Notice::WrongNumber => {
-                    "That is not the number your phone showed, so this computer left the account.\n    Run agentd cloud login to try again.".to_string()
-                }
+                appv3_api::cloud::Notice::CommitMismatch => "Not added: the codes did not match. Try again.".to_string(),
+                appv3_api::cloud::Notice::WrongNumber => "Not added. That wasn't the number on your phone.\n    Run agentd remote login to try again.".to_string(),
                 _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));
@@ -370,8 +367,8 @@ fn recover(roles: CloudRoles) -> Result<ExitCode> {
     }
     let roles = roles.roles();
     println!();
-    println!("  Get back into your account with its recovery code. {}", dim("(for when no device that approves is left)"));
-    println!("  {}", dim("Every other device is signed out, and this computer approves devices from now on."));
+    println!("  Get back into your account with its recovery code. {}", dim("(for when no device that can add devices is left)"));
+    println!("  {}", dim("Every other device is signed out, and this computer can add devices from now on."));
     field("Use as", roles_line(roles));
     println!();
     let code = zeroize::Zeroizing::new(crate::ui::read_secret("  Recovery code (hidden): ")?);
@@ -398,7 +395,7 @@ fn recover(roles: CloudRoles) -> Result<ExitCode> {
         Ok(engine::Outcome::Joined(identity)) => {
             idstore::save(&store, &identity)?;
             println!();
-            println!("  {} Back in your account. This computer now approves devices.", green("✓"));
+            println!("  {} Back in your account. This computer can now add devices.", green("✓"));
             println!("  Your other devices were signed out: sign them in again.");
             println!("  {}", dim("Your recovery code stays the same."));
             notify_server();
@@ -406,13 +403,13 @@ fn recover(roles: CloudRoles) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Ok(engine::Outcome::EmptyAccount { .. }) => {
-            println!("\n  {} This account has no devices yet, so there is nothing to recover. Run agentd cloud login to set it up.\n", yellow("!"));
+            println!("\n  {} This account has no devices yet, so there is nothing to recover. Run agentd remote login to set it up.\n", yellow("!"));
             Ok(ExitCode::FAILURE)
         }
         Err(e) => {
             let msg = match engine::notice(&e) {
                 appv3_api::cloud::Notice::Denied => "Sign-in was denied on the account page.".to_string(),
-                appv3_api::cloud::Notice::Expired => "The sign-in code expired. Run agentd cloud recover again.".to_string(),
+                appv3_api::cloud::Notice::Expired => "This code timed out. Run agentd remote recover to show a new one.".to_string(),
                 _ => engine::message(&e).unwrap_or_else(|| problem_message(&e)),
             };
             println!("\n  {} {msg}\n", yellow("!"));
@@ -446,7 +443,7 @@ fn date(ms: u64) -> String {
 fn confirm_recovery_code(draft: &GenesisDraft) -> Result<bool> {
     println!();
     println!("  {}", bold("Save your recovery code."));
-    println!("  If you lose every device that can approve others, this code is the only");
+    println!("  If you lose every device that can add devices, this code is the only");
     println!("  way back into your account. OpenAgentd can't recover it for you.");
     println!();
     let groups: Vec<&str> = draft.code.split('-').collect();
@@ -470,14 +467,14 @@ fn status() -> Result<ExitCode> {
     println!();
     let Some(id) = idstore::load(&store)?.filter(|i| i.account_id.is_some()) else {
         field("Account", "not signed in");
-        println!("  {}", dim("Optional: agentd cloud login lets your phone reach this computer from anywhere."));
+        println!("  {}", dim("Optional: agentd remote login lets your phone reach this computer from anywhere."));
         println!();
         return Ok(ExitCode::SUCCESS);
     };
     let keys = id.keys()?;
     let me = id.roster.as_deref().and_then(|b| roster::parse(b).ok()).and_then(|r| r.body.device(&keys.id()).cloned());
     let signer = me.as_ref().is_some_and(|d| d.signer);
-    field("Account", &format!("signed in · {}", if signer { "approves devices" } else { "member" }));
+    field("Account", &format!("signed in · {}", if signer { "can add devices" } else { "member" }));
     if let Some(d) = &me {
         field("Use as", roles_line(d.roles()));
     }
@@ -535,9 +532,9 @@ fn approve() -> Result<ExitCode> {
     let rt = runtime()?;
     let fail = |e: signer::SignerError| {
         let msg = match e {
-            signer::SignerError::Flow(flows::FlowError::NotSigner) => "This computer cannot approve devices.".to_string(),
+            signer::SignerError::Flow(flows::FlowError::NotSigner) => "This computer can't add devices. Use the phone you set up first.".to_string(),
             signer::SignerError::Flow(flows::FlowError::JoinEnded) => "The request was cancelled or expired.".to_string(),
-            signer::SignerError::Flow(flows::FlowError::CommitMismatch) => "Request cancelled. If you didn't start it, someone may be trying to join your account.".to_string(),
+            signer::SignerError::Flow(flows::FlowError::CommitMismatch) => "Not added. Try again on the device you're adding.".to_string(),
             signer::SignerError::Flow(f) => engine::message(&f).unwrap_or_else(|| problem_message(&f)),
             other => format!("{other:?}"),
         };
@@ -575,7 +572,7 @@ fn approve() -> Result<ExitCode> {
         return Ok(ExitCode::FAILURE);
     }
     // A device that opens sessions has a person at it: it may approve too.
-    let approver = view.client && matches!(prompt("  May it approve other devices too? [Y/n] ")?.as_str(), "" | "y" | "Y" | "yes");
+    let approver = view.client && matches!(prompt("  Can it add devices too? [Y/n] ")?.as_str(), "" | "y" | "Y" | "yes");
     match rt.block_on(signer::approve_confirm(&row.enrollment_id, signer::grant(approver, view.server, view.client))) {
         Ok(()) => {
             println!("  {} Added.", green("✓"));

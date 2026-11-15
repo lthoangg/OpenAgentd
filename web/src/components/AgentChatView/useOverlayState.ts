@@ -284,7 +284,10 @@ export function useOverlayState({
     (width: number) => sidebarIsDrawer(width, { dockOpen: dockBesideChat, touch }),
     [dockBesideChat, touch],
   )
-  const sidebarDrawer = !isMobile && useViewportMatches(isDrawerWidth)
+  // Called on every render: ``isMobile`` flips live when the window crosses
+  // the phone breakpoint, and a skipped hook would change the hook order.
+  const drawerWidth = useViewportMatches(isDrawerWidth)
+  const sidebarDrawer = !isMobile && drawerWidth
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false)
   useEffect(() => {
     if (!sidebarDrawer) setSidebarDrawerOpen(false)

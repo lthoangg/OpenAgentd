@@ -119,6 +119,8 @@ declare module "bun:test" {
   export function afterEach(fn: () => void | Promise<void>): void
   export function beforeAll(fn: () => void | Promise<void>): void
   export function afterAll(fn: () => void | Promise<void>): void
+  /** The time one test may take, in milliseconds, for every test that follows. */
+  export function setDefaultTimeout(ms: number): void
   export const mock: Mock
   export const spyOn: <T extends object, K extends keyof T>(obj: T, method: K) => MockInstance
   export const expect: Expect

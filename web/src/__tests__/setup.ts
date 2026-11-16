@@ -1,9 +1,15 @@
 // Global test setup — registers Happy DOM so React components can render.
 import React from "react";
-import { mock, afterEach } from "bun:test";
+import { mock, afterEach, setDefaultTimeout } from "bun:test";
 import { readFileSync } from "node:fs";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { menuBlink } from "@/components/ui/_menu-blink";
+
+// A test may take 10 s (Bun's default is 5 s): the parallel run shares the
+// machine with builds, and a component test that takes 1 s alone can take 6 s
+// then. Set here because `bunfig.toml` has no key for it, and a `--timeout`
+// flag would have to be on every command that runs tests.
+setDefaultTimeout(10_000);
 
 // Stub every material-icon-theme SVG `?url` import so Bun's module loader
 // doesn't crash on them (Bun doesn't run Vite transforms). Each stub returns a

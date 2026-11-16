@@ -29,7 +29,7 @@ web/src/__tests__/
   routes/           Route-level tests
   queries/          TanStack Query factories
   api/              API client tests
-  setup.ts          Global preload (bunfig.toml) — Happy DOM, SVG `?url` stubs, framer-motion stub
+  setup.ts          Global preload (bunfig.toml) — Happy DOM, SVG `?url` stubs, framer-motion stub, 10 s test limit
 ```
 
 Mirror the source path: `components/Foo.tsx` → `__tests__/components/Foo.test.tsx`.

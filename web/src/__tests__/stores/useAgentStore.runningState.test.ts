@@ -15,7 +15,6 @@
 import { mock, describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test'
 import { QueryClient } from '@tanstack/react-query'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const QUESTION = {
   id: 'q-1',
   session_id: 'sess-1',
@@ -65,7 +64,6 @@ const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: an
   postAgentCommand: mock(() => Promise.resolve({ status: 'accepted' })) as any,
   cancelQueuedMessage: mock(() => Promise.resolve()) as any,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { handleGlobalEvent } from '@/hooks/use-global-event-stream'

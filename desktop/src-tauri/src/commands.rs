@@ -1,3 +1,4 @@
+// size-ceiling: 1045 — 39 commands: group them by feature into modules
 use anyhow::{anyhow, Result};
 use openagentd_shell_core::{resolve_download_bytes, safe_download_filename, DownloadSource};
 use serde::{Deserialize, Serialize};
@@ -65,14 +66,11 @@ static PENDING_NOTIFICATIONS: AtomicUsize = AtomicUsize::new(0);
 
 /// Reserve a slot for a notification that waits on user interaction.
 /// Returns false once `MAX_PENDING_NOTIFICATIONS` are already parked.
+#[allow(deprecated)] // `try_update`, its new name, needs Rust 1.95, above our rust-version.
 fn claim_notification_slot() -> bool {
-    PENDING_NOTIFICATIONS
-        .fetch_update(
-            std::sync::atomic::Ordering::SeqCst,
-            std::sync::atomic::Ordering::SeqCst,
-            |pending| (pending < MAX_PENDING_NOTIFICATIONS).then_some(pending + 1),
-        )
-        .is_ok()
+    use std::sync::atomic::Ordering::SeqCst;
+    let claim = |pending| (pending < MAX_PENDING_NOTIFICATIONS).then_some(pending + 1);
+    PENDING_NOTIFICATIONS.fetch_update(SeqCst, SeqCst, claim).is_ok()
 }
 
 /// Notification ids already shown, newest last.

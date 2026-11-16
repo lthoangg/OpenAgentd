@@ -32,9 +32,9 @@ describe('/settings', () => {
   })
 
   it('opens the linked section', () => {
-    params = { section: 'providers' }
+    params = { section: 'models' }
     render(<SettingsPage />)
-    expect(useSettingsStore.getState()).toMatchObject({ open: true, section: 'providers' })
+    expect(useSettingsStore.getState()).toMatchObject({ open: true, section: 'models' })
   })
 
   it('ignores a section Settings does not have', () => {

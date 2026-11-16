@@ -15,11 +15,11 @@ describe('deviceFacts', () => {
   it('lists the system, the key and the role', () => {
     expect(FACTS).toEqual([
       { label: 'System', value: 'macOS' },
-      { label: 'Key', value: '3F9A 21C4', mono: true },
-      { label: 'Sharing', value: 'Can be opened by your devices · approves devices' },
+      { label: 'Device ID', value: '3F9A 21C4', mono: true },
+      { label: 'Sharing', value: 'Can be opened by your devices · can add devices' },
     ])
     expect(deviceFacts({ kind: 'plan9', fingerprint: 'AA11', signer: false, server: true, client: true })).toEqual([
-      { label: 'Key', value: 'AA11', mono: true },
+      { label: 'Device ID', value: 'AA11', mono: true },
       { label: 'Sharing', value: 'Can be opened, and opens other computers' },
     ])
   })
@@ -31,8 +31,8 @@ describe('ComputerDetailsDialog', () => {
     const dialog = screen.getByRole('dialog', { name: 'Work' })
     expect(dialog.textContent).toContain('NameWork')
     expect(dialog.textContent).toContain('SystemmacOS')
-    expect(dialog.textContent).toContain('Key3F9A 21C4')
-    expect(dialog.textContent).toContain('SharingCan be opened by your devices · approves devices')
+    expect(dialog.textContent).toContain('Device ID3F9A 21C4')
+    expect(dialog.textContent).toContain('SharingCan be opened by your devices · can add devices')
     // Not on this computer: no Rename, and it says how to get one.
     expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
     expect(dialog.textContent).toContain('Open this computer to rename it.')

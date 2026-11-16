@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
-import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
+import { SwitchComputerSettingsPage } from '@/components/settings/pages/settings.switch_computer'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 
@@ -63,6 +63,12 @@ const invokeMock = mock(async (...args: unknown[]) => {
       sidecar_running: true,
       external: false,
     }
+    return null
+  }
+  // Starts the built-in server without moving the window (a switch's slow
+  // part, with Back still up); `app_use_bundled_backend` then moves it.
+  if (command === 'app_start_bundled_backend') {
+    statusPayload = { ...statusPayload, sidecar_running: true }
     return null
   }
   if (command === 'app_stop_bundled_backend') {
@@ -568,10 +574,10 @@ describe('AppBackendDialog', () => {
     expect(useCalls()).toHaveLength(0)
   })
 
-  it('renders the same panel as the Settings → Server page', async () => {
-    render(<ConnectionSettingsPage />)
+  it('renders the same list as the Settings → Switch computer page', async () => {
+    render(<SwitchComputerSettingsPage />)
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Server' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Switch computer' })).toBeTruthy()
     expect(await screen.findByText('This computer')).toBeTruthy()
     expect(screen.getByText('Local CLI')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Add a computer by address' })).toBeTruthy()

@@ -68,7 +68,7 @@ fn save_setting(s: Setting) {
     }
 }
 
-/// Turns direct sessions on or off (Settings → Server, local callers
+/// Turns direct sessions on or off (Settings → Switch computer, local callers
 /// only). Off closes the listener and every live direct session.
 pub fn set_enabled(on: bool) -> Setting {
     let s = Setting { on, ..setting() };

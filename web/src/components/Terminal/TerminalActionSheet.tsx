@@ -1,86 +1,32 @@
 /**
- * TerminalActionSheet — mobile long-press menu for the terminal surface.
+ * TerminalActionSheet — the long-press menu of the terminal surface on touch.
  *
- * Touch has no native context menu and xterm's own touch handling already
- * owns tap/drag (scroll, drag-to-select), so a long-press on the surface
- * opens this instead: Select All / Copy (current selection) / Paste
- * (clipboard → PTY input), plus Find and Add to chat (the selection goes
- * into the composer) when the parent wires them. Fed pure callbacks so it
- * has no xterm import and can be unit-tested without the terminal renderer.
+ * Touch has no context menu, and xterm's own touch handling takes taps and
+ * drags (a drag scrolls), so a long press opens the shared phone action
+ * sheet with the terminal's menu (``terminal-menu.ts``): Select Text first,
+ * then Copy, Paste, Select All, Find, Add to chat and Clear. Fed a callback,
+ * so it has no xterm import and is testable without the renderer.
  */
-import { CheckSquare, ClipboardPaste, Copy, MessageSquarePlus, Search } from 'lucide-react'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { ActionSheet } from '@/components/ui/action-sheet'
+import type { OS } from '@/hooks/use-platform'
+import { terminalMenuItems, type TerminalMenuAction } from './terminal-menu'
 
 interface TerminalActionSheetProps {
   open: boolean
-  onOpenChange: (open: boolean) => void
+  onClose: () => void
   hasSelection: boolean
-  onSelectAll: () => void
-  onCopy: () => void
-  onPaste: () => void
-  /** Opens the find bar; the item is hidden without it. */
-  onFind?: () => void
-  /** Adds the selection to the chat composer; the item is hidden without it. */
-  onAddToChat?: () => void
+  os: OS
+  onAction: (action: TerminalMenuAction) => void
 }
 
-export function TerminalActionSheet({
-  open,
-  onOpenChange,
-  hasSelection,
-  onSelectAll,
-  onCopy,
-  onPaste,
-  onFind,
-  onAddToChat,
-}: TerminalActionSheetProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Terminal</DialogTitle>
-          <DialogDescription>Choose an action for the terminal surface.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-9 md:min-h-0" onClick={onSelectAll}>
-            <CheckSquare size={14} aria-hidden="true" />
-            Select All
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="justify-start gap-2 min-h-9 md:min-h-0"
-            onClick={onCopy}
-            disabled={!hasSelection}
-          >
-            <Copy size={14} aria-hidden="true" />
-            Copy
-          </Button>
-          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-9 md:min-h-0" onClick={onPaste}>
-            <ClipboardPaste size={14} aria-hidden="true" />
-            Paste
-          </Button>
-          {onFind && (
-            <Button type="button" variant="ghost" className="justify-start gap-2 min-h-9 md:min-h-0" onClick={onFind}>
-              <Search size={14} aria-hidden="true" />
-              Find
-            </Button>
-          )}
-          {onAddToChat && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start gap-2 min-h-9 md:min-h-0"
-              onClick={onAddToChat}
-              disabled={!hasSelection}
-            >
-              <MessageSquarePlus size={14} aria-hidden="true" />
-              Add to chat
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
+export function TerminalActionSheet({ open, onClose, hasSelection, os, onAction }: TerminalActionSheetProps) {
+  const items = terminalMenuItems({ touch: true, hasSelection, os }).map((item) => ({
+    id: item.action,
+    label: item.label,
+    icon: item.icon,
+    disabled: item.disabled,
+    separatorBefore: item.separatorBefore,
+    run: () => onAction(item.action),
+  }))
+  return <ActionSheet open={open} onClose={onClose} title="Terminal" items={items} />
 }

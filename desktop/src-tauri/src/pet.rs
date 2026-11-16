@@ -1,3 +1,4 @@
+// size-ceiling: 2597 — holds settings, hit testing and window placement: give each its own module; move the inline tests out first
 //! The desktop pet (macOS and Windows): a small pixel cat that stands
 //! wherever it was dragged on a display (the bottom edge, above the Dock or
 //! taskbar, by default), walks left and right at that height, and shows

@@ -8,8 +8,8 @@ import { connectionFailureMessage } from '@/lib/backend-switch'
 describe('connectionFailureMessage', () => {
   it('names the setting that lets another device in, for a server on another computer', () => {
     const message = connectionFailureMessage('http://192.168.1.20:4082')
-    expect(message).toContain('Access from other devices')
-    expect(message).toContain('Settings → Server')
+    expect(message).toContain('Let other devices connect')
+    expect(message).toContain('Settings → Switch computer')
     expect(message).toContain('same network')
     expect(message).not.toContain('--host')
     expect(message).not.toContain('LAN IP')
@@ -20,7 +20,7 @@ describe('connectionFailureMessage', () => {
       const message = connectionFailureMessage(url)
       expect(message).toContain('running')
       expect(message).toContain('port')
-      expect(message).not.toContain('Access from other devices')
+      expect(message).not.toContain('Let other devices connect')
     }
   })
 })

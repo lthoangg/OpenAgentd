@@ -58,3 +58,6 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [dev-dependencies]
 # The fake cloud of native/cloud/tests (tests/cloud_join.rs) frames its relay sockets with it.
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+
+[lints]
+workspace = true

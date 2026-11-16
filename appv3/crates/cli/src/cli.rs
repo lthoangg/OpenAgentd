@@ -10,8 +10,12 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Top-level help groups, in order. Every visible command is in one.
-const GROUPS: &[(&str, &[&str])] =
-    &[("Server", &["server"]), ("Agents", &["run", "auth", "credentials"]), ("Setup", &["doctor", "plugin", "lsp", "cloud", "transfer"]), ("Maintenance", &["cleanup", "upgrade"])];
+const GROUPS: &[(&str, &[&str])] = &[
+    ("Server", &["server"]),
+    ("Agents", &["run", "auth", "credentials"]),
+    ("Setup", &["doctor", "plugin", "lsp", "remote", "transfer"]),
+    ("Maintenance", &["cleanup", "upgrade"]),
+];
 
 fn styles() -> Styles {
     Styles::styled()
@@ -103,8 +107,10 @@ pub enum Command {
     /// Update agentd to the latest release
     #[command(visible_alias = "update")]
     Upgrade(UpgradeArgs),
-    /// Sign this computer in to an OpenAgentd Cloud account (optional)
-    #[command(subcommand)]
+    /// Remote control: sign this computer in to your OpenAgentd account (optional)
+    // `agentd cloud` is the name it had: kept as a hidden alias so old docs
+    // and scripts still work.
+    #[command(subcommand, name = "remote", alias = "cloud")]
     Cloud(CloudCmd),
 }
 
@@ -123,17 +129,18 @@ pub enum CloudCmd {
         #[command(flatten)]
         roles: CloudRoles,
     },
-    /// Sign in; a device already in your account approves this one with a 6-digit code.
-    /// On an account with no devices yet, this computer creates it.
+    /// Sign in; your phone scans the code this shows, or a device that can add
+    /// devices adds this one with a 6-digit code. On an account with no
+    /// devices yet, this computer creates it.
     Login {
         #[command(flatten)]
         roles: CloudRoles,
     },
-    /// Approve a device that signed in (when this computer approves devices)
+    /// Add a device that signed in (when this computer can add devices)
     Approve,
     /// Get back into your account with its recovery code when no device that
-    /// approves is left. This computer then approves devices, and the others
-    /// are signed out
+    /// can add devices is left. This computer can then add devices, and the
+    /// others are signed out
     Recover {
         #[command(flatten)]
         roles: CloudRoles,
@@ -226,7 +233,7 @@ pub struct StartArgs {
     #[arg(long)]
     pub qr: bool,
     /// Then sign this computer in to your OpenAgentd account, as `agentd
-    /// cloud login` does: your phone scans the code it shows
+    /// remote login` does: your phone scans the code it shows
     #[arg(long)]
     pub cloud: bool,
 }
@@ -675,6 +682,19 @@ mod tests {
         assert_eq!(roles.roles(), openagentd_cloud::keys::Roles::SERVER, "serves only unless asked, as login does");
         let Some(Command::Cloud(CloudCmd::Recover { roles })) = parse(&["cloud", "recover", "--client"]).unwrap() else { panic!("not recover") };
         assert_eq!(roles.roles(), openagentd_cloud::keys::Roles::BOTH);
+    }
+
+    #[test]
+    fn remote_is_the_name_and_cloud_still_works_hidden() {
+        for name in ["remote", "cloud"] {
+            assert!(matches!(parse(&[name, "login"]).unwrap(), Some(Command::Cloud(CloudCmd::Login { .. }))), "{name} login");
+            assert!(matches!(parse(&[name, "status"]).unwrap(), Some(Command::Cloud(CloudCmd::Status))), "{name} status");
+            assert_eq!(kind(&[name, "login", "--help"]), ErrorKind::DisplayHelp, "{name} login --help");
+        }
+        let help = Cli::command().render_help().to_string();
+        assert!(help.lines().any(|l| l.trim_start().starts_with("remote")), "{help}");
+        assert!(!help.lines().any(|l| l.trim_start().starts_with("cloud")), "the old name stays out of help:\n{help}");
+        assert!(!help.contains("OpenAgentd Cloud"), "{help}");
     }
 
     #[test]

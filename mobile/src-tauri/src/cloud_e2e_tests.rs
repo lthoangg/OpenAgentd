@@ -1,3 +1,4 @@
+// size-ceiling: 1144 — a test module: split it by journey
 //! The phone's account story end to end, through the commands the web UI
 //! calls, against the in-process fake cloud of
 //! `native/cloud/tests/fake_cloud` and a stand-in computer:
@@ -1019,5 +1020,125 @@ fn the_phone_lets_a_computer_approve_others_after_face_id() {
         );
 
         cloud::cloud_sign_out().await.unwrap();
+    });
+}
+
+/// A device of an account that can add others, outside the phone: the
+/// "old phone" that scans this one's code.
+async fn signer_with_account(fake: &fake_cloud::Fake, base: &str) -> Member {
+    let account = fake.new_account();
+    let cloud = Cloud::new(
+        reqwest::Client::new(),
+        Endpoints::custom(base, "https://account.openagentd.dev"),
+        DeviceKeys::generate(),
+        None,
+    );
+    let code = cloud.device_code().await.unwrap();
+    fake.approve(&code.user_code, &account);
+    let session = flows::wait_for_session(&cloud, &code).await.unwrap();
+    let mut member = Member::new(cloud, None);
+    flows::genesis(&mut member, &session, flows::GenesisDraft::new())
+        .await
+        .unwrap();
+    member
+}
+
+/// The other phone scans this one's code and taps Add: the number it shows.
+async fn scan_and_add(signer: &mut Member, link: &str) -> String {
+    let invite = flows::offer_scanned(signer, link).await.unwrap();
+    let mut candidate = None;
+    for _ in 0..400 {
+        if let flows::Candidates::One(c) = flows::check_candidates(signer, &invite).await.unwrap() {
+            candidate = Some(c);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let c = candidate.expect("the phone claimed the offer");
+    let grant = flows::Grant {
+        signer: true,
+        roles: openagentd_cloud::keys::Roles::CLIENT,
+    };
+    flows::add_scanned(signer, invite, &c.enrollment_id, grant)
+        .await
+        .unwrap()
+        .1
+}
+
+#[test]
+fn a_new_phone_joins_when_another_phone_scans_its_code() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    tauri::async_runtime::block_on(async {
+        let fake = fake_cloud::Fake::new();
+        let base = fake.serve().await;
+        std::env::set_var("OPENAGENTD_CLOUD_API", &base);
+        std::env::set_var("OPENAGENTD_CLOUD_ACCOUNT", "https://account.openagentd.dev");
+        let (dir, _) = init_phone();
+        let mut signer = signer_with_account(&fake, &base).await;
+
+        // The new phone shows its code; the other phone scans it and adds it.
+        cloud::cloud_sign_in().unwrap();
+        let Status::SigningIn { add_link: Some(link), .. } =
+            wait("the scan code", |s| matches!(s, Status::SigningIn { .. })).await
+        else {
+            panic!("a sign-in that is not a recovery shows a scan code")
+        };
+        assert!(link.starts_with("agentd://add?"), "{link}");
+        let number = scan_and_add(&mut signer, &link).await;
+        let Status::Confirming { choices } =
+            wait("the number", |s| matches!(s, Status::Confirming { .. })).await
+        else {
+            unreachable!()
+        };
+        assert!(choices.contains(&number), "{choices:?} has {number}");
+        assert!(
+            !dir.join("cloud").join("identity.json").exists(),
+            "nothing is stored before the person picks the number"
+        );
+        let s = cloud::cloud_pick_number(number).await.unwrap();
+        assert!(matches!(s, Status::Connected { .. }), "{s:?}");
+        assert!(dir.join("cloud").join("identity.json").exists());
+        cloud::cloud_sign_out().await.unwrap();
+
+        // A wrong pick: the phone leaves again and keeps nothing.
+        cloud::cloud_sign_in().unwrap();
+        let Status::SigningIn { add_link: Some(link), .. } =
+            wait("the scan code", |s| matches!(s, Status::SigningIn { add_link: Some(_), .. })).await
+        else {
+            unreachable!()
+        };
+        let number = scan_and_add(&mut signer, &link).await;
+        let Status::Confirming { choices } =
+            wait("the number", |s| matches!(s, Status::Confirming { .. })).await
+        else {
+            unreachable!()
+        };
+        let wrong = choices.iter().find(|c| **c != number).unwrap().clone();
+        let s = cloud::cloud_pick_number(wrong).await.unwrap();
+        assert!(
+            matches!(
+                s,
+                Status::Guest {
+                    notice: Some(cloud::Notice::WrongNumber),
+                    ..
+                }
+            ),
+            "{s:?}"
+        );
+        assert!(!dir.join("cloud").join("identity.json").exists());
+        assert!(cloud::cloud_pick_number("00".into()).await.is_err(), "one answer only");
+
+        // Cancel while the number shows: not added either.
+        cloud::cloud_sign_in().unwrap();
+        let Status::SigningIn { add_link: Some(link), .. } =
+            wait("the scan code", |s| matches!(s, Status::SigningIn { add_link: Some(_), .. })).await
+        else {
+            unreachable!()
+        };
+        scan_and_add(&mut signer, &link).await;
+        wait("the number", |s| matches!(s, Status::Confirming { .. })).await;
+        let s = cloud::cloud_cancel().unwrap();
+        assert!(matches!(s, Status::Guest { notice: None, .. }), "{s:?}");
+        assert!(!dir.join("cloud").join("identity.json").exists());
     });
 }

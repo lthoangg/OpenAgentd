@@ -9,7 +9,7 @@
  * Protocol v2 (shells survive reloads/disconnects) is covered in the second
  * half: kill-on-close, auto-reattach with backoff, 4409, restore, titles.
  */
-import { afterEach, describe, expect, it, beforeEach, mock } from 'bun:test'
+import { afterEach, describe, expect, it, beforeEach, mock, spyOn } from 'bun:test'
 
 import {
   EMPTY_DOCK_PANES,
@@ -170,6 +170,9 @@ mock.module('@/api/terminal-sessions', () => ({
 const {
   useTerminalStore,
   getTerminalRuntime,
+  onTerminalCommandFinished,
+  requestTerminalShow,
+  takeTerminalShowRequest,
   terminalClosedMessage,
   TERMINAL_IDLE_CLOSE_MS,
   TERMINAL_GAP_NOTICE,
@@ -364,6 +367,33 @@ describe('useTerminalStore', () => {
     expect(meta(id)?.busy).toBeFalsy()
   })
 
+  it('reports a finished command with how long it ran', async () => {
+    const finished: Array<[string, number]> = []
+    const off = onTerminalCommandFinished((id, durationMs) => finished.push([id, durationMs]))
+    const now = spyOn(Date, 'now')
+    try {
+      const id = open()
+      await settle()
+      lastCallbacks!.onBusy!(false) // at the prompt: nothing ran
+      now.mockReturnValue(1_000)
+      lastCallbacks!.onBusy!(true)
+      now.mockReturnValue(1_500)
+      lastCallbacks!.onBusy!(true) // a repeated frame does not restart the clock
+      now.mockReturnValue(13_000)
+      lastCallbacks!.onBusy!(false)
+      expect(finished).toEqual([[id, 12_000]])
+    } finally {
+      now.mockRestore()
+      off()
+    }
+  })
+
+  it('hands a requested shell to the next Open Terminal, once', () => {
+    requestTerminalShow('3')
+    expect(takeTerminalShowRequest()).toBe('3')
+    expect(takeTerminalShowRequest()).toBeNull()
+  })
+
   it('sendInput applies the registered transform and notes activity', async () => {
     const s = useTerminalStore.getState()
     const id = open()
@@ -390,16 +420,42 @@ describe('useTerminalStore', () => {
     expect((createdTerms[0].options.theme as { background: string }).background).not.toBe(lightBg)
   })
 
-  it('opens every terminal with the fixed font stack and size, whatever was stored before', async () => {
+  it('opens every terminal with the fixed font stack at the Text size, whatever was stored before', async () => {
     localStorage.setItem('oa-terminal-font', 'Comic Mono')
     localStorage.setItem('oa-terminal-font-size', '20')
     const s = useTerminalStore.getState()
+    s.syncFontSize(TERMINAL_FONT_SIZE)
     s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
     await settle()
     expect(createdTerms[0].options.fontFamily).toBe(TERMINAL_FONT_FAMILY)
     expect(createdTerms[0].options.fontSize).toBe(TERMINAL_FONT_SIZE)
     localStorage.removeItem('oa-terminal-font')
     localStorage.removeItem('oa-terminal-font-size')
+  })
+
+  it('follows the Text size: new terminals open at it, visible ones refit and resize the shell', async () => {
+    const s = useTerminalStore.getState()
+    const shown = open()
+    await settle()
+    const shownSocket = lastSocket!
+    const hidden = open()
+    await settle()
+    s.setAttached(shown, true)
+    s.setAttached(hidden, false)
+    fitSize.rows = 20
+    fitSize.cols = 70
+    try {
+      s.syncFontSize(14)
+      expect(createdTerms.map((t) => t.options.fontSize)).toEqual([14, 14])
+      expect(shownSocket.sendResize).toHaveBeenLastCalledWith(20, 70)
+      s.open({ workspace: WS }, WS)
+      await settle()
+      expect(createdTerms[2].options.fontSize).toBe(14)
+    } finally {
+      fitSize.rows = 24
+      fitSize.cols = 80
+      s.syncFontSize(TERMINAL_FONT_SIZE)
+    }
   })
 
   it('reconnect() replaces a dead session in place', async () => {

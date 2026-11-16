@@ -13,7 +13,7 @@ import type {
 import type { Command } from '../CommandPalette'
 import { formatCompactRelative } from '@/utils/format'
 import { sameWorkspacePath } from '@/utils/workspace'
-import { sessionActivityTime } from '../Sidebar.helpers'
+import { sessionActivityTime } from '../Sidebar/helpers'
 import { sessionStatus, sessionStateWord, type SessionStatus } from '../Sidebar/SessionStatusMark'
 
 export interface SwitchCommandsInput {

@@ -1,7 +1,8 @@
 /**
  * Settings → Workspaces — whether lead agents may message sessions in other
  * workspaces, and the groups that decide which workspaces may reach each
- * other. Groups save at once; the messages switch uses the save bar.
+ * other. Everything here applies at once, the switch as the groups do, so
+ * the page has no save bar.
  */
 import {
   useUpdateWorkspaceMessagesSettingsMutation,
@@ -12,27 +13,22 @@ import { SettingsPage } from '@/components/settings/SettingsPage'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { WorkspaceGroupsSettings } from '@/components/settings/WorkspaceGroupsSettings'
-import { useSettingsDraft } from '@/components/settings/useSettingsDraft'
-import type { WorkspaceMessagesSettings } from '@/api/client'
-
-const WORKSPACE_MESSAGES_DEFAULT: WorkspaceMessagesSettings = { enabled: true }
+import { failureToast } from '@/lib/failure-toast'
+import { useToastStore } from '@/stores/useToastStore'
 
 export function WorkspacesSettingsPage() {
   const messagesQ = useWorkspaceMessagesSettingsQuery()
   const updateMessages = useUpdateWorkspaceMessagesSettingsMutation()
-
-  const draft = useSettingsDraft({
-    data: messagesQ.data,
-    initial: WORKSPACE_MESSAGES_DEFAULT,
-    onSave: (value) => updateMessages.mutateAsync(value),
-    successTitle: 'Workspace message settings saved',
-  })
+  const push = useToastStore((s) => s.push)
+  // While a change is on its way, show where it is going.
+  const enabled = updateMessages.isPending
+    ? updateMessages.variables.enabled
+    : messagesQ.data?.enabled ?? true
 
   return (
     <SettingsPage
       title="Workspaces"
       description="Let agents in one workspace ask sessions in another, such as your infrastructure workspace."
-      draft={draft}
       loading={messagesQ.isLoading}
       error={messagesQ.error}
     >
@@ -44,15 +40,19 @@ export function WorkspacesSettingsPage() {
         >
           <Switch
             id="workspaces-messages"
-            checked={draft.value.enabled}
-            onCheckedChange={(checked) => draft.patch({ enabled: checked })}
+            checked={enabled}
+            disabled={updateMessages.isPending}
+            onCheckedChange={(checked) => updateMessages.mutate(
+              { enabled: checked },
+              { onError: (err) => push(failureToast("Couldn't save", err)) },
+            )}
           />
         </PanelRow>
       </PanelSection>
 
       <PanelSection
         title="Groups"
-        description="Workspaces in the same group can message each other. Chat, the workspace for sessions without a folder, reaches every one. Changes save right away."
+        description="Workspaces in the same group can message each other. Chat, the workspace for sessions without a folder, reaches every one."
         flush
       >
         <WorkspaceGroupsSettings />

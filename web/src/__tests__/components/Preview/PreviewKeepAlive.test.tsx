@@ -3,6 +3,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react'
 
 import { PreviewKeepAlive } from '@/components/Preview/PreviewKeepAlive'
 import { previewListenerKey, usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
+import { useFakeTimers } from '../../fake-timers'
 
 const WS = '/Users/me/project'
 const ORIGIN = 'http://127.0.0.1:52011'
@@ -46,8 +47,23 @@ afterEach(() => {
 })
 
 const frames = () => Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe[data-preview-keep-alive]'))
-/** The hidden frame waits briefly before opening, so a closing tab can drop its entry first. */
-const SLOW = { timeout: 4000 }
+/**
+ * The hidden frame waits 1.5 s before opening, so a closing tab can drop its
+ * entry first. Tests step a clock past that delay instead of waiting for it:
+ * `change` runs with the clock stepped, and whatever it scheduled within the
+ * delay has run when this returns.
+ */
+async function pastStartDelay(change: () => void) {
+  const timers = useFakeTimers()
+  try {
+    act(change)
+    act(() => timers.tick(1800))
+  } finally {
+    timers.restore()
+  }
+  // The open is a fetch: let it settle before the caller looks.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+}
 
 describe('PreviewKeepAlive', () => {
   it('renders nothing while the agent opened no preview', () => {
@@ -57,8 +73,8 @@ describe('PreviewKeepAlive', () => {
 
   it('frames an agent-opened preview off-screen, as a real but inert page', async () => {
     render(<PreviewKeepAlive />)
-    act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-    await waitFor(() => expect(frames()).toHaveLength(1), SLOW)
+    await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
+    await waitFor(() => expect(frames()).toHaveLength(1))
     const frame = frames()[0] as HTMLIFrameElement
     expect(frame.getAttribute('src')).toBe(`${ORIGIN}/pricing`)
     // In the app document itself, not nested in another frame.
@@ -87,8 +103,8 @@ describe('PreviewKeepAlive', () => {
     document.body.appendChild(input)
     try {
       render(<PreviewKeepAlive />)
-      act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-      await waitFor(() => expect(frames()).toHaveLength(1), SLOW)
+      await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
+      await waitFor(() => expect(frames()).toHaveLength(1))
       input.focus()
       expect(document.activeElement).toBe(input)
       ;(frames()[0] as HTMLIFrameElement).focus()
@@ -100,16 +116,15 @@ describe('PreviewKeepAlive', () => {
 
   it('does not frame a preview a Preview tab shows, and drops its copy when a tab mounts', async () => {
     render(<PreviewKeepAlive />)
-    act(() => {
+    await pastStartDelay(() => {
       usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET)
       usePreviewKeepAliveStore.getState().showTab('tab-1', KEY)
     })
-    await act(() => new Promise((resolve) => setTimeout(resolve, 1800)))
     expect(frames()).toHaveLength(0)
     expect(openCalls).toBe(0)
 
-    act(() => usePreviewKeepAliveStore.getState().hideTab('tab-1'))
-    await waitFor(() => expect(frames()).toHaveLength(1), SLOW)
+    await pastStartDelay(() => usePreviewKeepAliveStore.getState().hideTab('tab-1'))
+    await waitFor(() => expect(frames()).toHaveLength(1))
 
     // The tab opens (with the listener id): exactly one page polls.
     act(() => usePreviewKeepAliveStore.getState().showTab('tab-2', KEY, 'p1'))
@@ -118,13 +133,13 @@ describe('PreviewKeepAlive', () => {
 
   it('stops framing an expired or closed preview', async () => {
     render(<PreviewKeepAlive />)
-    act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-    await waitFor(() => expect(frames()).toHaveLength(1), SLOW)
+    await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
+    await waitFor(() => expect(frames()).toHaveLength(1))
     act(() => usePreviewKeepAliveStore.getState().expire(Date.now() + 16 * 60_000))
     await waitFor(() => expect(frames()).toHaveLength(0))
 
-    act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-    await waitFor(() => expect(frames()).toHaveLength(1), SLOW)
+    await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
+    await waitFor(() => expect(frames()).toHaveLength(1))
     act(() => usePreviewKeepAliveStore.getState().forgetPreviewId('p1'))
     await waitFor(() => expect(frames()).toHaveLength(0))
   })
@@ -132,16 +147,15 @@ describe('PreviewKeepAlive', () => {
   it('drops a preview the backend cannot open', async () => {
     failOpen = true
     render(<PreviewKeepAlive />)
-    act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-    await waitFor(() => expect(usePreviewKeepAliveStore.getState().agent[KEY]).toBeUndefined(), SLOW)
+    await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
+    await waitFor(() => expect(usePreviewKeepAliveStore.getState().agent[KEY]).toBeUndefined())
     expect(frames()).toHaveLength(0)
   })
 
   it('is off on a phone', async () => {
     isMobile = true
     render(<PreviewKeepAlive />)
-    act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-    await act(() => new Promise((resolve) => setTimeout(resolve, 1800)))
+    await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
     expect(frames()).toHaveLength(0)
     expect(openCalls).toBe(0)
   })
@@ -150,8 +164,7 @@ describe('PreviewKeepAlive', () => {
     ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'https://oad.example.com/api'
     try {
       render(<PreviewKeepAlive />)
-      act(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
-      await act(() => new Promise((resolve) => setTimeout(resolve, 1800)))
+      await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
       expect(frames()).toHaveLength(0)
       expect(openCalls).toBe(0)
     } finally {

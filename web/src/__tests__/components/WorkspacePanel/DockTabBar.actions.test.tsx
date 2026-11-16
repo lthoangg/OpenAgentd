@@ -22,7 +22,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 const tab = (id: string): DockTab => ({ id, type: 'file', title: id, file: { name: id, path: id } } as unknown as DockTab)
-const openItem: DockOpenItem = { id: 'review', label: 'Changes', icon: null, group: 'view', run: () => {} }
+const openItem: DockOpenItem = { id: 'review', label: 'Git', icon: null, group: 'view', run: () => {} }
 
 function renderStrip(overrides: Partial<DockTabBarProps> = {}) {
   const props: DockTabBarProps = {

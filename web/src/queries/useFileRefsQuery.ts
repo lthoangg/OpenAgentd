@@ -23,7 +23,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { FileRef } from '@/components/InputComposer.mentions'
+import type { FileRef } from '@/components/InputComposer/mentions'
 /**
  * The picker only reads ``files``; the value written to the cache is still the
  * full, unmodified response object (see ``workspace-files.ts``).

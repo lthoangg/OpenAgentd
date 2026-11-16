@@ -1,3 +1,4 @@
+// size-ceiling: 961 — split the sessions' lifecycle from what is persisted
 /**
  * useTerminalStore — app-wide terminal session registry.
  *
@@ -49,7 +50,8 @@ import { deleteTerminalSession, listTerminalSessions } from '@/api/terminal-sess
 import type { XtermHandle } from '@/components/Terminal/xterm-instance'
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from '@/components/Terminal/terminal-themes'
 import { readStoredPreference, resolveTheme } from '@/lib/theme'
-import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from '@/lib/terminal-font'
+import { TERMINAL_FONT_FAMILY, terminalFontSize } from '@/lib/terminal-font'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 export const TERMINAL_IDLE_CLOSE_MS = 15 * 60 * 1000
 const REAPER_TICK_MS = 60 * 1000
@@ -131,6 +133,8 @@ export interface TerminalRuntime {
   seq: number
   /** The server has sent at least one `busy` frame (Unix); never on Windows. */
   busySupported: boolean
+  /** When the running command started (the server's first `busy: true`). */
+  busySince: number | null
   /** The view has fitted this terminal to its container at least once. */
   fitted: boolean
   /** Connection generation: events from older sockets are ignored. */
@@ -146,6 +150,34 @@ const runtimes = new Map<string, TerminalRuntime>()
 let nextOrder = 0
 let reaperTimer: ReturnType<typeof setInterval> | null = null
 let currentTheme: TerminalResolvedTheme = resolveTheme(readStoredPreference())
+let currentFontSize = terminalFontSize(useDisplayPrefsStore.getState().textSize)
+
+/** A command finished in a shell: how long it ran. */
+export type TerminalCommandFinishedListener = (id: string, durationMs: number) => void
+const commandFinishedListeners = new Set<TerminalCommandFinishedListener>()
+
+/**
+ * Called when the server reports a command done (busy → idle), with how long
+ * it ran. Unix only: Windows never reports busy.
+ */
+export function onTerminalCommandFinished(listener: TerminalCommandFinishedListener): () => void {
+  commandFinishedListeners.add(listener)
+  return () => { commandFinishedListeners.delete(listener) }
+}
+
+/** The shell Open Terminal should show next, instead of the last one. */
+let showRequest: string | null = null
+
+export function requestTerminalShow(id: string): void {
+  showRequest = id
+}
+
+/** The requested shell, once: Open Terminal reads it and forgets it. */
+export function takeTerminalShowRequest(): string | null {
+  const id = showRequest
+  showRequest = null
+  return id
+}
 /** Size of the last terminal a view fitted: a decent guess for hidden ones. */
 let lastFittedSize: { rows: number; cols: number } | null = null
 /** Workspaces whose surviving shells were already listed this page load. */
@@ -309,6 +341,8 @@ interface TerminalStore {
   clear: (id: string) => void
   /** Swap every live terminal's palette when the app theme resolves anew. */
   syncTheme: (theme: TerminalResolvedTheme) => void
+  /** Set every terminal's font size (Text size) and refit the visible ones. */
+  syncFontSize: (fontSize: number) => void
   /** Close detached sessions idle past TERMINAL_IDLE_CLOSE_MS. */
   reapIdle: (now?: number) => void
   sessionsForContext: (contextKey: string) => TerminalSessionMeta[]
@@ -421,6 +455,7 @@ interface Resume {
 function resetForFreshShell(id: string, rt: TerminalRuntime): void {
   rt.seq = 0
   rt.busySupported = false
+  rt.busySince = null
   patchSession(id, { backendId: undefined, protocol: undefined, busy: false })
 }
 
@@ -456,7 +491,7 @@ async function connect(id: string, resume?: Resume): Promise<void> {
     // terminal, so only the first one waits.
     const { createXterm } = await import('@/components/Terminal/xterm-instance')
     if (!live()) return // closed while the chunk was loading
-    rt.handle = createXterm({ theme: currentTheme, fontSize: TERMINAL_FONT_SIZE, fontFamily: TERMINAL_FONT_FAMILY })
+    rt.handle = createXterm({ theme: currentTheme, fontSize: currentFontSize, fontFamily: TERMINAL_FONT_FAMILY })
     // Wire keystrokes once, for the lifetime of this xterm instance — this is
     // the only place a handle is born, so it cannot double-register.
     rt.handle.term.onData((data) => useTerminalStore.getState().sendInput(id, data))
@@ -498,6 +533,12 @@ async function connect(id: string, resume?: Resume): Promise<void> {
         // A command that just finished gets a full idle window, so its
         // output is still there when the user comes back to it.
         if (!busy) rt.lastActivityAt = Date.now()
+        if (busy && rt.busySince === null) rt.busySince = Date.now()
+        else if (!busy && rt.busySince !== null) {
+          const durationMs = Date.now() - rt.busySince
+          rt.busySince = null
+          for (const listener of commandFinishedListeners) listener(id, durationMs)
+        }
         if (useTerminalStore.getState().sessions[id]?.busy !== busy) patch({ busy })
       },
       onError: () => {
@@ -594,6 +635,7 @@ function newRuntime(target: TerminalTarget): TerminalRuntime {
     inputTransform: (d) => d,
     seq: 0,
     busySupported: false,
+    busySince: null,
     fitted: false,
     gen: 0,
     reattachAttempts: 0,
@@ -859,6 +901,24 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     currentTheme = theme
     for (const rt of runtimes.values()) {
       if (rt.handle) rt.handle.term.options.theme = TERMINAL_THEMES[theme]
+    }
+  },
+
+  syncFontSize: (fontSize) => {
+    currentFontSize = fontSize
+    for (const [id, rt] of runtimes) {
+      if (!rt.handle || rt.handle.term.options.fontSize === fontSize) continue
+      rt.handle.term.options.fontSize = fontSize
+      // The container keeps its size, so no ResizeObserver fires: fit the
+      // new cell size here and tell the shell its new rows and columns.
+      if (!rt.attached) continue
+      try {
+        rt.handle.fit.fit()
+      } catch {
+        // container mid-unmount: the next attach fits it
+        continue
+      }
+      get().sendResize(id, rt.handle.term.rows, rt.handle.term.cols)
     }
   },
 

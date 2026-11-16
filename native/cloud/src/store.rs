@@ -174,7 +174,12 @@ impl SecretStore for FileStore {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
         }
-        let tmp = self.path.with_extension(format!("tmp-{}", std::process::id()));
+        // A name no other save has: two saves at once (a request and the
+        // connection loop) sharing one would rename a file the other is
+        // still writing, and a reader would find half an identity.
+        static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = self.path.with_extension(format!("tmp-{}-{n}", std::process::id()));
         {
             use std::io::Write;
             let mut opts = std::fs::OpenOptions::new();
@@ -248,6 +253,42 @@ mod tests {
         store.clear().unwrap();
         assert!(load(&store).unwrap().is_none());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The server saves from a request and from its connection loop at once.
+    #[test]
+    fn a_reader_never_sees_half_a_value_while_two_threads_save() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = std::env::temp_dir().join(format!("oad-cloud-store-race-{}", std::process::id()));
+        let store = std::sync::Arc::new(FileStore::new(dir.join("identity.json")));
+        // Two values of different lengths, each long enough to take a moment to write.
+        let values = ["a".repeat(200_000), "b".repeat(300_000)];
+        store.save(&values[0]).unwrap();
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let writers: Vec<_> = values
+            .iter()
+            .cloned()
+            .map(|value| {
+                let store = store.clone();
+                std::thread::spawn(move || (0..200).filter(|_| store.save(&value).is_err()).count())
+            })
+            .collect();
+        let reader = {
+            let (store, done, values) = (store.clone(), done.clone(), values.clone());
+            std::thread::spawn(move || {
+                let mut torn = 0;
+                while !done.load(Ordering::Relaxed) {
+                    let read = store.load().unwrap().expect("the file is always there");
+                    torn += usize::from(!values.contains(&*read));
+                }
+                torn
+            })
+        };
+        let failed_saves: usize = writers.into_iter().map(|w| w.join().unwrap()).sum();
+        done.store(true, Ordering::Relaxed);
+        let torn = reader.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!((torn, failed_saves), (0, 0), "(reads of a half-written value, saves that failed)");
     }
 
     #[test]

@@ -7,6 +7,8 @@
 //! `background_work` for that whole time. The manager is process-wide, so
 //! this file is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::UserMessage;
 use appv3_agent::stream_store::store;
@@ -15,7 +17,9 @@ use appv3_providers::mock::MockProvider;
 use appv3_providers::{ChatMessage, LlmProvider};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use common::wait_until;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -41,14 +45,6 @@ fn setup_roots(root: &Path) {
     std::fs::create_dir_all(&agents).unwrap();
     std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:lead\ntools: []\n---\nYou are the coding agent.\n").unwrap();
     std::fs::write(agents.join("worker.md"), "---\nname: worker\nrole: member\ndescription: Runs builds.\nmodel: mock:worker\ntools:\n  - shell\n---\nYou run builds.\n").unwrap();
-}
-
-async fn wait_until(what: &str, f: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !f() {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

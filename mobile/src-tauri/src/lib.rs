@@ -820,6 +820,7 @@ pub fn run() {
             theme::set_app_theme,
             cloud::cloud_status,
             cloud::cloud_sign_in,
+            cloud::cloud_pick_number,
             cloud::cloud_recover,
             cloud::cloud_recovered_ack,
             cloud::cloud_join_invite,

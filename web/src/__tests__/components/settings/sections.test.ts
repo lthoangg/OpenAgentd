@@ -1,30 +1,34 @@
-/** The settings registry: 15 sections in 3 groups, with the merged pages' ids still landing on Sessions. */
+/** The settings registry: 15 sections in four named groups, with About apart at the bottom. */
 import { describe, expect, it } from 'bun:test'
 
 import { parentSection, sectionDef, SETTINGS_GROUPS, SETTINGS_SECTIONS } from '@/components/settings/sections'
 
 describe('settings sections', () => {
-  it('lists 15 sections in 3 groups, by who needs them', () => {
+  it('groups the sections by what they are about, About last on its own', () => {
     const byGroup = SETTINGS_GROUPS.map((group) => [group.label, SETTINGS_SECTIONS.filter((s) => s.group === group.id).map((s) => s.label)])
 
     expect(byGroup).toEqual([
-      ['Basics', ['Appearance', 'Models', 'Account', 'Desktop', 'About']],
+      ['Basics', ['General', 'Models', 'Image and video', 'Desktop']],
       ['Agent', ['Agents', 'Skills', 'Connectors', 'Plugins', 'Memory']],
-      ['Advanced', ['Sessions', 'Workspaces', 'Blocked files', 'Image and video', 'Server']],
+      ['Work', ['Sessions', 'Workspaces', 'Blocked files']],
+      ['Devices', ['Switch computer', 'Remote control']],
+      [null, ['About']],
     ])
     expect(SETTINGS_SECTIONS).toHaveLength(15)
   })
 
-  it('keeps every section id it had, so links into Settings still land', () => {
-    expect(SETTINGS_SECTIONS.map((s) => s.id).sort()).toEqual([
-      'about', 'account', 'agents', 'connection', 'denied_paths', 'desktop', 'general', 'mcp', 'media', 'memory', 'plugins', 'providers', 'skills', 'titles', 'workspaces',
-    ])
+  it('names every section id after its label', () => {
+    for (const s of SETTINGS_SECTIONS) {
+      const id = s.id.replace(/_/g, ' ')
+      // Two labels say more than one word: "Image and video" (media) and "Remote control" (remote).
+      const expected = { media: 'image and video', remote: 'remote control' }[s.id as string] ?? id
+      expect(s.label.toLowerCase()).toBe(expected)
+    }
   })
 
-  it('files the three merged pages under Sessions', () => {
-    for (const id of ['context', 'goals', 'telemetry'] as const) {
-      expect(parentSection(id)).toBe('titles')
-      expect(sectionDef(id)?.label).toBe('Sessions')
-    }
+  it('files the drill-down editors under their list', () => {
+    expect(parentSection('connectors-edit')).toBe('connectors')
+    expect(parentSection('skills-new')).toBe('skills')
+    expect(sectionDef('connectors-new')?.label).toBe('Connectors')
   })
 })

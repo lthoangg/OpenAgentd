@@ -11,7 +11,7 @@ import type { FileLightboxItem, FileLightboxItemType } from '../FileLightbox'
 import { FileLightbox } from '../LazyFileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { FileRefContext } from '../FileRefLink'
-import { findCommittedMentions } from '../InputComposer.mentions'
+import { findCommittedMentions } from '../InputComposer/mentions'
 import { DesignFeedbackCard } from '../DesignFeedbackViews'
 import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
@@ -352,7 +352,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
 /** A prompt younger than this when it mounts was just sent. */
 const FRESH_BUBBLE_MS = 2000
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onRevert, editLocked = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onRevert, onRevertMessages, editLocked = false, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, fromLeadSessionId, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
@@ -360,6 +360,8 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   onEdit?: () => void
   /** Rewind to just before this prompt, leaving the composer as it is (Redo brings it back). */
   onRevert?: () => void
+  /** Undo to here, keeping the workspace files as they are. */
+  onRevertMessages?: () => void
   /** A turn is running, so the prompt cannot be rewound yet: Edit shows disabled, with the reason. */
   editLocked?: boolean
   /** The model and thinking level this prompt ran with. */
@@ -401,6 +403,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     ...(onEdit ? [{ id: 'edit', label: 'Edit and resend', icon: Pencil, disabled: editLocked, run: onEdit }] : []),
     { id: 'copy', label: 'Copy', icon: Copy, run: handleCopy },
     ...(onRevert ? [{ id: 'revert', label: 'Undo to here', icon: Undo2, danger: true, separatorBefore: true, disabled: editLocked, run: onRevert }] : []),
+    ...(onRevertMessages ? [{ id: 'revert-messages', label: 'Undo messages to here', icon: Undo2, danger: true, separatorBefore: !onRevert, disabled: editLocked, run: onRevertMessages }] : []),
   ]
   const longPress = useLongPress(isPhone && !fromAgent, () => {
     mediumHapticFeedback()

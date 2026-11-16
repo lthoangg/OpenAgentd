@@ -1,4 +1,4 @@
-/** Settings → Server: the switch for direct sessions with the account's devices. */
+/** Settings → Switch computer: the switch for direct sessions with the account's devices. */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
@@ -7,7 +7,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from '@/__tests__/msw'
 
 import type { CloudStatus } from '@/api/cloud'
-import { DirectSessionsCard, directFirewallNote } from '@/components/DirectSessionsCard'
+import { DirectSessionsRow, directFirewallNote } from '@/components/DirectSessionsCard'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -39,7 +39,7 @@ afterEach(() => {
 
 function renderCard() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={client}><DirectSessionsCard /></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><DirectSessionsRow /></QueryClientProvider>)
 }
 
 describe('DirectSessionsCard', () => {

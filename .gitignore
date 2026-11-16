@@ -200,6 +200,11 @@ uploads/
 # builds and crate dirs from `cargo test`).
 **/.openagentd/
 .tests/
+# The local backlog of the agent that owns the code (see AGENTS.md → Ownership).
+.agents/backlog/
+# Session plans. The app writes its own `.gitignore` inside this folder; this
+# line says the same in a checkout that has no plan yet.
+.agents/plans/
 
 .DS_Store
 

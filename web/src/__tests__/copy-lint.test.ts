@@ -1,5 +1,5 @@
 /**
- * Wording guard for text people read (DESIGN.md, "Touch follows the input").
+ * Wording guard for text people read (DESIGN.md → Touch behaviour follows the input).
  *
  * The same screens run under a mouse and under a finger, so text does not
  * say "click" or "tap" unless it can only be read on one of them. Every
@@ -96,7 +96,13 @@ const POINTER_VERBS: Record<string, { count: number; why: string }> = {
   'components/AppBackendPanel.tsx': { count: 1, why: 'the touch branch of the list description; the other branch names the Use button' },
   'components/PendingMessageQueue.tsx': { count: 1, why: 'the phone-only queued bubble' },
   'components/Preview/PreviewTabView.tsx': { count: 2, why: 'the commenting line: "Tap" in the phone branch, "Click" in the desktop one' },
-  'components/account/InviteSheet.tsx': { count: 1, why: 'says what to do on the phone that scans the code' },
+  'components/account/InviteSheet.tsx': { count: 2, why: 'says what to do on the phone that scans the code' },
+  'components/settings/pages/remote-copy.tsx': { count: 1, why: 'a computer says what to do on the phone that scanned it' },
+  'components/settings/pages/settings.remote.phone.tsx': { count: 1, why: 'the phone says what to do on the other phone' },
+  'components/settings/pages/settings.remote.tsx': { count: 1, why: 'a computer says what to do on the phone that adds it' },
+  'components/phone/NewDeviceSignIn.tsx': { count: 3, why: 'the phone-only first screen, about this phone and the other one' },
+  'components/phone/AccountSection.tsx': { count: 1, why: 'the phone-only Computers screen, about the other phone' },
+  'components/phone/AddScannedSheet.tsx': { count: 2, why: 'the phone-only sheet, about the new iPhone or iPad (a computer gets Pick)' },
   'components/settings/pages/settings.desktop.tsx': { count: 1, why: 'the notch setting: macOS desktop only' },
   'components/settings/settings-index.ts': { count: 1, why: 'a search keyword, never shown' },
   'components/WorkspacePanel/DockTabBar.tsx': { count: 1, why: 'a tooltip, which only a pointer shows' },

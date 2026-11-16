@@ -20,7 +20,7 @@ mock.module('@/lib/haptics', () => ({
 }))
 
 import { InputComposer } from '@/components/InputComposer'
-import { DELIVERIES } from '@/components/InputComposer.deliveries'
+import { DELIVERIES } from '@/components/InputComposer/deliveries'
 
 afterEach(() => {
   cleanup()

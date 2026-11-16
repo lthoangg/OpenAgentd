@@ -16,6 +16,9 @@ use std::sync::{Arc, Weak};
 pub enum Offer {
     /// Every lead agent, ahead of the tools its file lists.
     Base(fn() -> ToolRef),
+    /// Every agent, lead and member: like `Base` for a lead, and added to
+    /// a member's listed tools. An agent file cannot remove it.
+    Always(fn() -> ToolRef),
     /// An agent whose file lists it under `tools:`; a member agent only
     /// when `member` is set.
     Listed { make: fn() -> ToolRef, member: bool },
@@ -68,6 +71,8 @@ pub static TOOLS: &[ToolEntry] = &[
     ToolEntry { name: "skill", plan_mode: true, offer: Offer::Base(|| Arc::new(crate::skills::SkillTool)) },
     ToolEntry { name: "todo", plan_mode: false, offer: Offer::Base(|| Arc::new(appv3_tools::todo::TodoTool)) },
     ToolEntry { name: "schedule", plan_mode: false, offer: Offer::Base(|| Arc::new(crate::scheduler::ScheduleTaskTool)) },
+    // Plan mode checks each nested call the script makes, like a direct one.
+    ToolEntry { name: "script", plan_mode: true, offer: Offer::Always(|| Arc::new(crate::tools::script::ScriptTool)) },
     ToolEntry { name: "read", plan_mode: true, offer: Offer::Listed { make: || Arc::new(appv3_tools::read::ReadTool), member: true } },
     ToolEntry { name: "grep", plan_mode: true, offer: Offer::Listed { make: || Arc::new(appv3_tools::grep::GrepTool), member: true } },
     ToolEntry { name: "glob", plan_mode: true, offer: Offer::Listed { make: || Arc::new(appv3_tools::glob::GlobTool), member: true } },
@@ -133,13 +138,21 @@ fn entry(name: &str) -> Option<&'static ToolEntry> {
 
 /// The tools every lead agent gets ahead of its listed ones, in order.
 pub fn base_tools() -> impl Iterator<Item = &'static str> {
-    TOOLS.iter().filter(|e| matches!(e.offer, Offer::Base(_))).map(|e| e.name)
+    TOOLS.iter().filter(|e| matches!(e.offer, Offer::Base(_) | Offer::Always(_))).map(|e| e.name)
+}
+
+/// The tools every member agent gets besides the ones its file lists.
+pub fn member_always_tools() -> impl Iterator<Item = ToolRef> {
+    TOOLS.iter().filter_map(|e| match e.offer {
+        Offer::Always(make) => Some(make()),
+        _ => None,
+    })
 }
 
 /// Base and listed tools by name (what an agent file's `tools:` can name).
 pub fn agent_tools() -> impl Iterator<Item = (&'static str, ToolRef)> {
     TOOLS.iter().filter_map(|e| match e.offer {
-        Offer::Base(make) | Offer::Listed { make, .. } => Some((e.name, make())),
+        Offer::Base(make) | Offer::Always(make) | Offer::Listed { make, .. } => Some((e.name, make())),
         _ => None,
     })
 }
@@ -183,11 +196,32 @@ pub fn plan_mode_tools() -> impl Iterator<Item = &'static str> {
 mod tests {
     use super::*;
 
+    /// `data/tools.json` is what the web client is held to
+    /// (`web/src/__tests__/api/tools-contract.test.ts`), so a tool added here
+    /// without it would reach the transcript with no row of its own.
+    #[test]
+    fn the_tool_contract_file_lists_the_registry_and_the_former_names() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!("../data/tools.json")).unwrap();
+        let listed: Vec<&str> = contract["tools"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        let names: Vec<&str> = TOOLS.iter().map(|e| e.name).collect();
+        assert_eq!(listed, names, "appv3/crates/agent/data/tools.json must list the tools of TOOLS in tool_registry.rs, in order; then run the web test it names");
+
+        let mut former: Vec<&str> = contract["former_names"].as_object().unwrap().keys().map(String::as_str).collect();
+        for (old, new) in contract["former_names"].as_object().unwrap() {
+            assert!(names.contains(&new.as_str().unwrap()), "tools.json: former name {old} points at {new}, which is not a tool");
+        }
+        former.extend(contract["retired"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()));
+        former.sort_unstable();
+        let mut skipped = crate::loader::FORMER_TOOL_NAMES.to_vec();
+        skipped.sort_unstable();
+        assert_eq!(former, skipped, "FORMER_TOOL_NAMES in loader.rs and former_names + retired in data/tools.json must name the same tools");
+    }
+
     #[test]
     fn plan_mode_allows_the_tools_it_always_allowed() {
         let mut allowed: Vec<&str> = plan_mode_tools().collect();
         allowed.sort();
-        assert_eq!(allowed, ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "shell", "skill", "team", "web_fetch", "web_search", "workspace"]);
+        assert_eq!(allowed, ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "script", "shell", "skill", "team", "web_fetch", "web_search", "workspace"]);
         assert!(!allowed_in_plan_mode("todo") && !allowed_in_plan_mode("some_custom_tool"));
     }
 
@@ -207,11 +241,18 @@ mod tests {
     fn a_member_agent_can_list_only_the_file_and_web_tools() {
         let members: Vec<&str> = TOOLS.iter().map(|e| e.name).filter(|n| member_tool(n).is_some()).collect();
         assert_eq!(members, ["read", "grep", "glob", "patch", "shell", "web_search", "web_fetch"]);
+        let always: Vec<String> = member_always_tools().map(|t| t.name().to_string()).collect();
+        assert_eq!(always, ["script"]);
+    }
+
+    #[test]
+    fn every_lead_gets_script_after_the_other_base_tools() {
+        assert_eq!(base_tools().collect::<Vec<_>>(), ["skill", "todo", "schedule", "script"]);
     }
 
     #[test]
     fn an_agent_file_may_name_the_tools_the_runtime_gives_without_pruning() {
-        for name in ["skill", "todo", "schedule", "mcp", "ask_user", "plan", "workspace"] {
+        for name in ["skill", "todo", "schedule", "script", "mcp", "ask_user", "plan", "workspace"] {
             assert!(given_without_listing(name), "{name}");
         }
         assert!(!given_without_listing("read"));

@@ -1,3 +1,4 @@
+// size-ceiling: 827 — one hook: split it by family of overlays
 /**
  * useOverlayState — mobile/desktop panel & drawer state for AgentChatView.
  *
@@ -78,6 +79,8 @@ import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import { registerTerminalRunner } from '@/lib/terminal-run'
+import { requestTerminalShow } from '@/stores/useTerminalStore'
+import { useTerminalFinishedNotice } from '../Terminal/use-terminal-finished-notice'
 import { useBackHandler } from '@/lib/back-button'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest, TerminalRunRequest } from '../WorkspacePanel/dock-tabs'
@@ -284,7 +287,10 @@ export function useOverlayState({
     (width: number) => sidebarIsDrawer(width, { dockOpen: dockBesideChat, touch }),
     [dockBesideChat, touch],
   )
-  const sidebarDrawer = !isMobile && useViewportMatches(isDrawerWidth)
+  // Called on every render: ``isMobile`` flips live when the window crosses
+  // the phone breakpoint, and a skipped hook would change the hook order.
+  const drawerWidth = useViewportMatches(isDrawerWidth)
+  const sidebarDrawer = !isMobile && drawerWidth
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false)
   useEffect(() => {
     if (!sidebarDrawer) setSidebarDrawerOpen(false)
@@ -646,6 +652,14 @@ export function useOverlayState({
     setWorkspacePanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
+
+  // "Command finished" notices for this workspace's hidden terminals; Show
+  // brings that terminal up through Open Terminal.
+  const showTerminal = useCallback((id: string) => {
+    requestTerminalShow(id)
+    handleOpenTerminal()
+  }, [handleOpenTerminal])
+  useTerminalFinishedNotice(workspace, showTerminal)
 
   // Run in terminal (a shell code block's button): open the Review panel and
   // hand the command to the dock, which picks the shell. Registered only with

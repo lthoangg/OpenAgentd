@@ -23,7 +23,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+#[cfg(target_os = "macos")]
+use tauri::{Runtime, WebviewUrl, WebviewWindowBuilder};
 
 use crate::AppState;
 use crate::servers::{ServerId, BUNDLED_KEY};
@@ -470,12 +472,12 @@ pub fn tray_fit(window: WebviewWindow, height: f64) {
     let size = tauri::LogicalSize::new(TRAY_WIDTH, popup_height(height));
     if let Err(e) = window.set_size(size) {
         log::warn!("tray popup resize failed: {e:#}");
-        return;
-    }
-    #[cfg(target_os = "macos")]
-    if window.is_visible().unwrap_or(false) {
-        use tauri_plugin_positioner::WindowExt;
-        let _ = window.move_window(tauri_plugin_positioner::Position::TrayBottomCenter);
+    } else {
+        #[cfg(target_os = "macos")]
+        if window.is_visible().unwrap_or(false) {
+            use tauri_plugin_positioner::WindowExt;
+            let _ = window.move_window(tauri_plugin_positioner::Position::TrayBottomCenter);
+        }
     }
 }
 

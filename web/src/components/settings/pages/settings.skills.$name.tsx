@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
 
 import { useDeleteSkillMutation, useSkillFileQuery, useUpdateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
+import { EditorDeleteRow } from '@/components/settings/EditorDeleteRow'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { SaveBar } from '@/components/settings/SaveBar'
 import { contentEquals } from '@/components/settings/frontmatter'
@@ -122,7 +122,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
           {data && (
             <PanelSection title="Skill file" description="SKILL.md, loaded by an agent when a task needs it.">
               <p className="mb-2.5 text-meta leading-relaxed text-(--color-text-muted)">
-                The settings block at the top needs <span className="font-mono">name</span> and{' '}
+                The lines between the <span className="font-mono">---</span> marks at the top need <span className="font-mono">name</span> and{' '}
                 <span className="font-mono">description</span>. Name a sub-skill{' '}
                 <span className="font-mono">parent/sub</span>. The text below is what the agent reads.
               </p>
@@ -139,13 +139,12 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
             </PanelSection>
           )}
           {data && data.editable && !data.built_in && (
-            <div className="mt-4 flex items-center justify-end gap-2 text-xs text-(--color-text-muted)">
-              <Button variant="danger" size="xs" className="min-h-9 md:min-h-0"
-                onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
-                <Trash2 size={12} aria-hidden="true" />
-                Delete skill…
-              </Button>
-            </div>
+            <EditorDeleteRow
+              thing="skill"
+              description="Deletes its SKILL.md. Agents stop seeing it from the next message."
+              onDelete={() => setDeleteOpen(true)}
+              pending={deleteMut.isPending}
+            />
           )}
         </div>
       </div>

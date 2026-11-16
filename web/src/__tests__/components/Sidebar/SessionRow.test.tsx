@@ -309,21 +309,20 @@ describe('SessionRow sessions in other workspaces', () => {
     expect(document.querySelector('[data-sent-from]')).toBeNull()
   })
 
-  // The row menu lists F2 beside Rename and Delete beside Delete session…:
-  // the keys must do those things on every row the menu opens from.
-  it('renames on F2 and asks to delete on Delete, like the menu beside them says', () => {
+  // Sidebar rows take no row keys: rename and delete go through the menu.
+  it('ignores F2, Delete and Shift+F10 on a linked row', () => {
     const onEdit = mock(() => {})
     const onDelete = mock(() => {})
-    render(row(() => {}, origin, { isCurrent: false, currentSessionId: 'infra-1', onSessionEdit: onEdit, onSessionDelete: onDelete }))
+    const onMenu = mock(() => {})
+    render(row(() => {}, origin, { isCurrent: false, currentSessionId: 'infra-1', onSessionEdit: onEdit, onSessionDelete: onDelete, onSessionContextActions: onMenu }))
     const linkedRow = screen.getByRole('button', { name: 'Orders table, in infra, Running' })
 
     fireEvent.keyDown(linkedRow, { key: 'F2' })
-    expect(onEdit).toHaveBeenCalledTimes(1)
-    expect((onEdit.mock.calls[0] as unknown as [SessionResponse])[0].id).toBe('infra-1')
-
     fireEvent.keyDown(linkedRow, { key: 'Delete' })
-    expect(onDelete).toHaveBeenCalledTimes(1)
-    expect((onDelete.mock.calls[0] as unknown as [unknown, SessionResponse])[1].id).toBe('infra-1')
+    fireEvent.keyDown(linkedRow, { key: 'F10', shiftKey: true })
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(onMenu).not.toHaveBeenCalled()
   })
 })
 

@@ -119,6 +119,14 @@ describe('McpServerForm — how it connects', () => {
     expect(screen.queryByRole('radio', { name: /stdio|http/i })).toBeNull()
   })
 
+  it('says each thing once: Connection over the question, and Turned on rather than a second "Status"', () => {
+    renderForm(emptyDraft(), mock(() => {}))
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(headings).toEqual(['Connection', 'Options'])
+    expect(screen.getByText('Turned on')).toBeTruthy()
+    expect(screen.queryByText('Status')).toBeNull()
+  })
+
   it('shows only the program fields for a program', () => {
     renderForm({ ...emptyDraft(), transport: 'stdio' as const }, mock(() => {}))
     expect(how('A program on this computer').getAttribute('aria-checked')).toBe('true')

@@ -3,7 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { Seal } from '@/components/brand/Logo'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
 import { AppBackendDialog } from '@/components/LazyAppBackendDialog'
-import { BackendSwitchMessage, BackendSwitchScreen } from '@/components/BackendSwitchScreen'
+import { BackendSwitchBack, BackendSwitchMessage, BackendSwitchScreen } from '@/components/BackendSwitchScreen'
 import { PreviewKeepAlive } from '@/components/Preview/PreviewKeepAlive'
 import { ServersScreen } from '@/components/phone/LazyServersScreen'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { isMobileApp } from '@/lib/mobile-app'
 import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend'
 import { WEB_BUILD_VERSION } from '@/lib/app-version'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { useBackHandler } from '@/lib/back-button'
 import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { openServersScreen } from '@/stores/useServersScreenStore'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
@@ -100,13 +101,32 @@ function App() {
   }, [isPhone, ready])
   // A server switch reloaded the window: the startup screen keeps saying
   // where it is going, and forgets once the new server is up.
-  const [switchingTo] = useState(pendingBackendSwitch)
+  const [switchingTo, setSwitchingTo] = useState(pendingBackendSwitch)
   // A layout effect: it runs in the same commit that mounts the router, so
   // nothing that sees the app running can still find the hand-off (a passive
   // effect could land a tick later on a busy main thread).
   useLayoutEffect(() => {
     if (ready) clearBackendSwitchHandoff()
   }, [ready])
+  // Back on that screen, so a server that never comes up does not trap the
+  // person: forget the switch, and on a phone show its Computers list; else
+  // switch back to the server the window came from (the server chooser when
+  // that is unknown or fails too).
+  const backFromSwitch = () => {
+    const from = switchingTo?.from
+    clearBackendSwitchHandoff()
+    setSwitchingTo(null)
+    if (isPhone) {
+      setPhoneServers(true)
+      return
+    }
+    void import('@/lib/backend-switch')
+      .then((module) => module.returnFromBackendSwitch(from))
+      .then((outcome) => { if (outcome === 'failed') setBackendDialogOpen(true) })
+      .catch(() => setBackendDialogOpen(true))
+  }
+  const handoffBack = !ready && switchingTo !== null && !(isPhone && phoneServers)
+  useBackHandler(handoffBack, backFromSwitch)
   // A scanned `openagentd://connect` link opens the dialog prefilled, in
   // the loading screen (no server yet) and in the running app alike.
   const { request: connectRequest, clear: clearConnectRequest } = useConnectLink()
@@ -130,8 +150,12 @@ function App() {
               <ServersScreen active />
             </div>
           ) : (
-            <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd">
-              <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
+            <div className="mobile-safe-shell mobile-viewport relative flex h-dvh items-center justify-center bg-(--bg-page)">
+              {switchingTo && <BackendSwitchBack placement="bar" onBack={backFromSwitch} />}
+              <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center" role="status" aria-label="Loading OpenAgentd">
+                <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
+                {switchingTo && <BackendSwitchMessage target={switchingTo} />}
+              </div>
             </div>
           )}
           <BackendSwitchScreen />
@@ -145,7 +169,7 @@ function App() {
     }
     return (
       <>
-        <AppLoadingScreen switchingTo={switchingTo} unavailable={unavailable} failed={failed} failureMessage={failureMessage} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
+        <AppLoadingScreen switchingTo={switchingTo} onSwitchBack={backFromSwitch} unavailable={unavailable} failed={failed} failureMessage={failureMessage} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
         <BackendSwitchScreen />
       </>
     )
@@ -168,9 +192,11 @@ function App() {
 const STARTUP_FAILED = "OpenAgentd couldn't start on this computer."
 const STARTUP_SLOW = 'OpenAgentd is taking longer than usual to start.'
 
-function AppLoadingScreen({ switchingTo = null, unavailable, failed, failureMessage = null, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
+function AppLoadingScreen({ switchingTo = null, onSwitchBack, unavailable, failed, failureMessage = null, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
   /** The server a switch reloaded this window onto. */
   switchingTo?: BackendSwitchTarget | null
+  /** Back on "Switching to …": return to the server the window came from. */
+  onSwitchBack?: () => void
   unavailable: boolean
   failed: boolean
   /** The shell's own error, for Copy details only. */
@@ -216,7 +242,9 @@ function AppLoadingScreen({ switchingTo = null, unavailable, failed, failureMess
             {switchingTo
               ? <BackendSwitchMessage target={switchingTo} />
               : <p role="status" className="text-sm font-medium text-(--color-text-muted)">Starting OpenAgentd…</p>}
-            {useAnotherComputer}
+            {switchingTo && onSwitchBack
+              ? <div className="flex flex-wrap justify-center gap-2"><BackendSwitchBack placement="inline" onBack={onSwitchBack} />{useAnotherComputer}</div>
+              : useAnotherComputer}
           </div>
         ) : (
           <>

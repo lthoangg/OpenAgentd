@@ -54,8 +54,11 @@ export function usePaletteServerCommands(): Command[] {
   }), [account.computers, account.app, account.route, status])
 
   return useMemo(() => {
-    const fail = (title: string, description: string) =>
-      useToastStore.getState().push({ tone: 'error', title, description })
+    // A switch called back with Back ends without a word.
+    const fail = (title: string, result: { error?: string; cancelled?: true }) => {
+      if (result.cancelled) return
+      useToastStore.getState().push({ tone: 'error', title, description: result.error ?? '' })
+    }
     const finish = (next: Awaited<ReturnType<typeof connectBundledBackend>>) => {
       if (!next.ok) return false
       if (next.status) queryClient.setQueryData(queryKeys.backendStatus(), next.status)
@@ -68,7 +71,7 @@ export function usePaletteServerCommands(): Command[] {
       {
         useBundled: () => {
           void connectBundledBackend(currentBackendOrigin(status)).then((result) => {
-            if (!finish(result)) fail("Couldn't switch to this computer", result.ok ? '' : result.error)
+            if (!finish(result) && !result.ok) fail("Couldn't switch to this computer", result)
           })
         },
         useExternal: (server) => {
@@ -80,7 +83,7 @@ export function usePaletteServerCommands(): Command[] {
             currentBaseUrl: currentBackendOrigin(status),
           }).then((result) => {
             if (!result.ok) {
-              fail(`Couldn't connect to ${label}`, result.error)
+              fail(`Couldn't connect to ${label}`, result)
               return
             }
             finish(result)
@@ -95,13 +98,13 @@ export function usePaletteServerCommands(): Command[] {
             currentBaseUrl: currentBackendOrigin(status),
           }).then((result) => {
             if (!result.ok) {
-              fail(`Couldn't open ${computer.label}`, result.error)
+              fail(`Couldn't open ${computer.label}`, result)
               return
             }
             finish(result)
           })
         },
-        manage: () => useSettingsStore.getState().openSettings('connection'),
+        manage: () => useSettingsStore.getState().openSettings('switch_computer'),
         checkHealth,
       },
     )

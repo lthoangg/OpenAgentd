@@ -367,6 +367,19 @@ fn migration_lock(db: &Path) -> Result<std::fs::File> {
 mod tests {
     use super::*;
 
+    /// `MIGRATIONS` is written by hand, one `include_str!` per file. A file
+    /// that is not listed never runs, and the database stops one revision
+    /// short without an error.
+    #[test]
+    fn every_migration_file_is_listed_once_in_order_up_to_the_head() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/migrations");
+        let mut files: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        files.sort();
+        let listed: Vec<String> = MIGRATIONS.iter().map(|(rev, _)| format!("{rev}.sql")).collect();
+        assert_eq!(files, listed, "add each file in resources/migrations/ to MIGRATIONS in db/src/migrations.rs, in order, and raise the array length");
+        assert_eq!(MIGRATIONS.last().unwrap().0, ALEMBIC_HEAD, "ALEMBIC_HEAD in db/src/migrations.rs must name the last migration");
+    }
+
     /// DDL of a v2 database at 00000022 (`sqlite3 openagentd.db .schema`),
     /// then v3's revisions from 00000023.
     const SCHEMA_SQL: &str = r#"

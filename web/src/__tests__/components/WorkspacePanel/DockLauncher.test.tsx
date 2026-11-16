@@ -15,7 +15,7 @@ const everything = { onOpenGit: run, onOpenGoal: run, onOpenPlan: run, onOpenTas
 describe('dockOpenItems', () => {
   it('lists views, then tools', () => {
     expect(dockOpenItems('macos', everything).map((row) => row.label)).toEqual([
-      'Changes', 'Goal', 'Plan', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…',
+      'Git', 'Goal', 'Plan', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…',
     ])
   })
 

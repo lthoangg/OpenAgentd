@@ -58,7 +58,7 @@ describe('keyboard focus ring', () => {
   })
 
   it('rings the transcript inside its column when F6 lands on it', () => {
-    expect(read('components/AgentView.tsx')).toMatch(/data-focus-region="transcript"\s+data-region-self=""\s+data-focus-ring="inset"/)
+    expect(read('components/AgentView/index.tsx')).toMatch(/data-focus-region="transcript"\s+data-region-self=""\s+data-focus-ring="inset"/)
   })
 
   it('insets the 32px buttons that lead the 36px header, which clips overflow', () => {

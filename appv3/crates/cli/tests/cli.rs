@@ -103,6 +103,17 @@ fn version_prints_the_release_string() {
 }
 
 #[test]
+fn remote_login_help_works_under_both_names() {
+    let sb = Sandbox::new();
+    for name in ["remote", "cloud"] {
+        let o = sb.run(&[name, "login", "--help"]);
+        assert_eq!(code(&o), 0, "agentd {name} login --help: {}", stderr(&o));
+        let usage = format!("Usage: agentd{} remote login", std::env::consts::EXE_SUFFIX);
+        assert!(stdout(&o).contains(&usage), "{}", stdout(&o));
+    }
+}
+
+#[test]
 fn cloud_approve_refuses_without_a_terminal_or_under_an_agent() {
     let sb = Sandbox::new();
     // Answers piped in (stdin is not a terminal): `printf 'y\ny\n' | agentd cloud approve`.

@@ -42,7 +42,7 @@ describe('shortcutHelp', () => {
 
   it('lists the focus and dock tab keys, marking the ones browsers keep', () => {
     expect(find('macos', 'Menu for the focused item')?.keys).toEqual(['⇧F10'])
-    expect(find('macos', 'Open Changes')?.keys).toEqual(['⌘⇧G'])
+    expect(find('macos', 'Open Git')?.keys).toEqual(['⌘⇧G'])
     expect(find('macos', 'Move the focused tab')?.keys).toEqual(['⌥⇧←', '⌥⇧→'])
     expect(find('macos', 'Next and previous tab (desktop app)')?.keys).toEqual(['⌃Tab', '⌃⇧Tab', '⌘⇧]', '⌘⇧['])
     expect(find('windows', 'Tab 1 to 8, and the last (desktop app)')?.keys).toEqual(['Ctrl+1', 'Ctrl+9'])
@@ -83,6 +83,8 @@ describe('shortcutHelp', () => {
   it('lists the sidebar row keys', () => {
     expect(find('macos', 'Previous and next sidebar row')?.keys).toEqual(['↑', '↓'])
     expect(find('macos', 'First and last sidebar row')?.keys).toEqual(['Home', 'End'])
+    // Sidebar rows take no delete key, and nothing else does either.
+    expect(find('macos', 'Delete the focused item')).toBeUndefined()
   })
 
   it('lists the keys a terminal really has, and no ⌘K clear (⌘K opens the palette)', () => {

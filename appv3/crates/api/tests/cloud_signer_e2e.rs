@@ -297,7 +297,8 @@ async fn a_computer_creates_the_account_and_approves_the_others() {
     assert_eq!(fake.account(&account).version, version, "nothing was written");
     let (s, v) = proved(&app, "/api/cloud/devices/remove", json!({ "device_id": ci_id }), Some(approval::proof(&KEY, Action::Remove, &ci_id))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    let (_, devices) = local(&app, "GET", "/api/cloud/devices", None).await;
+    let (s, devices) = local(&app, "GET", "/api/cloud/devices", None).await;
+    assert_eq!(s, StatusCode::OK, "{devices}");
     assert_eq!(devices.as_array().unwrap().len(), 2);
     phone.cloud.leave().await.ok();
 }

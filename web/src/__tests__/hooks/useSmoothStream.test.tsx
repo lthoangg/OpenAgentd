@@ -11,14 +11,12 @@ import { useSmoothStream, END_DRAIN_MS } from '@/hooks/useSmoothStream'
 
 let pendingFrames: FrameRequestCallback[] = []
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockRaf = mock((...args: any[]) => {
   const cb = args[0] as FrameRequestCallback
   pendingFrames.push(cb)
   return pendingFrames.length // fake frame id
 })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockCancelRaf = mock((...args: any[]) => {
   const id = args[0] as number
   // Mark the slot as a no-op so it doesn't run when flushed.

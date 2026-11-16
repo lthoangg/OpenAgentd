@@ -38,6 +38,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
+import { parseScriptResult } from './scriptTrace'
 import { ImageViewChip } from './ImageViewChip'
 import { parseImageRead } from './imageRead'
 import { TOOL_CHIP_CLASS } from './chipStyles'
@@ -59,6 +60,11 @@ import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
 import { UPDATE_GOAL_TOOL } from '@/lib/goal'
+import { lazySurface } from '@/lib/lazy-surface'
+
+// The body of an open `script` row, which shows only once the row is opened:
+// kept out of the startup bundle and prefetched while the app is idle.
+const ScriptView = lazySurface(() => import('./ScriptView'), 'ScriptView')
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
@@ -66,6 +72,7 @@ const ASK_USER = 'ask_user'
 const PLAN_TOOL = 'plan'
 const WORKSPACE_TOOL = 'workspace'
 const TEAM_TOOL = 'team'
+const SCRIPT_TOOL = 'script'
 
 interface ToolCallProps {
   name: string
@@ -231,6 +238,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }, [name, args])
   const usesDiffView = name === 'patch'
   const usesReadView = name === 'read'
+  const usesScriptView = name === SCRIPT_TOOL
+  // A finished script's call count and save note, once its result is here.
+  const scriptRun = useMemo(() => (usesScriptView && done ? parseScriptResult(result) : null), [usesScriptView, done, result])
   const diffStats = useMemo(
     () => usesDiffView && args && !isFailedResult(result) ? getDiffStats(name, args, result) : null,
     [usesDiffView, name, args, result],
@@ -267,7 +277,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const shownResult = suppressResult ? undefined : result
   const rawLiveOutput = (suppressResult || shownResult) ? undefined : liveOutput
   const shownLiveOutput = done ? rawLiveOutput : clampLiveOutput(rawLiveOutput)
-  const hasReadResult = usesReadView
+  const hasReadResult = usesReadView || (usesScriptView && Boolean(args))
   const isBackgroundProcess = name === 'bg'
   const isScheduleTaskList = canonicalToolName(name) === 'schedule' && shownResult?.startsWith('Scheduled tasks (')
   const isShell = language === 'bash'
@@ -417,6 +427,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           {visibleHeader && (
             <span className="min-w-0 truncate font-mono text-(--color-text-2)">{visibleHeader}</span>
           )}
+          {scriptRun && (
+            <span className="shrink-0 font-mono text-(--color-text-muted)" data-script-summary="">
+              {scriptRun.total} {scriptRun.total === 1 ? 'call' : 'calls'}
+              {scriptRun.saved?.startsWith('saved as ') ? ` · ${scriptRun.saved.replace(/ \(.*\)$/, '')}` : ''}
+              {scriptRun.timedOut ? ' · stopped' : ''}
+            </span>
+          )}
           {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (
             <span className="inline-flex shrink-0 items-center gap-1 font-mono select-none">
               {diffStats.additions > 0 && <span className="text-(--color-diff-add-text)">+{diffStats.additions}</span>}
@@ -503,6 +520,17 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   result={result}
                   loading={remote.loading}
                   onCollapse={() => setManualExpanded(false)}
+                />
+              ) : usesScriptView ? (
+                <ScriptView
+                  args={fullArgs ?? args ?? ''}
+                  result={result}
+                  liveOutput={liveOutput}
+                  done={Boolean(done)}
+                  loading={remote.loading || awaitingResult}
+                  loadError={remote.error ?? null}
+                  controls={detailsId}
+                  onCollapse={collapse}
                 />
               ) : (
                 <>

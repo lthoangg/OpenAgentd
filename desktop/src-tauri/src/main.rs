@@ -1,3 +1,4 @@
+// size-ceiling: 1500 — move the inline tests (621 lines) to a sibling file
 // Prevents additional console window on Windows in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

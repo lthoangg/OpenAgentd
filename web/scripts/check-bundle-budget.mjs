@@ -40,7 +40,7 @@ export function measureBundle(directory) {
 // Surfaces kept out of the startup path (`web/src/lib/lazy-surface.tsx`):
 // each loads on first use or while the app is idle after it starts. A static
 // import from startup code would quietly put it back; this check fails then.
-export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView', 'RelocateWorkspaceDialog']
+export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plugins', 'SchedulerPanel', 'SchedulerDockView', 'MCPAppResult', 'RunPicker', 'PlanTabView', 'GoalTabView', 'TerminalFindBar', 'TerminalSubPanel', 'CommitTabView', 'AppBackendDialog', 'TodosPopover', 'SessionMcpServers', 'KeyboardShortcutsSheet', 'ServersScreen', 'DiffTabView', 'RelocateWorkspaceDialog', 'ScriptView']
 
 // The startup path loads everything not behind a dynamic import. History:
 // features had grown it from 2.37 MB / 705 kB gzip (early October) to
@@ -113,6 +113,9 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // hundred bytes of headroom failed the build on ordinary changes. They now
 // leave about 3.5% (2.125 MB / 690.4 kB measured), so the check catches a
 // surface pulled back into startup, not a reworded string.
+// v3.57.0: the `script` tool row took the index chunk 2.0 kB over
+// largestChunkBytes; the body of an open script row, shown only once the row
+// is opened, moved behind lazySurface (1.177 MB).
 export const LIMITS = { eagerBytes: 2_200_000, eagerGzipBytes: 715_000, largestChunkBytes: 1_180_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */

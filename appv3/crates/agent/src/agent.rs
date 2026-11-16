@@ -23,6 +23,7 @@ const CANCELLED_OUTPUT_MAX_BYTES: usize = 16_384;
 pub const ASK_USER: &str = "ask_user";
 pub const ASK_LEAD: &str = "ask_lead";
 pub const PLAN: &str = crate::tools::plan::PLAN_TOOL;
+pub const SCRIPT: &str = crate::tools::script::SCRIPT_TOOL;
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
 pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call plan with submit: true after they answer.";
 pub const SUBMIT_MERGED: &str = "Merged into your later plan submission in this response.";
@@ -367,6 +368,12 @@ impl Agent {
                     _ if unattended && call.function.name == ASK_USER => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
                     _ if unattended && opens_confirm(&call) => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
                     Some(m) if !tool_allowed_in_mode(&m, &call.function.name) => Ok((format!("Error: Tool '{}' is unavailable in Plan mode.", call.function.name), (None, None))),
+                    _ if call.function.name == SCRIPT => {
+                        // The script's nested calls come back through this loop.
+                        let runner = self.nested_runner(ctx, meta, hooks, tools, &tctx, &call.id);
+                        let out = crate::tools::script::NESTED.scope(runner, appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments)).await?;
+                        Ok::<_, Suspension>((out.text, (out.parts, out.mcp_app)))
+                    }
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
                         Ok::<_, Suspension>((out.text, (out.parts, out.mcp_app)))
@@ -397,6 +404,48 @@ impl Agent {
             h.after_tool(ctx, meta, tc, &mut scope, &mut text).await;
         }
         Ok(ToolRunResult { text, parts, mcp_app, duration_ms: scope.duration_ms })
+    }
+
+    /// Runs the nested calls of `script` call `parent_id` like direct calls
+    /// (Plan mode, unattended refusals, plugin hooks, OTEL spans), with the
+    /// hooks that suit a nested call: no transcript rows, no offloading.
+    fn nested_runner(&self, ctx: &RunContext, meta: &SharedMeta, hooks: &[HookRef], tools: &ToolSet, base: &ToolContext, parent_id: &str) -> appv3_jsplugin::script::HostCallFn {
+        struct Env {
+            agent: Agent,
+            ctx: RunContext,
+            meta: SharedMeta,
+            hooks: Vec<HookRef>,
+            tools: ToolSet,
+            base: ToolContext,
+            sem: tokio::sync::Semaphore,
+            parent: String,
+            seq: std::sync::atomic::AtomicUsize,
+        }
+        let mut base = base.clone();
+        base.output = None;
+        let env = Arc::new(Env {
+            agent: self.clone(),
+            ctx: ctx.clone(),
+            meta: meta.clone(),
+            hooks: hooks.iter().filter(|h| h.wraps_nested_calls()).cloned().collect(),
+            tools: tools.clone(),
+            base,
+            sem: tokio::sync::Semaphore::new(crate::tools::script::MAX_CONCURRENT_NESTED),
+            parent: parent_id.to_string(),
+            seq: Default::default(),
+        });
+        Arc::new(move |name: String, args: Value| -> appv3_jsplugin::script::HostFuture {
+            let env = env.clone();
+            Box::pin(async move {
+                let n = env.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                let tc = ToolCall::new(format!("{}.{n}", env.parent), name, args.to_string());
+                match env.agent.run_tool(&env.ctx, &env.meta, &env.hooks, &env.tools, &env.base, &tc, &env.sem, None).await {
+                    Ok(r) if crate::hooks::lsp::is_failed_result(&r.text) => Err(r.text.trim_start().strip_prefix("Error:").unwrap_or(&r.text).trim().to_string()),
+                    Ok(r) => Ok(r.text),
+                    Err(_) => Err("the call paused for an answer, which a script cannot give".to_string()),
+                }
+            })
+        })
     }
 
     /// `Agent.run` for one turn.
@@ -935,168 +984,4 @@ impl Agent {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use appv3_providers::{ChunkStream, Kwargs, ProviderResult, ToolSpec};
-    use std::path::Path;
-    use std::sync::Mutex;
-
-    #[test]
-    fn merged_question_calls_keep_non_ascii_text_verbatim() {
-        let mut primary = ToolCall::new("a", "ask_user", r#"{"questions":[{"question":"Chọn màu?"}]}"#);
-        let dup = ToolCall::new("b", "ask_user", r#"{"questions": [{"question": "Größe?"}]}"#);
-        merge_question_calls(&mut primary, &[dup]);
-        assert_eq!(primary.function.arguments, r#"{"questions":[{"question":"Chọn màu?"},{"question":"Größe?"}]}"#);
-    }
-
-    /// The user presses Stop while the model call is still waiting.
-    struct StoppedMidCall {
-        stop: Event,
-        calls: Mutex<usize>,
-        kw: Kwargs,
-    }
-
-    #[async_trait::async_trait]
-    impl LlmProvider for StoppedMidCall {
-        fn model(&self) -> &str {
-            "mock"
-        }
-        fn provider_name(&self) -> Option<&str> {
-            Some("mock")
-        }
-        fn base_kwargs(&self) -> &Kwargs {
-            &self.kw
-        }
-        async fn chat(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> ProviderResult<AssistantMessage> {
-            unreachable!("the loop streams")
-        }
-        async fn stream(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> ProviderResult<ChunkStream> {
-            *self.calls.lock().unwrap() += 1;
-            self.stop.set();
-            Ok(Box::pin(futures::stream::pending()))
-        }
-    }
-
-    #[derive(Clone, Default)]
-    struct Captured(Arc<Mutex<Vec<u8>>>);
-
-    impl std::io::Write for Captured {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(buf);
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    /// A call cut short by Stop returns nothing, which once read as the
-    /// model answering empty: every Stop logged `agent_empty_response_retry`.
-    #[tokio::test]
-    async fn stop_during_a_model_call_is_not_an_empty_response() {
-        let logs = Captured::default();
-        let sink = logs.clone();
-        let subscriber = tracing_subscriber::fmt().with_writer(move || sink.clone()).with_ansi(false).finish();
-        let _guard = tracing::subscriber::set_default(subscriber);
-        let stop = Event::new();
-        let provider = Arc::new(StoppedMidCall { stop: stop.clone(), calls: Mutex::new(0), kw: Kwargs::new() });
-        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
-        let root = tempfile::tempdir().unwrap();
-        let opts = RunOptions {
-            session_id: None,
-            metadata: Map::new(),
-            hooks: vec![],
-            injected_tools: vec![],
-            interrupt: Some(stop),
-            hard_cancel: None,
-            checkpointer: None,
-            provider: None,
-            model_id: None,
-            denied: Arc::new(DeniedPaths::new(root.path(), None)),
-            workspace: None,
-        };
-
-        agent.run(vec![ChatMessage::user("hi")], opts).await.unwrap();
-
-        assert_eq!(*provider.calls.lock().unwrap(), 1);
-        let text = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
-        assert!(!text.contains("agent_empty_response_retry"), "{text}");
-        assert!(text.contains("agent_iteration_interrupted"), "{text}");
-    }
-
-    fn run_opts(root: &Path, interrupt: Option<Event>) -> RunOptions<'_> {
-        RunOptions {
-            session_id: None,
-            metadata: Map::new(),
-            hooks: vec![],
-            injected_tools: vec![],
-            interrupt,
-            hard_cancel: None,
-            checkpointer: None,
-            provider: None,
-            model_id: None,
-            denied: Arc::new(DeniedPaths::new(root, None)),
-            workspace: None,
-        }
-    }
-
-    /// A response that ends the turn ("stop") with no text and no tool call.
-    fn empty_stop() -> appv3_providers::mock::MockTurn {
-        use appv3_providers::{ChatCompletionChunk, ChatCompletionDelta, Usage};
-        appv3_providers::mock::MockTurn::Chunks(vec![ChatCompletionChunk::delta(
-            "mock",
-            "mock",
-            ChatCompletionDelta::default(),
-            Some("stop".into()),
-            Some(Usage { prompt_tokens: 10, completion_tokens: 14, total_tokens: 24, ..Default::default() }),
-        )])
-    }
-
-    /// After a tool result the model kept answering empty; the turn used to
-    /// end with nothing shown and no error.
-    #[tokio::test(start_paused = true)]
-    async fn empty_answers_after_a_tool_end_the_turn_with_an_error() {
-        use appv3_providers::mock::MockProvider;
-        let provider = Arc::new(MockProvider::new(vec![MockProvider::tool_call("c1", "missing_tool", "{}"), empty_stop(), empty_stop(), empty_stop(), empty_stop()]));
-        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
-        let root = tempfile::tempdir().unwrap();
-
-        let err = agent.run(vec![ChatMessage::user("check CI")], run_opts(root.path(), None)).await.unwrap_err();
-
-        assert!(err.to_string().contains("empty response 4 times"), "{err}");
-        assert_eq!(provider.calls.lock().unwrap().len(), 5);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn empty_answer_retries_back_off() {
-        use appv3_providers::mock::MockProvider;
-        let provider = Arc::new(MockProvider::new(vec![MockProvider::tool_call("c1", "missing_tool", "{}"), empty_stop(), empty_stop(), MockProvider::text("CI is green.")]));
-        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
-        let root = tempfile::tempdir().unwrap();
-        let start = tokio::time::Instant::now();
-
-        agent.run(vec![ChatMessage::user("check CI")], run_opts(root.path(), None)).await.unwrap();
-
-        // Two retries: 0.5 s, then 1 s.
-        assert!(start.elapsed() >= Duration::from_millis(1500), "{:?}", start.elapsed());
-        assert_eq!(provider.calls.lock().unwrap().len(), 4);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn stop_during_an_empty_answer_backoff_ends_the_turn() {
-        use appv3_providers::mock::MockProvider;
-        let provider = Arc::new(MockProvider::new(vec![MockProvider::tool_call("c1", "missing_tool", "{}"), empty_stop(), MockProvider::text("late")]));
-        let agent = Agent::new(provider.clone(), "code", "You help.", vec![], Some("mock:mock".into()));
-        let root = tempfile::tempdir().unwrap();
-        let stop = Event::new();
-        let s = stop.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            s.set();
-        });
-
-        agent.run(vec![ChatMessage::user("check CI")], run_opts(root.path(), Some(stop))).await.unwrap();
-
-        assert_eq!(provider.calls.lock().unwrap().len(), 2);
-    }
-}
+mod tests;

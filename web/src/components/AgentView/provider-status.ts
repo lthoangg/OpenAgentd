@@ -1,6 +1,8 @@
 /**
  * What a ``provider_status`` block says, read for the transcript's notices:
- * the account it names, and the plain-text details to copy.
+ * the account it names, the plain-text details to copy, which kind of row it
+ * is (an error card, a bare "retries ran out" line), and whether it is still
+ * the turn's last word (blank ``thinking``/``text`` chunks after it say nothing).
  *
  * The server's status event carries no structured account field today: the
  * ``credential_label`` key is only stamped on answered messages. The pinned
@@ -61,4 +63,56 @@ export function providerErrorDetails({ title, message, extra }: {
   const head = title && title.trim() !== message.trim() ? [title, message] : [message]
   const raw = text(extra?.details)
   return [...head, ...meta, ...(raw ? [raw] : [])].join('\n')
+}
+
+/**
+ * The server's "retries ran out" mark: the model and the budget, but no
+ * message. The error the turn ends with follows it and is the card; this is
+ * the one line under the retries saying they stopped.
+ */
+export function isBareExhausted(block: ContentBlock): boolean {
+  return block.type === 'provider_status' && block.extra?.status === 'exhausted' &&
+    !block.content && !(typeof block.extra?.message === 'string' && block.extra.message)
+}
+
+export function isProviderErrorBlock(block: ContentBlock): boolean {
+  if (block.type !== 'provider_status') return false
+  if (isBareExhausted(block)) return false
+  const status = block.extra?.status
+  return status === 'error' || status === 'exhausted' || block.extra?.category === 'provider'
+}
+
+/** The provider error a turn ended on, if it ended on one. */
+export function endingProviderError(blocks: ContentBlock[]): ContentBlock | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isBlankContentBlock(blocks[i])) continue
+    return isProviderErrorBlock(blocks[i]) ? blocks[i] : undefined
+  }
+  return undefined
+}
+
+/** True for a `thinking`/`text` block that has streamed in only whitespace
+ *  so far (e.g. a provider's blank reasoning-section separator, or the
+ *  very first chunk before real content arrives). Such a block renders no
+ *  visible output, so it must not count as "content has started" when
+ *  deciding whether to keep showing the pending dots — otherwise the user
+ *  is left staring at a blank chat area with no dots and no content. */
+export function isBlankContentBlock(block: ContentBlock): boolean {
+  return (block.type === 'thinking' || block.type === 'text') && block.content.trim().length === 0
+}
+
+/**
+ * The retry notice still waiting on its call: the last thing the turn said.
+ * Anything after it (the answer starting, an error card) means the retry is
+ * over, so the notice goes.
+ */
+export function latestActiveRetryBlockId(finalizedBlocks: ContentBlock[], liveBlocks: ContentBlock[]): string | undefined {
+  for (const part of [liveBlocks, finalizedBlocks]) {
+    for (let index = part.length - 1; index >= 0; index -= 1) {
+      const block = part[index]
+      if (isBlankContentBlock(block)) continue
+      return block.type === 'provider_status' && block.extra?.status === 'retrying' ? block.id : undefined
+    }
+  }
+  return undefined
 }

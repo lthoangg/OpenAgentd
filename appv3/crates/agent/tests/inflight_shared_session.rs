@@ -4,6 +4,8 @@
 //! server start continue a turn that had finished hours before. The manager
 //! is process-wide, so this file is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::manager;
 use appv3_agent::session::UserMessage;
@@ -14,6 +16,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+use common::wait_until_async;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -77,16 +81,6 @@ async fn answered(pool: &appv3_db::DbPool, sid: &str) -> bool {
     appv3_db::llm_window_rows(pool, sid, false).await.unwrap().last().is_some_and(|r| r.role == "assistant" && r.content.as_deref() == Some("Done."))
 }
 
-async fn wait_for(what: &str, mut done: impl AsyncFnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(10), async {
-        while !done().await {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_turn_clears_its_own_mark_after_its_agent_session_moved_to_another_session() {
     let tmp = tempfile::tempdir().unwrap();
@@ -110,14 +104,14 @@ async fn a_turn_clears_its_own_mark_after_its_agent_session_moved_to_another_ses
     // The first run waits on its model call; the second binds the same
     // AgentSession to its own session and finishes first.
     session.handle_user_message(send(&first)).await.unwrap();
-    wait_for("the first run's model call", async || provider.calls.load(Ordering::SeqCst) >= 1).await;
+    wait_until_async("the first run's model call", async || provider.calls.load(Ordering::SeqCst) >= 1).await;
     assert_eq!(in_flight(&pool).await, vec![first.clone()]);
     session.handle_user_message(send(&second)).await.unwrap();
-    wait_for("the second run's answer", async || answered(&pool, &second).await).await;
+    wait_until_async("the second run's answer", async || answered(&pool, &second).await).await;
 
     // The first run answers and ends: no mark is left behind.
     provider.gate.notify_one();
-    wait_for("the first run's answer", async || answered(&pool, &first).await).await;
+    wait_until_async("the first run's answer", async || answered(&pool, &first).await).await;
     let _ = tokio::time::timeout(Duration::from_secs(5), async {
         while !in_flight(&pool).await.is_empty() {
             tokio::time::sleep(Duration::from_millis(20)).await;

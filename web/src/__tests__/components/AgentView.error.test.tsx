@@ -476,7 +476,7 @@ describe("AgentView — error card details and settings", () => {
     try {
       render(<AgentView blocks={ended(detailed({}))} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)
       fireEvent.click(screen.getByRole("button", { name: "Open Providers" }))
-      expect(openSettings).toHaveBeenCalledWith("providers")
+      expect(openSettings).toHaveBeenCalledWith("models")
     } finally {
       act(() => { useSettingsStore.setState({ openSettings: original }) })
     }

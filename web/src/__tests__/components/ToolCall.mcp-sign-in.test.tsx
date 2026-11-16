@@ -67,7 +67,7 @@ describe('a call refused for sign-in', () => {
     expect(screen.queryByRole('button', { name: 'Sign in to excalidraw' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Open in Settings' }))
 
-    expect(useSettingsStore.getState()).toMatchObject({ open: true, section: 'mcp-edit', selectedName: 'excalidraw' })
+    expect(useSettingsStore.getState()).toMatchObject({ open: true, section: 'connectors-edit', selectedName: 'excalidraw' })
   })
 
   it('says Signed in once the server is ready', () => {

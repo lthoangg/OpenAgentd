@@ -3,9 +3,15 @@
  *
  * A sticky bar that appears only while the draft is dirty: "Unsaved changes"
  * (or why Save is blocked), Discard…, and Save. Settings pages get it from
- * `SettingsPage`; the agent, skill and MCP editors render it under their
- * form. Only switches apply at once; everything typed into a
- * form waits for this bar.
+ * `SettingsPage`; the agent, skill, connector and memory editors render it
+ * under their form.
+ *
+ * The rule, one page one model: a page made only of switches and choices
+ * applies each change at once and has no bar (General, Desktop, Workspaces,
+ * Plugins); a page with anything typed (a field, an editor) waits for this
+ * bar for everything on it, its switches included (Sessions, Blocked files,
+ * Image and video, the editors). Adding or removing a list item (a computer,
+ * a model account, a workspace group) is an action, not a setting.
  */
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'

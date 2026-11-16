@@ -166,13 +166,18 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// answer with a follow-up (the other session's user is not there to ask).
 /// Raised by 1186 for the app guide (what the app renders, opens and runs in
 /// a reply), which took over the .md and .html link rule from Replying.
-const LEAD_ALWAYS_ON_CHARS: usize = 40_969;
+/// Raised by 2869 for the always-on `script` tool (code that chains tool
+/// calls in one step, saved and run again by name) and the Plan note naming
+/// it, with a one-line example: models given only the rules treated a tool
+/// result as an array, and read every file instead of grepping them. The
+/// test now counts every base tool from the registry.
+const LEAD_ALWAYS_ON_CHARS: usize = 43_838;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {
     let registry = default_tool_registry();
     let mut names = prompts::coding_tools();
-    names.extend(["skill", "todo", "schedule"].map(String::from));
+    names.extend(appv3_agent::tool_registry::base_tools().map(String::from));
     let (system, mut tools) = first_call_with("budget", false, names.iter().map(|n| registry[n].clone()).collect()).await;
     // Leave out what differs by machine: the temp root and the shell's OS line.
     // The prompt shows the root canonicalized (`/private/var/...` on macOS, the

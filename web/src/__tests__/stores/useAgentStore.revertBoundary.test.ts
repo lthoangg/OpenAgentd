@@ -1,6 +1,5 @@
 import { mock, describe, it, expect, beforeEach } from "bun:test"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockPostAgentChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
@@ -30,9 +29,7 @@ const mockSessionHistory = mock(() =>
     next_cursor: null,
   })
 ) as any
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 ;(mock as any).module("@/api/client", () => ({
   postAgentChat: mockPostAgentChat,
   postAgentCommand: mockPostAgentCommand,
@@ -40,7 +37,6 @@ const mockSessionHistory = mock(() =>
   agentStatus: mockAgentStatus,
   sessionHistory: mockSessionHistory,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import { applyRevertBoundary } from "@/stores/useAgentStore/helpers"
@@ -673,7 +669,7 @@ describe("undoAgent — local boundary application", () => {
     await useAgentStore.getState().undoAgent()
 
     expect(mockSessionHistory).not.toHaveBeenCalled()
-    expect(mockPostAgentCommand).toHaveBeenCalledWith("undo", "sess-1")
+    expect(mockPostAgentCommand).toHaveBeenCalledWith("undo", "sess-1", { keepFiles: false })
 
     const stream = useAgentStore.getState().agentStreams.lead
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "a1"])
@@ -681,6 +677,39 @@ describe("undoAgent — local boundary application", () => {
     expect(useAgentStore.getState()._leadRevertTime).toBe(
       new Date("2024-01-01T00:00:02Z").getTime(),
     )
+    expect(useAgentStore.getState().revertKeepsFiles).toBe(false)
+  })
+
+  it("undoes messages only on request and remembers the files were kept", async () => {
+    useAgentStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      revertKeepsFiles: false,
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+            block("a1", "text", "answer one", "2024-01-01T00:00:01Z"),
+          ],
+        }),
+      },
+    })
+    mockPostAgentCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "undo",
+        keep_files: true,
+        changed_paths: { added: [], modified: [], removed: [] },
+        message: makeMessageResponse({ id: "u1-id", role: "user", content: "first", created_at: "2024-01-01T00:00:00Z" }),
+      }),
+    )
+
+    await useAgentStore.getState().undoAgent({ keepFiles: true })
+
+    expect(mockPostAgentCommand).toHaveBeenCalledWith("undo", "sess-1", { keepFiles: true })
+    expect(useAgentStore.getState().agentStreams.lead.blocks).toEqual([])
+    expect(useAgentStore.getState().revertKeepsFiles).toBe(true)
   })
 
   it("queues a workspace invalidation event for the post-undo refresh", async () => {

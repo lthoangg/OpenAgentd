@@ -62,24 +62,10 @@ pub fn provider_key_var(provider_id: &str) -> Option<&'static str> {
     builtin_providers().iter().find(|e| e["id"] == provider_id).and_then(|e| e.get("env_var")).and_then(|v| v.as_str()).filter(|s| !s.is_empty())
 }
 
-/// Supported provider ids (sorted, for identical error text).
-pub const SUPPORTED_PROVIDERS: &[&str] = &[
-    "anthropic",
-    "bedrock",
-    "cliproxy",
-    "codex",
-    "copilot",
-    "deepseek",
-    "googlegenai",
-    "grok",
-    "nvidia",
-    "ollama",
-    "openai",
-    "opencode",
-    "opencode-go",
-    "openrouter",
-    "router9",
-    "vertexai",
-    "xai",
-    "zai",
-];
+/// Supported provider ids, sorted, for the "Unsupported provider" error
+/// text. Read from the catalogue, so a provider is listed once.
+pub fn supported_providers() -> Vec<&'static str> {
+    let mut ids: Vec<&'static str> = builtin_providers().iter().filter_map(|e| e["id"].as_str()).collect();
+    ids.sort_unstable();
+    ids
+}

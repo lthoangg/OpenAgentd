@@ -1,9 +1,15 @@
 // Global test setup — registers Happy DOM so React components can render.
 import React from "react";
-import { mock, afterEach } from "bun:test";
+import { mock, afterEach, setDefaultTimeout } from "bun:test";
 import { readFileSync } from "node:fs";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { menuBlink } from "@/components/ui/_menu-blink";
+
+// A test may take 10 s (Bun's default is 5 s): the parallel run shares the
+// machine with builds, and a component test that takes 1 s alone can take 6 s
+// then. Set here because `bunfig.toml` has no key for it, and a `--timeout`
+// flag would have to be on every command that runs tests.
+setDefaultTimeout(10_000);
 
 // Stub every material-icon-theme SVG `?url` import so Bun's module loader
 // doesn't crash on them (Bun doesn't run Vite transforms). Each stub returns a
@@ -103,6 +109,20 @@ mock.module("@/components/Terminal/xterm-instance", () => ({
 // happy-dom 21 stopped loading iframe pages by default; the preview tests
 // mount the inspector in a real iframe, so turn it back on.
 GlobalRegistrator.register({ url: "http://localhost:5173/", settings: { enableIframePageLoading: true } });
+
+// A failed `expect(node).toBe(other)` prints both values. Printed as plain
+// objects, a Happy DOM node drags in its document and window: one failure
+// took 4 s and built a 650 MB message, and inside `waitFor` every poll that
+// missed paid that again (a 30 ms wait for focus ran 28 s in CI and failed).
+// Nodes print as their opening tag instead.
+Object.defineProperty(Node.prototype, Symbol.for("nodejs.util.inspect.custom"), {
+  configurable: true,
+  value(this: Node) {
+    if (!(this instanceof Element)) return this.nodeName;
+    const attributes = Array.from(this.attributes, (attribute) => ` ${attribute.name}="${attribute.value}"`).join("");
+    return `<${this.localName}${attributes}>`.slice(0, 300);
+  },
+});
 
 // The suite runs as an install that exists and shows Full detail, where every
 // thinking trace and tool row is on screen. A new install starts in Simple;

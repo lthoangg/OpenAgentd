@@ -33,7 +33,7 @@ use crate::error::{ApiError, ApiResult};
 static KEY: RwLock<Option<Zeroizing<[u8; KEY_LEN]>>> = RwLock::new(None);
 
 /// What a refused approval says; stable, the web UI shows it as is.
-pub const APPROVE_ELSEWHERE: &str = "Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.";
+pub const APPROVE_ELSEWHERE: &str = "Approve in the OpenAgentd app on this computer, or run agentd remote approve in Terminal.";
 /// What a refused removal says.
 pub const REMOVE_ELSEWHERE: &str = "Remove devices in the OpenAgentd app on this computer.";
 /// What a refused invitation says.

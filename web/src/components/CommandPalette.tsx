@@ -1,3 +1,4 @@
+// size-ceiling: 876 — move QuickOpen and the row components out
 /**
  * CommandPalette — the app's one search overlay: ⌘K / Ctrl+K searches
  * commands, sessions and files together; ⌘P / Ctrl+P opens the same overlay
@@ -34,7 +35,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isImeComposing } from '@/lib/keyboard/chord'
 import type { WorkspaceFileInfo } from '@/api/types'
-import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
+import { IGNORED_FILE_PENALTY } from '@/components/InputComposer/mentions'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useHeightGlide } from '@/hooks/useHeightGlide'
 import { useSlidingHighlight } from '@/hooks/useSlidingHighlight'

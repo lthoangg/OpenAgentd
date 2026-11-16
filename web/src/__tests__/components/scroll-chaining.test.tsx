@@ -71,7 +71,7 @@ describe("scroll chaining — overlays trap scroll", () => {
 describe("scroll chaining — anchored popovers trap scroll (source)", () => {
   const cases: Array<[string, string]> = [
     ["dropdown", "src/components/ui/dropdown.tsx"],
-    ["input-bar suggestions", "src/components/InputComposer.suggestions.tsx"],
+    ["input-bar suggestions", "src/components/InputComposer/suggestions.tsx"],
     ["command palette", "src/components/CommandPalette.tsx"],
     ["todos popover", "src/components/TodosPopover.tsx"],
     ["multi-select", "src/components/settings/MultiSelect.tsx"],
@@ -95,12 +95,10 @@ describe("scroll chaining — anchored popovers trap scroll (source)", () => {
 
 describe("scroll chaining — embedded content chains (source)", () => {
   it("WorkspacePanel inline diff viewers do not use overscroll-contain", () => {
-    const src = readFileSync(
-      fileURLToPath(
-        new URL("../../components/WorkspacePanel.tsx", import.meta.url)
-      ),
-      "utf8"
-    )
-    expect(src).not.toContain("overscroll-contain")
+    // The panel and its Git tab, which holds the inline diffs' scroller.
+    for (const rel of ["../../components/WorkspacePanel.tsx", "../../components/WorkspacePanel/ReviewTabView.tsx"]) {
+      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8")
+      expect(src).not.toContain("overscroll-contain")
+    }
   })
 })

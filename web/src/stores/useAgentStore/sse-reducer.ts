@@ -1,67 +1,16 @@
-import {
-  appendStreamedInto,
-  initToolInto,
-  addToolInto,
-  appendToolOutputInto,
-  completeToolInto,
-  generateBlockId,
-  readBlocks,
-  startCompaction,
-  appendCompactionContentInto,
-  endCompaction,
-} from '@/utils/blocks'
-import type { ToolResultArrival } from '@/utils/blocks'
-import { createDefaultAgentStream } from './defaults'
-import {
-  FS_MUTATING_TOOLS,
-  PLAN_MUTATING_TOOLS,
-  SCHEDULER_MUTATING_TOOLS,
-  TODO_MUTATING_TOOLS,
-  anyAgentLive,
-  appendLocalBlocks,
-  applyLocalBlockTransform,
-  applyQuestionResolution,
-  extractToolPaths,
-  parseQuestionClosedReason,
-  revokeBlobUrlsFromBlocks,
-} from './helpers'
-import type { CacheInvalidation, AgentError, AgentStore } from './types'
-import { canonicalToolName } from '@/utils/tool-names'
-import type { ContentBlock, MessageAttachment, PendingQuestion, QuestionItem, SSEEventType } from '@/api/types'
-
-type Setter = (fn: (draft: AgentStore) => void) => void
-type Getter = () => AgentStore
-
-/** The display fields of an attachment, as history serves them. */
-const ATTACHMENT_FIELDS = ['filename', 'media_type', 'original_name', 'category', 'url', 'source'] as const
-
 /**
- * A ``queued_turn_start`` row's raw ``extra``, split as history splits it:
- * the display attachments beside the rest. The event carries the stored
- * ``extra``, so internal fields (``path``, ``converted_text``) are dropped.
+ * The session stream's dispatch table: each event goes to its handler, kept
+ * with the other events of its family in a sibling ``sse-*.ts`` module.
  */
-export function splitEventAttachments(raw: unknown): {
-  attachments: MessageAttachment[] | undefined
-  extra: Record<string, unknown> | undefined
-} {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { attachments: undefined, extra: undefined }
-  const { attachments: rawAtts, ...rest } = raw as Record<string, unknown>
-  const attachments = Array.isArray(rawAtts)
-    ? rawAtts.flatMap((att) => {
-        if (!att || typeof att !== 'object') return []
-        const src = att as Record<string, unknown>
-        const out: Record<string, unknown> = {}
-        for (const key of ATTACHMENT_FIELDS) {
-          if (typeof src[key] === 'string') out[key] = src[key]
-        }
-        return [out as MessageAttachment]
-      })
-    : []
-  return {
-    attachments: attachments.length > 0 ? attachments : undefined,
-    extra: rawAtts === undefined ? (raw as Record<string, unknown>) : rest,
-  }
-}
+import { applyQuestionResolution } from './helpers'
+import { onAgentNotConfigured, onAgentStatus, onError, onProviderStatus } from './sse-agent-status'
+import { onSummarizationContent, onSummarizationEnd, onSummarizationStart } from './sse-compaction'
+import { applySSEDeltaBatch, onToolCall, onToolEnd, onToolStart } from './sse-content'
+import { onQuestionAsked, onQuestionResolved } from './sse-questions'
+import { onDone, onQueuedTurnStart } from './sse-turn'
+import { onUsage } from './sse-usage'
+import type { StoreGet, StoreSet } from './types'
+import type { SSEEventType } from '@/api/types'
 
 /**
  * Session-stream events the reducer deliberately drops, with the reason.
@@ -71,241 +20,9 @@ export const IGNORED_SSE_EVENTS: Partial<Record<SSEEventType, string>> = {
   rate_limit: 'always followed by a provider_status "retrying" event carrying the same retry_after, which the UI renders',
 }
 
-/**
- * Coerce the ``question_asked`` payload into ``QuestionItem[]``.
- *
- * The event carries the tool's already-validated args, but they cross the wire
- * as untyped ``dict[str, Any]``. Normalising here means the dock can render
- * without defensive checks at every field, and a malformed entry degrades to an
- * open-text question instead of throwing inside a render.
- */
-export function normalizeQuestions(raw: unknown): QuestionItem[] {
-  if (!Array.isArray(raw)) return []
-  return raw.map((entry) => {
-    const q = (entry ?? {}) as Record<string, unknown>
-    const options = Array.isArray(q.options) ? q.options : []
-    return {
-      question: typeof q.question === 'string' ? q.question : '',
-      header: typeof q.header === 'string' ? q.header : '',
-      multiple: q.multiple === true,
-      options: options.map((opt) => {
-        const o = (opt ?? {}) as Record<string, unknown>
-        return {
-          label: typeof o.label === 'string' ? o.label : '',
-          description: typeof o.description === 'string' ? o.description : null,
-          recommended: o.recommended === true,
-        }
-      }),
-    }
-  })
-}
-
-/**
- * Map a wire question (SSE event or history row) to store shape.
- *
- * Returns ``null`` for a payload with nothing to render, so callers never put a
- * card on screen that the user cannot act on. Single source of truth for the
- * mapping — the SSE path and the cold-load path must agree exactly, or a reload
- * would silently change the card.
- */
-export function toPendingQuestion(raw: {
-  id?: unknown
-  session_id?: unknown
-  tool_call_id?: unknown
-  questions?: unknown
-  kind?: unknown
-  plan_revision?: unknown
-}): PendingQuestion | null {
-  const id = typeof raw.id === 'string' ? raw.id : ''
-  const questions = normalizeQuestions(raw.questions)
-  if (!id || questions.length === 0) return null
-  const question: PendingQuestion = {
-    id,
-    sessionId: typeof raw.session_id === 'string' ? raw.session_id : '',
-    toolCallId: typeof raw.tool_call_id === 'string' ? raw.tool_call_id : '',
-    questions,
-  }
-  if (raw.kind === 'plan_review') {
-    question.kind = 'plan_review'
-    if (typeof raw.plan_revision === 'number') question.planRevision = raw.plan_revision
-  }
-  return question
-}
-
-function ensureAgent(draft: AgentStore, agent?: string) {
-  const name = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-  if (!draft.agentStreams[name]) draft.agentStreams[name] = createDefaultAgentStream()
-  if (!draft.agentNames.includes(name)) draft.agentNames.push(name)
-  if (!draft.leadName) draft.leadName = name
-}
-
 interface CreateSSEHandlerArgs {
-  set: Setter
-  get: Getter
-}
-
-type BufferedTextKind = 'message' | 'thinking'
-
-export type BufferedSSEDelta = {
-  type: BufferedTextKind | 'tool_output_delta'
-  data: Record<string, unknown>
-}
-
-export function isBufferedSSEDelta(type: string): type is BufferedSSEDelta['type'] {
-  return type === 'message' || type === 'thinking' || type === 'tool_output_delta'
-}
-
-function stampOpenTextBlocks(
-  blocks: AgentStore['agentStreams'][string]['currentBlocks'],
-  completedAt: number,
-  turnStartedAt?: number | null,
-) {
-  return blocks.map((block) => {
-    if (block.type !== 'text' || block.responseDurationMs !== undefined) return block
-    const startedAt = turnStartedAt ?? block.startedAt
-    if (startedAt === undefined || startedAt === null) return block
-    return {
-      ...block,
-      responseDurationMs: Math.max(0, completedAt - startedAt),
-    }
-  })
-}
-
-/**
- * Commit a stream's live blocks to its transcript, as the end of its turn
- * does. A run that failed commits them ahead of its error block, so the
- * error comes after what led to it (the retries, a half-written answer)
- * and is the block the turn ends on.
- */
-function commitLiveBlocks(draft: AgentStore, stream: AgentStore['agentStreams'][string], completedAtMs: number) {
-  if (stream.currentBlocks.length === 0) return
-  const completedAt = new Date(completedAtMs)
-  const revertTime = draft._leadRevertTime
-  const stamped = stampOpenTextBlocks(stream.currentBlocks, completedAtMs, stream._turnStartedAt).map((b) => ({
-    ...b,
-    timestamp: b.timestamp ?? completedAt,
-  }))
-  // Guard: if a /undo ran while the turn was still in flight, drop
-  // any blocks at or after the revert boundary so they don't
-  // re-surface as ghost messages when currentBlocks are finalised.
-  const toCommit = revertTime === null
-    ? stamped
-    : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
-  appendLocalBlocks(stream, toCommit)
-  stream.currentBlocks = []
-}
-
-function markTurnStarted(draft: AgentStore, agent: string, startedAt = Date.now()) {
-  ensureAgent(draft, agent)
-  const stream = draft.agentStreams[agent]
-  if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = startedAt
-}
-
-/**
- * A content frame ends an attach's replay window (``_attachReplay``): the
- * server replays ``queued_turn_start`` ahead of every content frame of the
- * step it started. Cleared inside updates that already run, so it costs no
- * extra store notification.
- */
-function endAttachReplay(draft: AgentStore) {
-  if (draft._attachReplay) draft._attachReplay = false
-}
-
-/** The ``model`` / ``thinking_level`` a live event names, as a block's ``extra``. */
-function modelExtraFrom(model?: string | null, thinkingLevel?: string | null): Record<string, string> | null {
-  return model ? { model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) } : null
-}
-
-function appendStreamingText(
-  draft: AgentStore,
-  agent: string,
-  kind: BufferedTextKind,
-  text: string,
-  model?: string | null,
-  thinkingLevel?: string | null,
-) {
-  const name = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-  ensureAgent(draft, name)
-  const stream = draft.agentStreams[name]
-  if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = Date.now()
-  // Only the first chunk of each kind after an attach can be a replay
-  // snapshot; consume the flag so later deltas concatenate unconditionally
-  // (see `_replayPending` in types.ts and `isReplaySnapshot` in blocks.ts).
-  //
-  // Absent flag (a stream built outside `createDefaultAgentStream`, e.g. by a
-  // test fixture) defaults to *not* deduping: the worst case is then visibly
-  // doubled text that a reload clears, rather than silently swallowed tokens.
-  if (!stream._replayPending) stream._replayPending = { message: false, thinking: false }
-  const replayPossible = stream._replayPending[kind]
-  if (replayPossible) stream._replayPending[kind] = false
-  const blockType = kind === 'thinking' ? 'thinking' : 'text'
-  appendStreamedInto(stream.currentBlocks, blockType, text, replayPossible)
-  const last = stream.currentBlocks[stream.currentBlocks.length - 1]
-  if (last?.type !== blockType) return
-  if (blockType === 'text' && !last.startedAt) last.startedAt = Date.now()
-  // Thinking names the model too: a reply with no text still names it
-  // under its prompt (see ``promptModels``).
-  const modelExtra = modelExtraFrom(model, thinkingLevel)
-  if (modelExtra) last.extra = { ...(last.extra ?? {}), ...modelExtra }
-}
-
-/**
- * True when the agent's confirmed ``blocks`` hold a still-running card for
- * this tool call. Happens when a mid-turn ``loadSession`` reconciles the
- * persisted assistant row (saved *before* its tools finish executing) while
- * the tool is still live — later tool events must reach that card instead of
- * targeting ``currentBlocks`` and silently vanishing, which left the card
- * stuck "running" until a full reload. Matched strictly by ``toolCallId``;
- * the name-based fallback stays live-only so orphaned incomplete cards in
- * history are never completed by an unrelated event.
- */
-function findConfirmedTool(draft: AgentStore, agent: string, toolCallId: string | undefined): ContentBlock | undefined {
-  if (!toolCallId) return undefined
-  // Read-only: the session-sized rows are scanned without drafting each one.
-  return readBlocks(draft.agentStreams[agent].blocks).find(
-    (b) => b.type === 'tool' && b.toolCallId === toolCallId,
-  )
-}
-
-function applyBufferedSSEDelta(draft: AgentStore, event: BufferedSSEDelta) {
-  endAttachReplay(draft)
-  const d = event.data
-  const agentName = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-  if (event.type === 'message' || event.type === 'thinking') {
-    const metadata = d.metadata as Record<string, unknown> | undefined
-    appendStreamingText(
-      draft,
-      agentName,
-      event.type,
-      d.text as string,
-      typeof metadata?.model === 'string' ? metadata.model : null,
-      typeof metadata?.thinking_level === 'string' ? metadata.thinking_level : null,
-    )
-    return
-  }
-
-  const agent = agentName
-  const toolCallId = d.tool_call_id as string | undefined
-  ensureAgent(draft, agent)
-  const stream = draft.agentStreams[agent]
-  if (appendToolOutputInto(stream.currentBlocks, d.name as string, toolCallId, d.text as string)) return
-  // No live card — the tool may already sit in the confirmed rows (a mid-turn
-  // loadSession reconciles the assistant row before its tools finish). Route
-  // the delta there instead of dropping it; matched strictly by id so
-  // orphaned history cards are never touched.
-  const confirmed = findConfirmedTool(draft, agent, toolCallId)
-  if (confirmed && !confirmed.toolDone) {
-    appendToolOutputInto(stream.blocks, d.name as string, toolCallId, d.text as string)
-  }
-}
-
-/** Apply a group of high-frequency text/tool-output deltas in one immer
- * transaction, producing a single Zustand subscriber notification. */
-export function applySSEDeltaBatch(set: Setter, events: BufferedSSEDelta[]) {
-  if (events.length === 0) return
-  set((draft) => {
-    for (const event of events) applyBufferedSSEDelta(draft, event)
-  })
+  set: StoreSet
+  get: StoreGet
 }
 
 export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
@@ -332,56 +49,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'tool_call': {
-        set((draft) => {
-          endAttachReplay(draft)
-          const agent = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-          markTurnStarted(draft, agent)
-          // Replay after a mid-turn reconcile: the card already lives in the
-          // confirmed rows — recreating it live would render a duplicate.
-          if (findConfirmedTool(draft, agent, d.tool_call_id as string | undefined)) return
-          const blocks = draft.agentStreams[agent].currentBlocks
-          const added = initToolInto(
-            blocks,
-            d.name as string,
-            d.tool_call_id as string | undefined,
-            typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
-          )
-          // A reply that only calls tools still names its model (see ``promptModels``).
-          const meta = d.metadata as Record<string, unknown> | undefined
-          const modelExtra = modelExtraFrom(
-            typeof meta?.model === 'string' ? meta.model : null,
-            typeof meta?.thinking_level === 'string' ? meta.thinking_level : null,
-          )
-          if (added && modelExtra) blocks[blocks.length - 1].extra = modelExtra
-        })
+        onToolCall(set, d)
         break
       }
 
       case 'tool_start': {
-        set((draft) => {
-          endAttachReplay(draft)
-          const agent = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-          markTurnStarted(draft, agent)
-          const toolCallId = d.tool_call_id as string | undefined
-          // Mirrors addTool's own match condition.
-          const hasLive = readBlocks(draft.agentStreams[agent].currentBlocks).some(
-            (b) =>
-              b.type === 'tool' &&
-              (toolCallId
-                ? b.toolCallId === toolCallId
-                : b.toolName === (d.name as string) && b.toolArgs === undefined),
-          )
-          // Confirmed card already carries its args (persisted with the
-          // assistant row) — don't let addTool's fallback spawn a duplicate.
-          if (!hasLive && findConfirmedTool(draft, agent, toolCallId)) return
-          addToolInto(
-            draft.agentStreams[agent].currentBlocks,
-            d.name as string,
-            d.arguments as string | undefined,
-            toolCallId,
-            typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
-          )
-        })
+        onToolStart(set, d)
         break
       }
 
@@ -391,392 +64,22 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'tool_end': {
-        const agent = (d.agent as string) || get().leadName || Object.keys(get().agentStreams)[0] || 'openagentd'
-        const toolName = d.name as string
-        const toolCallId = d.tool_call_id as string | undefined
-        const metadata = d.metadata as Record<string, unknown> | undefined
-        const result = typeof d.result === 'string' ? d.result : undefined
-        // Most tools' output stays on the server; the card fetches it on open.
-        const arrival: ToolResultArrival = metadata?.result_omitted === true
-          ? { omittedBytes: typeof metadata.result_bytes === 'number' ? metadata.result_bytes : 0 }
-          : result
-        const serverDurationMs = typeof d.duration_ms === 'number'
-          ? d.duration_ms
-          : typeof metadata?.duration_ms === 'number'
-            ? metadata.duration_ms
-            : undefined
-        const mcpApp = metadata?.mcp_app as Record<string, unknown> | undefined
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          // Mirrors completeTool's own matching: exact id, else incomplete
-          // card of the same name.
-          const hasLive = readBlocks(stream.currentBlocks).some(
-            (b) =>
-              b.type === 'tool' &&
-              ((toolCallId && b.toolCallId === toolCallId) ||
-                (b.toolName === toolName && !b.toolDone)),
-          )
-          const confirmed = hasLive ? undefined : findConfirmedTool(draft, agent, toolCallId)
-          if (confirmed && !confirmed.toolDone) {
-            // Card was reconciled into the confirmed rows mid-turn — finish
-            // it there or it stays "running" until a full reload.
-            completeToolInto(
-              stream.blocks,
-              toolName,
-              toolCallId,
-              arrival,
-              serverDurationMs,
-              mcpApp ? { mcp_app: mcpApp } : undefined,
-            )
-            return
-          }
-          completeToolInto(
-            stream.currentBlocks,
-            toolName,
-            toolCallId,
-            arrival,
-            serverDurationMs,
-            mcpApp ? { mcp_app: mcpApp } : undefined,
-          )
-        })
-        const events: CacheInvalidation[] = []
-        if (FS_MUTATING_TOOLS.has(toolName)) {
-          const workspace = get()._workspace
-          if (workspace) {
-            const stream = get().agentStreams[agent]
-            const matchesEndedTool = (b: (typeof stream.currentBlocks)[number]) =>
-              b.type === 'tool' &&
-              (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName)
-            const block =
-              stream?.currentBlocks.find(matchesEndedTool) ?? stream?.blocks.find(matchesEndedTool)
-            const paths = extractToolPaths(toolName, block?.toolArgs)
-            if (paths && paths.length > 0) {
-              events.push({
-                kind: 'coding_workspace_paths',
-                workspace,
-                paths,
-              })
-            } else {
-              events.push({ kind: 'coding_workspace', workspace })
-            }
-          } else {
-            const sid = get().sessionId
-            if (sid) events.push({ kind: 'workspace_files', sessionId: sid })
-          }
-        }
-        const tool = canonicalToolName(toolName)
-        if (SCHEDULER_MUTATING_TOOLS.has(tool)) {
-          events.push({ kind: 'scheduler' })
-        }
-        if (TODO_MUTATING_TOOLS.has(tool)) {
-          const sid = get().sessionId
-          if (sid) events.push({ kind: 'todos', sessionId: sid })
-        }
-        if (PLAN_MUTATING_TOOLS.has(toolName)) {
-          const sid = get().sessionId
-          if (sid) events.push({ kind: 'plan', sessionId: sid })
-          // Starting a new plan drops the finished tasks from the board.
-          if (sid && typeof result === 'string' && result.startsWith('Started a new plan')) events.push({ kind: 'todos', sessionId: sid })
-        }
-        if (tool === 'team' || tool.startsWith('team_')) {
-          const sid = get().sessionId
-          if (sid) events.push({ kind: 'subagents', sessionId: sid })
-        }
-        if (events.length > 0) {
-          set((draft) => { draft.cacheInvalidations.push(...events) })
-        }
+        onToolEnd(set, get, d)
         break
       }
 
       case 'provider_status': {
-        const agent = d.agent as string
-        const status = d.status as string
-        if (!agent || !status) break
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const blocks = draft.agentStreams[agent].currentBlocks
-          const last = blocks[blocks.length - 1]
-          // A call waiting out a network drop retries every few seconds
-          // for as long as it takes: update one notice instead of stacking.
-          if (status === 'retrying' && last?.type === 'provider_status' && last.extra?.status === 'retrying') {
-            last.extra = d
-            last.timestamp = new Date()
-            return
-          }
-          blocks.push({
-            id: generateBlockId(),
-            type: 'provider_status',
-            content: '',
-            extra: d,
-            timestamp: new Date(),
-          })
-        })
+        onProviderStatus(set, d)
         break
       }
 
       case 'usage': {
-        const meta = d.metadata as Record<string, unknown> | undefined
-        const agent = (meta?.agent as string) ?? (d.agent as string)
-        if (!agent) break
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          const u = stream.usage
-          const promptTokens = (d.prompt_tokens as number) || 0
-          const completionTokens = (d.completion_tokens as number) || 0
-          const cachedTokens = d.cached_tokens as number | undefined
-          const cachePercent = (d.cache_percent as number | undefined) ?? (
-            typeof (d as Record<string, unknown>).cache_percent === 'number'
-              ? (d as Record<string, unknown>).cache_percent as number
-              : undefined
-          )
-          if (meta?.turn_total) {
-            u.turnPromptTokens = promptTokens
-            u.turnCompletionTokens = completionTokens
-            u.turnTotalTokens = (d.total_tokens as number) || (promptTokens + completionTokens)
-            u.turnCachedTokens = cachedTokens ?? 0
-            return
-          }
-          // A compaction frame's prompt is the PRE-compaction context the
-          // summariser read (and its cache read belongs to that old context),
-          // while its output is the compacted summary context. Displaying
-          // input as the output of the summarisation turn lets the user
-          // immediately see compaction usage (input) being reduced. This
-          // mirrors `sumUsageFromMessages` on reload.
-          if (meta?.summarization) {
-            u.promptTokens   = completionTokens
-          } else {
-            u.promptTokens   = promptTokens
-          }
-          // Absent means "this call read nothing from cache" — providers coerce
-          // 0 to None, so `usage_to_dict` drops the key. Carrying the previous
-          // value forward diverged from `sumUsageFromMessages`, which reads the
-          // last message's cache as 0 on reload.
-          u.cachedTokens     = cachedTokens ?? 0
-          u.cachedPercent    = typeof cachePercent === 'number'
-            ? cachePercent
-            : cachedTokens !== undefined && promptTokens > 0
-            ? Math.round((cachedTokens / promptTokens) * 10000) / 100
-            : undefined
-          u.completionTokens = u.completionTokens + completionTokens
-          u.totalTokens      = u.promptTokens + u.completionTokens
-          u.estimatedCostUsd = Math.round(((u.estimatedCostUsd ?? 0) + ((d.estimated_cost_usd as number) || 0)) * 1e8) / 1e8
-        })
+        onUsage(set, d)
         break
       }
 
       case 'queued_turn_start': {
-        const agent = (d.agent as string) || undefined
-        const messageIds = Array.isArray(d.message_ids) ? new Set(d.message_ids as string[]) : null
-        const eventMessages = Array.isArray(d.messages)
-          ? (d.messages as Array<{ id?: unknown; content?: unknown; extra?: unknown }>).flatMap((msg) => {
-              if (typeof msg.id !== 'string' || typeof msg.content !== 'string') return []
-              const { attachments, extra } = splitEventAttachments(msg.extra)
-              return [{
-                id: msg.id,
-                content: msg.content,
-                extra,
-                attachments,
-              }]
-            })
-          : []
-        // Set when an attach replays an injection the loaded history has not
-        // reached; see below.
-        let historyBehindReplay = false
-        set((draft) => {
-          const targetAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-          ensureAgent(draft, targetAgent)
-          if (!draft.leadName) draft.leadName = targetAgent
-          draft.isAgentWorking = true
-          draft.error = null
-          draft.agentStreams[targetAgent].status = 'working'
-          const queued = draft._pendingMessages.filter((msg) => {
-            if (draft.sessionId && msg.sessionId && msg.sessionId !== draft.sessionId) return false
-            return messageIds === null || messageIds.has(msg.id)
-          })
-          const queuedById = new Map<string, (typeof queued)[number]>(
-            queued.map((msg) => [msg.id, msg]),
-          )
-          const queuedIds = new Set(queuedById.keys())
-          const eventById = new Map(eventMessages.map((msg) => [msg.id, msg]))
-          // The server's row carries what the bubble shows.
-          const extraOf = (msg: (typeof queued)[number]): Record<string, unknown> | undefined => (
-            eventById.get(msg.id)?.extra
-          )
-          // The queued chip's metas carry no URL; the server's row does, so a
-          // spliced image can show at once instead of after a reload.
-          const attachmentsOf = (msg: (typeof queued)[number]) => (
-            eventById.get(msg.id)?.attachments ?? msg.attachments
-          )
-          // `message_ids` is the single authoritative order (it is built
-          // server-side from the same query, in the same order, as
-          // `messages`). Resolve each id against the locally-tracked pending
-          // message first — it carries the real `submittedAt`/attachments —
-          // falling back to the event's own content only for ids this client
-          // never optimistically tracked (e.g. injected by another client, or
-          // a POST response that hadn't resolved yet). Concatenating the two
-          // groups instead of merging on `message_ids` would silently
-          // reorder a message whenever it fell into the fallback group while
-          // an earlier id resolved locally.
-          const messages = messageIds === null
-            ? [
-                ...queued.map((msg) => ({
-                  id: msg.id,
-                  content: msg.content,
-                  submittedAt: msg.submittedAt,
-                  attachments: attachmentsOf(msg),
-                  extra: extraOf(msg),
-                })),
-                ...eventMessages
-                  .filter((msg) => !queuedIds.has(msg.id))
-                  .map((msg) => ({ ...msg, submittedAt: Date.now() })),
-              ]
-            : Array.from(messageIds).flatMap((id) => {
-                const pending = queuedById.get(id)
-                if (pending) {
-                  return [{
-                    id: pending.id,
-                    content: pending.content,
-                    submittedAt: pending.submittedAt,
-                    attachments: attachmentsOf(pending),
-                    extra: extraOf(pending),
-                  }]
-                }
-                const ev = eventById.get(id)
-                return ev ? [{ ...ev, submittedAt: Date.now() }] : []
-              })
-          if (messages.length === 0) return
-          const now = Date.now()
-          const stream = draft.agentStreams[targetAgent]
-          // An attach replays the injection of a message this client already
-          // shows, ahead of the snapshot of the step that followed it. Handled
-          // as a new injection, it sealed that step's live text into `blocks`,
-          // so the snapshot then had nothing to merge into and rendered the
-          // step a second time, below a re-ordered bubble (the phone app
-          // reattaches on every resume). A confirmed row is proof on its own;
-          // a live bubble counts only while the replay guard is armed.
-          const shownAsUser = (id: string, blocks: ContentBlock[]) =>
-            readBlocks(blocks).some((b) => b.type === 'user' && b.id === id)
-          const replaying = draft._attachReplay === true
-          const alreadyShown = messages.every((msg) =>
-            shownAsUser(msg.id, stream.blocks) || (replaying && shownAsUser(msg.id, stream.currentBlocks)),
-          )
-          if (alreadyShown) {
-            const shownIds = new Set(messages.map((msg) => msg.id))
-            draft._pendingMessages = draft._pendingMessages.filter((msg) => !shownIds.has(msg.id))
-            return
-          }
-          // The replay starts at this injection, so rows saved between the
-          // history read and the injection reach the client by no other path
-          // (a tool row stayed missing until the turn ended).
-          if (replaying) historyBehindReplay = true
-          stream.currentBlocks = stampOpenTextBlocks(
-            stream.currentBlocks,
-            now,
-            stream._turnStartedAt,
-          )
-          const nextTurnStartedAt = messages[0]?.submittedAt ?? now
-          // Guard: if a /undo ran before this SSE event arrived, drop any user
-          // blocks whose timestamp is at or after the revert boundary so they
-          // do not re-appear as ghost messages in the chat area.
-          const revertTime = draft._leadRevertTime
-          const filteredMessages = messages.filter((msg) => {
-            if (revertTime === null) return true
-            const t = msg.submittedAt ?? now
-            return t < revertTime
-          })
-
-          const incomingIds = new Set(filteredMessages.map((m) => m.id))
-          const incomingContents = new Set(filteredMessages.map((m) => (m.content || '').trim()))
-          const isMatchingOptimisticBlock = (b: ContentBlock) =>
-            b.type === 'user' &&
-            !b.extra?.from_agent &&
-            (incomingIds.has(b.id) || (b.id.startsWith('user-') && incomingContents.has((b.content || '').trim())))
-
-          // Seal prior in-flight blocks into `stream.blocks` before starting the injected turn.
-          // If currentBlocks had blocks from the earlier turn (thinking, tools, text), committing
-          // them first prevents the user message from being appended *after* them in currentBlocks,
-          // which caused tool calls to disappear on mid-turn reconcile and user messages to appear
-          // at the bottom of the previous assistant output.
-          const priorBlocks = stream.currentBlocks.filter((b) => !isMatchingOptimisticBlock(b))
-          if (priorBlocks.length > 0) {
-            const stamped = priorBlocks.map((b) => ({
-              ...b,
-              timestamp: b.timestamp ?? new Date(now),
-            }))
-            const toCommit = revertTime === null
-              ? stamped
-              : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
-            if (toCommit.length > 0) {
-              appendLocalBlocks(stream, toCommit)
-            }
-          }
-
-          const existingOptimisticBlocks = stream.currentBlocks.filter(isMatchingOptimisticBlock)
-          const newUserBlocks: ContentBlock[] = []
-          for (const msg of filteredMessages) {
-            const timestamp = new Date(msg.submittedAt ?? now)
-            const attachments = msg.attachments && msg.attachments.length > 0 ? msg.attachments : undefined
-
-            let matchIdx = existingOptimisticBlocks.findIndex((b) => b.id === msg.id)
-            if (matchIdx === -1) {
-              matchIdx = existingOptimisticBlocks.findIndex(
-                (b) => b.type === 'user' && !b.extra?.from_agent && b.id.startsWith('user-') && b.content === msg.content,
-              )
-            }
-
-            if (matchIdx !== -1) {
-              const existing = existingOptimisticBlocks[matchIdx]
-              // The server's URLs replace the bubble's in-browser preview; a
-              // queued chip's URL-less metas never replace a working one.
-              const served = attachments?.some((att) => att.url) ? attachments : undefined
-              if (served && existing.attachments) revokeBlobUrlsFromBlocks([existing])
-              newUserBlocks.push({
-                ...existing,
-                id: msg.id,
-                timestamp: existing.timestamp ?? timestamp,
-                attachments: served ?? existing.attachments ?? attachments,
-              })
-              continue
-            }
-
-            // By id, or by text only against a ``user-<ts>`` bubble whose POST
-            // has not answered yet. Any wider text match hid a steer the
-            // session had already sent once ("yes").
-            const existsInBlocks = stream.blocks.some(
-              (b) => b.id === msg.id || (b.type === 'user' && !b.extra?.from_agent && b.id.startsWith('user-') && b.content === msg.content),
-            )
-            if (existsInBlocks) {
-              continue
-            }
-
-            newUserBlocks.push({
-              id: msg.id,
-              type: 'user' as const,
-              content: msg.content,
-              timestamp,
-              ...(attachments ? { attachments } : {}),
-              ...(msg.extra ? { extra: msg.extra } : {}),
-            })
-          }
-
-          stream.currentBlocks = newUserBlocks
-          stream._turnStartedAt = nextTurnStartedAt
-          const removedIds = new Set<string>(queuedIds)
-          if (messageIds !== null) {
-            for (const id of messageIds) removedIds.add(id)
-          }
-          for (const ev of eventMessages) {
-            removedIds.add(ev.id)
-          }
-          draft._pendingMessages = draft._pendingMessages.filter((msg) => !removedIds.has(msg.id))
-        })
-        if (historyBehindReplay) {
-          // Mid-turn reload: keeps the live tail and adds the rows it lacks.
-          const { sessionId, _workspace: workspace } = get()
-          if (sessionId) void get().loadSession(sessionId, workspace)
-        }
+        onQueuedTurnStart(set, get, d)
         break
       }
 
@@ -794,127 +97,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'agent_status': {
-        const agent = d.agent as string
-        const status = d.status as string
-        set((draft) => {
-          ensureAgent(draft, agent)
-          if (status === 'working') {
-            draft.agentStreams[agent].status = 'working'
-            draft.isAgentWorking = true
-            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
-            // Only the sidebar's ``running`` badge depends on this. Patch that
-            // one field rather than invalidating the whole list — an agent turn
-            // emits one agent_status per member, so invalidating here used to
-            // cost (members × loaded pages) sequential refetches per turn. Patch
-            // once per turn: later members find the row already marked running.
-            if (draft.sessionId && draft._runningPatchedFor !== draft.sessionId) {
-              draft._runningPatchedFor = draft.sessionId
-              draft.cacheInvalidations.push({
-                kind: 'session_running',
-                sessionId: draft.sessionId,
-                running: true,
-              })
-            }
-          } else if (status === 'waiting_input') {
-            // Suspended on ask_user: still live, but no tokens are coming.
-            draft.agentStreams[agent].status = 'waiting_input'
-            draft.isAgentWorking = true
-            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
-          } else if (status === 'idle') {
-            draft.agentStreams[agent].status = 'idle'
-            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
-          } else if (status === 'offline') {
-            draft.agentStreams[agent].status = 'offline'
-            if (draft.liveAgentNames) draft.liveAgentNames = draft.liveAgentNames.filter((name) => name !== agent)
-          } else if (status === 'error') {
-            const meta = d.metadata as Record<string, unknown> | undefined
-            const lastErr = (meta?.message as string) ?? (d.message as string) ?? null
-            const errTitle = (meta?.title as string) ?? (d.title as string) ?? undefined
-            const errCode = (meta?.code as string) ?? (d.code as string) ?? undefined
-            const errCategory = (meta?.category as AgentError['category']) ?? (d.category as AgentError['category']) ?? undefined
-            const errDetails = (meta?.details as string) ?? (d.details as string) ?? undefined
-
-            draft.agentStreams[agent].status = 'error'
-            draft.agentStreams[agent].lastError = lastErr
-            if (draft.leadName && draft.agentStreams[draft.leadName]) {
-              draft.agentStreams[draft.leadName].status = 'error'
-              draft.agentStreams[draft.leadName].lastError = lastErr
-            }
-            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
-
-            if (lastErr && !draft.error) {
-              draft.error = {
-                title: errTitle || `Agent '${agent}' error`,
-                message: lastErr,
-                code: errCode,
-                category: errCategory || 'system',
-                agent,
-              }
-            }
-
-            const isProvider = errCategory === 'provider' ||
-              errCode?.startsWith('provider_') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('provider') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('rate limit') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('quota') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('invalid api key')
-
-            if (isProvider && lastErr) {
-              const targets = new Set<string>()
-              if (agent) targets.add(agent)
-              if (draft.leadName) targets.add(draft.leadName)
-
-              for (const targetAgent of targets) {
-                ensureAgent(draft, targetAgent)
-                const stream = draft.agentStreams[targetAgent]
-                const alreadyHas = stream.currentBlocks.some(
-                  (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === lastErr || b.content === lastErr)
-                ) || stream.blocks.some(
-                  (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === lastErr || b.content === lastErr)
-                )
-                if (!alreadyHas) {
-                  // The agent that failed is done; a lead told of a
-                  // member's failure may still be mid-turn.
-                  if (targetAgent === agent) commitLiveBlocks(draft, stream, Date.now())
-                  const errorBlock: ContentBlock = {
-                    id: generateBlockId(),
-                    type: 'provider_status',
-                    content: lastErr,
-                    extra: {
-                      type: 'provider_status',
-                      status: 'error',
-                      title: errTitle || 'Model error',
-                      message: lastErr,
-                      code: errCode,
-                      details: errDetails,
-                      category: 'provider',
-                    },
-                    timestamp: new Date(),
-                  }
-                  appendLocalBlocks(stream, [errorBlock])
-                }
-              }
-            }
-          }
-          if (status !== 'working' && status !== 'waiting_input') {
-            draft.isAgentWorking = anyAgentLive(draft.agentStreams)
-          }
-        })
+        onAgentStatus(set, d)
         break
       }
 
       case 'question_asked': {
-        // The event names the row ``question_id``; every other carrier calls it
-        // ``id``. Normalise before the shared mapper sees it.
-        const question = toPendingQuestion({ ...d, id: d.question_id })
-        if (!question) break
-        set((draft) => {
-          draft.pendingQuestion = question
-          // The Plan panel must show the revision under review, even if this
-          // client missed the `plan` tool finishing (it refreshes on that too).
-          const sid = draft.sessionId ?? question.sessionId
-          if (question.kind === 'plan_review' && sid) draft.cacheInvalidations.push({ kind: 'plan', sessionId: sid })
-        })
+        onQuestionAsked(set, d)
         break
       }
 
@@ -924,183 +112,37 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       // the local optimistic path unnecessary.
       case 'question_answered':
       case 'question_dismissed': {
-        const questionId = d.question_id as string
-        const answers = type === 'question_answered'
-          ? (Array.isArray(d.answers) ? (d.answers as string[][]) : [])
-          : null
-        set((draft) => {
-          // Guarded inside the helper: a late event for a question we are no
-          // longer showing must not close the current card, and the local path
-          // may already have recorded this same resolution.
-          applyQuestionResolution(
-            draft,
-            questionId,
-            answers,
-            answers === null ? parseQuestionClosedReason(d.reason) : null,
-          )
-        })
+        onQuestionResolved(set, type, d)
         break
       }
 
       case 'done': {
-        set((draft) => {
-          endAttachReplay(draft)
-          draft.isAgentWorking = false
-          // An open question deliberately survives `done`. The suspension is
-          // durable: the row stays `pending`, and a reload brings the card back
-          // fully answerable, so closing it here would show a resolution the
-          // server never made. Real endings (answer, dismiss, supersede, stop)
-          // all broadcast their own resolution.
-          const completedAtMs = Date.now()
-          Object.keys(draft.agentStreams).forEach((name) => {
-            const stream = draft.agentStreams[name]
-            commitLiveBlocks(draft, stream, completedAtMs)
-            stream._turnStartedAt = null
-            if (stream.status !== 'error' && stream.status !== 'offline') {
-              stream.status = 'idle'
-            }
-          })
-          if (draft.sessionId) {
-            draft._runningPatchedFor = null
-            draft.cacheInvalidations.push({
-              kind: 'session_running',
-              sessionId: draft.sessionId,
-              running: false,
-            })
-          }
-        })
+        onDone(set)
         break
       }
 
       case 'error': {
-        const message = (d.message as string) || 'An error occurred'
-        const title = d.title as string | undefined
-        const code = d.code as string | undefined
-        const category = d.category as AgentError['category'] | undefined
-        const agent = d.agent as string | undefined
-        const details = d.details as string | undefined
-
-        set((draft) => {
-          draft.error = title || code || category || agent
-            ? { title, message, code, category, agent }
-            : message
-          draft.isAgentWorking = false
-          draft._runningPatchedFor = null
-
-          const effectiveAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'lead'
-          const isProvider = category === 'provider' ||
-            code?.startsWith('provider_') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('provider') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('rate limit') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('quota') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('invalid api key')
-
-          if (isProvider) {
-            const targets = new Set<string>()
-            if (agent) targets.add(agent)
-            if (draft.leadName) targets.add(draft.leadName)
-            if (targets.size === 0) targets.add(effectiveAgent)
-
-            for (const targetAgent of targets) {
-              ensureAgent(draft, targetAgent)
-              const stream = draft.agentStreams[targetAgent]
-              const alreadyHas = stream.currentBlocks.some(
-                (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === message || b.content === message)
-              ) || stream.blocks.some(
-                (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === message || b.content === message)
-              )
-              if (!alreadyHas) {
-                // The turn is over: nothing more streams in ahead of the error.
-                commitLiveBlocks(draft, stream, Date.now())
-                const errorBlock: ContentBlock = {
-                  id: generateBlockId(),
-                  type: 'provider_status',
-                  content: message,
-                  extra: {
-                    type: 'provider_status',
-                    status: 'error',
-                    title: title || 'Model error',
-                    message,
-                    code,
-                    details,
-                    category: 'provider',
-                  },
-                  timestamp: new Date(),
-                }
-                appendLocalBlocks(stream, [errorBlock])
-              }
-            }
-          }
-        })
+        onError(set, d)
         break
       }
 
       case 'summarization_start': {
-        const agent = d.agent as string
-        if (!agent) break
-        const forced = (d.metadata as Record<string, unknown> | undefined)?.forced === true
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          // Auto-compaction can start between model iterations, after this turn
-          // has already streamed text/tools into currentBlocks. Seal those
-          // blocks first so the divider lands at the actual trigger point;
-          // subsequent deltas then remain after it. Everything sealed (plus a
-          // newly created "compacting" divider) is local-only, exactly like a
-          // `done` flush, so `applyLocalBlockTransform` tags it unsynced the
-          // same way.
-          const sealed = stream.currentBlocks
-          stream.currentBlocks = []
-          applyLocalBlockTransform(stream, (blocks) => startCompaction([...blocks, ...sealed], forced))
-        })
+        onSummarizationStart(set, d)
         break
       }
 
       case 'summarization_content': {
-        const agent = d.agent as string
-        const text = d.text as string
-        if (!agent || !text) break
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          appendCompactionContentInto(stream.blocks, text)
-        })
+        onSummarizationContent(set, d)
         break
       }
 
       case 'summarization_end': {
-        const agent = d.agent as string
-        if (!agent) break
-        const summary = (d.summary as string | undefined) ?? ''
-        const meta = d.metadata as Record<string, unknown> | undefined
-        const error = Boolean(meta?.error)
-        const forced = meta?.forced === true
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          // Usually edits the in-flight divider in place (nothing new to tag).
-          // Defensive path: no in-flight "compacting" block existed (e.g.
-          // events arrived out of order), so `endCompaction` synthesized a
-          // fresh completed one — tag it as unsynced like every other
-          // locally-created block.
-          applyLocalBlockTransform(stream, (blocks) => endCompaction(blocks, summary, error, forced))
-        })
+        onSummarizationEnd(set, d)
         break
       }
 
       case 'agent_not_configured': {
-        const agent = d.agent as string
-        set((draft) => {
-          ensureAgent(draft, agent)
-          draft.agentStreams[agent].status = 'error'
-          draft.agentStreams[agent].lastError = d.message as string
-          draft.setupRequired = {
-            agent,
-            message: d.message as string,
-            action: (d.action as { type?: string; tab?: string } | undefined) ?? {},
-          }
-          draft.isAgentWorking = false
-        })
+        onAgentNotConfigured(set, d)
         break
       }
 

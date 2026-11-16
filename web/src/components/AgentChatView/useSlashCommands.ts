@@ -26,12 +26,13 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
-import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
+import { type InputComposerHandle } from '../InputComposer'
+import type { SlashCommand, SnippetCommand } from '../InputComposer/commands'
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
 
 /** Commands that act on an existing session's history. */
-const SESSION_COMMANDS = new Set(['summarize', 'undo', 'redo', 'redo-all'])
+const SESSION_COMMANDS = new Set(['summarize', 'undo', 'undo-messages', 'redo', 'redo-all'])
 
 export interface UseSlashCommandsArgs {
   /** Workspace path, or `null` while no workspace is attached. */
@@ -104,13 +105,15 @@ export function useSlashCommands({
     ...baseCommands,
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
+      // The backend lists skills as commands too (`source: 'skill'`).
+      const isSkill = c.source === 'skill'
       return {
         id: c.name,
         label: displayName,
         displayName,
         insertText: displayName,
         description: c.description || `Custom command (${c.source})`,
-        category: 'command',
+        category: isSkill ? 'skill' : 'command',
         keepInputOpen: true,
       }
     }),
@@ -166,7 +169,8 @@ export function useSlashCommands({
         useAgentStore.getState().compactAgent()
         break
       case 'undo':
-        void useAgentStore.getState().undoAgent().then(async (response) => {
+      case 'undo-messages':
+        void useAgentStore.getState().undoAgent({ keepFiles: id === 'undo-messages' }).then(async (response) => {
           const message = response?.message
           if (!message || message.role !== 'user' || message.kind === 'summary') return
           // A goal's own turn gives nothing back.

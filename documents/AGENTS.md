@@ -11,7 +11,7 @@ assets/   Brand, README, and screenshot assets
 
 ## Rules
 
-- `docs/features.md` is the canonical catalogue of shipped user-visible features.
+- `docs/features.md` and the area files under `docs/features/` are the canonical catalogue of shipped user-visible features.
 - Keep behavior, implementation detail, configuration, and operational guidance in code, tests, CLI help, and the UI rather than duplicating them here.
 - Add an inline source comment only when it explains a non-obvious invariant or decision; do not restate ordinary control flow.
 - Keep user-facing installation and product overview in `../README.md`.

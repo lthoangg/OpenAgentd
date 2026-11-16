@@ -172,7 +172,7 @@ jobs:
             # a fresh start. Users who want a full wipe should remove
             # ``~/.config/openagentd``, ``~/.local/share/openagentd*``,
             # ``~/.local/state/openagentd`` and ``~/.cache/openagentd``
-            # manually — see ``documents/docs/configuration/paths.md``.
+            # manually.
 
             caveats <<~EOS
               Apple Silicon only. Intel Mac users: install the CLI with

@@ -1,3 +1,4 @@
+// size-ceiling: 1308 — split building the menu from handling its items
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

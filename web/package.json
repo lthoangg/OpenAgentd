@@ -1,7 +1,7 @@
 {
   "name": "openagentd-web",
   "private": true,
-  "version": "3.56.0",
+  "version": "3.57.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,8 +10,8 @@
     "check:budget": "bun scripts/check-bundle-budget.mjs",
     "build:analyze": "tsc -b && ANALYZE=1 vite build",
     "typecheck": "tsc -b --noEmit",
-    "lint": "oxlint --type-aware -c .oxlintrc.json",
-    "lint:fix": "oxlint --type-aware --fix -c .oxlintrc.json",
+    "lint": "oxlint --type-aware --report-unused-disable-directives-severity=error -c .oxlintrc.json",
+    "lint:fix": "oxlint --type-aware --report-unused-disable-directives-severity=error --fix -c .oxlintrc.json",
     "preview": "vite preview",
     "test": "bun test --parallel src/__tests__",
     "test:file": "bun test --parallel"

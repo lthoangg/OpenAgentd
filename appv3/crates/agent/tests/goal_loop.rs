@@ -653,7 +653,7 @@ async fn undo_ends_a_goal_only_when_it_takes_back_the_approval() {
     assert!(h.session.kick_goal(&h.sid, false).await);
     h.finish().await;
     assert_eq!(h.goal().await.turns_used, 2);
-    let undo = || appv3_agent::revert::undo_session_messages(h.pool.clone(), h.sid.clone());
+    let undo = || appv3_agent::revert::undo_session_messages(h.pool.clone(), h.sid.clone(), false);
 
     for turn in [2, 1] {
         let shift = undo().await.unwrap();

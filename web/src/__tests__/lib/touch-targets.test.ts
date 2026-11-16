@@ -68,13 +68,13 @@ describe('coarse-pointer touch targets', () => {
     const cases: Array<[string, RegExp]> = [
       ['Telemetry/SessionHeader.tsx', /pointer-coarse:h-9"[\s\S]{0,80}Open session/],
       ['settings/WorkspaceGroupsSettings.tsx', /aria-label=\{`Remove \$\{repo\.name\} from[\s\S]{0,300}className="[^"]*pointer-coarse:size-9/],
-      ['settings/pages/settings.providers/CredentialList.tsx', /aria-label=\{`New name for[\s\S]{0,300}className="[^"]*pointer-coarse:h-9/],
+      ['settings/pages/settings.models/CredentialList.tsx', /aria-label=\{`New name for[\s\S]{0,300}className="[^"]*pointer-coarse:h-9/],
       // Review panel views (audit R10-R12): scheduler ⋯, preview address, model list controls.
       // ROW_ACTION is 24px and pointer-coarse:size-9 (see list-row.ts).
       ['SchedulerPanel/TaskListItem.tsx', /className=\{ROW_ACTION\}\s*aria-haspopup="menu"\s*aria-label=\{`More actions for/],
       ['Preview/PreviewAddress.tsx', /aria-label="Preview address"[\s\S]{0,1600}pointer-coarse:h-9/],
-      ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-pressed=\{selected\}[\s\S]{0,500}pointer-coarse:h-9/],
-      ['settings/pages/settings.providers/ModelsPanel.tsx', /aria-label=\{`Copy \$\{qualifiedId\}`\}\s*className="[^"]*pointer-coarse:size-9/],
+      ['settings/pages/settings.models/ModelsPanel.tsx', /aria-pressed=\{selected\}[\s\S]{0,500}pointer-coarse:h-9/],
+      ['settings/pages/settings.models/ModelsPanel.tsx', /aria-label=\{`Copy \$\{qualifiedId\}`\}\s*className="[^"]*pointer-coarse:size-9/],
     ]
     for (const [file, pattern] of cases) expect([file, pattern.test(src(file))]).toEqual([file, true])
   })
@@ -100,7 +100,9 @@ describe('coarse-pointer touch targets', () => {
   })
 
   it('sizes Send to 36px on touch, a phone included, as the split Steer half beside its chevron', () => {
-    const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer.tsx', import.meta.url)), 'utf8')
+    // The composer folder as one text: the class strings live in whichever of its modules draws Send.
+    const dir = fileURLToPath(new URL('../../components/InputComposer/', import.meta.url))
+    const composer = readdirSync(dir).filter((f) => /\.tsx?$/.test(f)).map((f) => readFileSync(`${dir}${f}`, 'utf8')).join('\n')
     expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9'/)
     expect(composer).toMatch(/DELIVERY_TRIGGER_CLASS =[\s\S]*?pointer-coarse:h-9 \[/)
     expect(composer).not.toMatch(/phone:(size|h)-11/)

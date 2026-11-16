@@ -88,7 +88,7 @@ fn after_start(args: &StartArgs, ok: bool) -> Result<ExitCode> {
     }
     use std::io::IsTerminal;
     if cloud_hint(args.cloud, super::cloud::signed_in(), std::io::stdout().is_terminal()) {
-        crate::ui::next("From anywhere:", "agentd cloud login");
+        crate::ui::next("From anywhere:", "agentd remote login");
         println!();
     }
     Ok(code(true))

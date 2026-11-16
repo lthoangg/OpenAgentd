@@ -58,7 +58,6 @@ function nextMarker(pattern: RegExp, text: string): RegExpExecArray | null {
 }
 
 /** Every full-variant marker match in order (exported for the regex tests). */
-// eslint-disable-next-line react-refresh/only-export-components
 export function findInlineMarkers(text: string): RegExpExecArray[] {
   INLINE_MARKERS.lastIndex = 0
   const out: RegExpExecArray[] = []

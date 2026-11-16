@@ -279,21 +279,23 @@ a phone **Use as client** is on and **Use as server** is shown but
 disabled. Then:
 
 - **First device** (4.1): on an account with no roster yet, any device
-  (phone, desktop app, or `agentd cloud login`) runs genesis and is
+  (phone, desktop app, or `agentd remote login`) runs genesis and is
   connected.
-- **Glance and tap** (4.2), the default for every later device: the new
-  device waits as a pending enrollment; each signer is told (section 4.5),
-  shows the device's name, the roles it asked for, and the 6-digit code,
-  and the person compares the code with the new device's screen and taps
-  Approve.
+- **Scan to add** (4.3.1), the default for every later device the person
+  adds with a phone at hand (a computer, a new iPhone or iPad): the new
+  device shows a QR code next to its sign-in code, a signer's phone scans
+  it, and the join is an invitation whose secret the new device made. The
+  new device needs no sign-in; the person picks a 2-digit number on it at
+  the end. A new phone or iPad shows this code on its first screen.
+- **Glance and tap** (4.2), the fallback when no signer phone is at hand
+  ("Sign in with Google" on a phone, the browser way on a computer): the
+  new device waits as a pending enrollment; each signer is told (section
+  4.5), shows the device's name, the roles it asked for, and the 6-digit
+  code, and the person compares the code with the new device's screen and
+  taps Approve.
 - **Invitation** (4.3), the alternative: a signer shows a QR code or a
   link and the new device takes it. The new device needs no sign-in, and
   nobody compares a code.
-- **Scan to add** (4.3.1), for a new device without a camera when a signer
-  has one: the new device shows a QR code next to its sign-in code, a
-  signer scans it, and the join is an invitation whose secret the new
-  device made. The new device needs no sign-in; the person picks a
-  2-digit number on it at the end.
 
 The first device and glance and tap start with the device code flow,
 which ends in a one-time enrollment session for this device. An
@@ -402,7 +404,10 @@ valid `proof`. So the signer:
 ### 4.3.1 An invitation the new device asks for (scan to add)
 
 A computer has no camera, so it cannot take an invitation from a phone's
-screen. Here the new device `N` shows the code and a signer `A` scans it.
+screen; and a new phone or iPad should not send the person looking for a
+menu on the old one. Here the new device `N` shows the code and a signer
+`A` scans it. `N` may be any kind of device (the app's own words name it
+by its self-reported kind; `ios` covers an iPhone and an iPad).
 The join itself is section 4.3 with the secret made by `N`; what is new is
 how `N` learns which invitation to claim, and a last check on `N`.
 

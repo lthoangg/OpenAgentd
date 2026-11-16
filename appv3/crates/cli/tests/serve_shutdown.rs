@@ -2,6 +2,9 @@
 //! desktop app drives it (handshake on stdout, SIGTERM on quit).
 #![cfg(unix)]
 
+mod common;
+
+use common::{free_port, sandbox};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
@@ -14,20 +17,7 @@ fn spawn_server(root: &std::path::Path, desktop_token: Option<&str>) -> (Child, 
 fn spawn_server_with(root: &std::path::Path, desktop_token: Option<&str>, extra_env: &[(&str, &str)]) -> (Child, BufReader<std::process::ChildStdout>, u16) {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agentd"));
     cmd.args(["server", "serve", "--host", "127.0.0.1", "--port", "0", "--handshake"]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    for (k, d) in [
-        ("OPENAGENTD_DATA_DIR", "data"),
-        ("OPENAGENTD_CONFIG_DIR", "config"),
-        ("OPENAGENTD_STATE_DIR", "state"),
-        ("OPENAGENTD_CACHE_DIR", "cache"),
-        ("OPENAGENTD_WORKSPACE_DIR", "ws"),
-        ("HOME", "home"),
-    ] {
-        cmd.env(k, root.join(d));
-    }
-    cmd.env("OPENAGENTD_ENV", "production").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false");
-    for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "DATABASE_URL", "OPENAGENTD_DATABASE_URL", "OPENAGENTD_HANDSHAKE_FILE"] {
-        cmd.env_remove(k);
-    }
+    sandbox(&mut cmd, root);
     if let Some(t) = desktop_token {
         cmd.env("OPENAGENTD_DESKTOP_TOKEN", t);
     }
@@ -102,6 +92,30 @@ fn sigterm_with_an_open_event_stream_exits_promptly_after_shutdown_hooks() {
 }
 
 #[test]
+fn sigterm_right_after_the_handshake_still_runs_the_shutdown_hooks() {
+    // The handshake tells the desktop app the server is up, so the app may
+    // quit it from that moment on. The handler has to be installed by then:
+    // a SIGTERM with no handler kills the process with nothing shut down.
+    let root = tempfile::tempdir().unwrap();
+    let (mut child, _stdout, _port) = spawn_server(root.path(), None);
+
+    let started = Instant::now();
+    nix::sys::signal::kill(nix::unistd::Pid::from_raw(child.id() as i32), nix::sys::signal::Signal::SIGTERM).unwrap();
+    let status = loop {
+        if let Some(st) = child.try_wait().unwrap() {
+            break st;
+        }
+        assert!(started.elapsed() < Duration::from_secs(20), "server never exited");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let mut stderr = String::new();
+    child.stderr.take().unwrap().read_to_string(&mut stderr).unwrap();
+
+    assert!(status.success(), "{status:?}\n{stderr}");
+    assert!(stderr.contains("server_shutdown"), "shutdown hooks did not run:\n{stderr}");
+}
+
+#[test]
 fn the_desktop_token_still_guards_the_api_after_leaving_the_environment() {
     let root = tempfile::tempdir().unwrap();
     let (mut child, _stdout, port) = spawn_server(root.path(), Some("desk-tok"));
@@ -128,10 +142,6 @@ fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: Option<&
     let status = raw.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
     let body = raw.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default();
     (status, body)
-}
-
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
 }
 
 const LAN_KEY: &str = "lan-key-0123456789abcdef";

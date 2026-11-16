@@ -33,7 +33,7 @@ export const BTW_TAB_ID = 'btw'
 export const GOAL_TAB_ID = 'goal'
 
 export type DockTab =
-  | { id: typeof REVIEW_TAB_ID; type: 'review'; title: 'Changes' }
+  | { id: typeof REVIEW_TAB_ID; type: 'review'; title: 'Git' }
   | { id: typeof TASKS_TAB_ID; type: 'tasks'; title: 'Tasks' }
   | { id: typeof SCHEDULE_TAB_ID; type: 'schedule'; title: 'Scheduled tasks' }
   | { id: typeof PLAN_TAB_ID; type: 'plan'; title: 'Plan' }
@@ -120,7 +120,7 @@ export interface DockLayoutRequest {
   key: number
 }
 
-export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Changes' }
+export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Git' }
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
 export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Scheduled tasks' }
 export const PLAN_TAB: DockTabOf<'plan'> = { id: PLAN_TAB_ID, type: 'plan', title: 'Plan' }

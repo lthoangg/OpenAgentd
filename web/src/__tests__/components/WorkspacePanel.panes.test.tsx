@@ -128,7 +128,7 @@ describe('splitting the Review panel', () => {
 
     await update({ layoutRequest: { action: 'split-right', key: 1 } })
     expect(panes()).toHaveLength(2)
-    expect(within(pane(1)).getByRole('button', { name: 'Changes' })).toBeTruthy()
+    expect(within(pane(1)).getByRole('button', { name: 'Git' })).toBeTruthy()
     // The new pane offers what to open.
     expect(within(pane(2)).getByRole('group', { name: 'Open in Review panel' })).toBeTruthy()
     expect(screen.getByRole('separator', { name: 'Resize panes' }).getAttribute('aria-orientation')).toBe('vertical')
@@ -147,7 +147,7 @@ describe('splitting the Review panel', () => {
     await act(async () => { within(pane(4)).getByRole('button', { name: 'Pane actions' }).click() })
     await act(async () => { screen.getByRole('menuitem', { name: 'Close pane' }).click() })
     expect(panes()).toHaveLength(3)
-    expect(within(pane(1)).getByRole('button', { name: 'Changes' }).getAttribute('aria-current')).toBe('true')
+    expect(within(pane(1)).getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
   })
 
   // ⌘⇧D is the whole panel, as the header's panel button is: every pane
@@ -160,7 +160,7 @@ describe('splitting the Review panel', () => {
     await act(async () => { useLayoutStore.setState({ dockMaximized: true }) })
 
     expect(panes()).toHaveLength(2)
-    expect(within(pane(1)).getByRole('button', { name: 'Changes' })).toBeTruthy()
+    expect(within(pane(1)).getByRole('button', { name: 'Git' })).toBeTruthy()
     expect(screen.getByRole('separator', { name: 'Resize panes' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: /^Restore Review panel/ })).toHaveLength(1)
   })
@@ -195,19 +195,19 @@ describe('splitting the Review panel', () => {
     await act(async () => { screen.getByRole('menuitem', { name: 'Split right' }).click() })
     expect(panes()).toHaveLength(2)
     expect(paneOf(main.name)).toBe(pane(2))
-    expect(paneOf('Changes')).toBe(pane(1))
+    expect(paneOf('Git')).toBe(pane(1))
 
     // Git is alone in its pane now: splitting it off would leave nothing.
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Changes' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
     expect((screen.getByRole('menuitem', { name: 'Split down' }) as HTMLButtonElement).disabled).toBe(true)
     await act(async () => { screen.getByRole('menuitem', { name: 'Move to next pane' }).click() })
     expect(panes()).toHaveLength(0)
-    expect(screen.getByRole('button', { name: 'Changes' }).getAttribute('aria-current')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Git' }).getAttribute('aria-current')).toBe('true')
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Changes' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Git' }))
     await act(async () => { screen.getByRole('menuitem', { name: 'Split down' }).click() })
     expect(panes()).toHaveLength(2)
-    await act(async () => { screen.getByRole('button', { name: 'Close Changes' }).click() })
+    await act(async () => { screen.getByRole('button', { name: 'Close Git' }).click() })
     expect(panes()).toHaveLength(0)
     expect(screen.getByRole('button', { name: main.name })).toBeTruthy()
   })
@@ -223,7 +223,7 @@ describe('splitting the Review panel', () => {
     await press('ArrowRight')
     expect(panes()).toHaveLength(2)
     expect(paneOf(main.name)).toBe(pane(2))
-    expect(paneOf('Changes')).toBe(pane(1))
+    expect(paneOf('Git')).toBe(pane(1))
 
     // Alone in its pane now, it goes back into the pane on its left.
     await press('ArrowLeft')
@@ -238,6 +238,37 @@ describe('splitting the Review panel', () => {
   })
 })
 
+describe('the bar between two panes', () => {
+  /** Split once, with the panes' area 1,000px wide so a pointer position is a share. */
+  async function splitInTwo() {
+    const { update } = await renderPanel({ viewRequest: GIT })
+    await update({ layoutRequest: { action: 'split-right', key: 1 } })
+    const area = document.querySelector<HTMLElement>('[data-dock-panes]')!
+    area.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, x: 0, y: 0, toJSON: () => ({}) })
+    return screen.getByRole('separator', { name: 'Resize panes' })
+  }
+  const valueNow = () => screen.getByRole('separator', { name: 'Resize panes' }).getAttribute('aria-valuenow')
+
+  it('starts even, steps 16px a key, and evens out again on Enter', async () => {
+    const bar = await splitInTwo()
+    expect(valueNow()).toBe('50')
+    await act(async () => { fireEvent.keyDown(bar, { key: 'ArrowRight' }) })
+    // 500 + 16 of the 1,000px.
+    expect(valueNow()).toBe('52')
+    await act(async () => { fireEvent.keyDown(bar, { key: 'Enter' }) })
+    expect(valueNow()).toBe('50')
+  })
+
+  it('follows a drag live and keeps the split where it is dropped', async () => {
+    const bar = await splitInTwo()
+    await act(async () => { fireEvent.pointerDown(bar, { button: 0, pointerId: 1, clientX: 500, clientY: 10 }) })
+    await act(async () => { fireEvent.pointerMove(bar, { pointerId: 1, clientX: 700, clientY: 10 }) })
+    expect(valueNow()).toBe('70')
+    await act(async () => { fireEvent.pointerUp(bar, { pointerId: 1, clientX: 700, clientY: 10 }) })
+    expect(valueNow()).toBe('70')
+  })
+})
+
 describe('terminals', () => {
   const terminalTab = () => screen.queryByRole('button', { name: 'Terminal 1' })
 
@@ -249,7 +280,7 @@ describe('terminals', () => {
     await waitFor(() => expect(terminalTab()).toBeTruthy())
     expect(panes()).toHaveLength(0)
     expect(terminalTab()!.getAttribute('aria-current')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Changes' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Hide terminals/ })).toBeNull()
   })
 
@@ -257,7 +288,7 @@ describe('terminals', () => {
     const { update } = await renderPanel({ viewRequest: GIT })
     await update({ terminalOpenKey: 1 })
     await waitFor(() => expect(terminalTab()).toBeTruthy())
-    await act(async () => { screen.getByRole('button', { name: 'Changes' }).click() })
+    await act(async () => { screen.getByRole('button', { name: 'Git' }).click() })
 
     await update({ terminalOpenKey: 2 })
 

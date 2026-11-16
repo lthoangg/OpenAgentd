@@ -35,7 +35,7 @@ describe('a computer row on touch', () => {
     // Details opens once the sheet has slid away.
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)) })
     const details = screen.getByRole('dialog', { name: 'Work' })
-    expect(details.textContent).toContain('Key3F9A 21C4')
+    expect(details.textContent).toContain('Device ID3F9A 21C4')
     expect(details.textContent).toContain('SystemmacOS')
   })
 })

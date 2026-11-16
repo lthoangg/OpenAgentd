@@ -1,3 +1,4 @@
+// size-ceiling: 1017 — 17 components: one file per kind of preview
 /**
  * Workspace file preview renderers for the review dock: text (with line
  * comments), image, video, audio, PDF, binary and deleted-file previews, plus the

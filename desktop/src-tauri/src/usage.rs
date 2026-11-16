@@ -1,3 +1,4 @@
+// size-ceiling: 2242 — move the inline tests (1149 lines) to a sibling file
 //! Connected OAuth provider usage — fetch + tray formatting.
 //!
 //! Mirrors ``app/api/schemas/settings.py``'s ``ProviderUsageSummaryBody`` /

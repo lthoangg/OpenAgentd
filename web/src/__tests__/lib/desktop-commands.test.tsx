@@ -334,7 +334,7 @@ describe('useDesktopCommands', () => {
     }
   })
 
-  it('opens the Settings modal on the Providers tab for settings_providers', async () => {
+  it('opens the Settings modal on Models for settings_providers', async () => {
     const originalOpenSettings = useSettingsStore.getState().openSettings
     const openSettings = mock(() => {})
     useSettingsStore.setState({ openSettings })
@@ -343,14 +343,14 @@ describe('useDesktopCommands', () => {
 
       listener?.({ payload: 'settings_providers' })
 
-      expect(openSettings).toHaveBeenCalledWith('providers')
+      expect(openSettings).toHaveBeenCalledWith('models')
     } finally {
       useSettingsStore.setState({ openSettings: originalOpenSettings })
     }
   })
 
   // The notch sends this for a server that refused its saved access key.
-  it('opens the Settings modal on the Server page for settings_connection', async () => {
+  it('opens the Settings modal on Computers for settings_connection', async () => {
     const originalOpenSettings = useSettingsStore.getState().openSettings
     const openSettings = mock(() => {})
     useSettingsStore.setState({ openSettings })
@@ -359,7 +359,7 @@ describe('useDesktopCommands', () => {
 
       listener?.({ payload: 'settings_connection' })
 
-      expect(openSettings).toHaveBeenCalledWith('connection')
+      expect(openSettings).toHaveBeenCalledWith('switch_computer')
     } finally {
       useSettingsStore.setState({ openSettings: originalOpenSettings })
     }

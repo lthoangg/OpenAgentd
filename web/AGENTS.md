@@ -19,7 +19,8 @@ bun test --parallel src/__tests__/path/to/file.test.tsx
 bun run build
 ```
 
-Always run `bun test` with `--parallel` for per-file module-registry isolation.
+Always run `bun test` with `--parallel`: `mock.module()` patches a registry
+shared by the whole process, and `--parallel` gives each file its own.
 
 `bun run build` includes the TypeScript build, Vite production bundle, and the
 chunk-cycle guard. The root `make build-web` performs a frozen install before
@@ -46,15 +47,26 @@ Use static ESM imports and the `@/` alias for application modules. Keep
 same-origin `/api` desktop-token injection intact; do not attach native access
 tokens to arbitrary remote URLs.
 
+`bun run lint` enforces part of this: `fetch` is refused outside `src/api/`
+(the files that predate the rule are listed in `.oxlintrc.json`; move a
+backend call into `src/api/` rather than adding to that list), import cycles
+fail, and app code may not use `any` or call a hook conditionally. Import
+a module directly instead of through a barrel when the barrel would close a
+cycle.
+
 ## UI constraints
 
-- Read root `DESIGN.md` and reuse tokens from `src/styles/tokens.css` (palette,
-  motion) and `src/index.css` (Tailwind theme, radius, spacing) and existing
-  primitives before adding colors, spacing, type, radius, elevation, or motion.
+- Read root `DESIGN.md` and the chapter under `design/` its map names for what
+  you change. Reuse tokens from `src/styles/tokens.css` (palette, motion) and
+  `src/index.css` (Tailwind theme, radius, spacing) and existing primitives
+  before adding colors, spacing, type, radius, elevation, or motion.
+- Cite a design rule in a comment or a lint message by its heading, as
+  `DESIGN.md → Motion`; `make verify-docs` fails on a name that no chapter has.
 - Build the shared UI mobile-first. Gate platform behavior through existing
   `useIsMobile()` / `usePlatform()` hooks, account for safe areas and desktop
   chrome, and provide touch equivalents for hover/right-click behavior.
-- Manually inspect narrow and wide layouts for visual changes; this is not
+- Check a visual or interaction change at a phone width and a desktop width
+  with the `oad/drive` skill, and look at its screenshots; this is not
   covered by `make verify-web`.
 - `src/components/ui/` contains intentionally dependency-free primitives. Do
   not introduce shadcn/Base UI/CVA/clsx/tailwind-merge for those primitives;

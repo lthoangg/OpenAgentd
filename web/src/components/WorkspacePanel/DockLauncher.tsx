@@ -62,7 +62,7 @@ export function dockOpenItems(
   const tool = (id: string, label: string, icon: ReactNode, run: (() => void) | undefined, shortcut?: string) => {
     if (run) tools.push({ id, label, icon, shortcut, group: 'tool', run })
   }
-  view('review', 'Changes', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
+  view('review', 'Git', <GitCompare size={14} aria-hidden="true" />, actions.onOpenGit, shortcutLabel(APP_SHORTCUTS.openGit, os))
   view('goal', 'Goal', <Target size={14} aria-hidden="true" />, actions.onOpenGoal)
   view('plan', 'Plan', <FileText size={14} aria-hidden="true" />, actions.onOpenPlan)
   view('tasks', 'Tasks', <ListTodo size={14} aria-hidden="true" />, actions.onOpenTasks, shortcutLabel(APP_SHORTCUTS.tasks, os))

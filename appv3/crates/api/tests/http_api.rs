@@ -336,8 +336,24 @@ async fn http_api_end_to_end() {
     assert_eq!(msgs[1]["content"], "Hello from mock.");
     assert_eq!(msgs[1]["extra"]["usage"], json!({"input": 7, "output": 3}));
 
-    // undo restores the workspace snapshot and reports changed paths
     std::fs::write(ws.join("b.txt"), "later").unwrap();
+    // undo with keep_files moves only the conversation; redo-all leaves files too
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "redo", "session_id": sid, "keep_files": true}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "undo", "session_id": sid, "keep_files": "yes"}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "undo", "session_id": sid, "keep_files": true}))).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    assert_eq!(v["changed_paths"], json!({"added": [], "modified": [], "removed": []}));
+    assert_eq!(v["keep_files"], json!(true));
+    assert!(ws.join("b.txt").exists());
+    let (_, h) = c.json("GET", &format!("/api/agent/{sid}/history"), None).await;
+    assert_eq!(h["lead"]["revert"]["keep_files"], json!(true), "{}", h["lead"]["revert"]);
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "redo-all", "session_id": sid}))).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    assert!(ws.join("b.txt").exists());
+
+    // undo restores the workspace snapshot and reports changed paths
     let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "undo", "session_id": sid}))).await;
     assert_eq!(st, StatusCode::ACCEPTED, "{v}");
     assert_eq!(v["changed_paths"]["removed"], json!(["b.txt"]));
@@ -549,6 +565,7 @@ async fn http_api_end_to_end() {
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     worktree_tree_flow(&c, root.path()).await;
     side_question_flow(&c, &pool, &sid).await;
+    workspace_picker_and_resolve_flow(&c, &pool, root.path()).await;
 
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
@@ -777,6 +794,13 @@ async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path:
     let work_index = v["credentials"].as_array().unwrap().iter().position(|c| c["id"] == json!(work)).unwrap();
     assert_eq!(pinned[work_index], 1, "{v}");
     assert_eq!(pinned.iter().sum::<i64>(), 1, "{v}");
+
+    // Picking an account cooling after a 429 is the user forcing it: the
+    // next request tries it instead of silently staying on another one.
+    appv3_core::credentials::set_cooldown("openrouter", work, appv3_core::credentials::now_s() + 3600.0, "quota");
+    let (st, v) = c.json("PATCH", &uri, Some(json!({"credential_id": work}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(appv3_core::credentials::cooldown("openrouter", work), None, "a picked account is tried again");
 
     // Thinking level and model are stored the same way.
     let (st, v) = c.json("PATCH", &uri, Some(json!({"thinking_level": "high"}))).await;
@@ -1858,4 +1882,92 @@ async fn side_question_flow(c: &Client, pool: &appv3_db::DbPool, sid: &str) {
     let (st, _, _) = tokio::time::timeout(std::time::Duration::from_secs(20), c.send(ask("again?"))).await.expect("side question ends");
     assert_eq!(st, StatusCode::OK);
     assert_eq!(appv3_db::count_side_questions(pool, sid).await.unwrap(), 1);
+}
+
+/// The workspace pickers, `POST /sessions/resolve` and a session's
+/// subagent listing: their status codes and bodies as they are.
+async fn workspace_picker_and_resolve_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) {
+    let ws = root.join("picker-ws");
+    for d in ["Beta", "alpha", ".hidden"] {
+        std::fs::create_dir_all(ws.join(d)).unwrap();
+    }
+    std::fs::write(ws.join("file.txt"), "x").unwrap();
+    let enc = |p: &str| form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>();
+    let raw = ws.display().to_string();
+    let canon = appv3_db::resolve_path(&raw);
+
+    let (st, v) = c.json("GET", &format!("/api/agent/workspace/validate?workspace={}", enc(&raw)), None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"workspace": canon})));
+    let (st, v) = c.json("GET", &format!("/api/agent/workspace/validate?workspace={}", enc(&format!("{raw}/missing"))), None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("GET", "/api/agent/workspace/validate?workspace=%2Fetc", None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("GET", "/api/agent/workspace/validate", None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+
+    // Directories only, hidden ones left out, sorted case-insensitively.
+    let (st, v) = c.json("GET", &format!("/api/agent/workspace/browse?path={}", enc(&raw)), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let parent = std::path::Path::new(&canon).parent().unwrap().display().to_string();
+    let dir = |n: &str| json!({"name": n, "path": std::path::Path::new(&canon).join(n).display().to_string()});
+    assert_eq!(v, json!({"path": canon, "parent": parent, "directories": [dir("alpha"), dir("Beta")]}));
+    let (st, v) = c.json("GET", &format!("/api/agent/workspace/browse?path={}", enc(&format!("{raw}/file.txt"))), None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+
+    // `resolve` returns the workspace's latest session, or creates one.
+    let resolve = "/api/agent/sessions/resolve";
+    let (st, v) = c.json("POST", resolve, Some(json!({}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["detail"][0]["type"], "missing", "{v}");
+    let (st, v) = c.json("POST", resolve, Some(json!({"workspace": ""}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["detail"][0]["type"], "string_too_short", "{v}");
+    let (st, v) = c.json("POST", resolve, Some(json!([]))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", resolve, Some(json!({"workspace": format!("{raw}/missing")}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", resolve, Some(json!({"workspace": raw, "worktree_name": "x"}))).await;
+    assert_eq!((st, v), (StatusCode::UNPROCESSABLE_ENTITY, json!({"detail": "worktree_from and worktree_name are required for worktree sessions."})));
+    let (st, first) = c.json("POST", resolve, Some(json!({"workspace": raw}))).await;
+    assert_eq!(st, StatusCode::OK, "{first}");
+    assert_eq!((first["created"].clone(), first["workspace"].clone(), first["agent_name"].clone()), (json!(true), json!(canon), json!("code")), "{first}");
+    let (st, again) = c.json("POST", resolve, Some(json!({"workspace": raw}))).await;
+    assert_eq!(st, StatusCode::OK, "{again}");
+    assert_eq!((again["created"].clone(), again["id"].clone()), (json!(false), first["id"].clone()), "{again}");
+    let (st, fresh) = c.json("POST", resolve, Some(json!({"workspace": raw, "create": true}))).await;
+    assert_eq!(st, StatusCode::OK, "{fresh}");
+    assert_eq!(fresh["created"], json!(true), "{fresh}");
+    assert_ne!(fresh["id"], first["id"]);
+    let (_, tree) = c.json("GET", "/api/agent/workspace/tree", None).await;
+    assert!(tree["repositories"].as_array().unwrap().iter().any(|r| r["path"] == json!(canon)), "resolve registers the workspace: {tree}");
+
+    // A session's members, from its child rows.
+    let lead = fresh["id"].as_str().unwrap().to_string();
+    let lead_row = appv3_db::get_session(pool, &lead).await.unwrap().unwrap();
+    let member = appv3_db::create_session(
+        pool,
+        appv3_db::NewSession { workspace: canon.clone(), parent_session_id: Some(lead_row.id.clone()), agent_name: Some("explorer#1".into()), ..Default::default() },
+    )
+    .await
+    .unwrap();
+    let (st, v) = c.json("GET", &format!("/api/agent/sessions/{lead}/subagents"), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v["available_profiles"].is_array(), "{v}");
+    assert_eq!(v["live_members"], v["subagents"], "{v}");
+    let m = &v["subagents"][0];
+    assert_eq!(v["subagents"].as_array().map(Vec::len), Some(1), "{v}");
+    assert_eq!(
+        (m["member_id"].clone(), m["profile"].clone(), m["session_id"].clone(), m["has_pending_question"].clone()),
+        (json!("explorer#1"), json!("explorer"), json!(appv3_db::codec::api_uuid(&member.id)), json!(false)),
+        "{v}"
+    );
+    assert!(m["status"].is_string(), "{v}");
+    let (st, _) = c.json("GET", "/api/agent/sessions/not-a-uuid/subagents", None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+
+    for id in [first["id"].as_str().unwrap(), lead.as_str()] {
+        let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{id}"), None).await;
+        assert_eq!(st, StatusCode::NO_CONTENT);
+    }
+    appv3_db::hide_coding_workspace(pool, &canon).await.unwrap();
 }

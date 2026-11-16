@@ -371,7 +371,7 @@ describe('Review dock layout', () => {
 
     await renderPanel({ centerWidth: 600 })
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Changes \(/ }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Git \(/ }))
     chat.remove()
   })
 

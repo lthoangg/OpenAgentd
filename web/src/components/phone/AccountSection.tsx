@@ -17,7 +17,8 @@ import { ChevronRight } from 'lucide-react'
 
 import { pendingLabel, type DeviceRow, type PendingRow, type PhoneCloudStatus } from '@/api/phone-cloud'
 import { ApprovalSheet } from '@/components/phone/ApprovalSheet'
-import { groupCode, noticeCopy } from '@/components/settings/pages/account-copy'
+import { CAN_ADD_DEVICES, FEATURE_NAME, groupCode, noticeCopy } from '@/components/settings/pages/remote-copy'
+import { kindNoun } from '@/lib/device-words'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
@@ -28,10 +29,12 @@ import { usePhoneCloudPending, usePhoneCloudStatus } from '@/queries/phone-cloud
 /** The short line under "Finish signing in", per step. */
 function unfinishedLine(status: PhoneCloudStatus): string | null {
   switch (status.state) {
-    case 'signing_in': return `Enter ${status.user_code} on the account page`
+    case 'signing_in': return status.add_link && !status.recovering ? 'Scan its code with your other phone' : `Enter ${status.user_code} on the account page`
     case 'recovery': return 'Save your recovery code'
-    case 'joining': return status.code ? `Compare ${groupCode(status.code)} on your other device` : 'Waiting for a device of your account to approve'
+    case 'joining': return status.code ? `Check ${groupCode(status.code)} on your other phone` : 'Waiting for your other phone to add this one'
     case 'invited': return 'Waiting for your other phone to add this one'
+    case 'scanned': return 'Tap Add on your other phone'
+    case 'confirming': return 'Pick the number your other phone shows'
     default: return null
   }
 }
@@ -44,7 +47,7 @@ function accountLine(status: PhoneCloudStatus, devices: DeviceRow[] | undefined)
     case 'connected': {
       if (!devices) return 'Signed in'
       if (devices.length > 1) return `${devices.length} devices`
-      return status.signer ? 'This phone · Approves devices' : 'This phone'
+      return status.signer ? `This phone · ${CAN_ADD_DEVICES}` : 'This phone'
     }
     default: return 'Use your computers from anywhere'
   }
@@ -79,12 +82,12 @@ function Notice({ status }: { status: PhoneCloudStatus }) {
   return <Callout tone={notice.tone ?? 'info'} title={notice.title} role="status">{notice.body}</Callout>
 }
 
-/** A request to join, for a phone that approves. */
+/** A request to join, for a phone that can add devices. */
 function PendingCard({ row, onReview }: { row: PendingRow; onReview: () => void }) {
   return (
     <div data-pending-card="" className={cn('flex items-center gap-3 border-l-2 border-l-(--color-accent)', ROW_PAD)}>
       <span className="min-w-0 flex-1">
-        <span className={cn('block', TEXT.label)}>A device wants to join</span>
+        <span className={cn('block', TEXT.label)}>{`A new ${kindNoun(row.kind)} wants to join`}</span>
         <span className={cn('mt-0.5 block truncate', TEXT.hint)}>{pendingLabel(row)}</span>
       </span>
       <Button size="sm" variant="primary" onClick={onReview}>Review</Button>
@@ -115,7 +118,7 @@ export function AccountSection({
   const unfinished = unfinishedLine(status)
   const guest = status.state === 'guest'
   const body = (
-    <PanelSection title="Account" flush>
+    <PanelSection title={FEATURE_NAME} flush>
       {pending.map((row) => <PendingCard key={row.enrollment_id} row={row} onReview={() => setReviewing(row)} />)}
       {unfinished
         ? <SheetRow title="Finish signing in" line={unfinished} onOpen={onOpen} />

@@ -1,7 +1,7 @@
 /**
- * The run chip under the Detail setting: Full names the model, the thinking
- * level and the account; Simple names the model only. Its accessible name and
- * the picker say the rest in both.
+ * The run chip under the Detail setting: Full and Simple both name the
+ * model, the thinking level and the account. Simple folds the transcript,
+ * not the settings the next message runs with.
  */
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
@@ -39,12 +39,11 @@ describe('RunChip and the Detail setting', () => {
     expect(chip.textContent).toContain('Low · work')
   })
 
-  it('in Simple names the model only, and still says the rest to a screen reader', () => {
+  it('in Simple still names the model, the thinking level and the account', () => {
     useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
     const chip = renderChip()
     expect(chip.textContent).toContain('gpt-6-luna')
-    expect(chip.textContent).not.toContain('Low')
-    expect(chip.textContent).not.toContain('work')
+    expect(chip.textContent).toContain('Low · work')
     expect(chip.getAttribute('aria-label')).toContain('thinking Low, account work')
   })
 

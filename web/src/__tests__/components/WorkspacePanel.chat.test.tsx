@@ -96,8 +96,8 @@ describe('WorkspacePanel chat workspace', () => {
   it('never offers Git or probes git for a chat root, even when asked to open it', async () => {
     await renderPanel(true, { openGit: true })
 
-    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
-    expect(launcherRow('Changes')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
+    expect(launcherRow('Git')).toBeNull()
     expect(launcherRow('Terminal')).toBeTruthy()
     expect(
       requestedUrls.filter(
@@ -112,16 +112,16 @@ describe('WorkspacePanel chat workspace', () => {
   it('starts a coding workspace empty, with Git on the launcher', async () => {
     await renderPanel(false)
 
-    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
-    await act(async () => { launcherRow('Changes')!.click() })
-    const gitTab = screen.getByRole('button', { name: 'Changes' })
+    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
+    await act(async () => { launcherRow('Git')!.click() })
+    const gitTab = screen.getByRole('button', { name: 'Git' })
     expect(gitTab.getAttribute('aria-current')).toBe('true')
     expect(launcherRow('Terminal')).toBeNull()
 
     // Git is an ordinary tab: closing it goes back to the launcher.
-    await act(async () => { screen.getByRole('button', { name: 'Close Changes' }).click() })
-    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
-    expect(launcherRow('Changes')).toBeTruthy()
+    await act(async () => { screen.getByRole('button', { name: 'Close Git' }).click() })
+    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
+    expect(launcherRow('Git')).toBeTruthy()
   })
 
   it('offers Git again when the open dock moves from Chat to a project', async () => {
@@ -138,12 +138,12 @@ describe('WorkspacePanel chat workspace', () => {
     await act(async () => {
       rerender = render(panel(WORKSPACE, true)).rerender
     })
-    expect(launcherRow('Changes')).toBeNull()
+    expect(launcherRow('Git')).toBeNull()
 
     await act(async () => {
       rerender(panel('/home/user/code/site', false))
     })
-    expect(launcherRow('Changes')).toBeTruthy()
+    expect(launcherRow('Git')).toBeTruthy()
   })
 })
 
@@ -153,7 +153,7 @@ describe('WorkspacePanel in a folder without Git', () => {
     workspaceIsGit = false
     await renderPanel(false)
 
-    expect(launcherRow('Changes')).toBeNull()
+    expect(launcherRow('Git')).toBeNull()
     const names = Array.from(document.querySelectorAll('[data-dock-launcher] button'), (row) => row.querySelector('span')?.textContent)
     expect(names).toEqual(['Find file…', 'Preview', 'Terminal', 'Tasks', 'Scheduled tasks'])
     // Tools lead, so the hairline sits between Terminal and Tasks.
@@ -165,7 +165,7 @@ describe('WorkspacePanel in a folder without Git', () => {
     workspaceIsGit = false
     await renderPanel(false, { openGit: true })
 
-    expect(screen.queryByRole('button', { name: 'Changes' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
     expect(screen.queryByText(/Not a git repository/i)).toBeNull()
     expect(requestedUrls.filter((url) => url.includes('git-diff') || url.includes('git/history'))).toEqual([])
   })
@@ -173,7 +173,7 @@ describe('WorkspacePanel in a folder without Git', () => {
   it('keeps Changes first in a repository', async () => {
     await renderPanel(false)
     const names = Array.from(document.querySelectorAll('[data-dock-launcher] button'), (row) => row.querySelector('span')?.textContent)
-    expect(names).toEqual(['Changes', 'Tasks', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(names).toEqual(['Git', 'Tasks', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
   })
 })
 

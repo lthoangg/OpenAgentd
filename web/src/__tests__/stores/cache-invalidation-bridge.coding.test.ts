@@ -13,12 +13,10 @@ function flushMicrotasks(): Promise<void> {
 function recordingClient() {
   const client = new QueryClient()
   const keys: string[] = []
-  /* eslint-disable @typescript-eslint/no-explicit-any */
   client.invalidateQueries = ((args: any) => {
     keys.push(JSON.stringify(args.queryKey))
     return Promise.resolve()
   }) as any
-  /* eslint-enable @typescript-eslint/no-explicit-any */
   return { client, keys }
 }
 

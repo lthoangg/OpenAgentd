@@ -74,6 +74,25 @@ function renderPage() {
 }
 
 describe('Settings → Sessions', () => {
+  it('keeps the other parts when one cannot be read, and says which one failed', async () => {
+    server.use(http.get('http://localhost/api/settings/goals', () => HttpResponse.json({ detail: 'goals are broken' }, { status: 500 })))
+    renderPage()
+
+    expect(await screen.findByText("Couldn't load Goals")).toBeTruthy()
+    // Titles, Summaries and History still load and can be changed.
+    expect(await screen.findByRole('switch', { name: 'Name sessions automatically' })).toBeTruthy()
+    expect(screen.getByRole('switch', { name: 'Keep usage history forever' })).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: 'Keep going after approval' })).toBeNull()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Titles', 'Summaries', 'Goals', 'History'])
+  })
+
+  it('says why Save is off when a summary field is wrong', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('switch', { name: 'Summarize idle sessions' }))
+    fireEvent.change(await screen.findByRole('spinbutton', { name: /Only once it is this full/ }), { target: { value: '150' } })
+    expect(await screen.findByText('Fix how full an idle session must be to save.')).toBeTruthy()
+  })
+
   it('holds what were four pages under four headings, in order', async () => {
     renderPage()
 

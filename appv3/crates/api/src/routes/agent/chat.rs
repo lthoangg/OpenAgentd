@@ -1,10 +1,10 @@
-//! Chat, commands, SSE stream, agent
-//! listing, workspace pickers, session CRUD and history.
+//! Talking to an agent: sending a message (run, queue or steer), cancelling
+//! a queued one, commands (compact, undo, redo), side questions, the SSE
+//! stream and the agent listing. The router also registers the session,
+//! history and workspace routes of the submodules.
 
 use super::helpers::*;
-use super::worktrees;
 use crate::error::{loc, verr, verr_ctx, ApiError, ApiResult};
-use crate::middleware::Peer;
 use crate::sse::sse_response;
 use crate::util::*;
 use crate::AppState;
@@ -12,18 +12,22 @@ use appv3_agent::service::RawAttachment;
 use appv3_agent::session::SessionError;
 use appv3_agent::{manager, store};
 use appv3_core::settings;
-use appv3_db::api::{session_response, MessageView, MessagesView, SessionOverlay};
 use appv3_db::{self as db, DbPool};
 use axum::extract::{FromRequest, Multipart, Path as AxPath, Request, State};
-use axum::http::{header, StatusCode};
+use axum::http::header;
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use bytes::Bytes;
-use serde::Serialize;
-use serde_json::{json, Map, Value};
-use std::collections::{HashMap, HashSet};
+use history::{agent_history, tool_call_arguments, tool_result};
+use serde_json::{json, Value};
+use sessions::{delete_session_route, list_sessions, resolve_session, save_run_settings, session_detail, session_subagents, session_waiting, update_session};
 use std::path::{Path, PathBuf};
+use workspaces::{browse_workspace, register_session_workspace, relocate_workspace, update_visibility, validate_workspace, workspace_tree};
+
+mod history;
+mod sessions;
+mod workspaces;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -48,10 +52,6 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{session_id}/btw", post(ask_side_question).get(list_side_questions).delete(clear_side_questions))
         .route("/sessions/{session_id}/btw/count", get(count_side_questions))
         .route("/sessions/{session_id}/btw/{side_id}/stop", post(stop_side_question))
-}
-
-fn running_set() -> HashSet<String> {
-    store().running_session_ids().into_iter().collect()
 }
 
 // ── POST /chat ──────────────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ fn waits_behind_turn(busy: bool, awaiting_question: bool, hold_until_turn_end: b
     busy && (!awaiting_question || hold_until_turn_end)
 }
 
-pub fn session_err(e: SessionError) -> ApiError {
+fn session_err(e: SessionError) -> ApiError {
     match e {
         SessionError::Precondition { message, status } => ApiError::new(status, message),
         other => ApiError::internal(other),
@@ -361,10 +361,6 @@ async fn cancel_queued(State(st): State<AppState>, AxPath((sid, mid)): AxPath<(S
 }
 
 // ── POST /commands ──────────────────────────────────────────────────────────
-
-fn changed_paths(s: &appv3_agent::revert::BoundaryShift) -> Value {
-    json!({"added": s.added, "modified": s.modified, "removed": s.removed})
-}
 
 async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
     let body = body_value(&raw)?;
@@ -396,12 +392,28 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
             String::new()
         }
     };
+    let keep_files = match body.get("keep_files") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            errs.push(verr("bool_type", &loc(&["body", "keep_files"]), "Input should be a valid boolean", other.clone()));
+            false
+        }
+    };
+    if keep_files && !command.is_empty() && command != "undo" {
+        errs.push(verr("extra_forbidden", &loc(&["body", "keep_files"]), "keep_files applies only to 'undo'", Value::Bool(true)));
+    }
     if !errs.is_empty() {
         return Err(ApiError::validation(errs));
     }
     let agent = resolve_agent_for_existing_session(&st.pool, &session_id).await?;
     let resp =
         |cmd: &str, sid: &str, message: Value, cp: Value| json_code(202, json!({"status": "accepted", "session_id": sid, "command": cmd, "message": message, "changed_paths": cp}));
+    let shift_resp = |cmd: &str, shift: &appv3_agent::revert::BoundaryShift| {
+        let message = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
+        let changed_paths = json!({"added": shift.added, "modified": shift.modified, "removed": shift.removed});
+        json_code(202, json!({"status": "accepted", "session_id": session_id, "command": cmd, "message": message, "changed_paths": changed_paths, "keep_files": shift.keep_files}))
+    };
     match command.as_str() {
         "compact" => {
             let sid = agent.handle_compact(&session_id, None).await.map_err(session_err)?;
@@ -409,19 +421,18 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
             Ok(resp("compact", &sid, Value::Null, Value::Null))
         }
         "undo" => {
-            let shift = agent.handle_boundary_command(&session_id, "undo", "No message to undo.", appv3_agent::revert::undo_session_messages).await.map_err(session_err)?;
-            let msg = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
-            Ok(resp("undo", &session_id, msg, changed_paths(&shift)))
+            let undo = |pool, sid| appv3_agent::revert::undo_session_messages(pool, sid, keep_files);
+            let shift = agent.handle_boundary_command(&session_id, "undo", "No message to undo.", undo).await.map_err(session_err)?;
+            Ok(shift_resp("undo", &shift))
         }
         "redo" => {
             let shift = agent.handle_boundary_command(&session_id, "redo", "No undone message to redo.", appv3_agent::revert::redo_session_messages).await.map_err(session_err)?;
-            let msg = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
-            Ok(resp("redo", &session_id, msg, changed_paths(&shift)))
+            Ok(shift_resp("redo", &shift))
         }
         _ => {
             let shift =
                 agent.handle_boundary_command(&session_id, "redo", "No undone message to redo.", appv3_agent::revert::redo_all_session_messages).await.map_err(session_err)?;
-            Ok(resp("redo-all", &session_id, Value::Null, changed_paths(&shift)))
+            Ok(shift_resp("redo-all", &shift))
         }
     }
 }
@@ -507,17 +518,13 @@ async fn agent_stream(State(st): State<AppState>, AxPath(session_id): AxPath<Str
 
 // ── GET /agents ─────────────────────────────────────────────────────────────
 
-fn custom_threshold() -> Option<i64> {
-    appv3_core::runtime_settings::load_runtime_settings().ok().and_then(|c| c.summarization.prompt_token_threshold)
-}
-
 fn tool_desc(def: &Value) -> (String, String) {
     let f = def.get("function").unwrap_or(def);
     (f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(), f.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string())
 }
 
 /// Serialise an agent for the `/api/agent` listing.
-pub fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, custom: Option<i64>) -> Value {
+fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, custom: Option<i64>) -> Value {
     let ws_path = workspace.filter(|w| !w.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let ctx = appv3_tools::ToolContext {
         session_id: None,
@@ -602,7 +609,8 @@ async fn get_agent_registry(q: Qs) -> ApiResult<Response> {
     let Some(agent) = agent else { return Err(ApiError::not_found("No agent configured")) };
     agent.refresh_config_if_idle();
     let ws = agent.workspace();
-    let info = serialize_agent(&agent.agent(), Some(&ws), custom_threshold());
+    let custom_threshold = appv3_core::runtime_settings::load_runtime_settings().ok().and_then(|c| c.summarization.prompt_token_threshold);
+    let info = serialize_agent(&agent.agent(), Some(&ws), custom_threshold);
     Ok(json(json!({
         "agents": [info],
         "mode": settings().workspace_mode(Some(Path::new(&ws))),
@@ -610,1030 +618,5 @@ async fn get_agent_registry(q: Qs) -> ApiResult<Response> {
     })))
 }
 
-// ── workspace pickers ───────────────────────────────────────────────────────
-
-async fn validate_workspace(q: Qs) -> ApiResult<Response> {
-    let ws = q.req("workspace")?;
-    let resolved = manager::validate_workspace(&ws, true).map_err(ApiError::unprocessable)?;
-    Ok(json(json!({"workspace": resolved})))
-}
-
-async fn browse_workspace(q: Qs) -> ApiResult<Response> {
-    let path = q.opt("path").filter(|p| !p.is_empty());
-    blocking(move || {
-        let root = match &path {
-            Some(p) => resolve(&expanduser(p)),
-            None => resolve(&home()),
-        };
-        if !root.is_dir() {
-            return Err(ApiError::unprocessable(format!("Not a directory: {}", root.display())));
-        }
-        let rd = std::fs::read_dir(&root).map_err(|_| ApiError::new(403, format!("Cannot read directory: {}", root.display())))?;
-        let mut entries: Vec<std::fs::DirEntry> = rd.flatten().collect();
-        entries.sort_by_key(|e| e.file_name().to_string_lossy().to_lowercase());
-        let mut dirs = vec![];
-        for e in entries {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
-                continue;
-            }
-            if e.path().is_dir() {
-                dirs.push(json!({"name": name, "path": resolve(&e.path()).display().to_string()}));
-            }
-        }
-        let parent = root.parent().filter(|p| *p != root.as_path()).map(|p| p.display().to_string());
-        Ok(json(json!({"path": root.display().to_string(), "parent": parent, "directories": dirs})))
-    })
-    .await
-}
-
-async fn update_visibility(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
-    let b = body_value(&raw)?;
-    let mut errs = vec![];
-    let ws = match b.get("workspace") {
-        Some(Value::String(s)) => s.clone(),
-        None => {
-            errs.push(verr("missing", &loc(&["body", "workspace"]), "Field required", b.clone()));
-            String::new()
-        }
-        Some(o) => {
-            errs.push(verr("string_type", &loc(&["body", "workspace"]), "Input should be a valid string", o.clone()));
-            String::new()
-        }
-    };
-    let hidden = match b.get("hidden") {
-        None => {
-            errs.push(verr("missing", &loc(&["body", "hidden"]), "Field required", b.clone()));
-            false
-        }
-        Some(_) => match opt_bool_field(&b, "hidden") {
-            Ok(v) => v.unwrap_or(false),
-            Err(e) => return Err(e),
-        },
-    };
-    if !errs.is_empty() {
-        return Err(ApiError::validation(errs));
-    }
-    let workspace = validate_workspace_or_422(&ws, !hidden)?;
-    if hidden {
-        db::hide_coding_workspace(&st.pool, &workspace).await?;
-    } else {
-        register_session_workspace(&st.pool, &workspace).await?;
-    }
-    Ok(json(json!({"workspace": workspace, "hidden": hidden})))
-}
-
-fn basename(p: &str) -> String {
-    Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
-}
-
-/// `POST /agent/workspace/relocate {from, to, dry_run?}` (v3 addition): a
-/// sidebar repository whose folder is gone (renamed, moved) takes the
-/// folder `to`, keeping its sessions, worktrees, scheduled tasks and
-/// groups. `dry_run` answers what would move, for the confirmation.
-async fn relocate_workspace(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
-    let b = body_value(&raw)?;
-    let mut errs = vec![];
-    let mut field = |k: &str| match b.get(k) {
-        Some(Value::String(s)) if !s.is_empty() => s.clone(),
-        None => {
-            errs.push(verr("missing", &loc(&["body", k]), "Field required", b.clone()));
-            String::new()
-        }
-        Some(o) => {
-            errs.push(verr("string_type", &loc(&["body", k]), "Input should be a non-empty string", o.clone()));
-            String::new()
-        }
-    };
-    let (from, to) = (field("from"), field("to"));
-    let dry_run = opt_bool_field(&b, "dry_run")?.unwrap_or(false);
-    if !errs.is_empty() {
-        return Err(ApiError::validation(errs));
-    }
-    use appv3_agent::worktrees::RelocateError;
-    let report = appv3_agent::worktrees::relocate_repository(&st.pool, &from, &to, dry_run).await.map_err(|e| match e {
-        RelocateError::Invalid(d) => ApiError::unprocessable(d),
-        RelocateError::Busy(titles) => ApiError::conflict(format!("Stop the running sessions first: {}.", titles.join(", "))),
-    })?;
-    let s = &report.summary;
-    Ok(json(json!({
-        "from": from,
-        "workspace": report.workspace,
-        "dry_run": dry_run,
-        "sessions": s.sessions,
-        "scheduled_tasks": s.scheduled_tasks,
-        "worktrees": s.worktrees.iter().map(|(p, managed)| json!({"path": p, "managed": managed})).collect::<Vec<_>>(),
-        "groups": s.groups,
-        "merge": s.merge,
-        "target_sessions": s.target_sessions,
-        "moved_worktrees": report.moved.iter().map(|(old, new)| json!({"from": old, "to": new})).collect::<Vec<_>>(),
-        "warnings": report.warnings,
-    })))
-}
-
-/// Whether `path` is inside a Git working tree: it or a parent holds `.git`
-/// (a folder in a repository, a file in a worktree). Stats only, so the tree
-/// can say it for every workspace without starting `git`.
-fn in_git_work_tree(path: &Path) -> bool {
-    path.ancestors().any(|dir| dir.join(".git").exists())
-}
-
-async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
-    let s = settings();
-    let chat_path = s.chat_workspace_root().display().to_string();
-    let rows = db::list_visible_coding_workspaces(&st.pool).await?;
-    // Workspace groups: each repository's tags plus the groups themselves.
-    let memberships = db::list_group_memberships(&st.pool).await.map_err(ApiError::internal)?;
-    let group_ids = |path: &str| -> Vec<String> { memberships.iter().filter(|(_, p)| p == path).map(|(g, _)| db::codec::api_uuid(g)).collect() };
-    let groups: Vec<Value> = db::list_workspace_groups(&st.pool)
-        .await
-        .map_err(ApiError::internal)?
-        .iter()
-        .map(|g| json!({"id": db::codec::api_uuid(&g.id), "name": g.name, "brief": g.brief, "color": g.color}))
-        .collect();
-    let mut repos: Vec<(String, Map<String, Value>)> = vec![];
-    let mut pending = vec![];
-    for row in rows {
-        if s.is_chat_workspace(Some(Path::new(&row.path))) || s.is_chat_workspace(row.source_path.as_deref().map(Path::new)) {
-            continue;
-        }
-        if row.kind == "worktree" || row.kind == "folder" {
-            pending.push(row);
-            continue;
-        }
-        let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
-        let entry = json!({
-            "path": row.path,
-            "name": name,
-            "worktrees": [],
-            "group_ids": group_ids(&row.path),
-            "missing": !Path::new(&row.path).is_dir(),
-            // The client offers the Changes view and worktrees only where there is Git.
-            "git": in_git_work_tree(Path::new(&row.path)),
-        });
-        match repos.iter_mut().find(|(p, _)| *p == row.path) {
-            Some(slot) => slot.1 = entry.as_object().unwrap().clone(),
-            None => repos.push((row.path.clone(), entry.as_object().unwrap().clone())),
-        }
-    }
-    for row in pending {
-        let Some(source) = row.source_path.clone().filter(|p| !p.is_empty()) else { continue };
-        if !repos.iter().any(|(p, _)| *p == source) {
-            let missing = !Path::new(&source).is_dir();
-            repos.push((
-                source.clone(),
-                json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source), "missing": missing, "git": in_git_work_tree(Path::new(&source))})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-            ));
-        }
-        // A subfolder shows its path inside the repository (`web/app`).
-        let rel = Path::new(&row.path).strip_prefix(&source).ok().map(|r| r.display().to_string()).filter(|r| !r.is_empty());
-        let default_name = match (row.kind.as_str(), rel) {
-            ("folder", Some(r)) => r,
-            _ => basename(&row.path),
-        };
-        let name = row.name.clone().filter(|n| !n.is_empty() && !(row.kind == "folder" && *n == basename(&row.path))).unwrap_or(default_name);
-        let slot = repos.iter_mut().find(|(p, _)| *p == source).unwrap();
-        slot.1.get_mut("worktrees").unwrap().as_array_mut().unwrap().push(json!({
-            "path": row.path,
-            "name": name,
-            "managed": row.managed,
-            "kind": row.kind,
-            "missing": !Path::new(&row.path).is_dir(),
-        }));
-    }
-    Ok(json(json!({
-        "repositories": repos.into_iter().map(|(_, m)| Value::Object(m)).collect::<Vec<_>>(),
-        "chat": {"path": chat_path, "name": "Chat"},
-        "groups": groups,
-    })))
-}
-
-// ── sessions ────────────────────────────────────────────────────────────────
-
-async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
-    let before = q.opt("before");
-    let limit = q.int("limit", 20, Some(1), Some(100))?;
-    // `workspaces` (repeatable) is a v3 addition: sessions in any listed path,
-    // so the sidebar lists a repository and its worktrees as one page. v2
-    // ignores it. A `workspace` value joins the same list.
-    let mut workspaces: Vec<String> = q.opt("workspace").into_iter().collect();
-    workspaces.extend(q.get_all("workspaces"));
-    let running = running_set();
-    let awaiting = db::sessions_awaiting_input(&st.pool).await?;
-    // Leads whose turn ended while subagents (or another workspace) still
-    // work for them: not finished, so the active list keeps them.
-    let pending = appv3_agent::subagents::sessions_with_pending_work();
-    let waiting_on_lead = appv3_agent::subagents::subagents_waiting_on_lead();
-    // `sort` and `pinned` are v3 additions (the sidebar's view options); v2
-    // ignores them. `sort=activity` orders by `last_message_at`; `pinned=true` is
-    // every pinned session in one page, `pinned=false` leaves them out.
-    let sort = match q.opt("sort").as_deref() {
-        None | Some("") | Some("created") => db::SessionSort::Created,
-        Some("activity") => db::SessionSort::Activity,
-        Some(_) => return Err(ApiError::unprocessable("Invalid 'sort'.")),
-    };
-    let pinned = match q.opt("pinned").as_deref() {
-        Some("true") => Some(true),
-        Some("false") => Some(false),
-        _ => None,
-    };
-    // v3 addition: every session running, waiting on the user, or waiting on
-    // work it started (`background_work`), in one page, however old — the
-    // sidebar's "Needs you" list, the badge counts and the notch island. v2
-    // ignores the parameter and returns a normal page.
-    // v3 addition: `remaining` counts the sessions past this page (the
-    // sidebar's "Show N more"). Only a paged list with more to show has it.
-    let mut remaining: Option<i64> = None;
-    let (sessions, next_cursor, has_more) = if q.opt("active").as_deref() == Some("true") {
-        let ids: Vec<String> = running.iter().chain(awaiting.iter()).chain(pending.iter()).cloned().collect();
-        let mut rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
-        rows.retain(|s| s.parent_session_id.is_none() && (workspaces.is_empty() || workspaces.contains(&s.workspace)));
-        rows.sort_by(|a, b| (&b.created_at, &b.id).cmp(&(&a.created_at, &a.id)));
-        (rows, None, false)
-    } else if pinned == Some(true) {
-        (db::list_pinned_sessions(&st.pool, &workspaces).await?, None, false)
-    } else {
-        // `q` is a v3 addition too (sidebar search); v2 ignores it.
-        let title_query = q.opt("q");
-        let filter = db::SessionListFilter { workspaces: &workspaces, title_query: title_query.as_deref().map(str::trim), sort, pinned };
-        let page = db::list_sessions_page(&st.pool, before.as_deref(), limit, &filter).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?;
-        if let Some(cursor) = page.1.as_deref() {
-            remaining = Some(db::count_sessions_before(&st.pool, cursor, &filter).await?);
-        }
-        page
-    };
-    let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
-    let children = db::list_child_sessions(&st.pool, &ids).await?;
-    // v3 addition: sessions other workspaces ran for these (`linked_sessions`)
-    // and, on any row a send started, who sent it (`sent_from`).
-    let linked = db::list_linked_sessions(&st.pool, &ids).await?;
-    let senders = sent_from_by_id(&st.pool, sessions.iter().chain(linked.iter().map(|(_, s)| s))).await?;
-    let goals = db::live_goal_summaries(&st.pool, &ids).await?;
-    let overlay = |s: &db::ChatSession| SessionOverlay {
-        running: running.contains(&db::codec::api_uuid(&s.id)),
-        needs_input: awaiting.contains(&s.id) || awaiting.contains(&db::codec::api_uuid(&s.id)) || waiting_on_lead.contains(&db::codec::api_uuid(&s.id)),
-        background_work: pending.contains(&db::codec::api_uuid(&s.id)),
-        goal_status: goals.get(&s.id).map(|g| g.status.clone()),
-        goal_turns: goals.get(&s.id).map(|g| (g.turns_used, g.max_turns)),
-        sent_from: s.sent_from_session_id.as_ref().and_then(|o| senders.get(o).cloned()),
-        ..Default::default()
-    };
-    let data: Vec<Value> = sessions
-        .iter()
-        .map(|s| {
-            let subs: Vec<Value> = children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_json(c, &overlay(c)))).collect();
-            let mut o = overlay(s);
-            o.subagents = subs;
-            o.linked_sessions = linked.iter().filter(|(root, _)| *root == s.id).map(|(_, l)| Value::Object(session_json(l, &overlay(l)))).collect();
-            Value::Object(session_json(s, &o))
-        })
-        .collect();
-    let mut body = json!({"data": data, "next_cursor": next_cursor, "has_more": has_more});
-    if let Some(n) = remaining {
-        body["remaining"] = json!(n);
-    }
-    Ok(json(body))
-}
-
-/// `sent_from` values for the senders of `sessions`, by sender id (stored
-/// form). A sender that is gone has no entry.
-async fn sent_from_by_id<'a>(pool: &DbPool, sessions: impl Iterator<Item = &'a db::ChatSession>) -> ApiResult<HashMap<String, Value>> {
-    let mut ids: Vec<String> = sessions.filter_map(|s| s.sent_from_session_id.clone()).collect();
-    ids.sort();
-    ids.dedup();
-    Ok(db::get_sessions_by_ids(pool, &ids).await?.iter().map(|o| (o.id.clone(), db::api::sent_from_json(o))).collect())
-}
-
-/// `session_response` plus, as a v3 addition omitted on Auto, the pinned
-/// account's name, so the tray and run chip need no credentials lookup.
-fn session_json(s: &db::ChatSession, o: &SessionOverlay) -> Map<String, Value> {
-    let mut m = session_response(s, o);
-    if let Some(label) = s.credential_id.as_deref().and_then(appv3_providers::pool::credential_label_by_id) {
-        m.insert("credential_label".into(), Value::String(label));
-    }
-    m
-}
-
-/// Record a session's folder as a sidebar workspace, filed under its
-/// repository when it is a worktree or a subfolder of one. The Chat
-/// workspace is never listed.
-async fn register_session_workspace(pool: &DbPool, workspace: &str) -> ApiResult<()> {
-    appv3_agent::worktrees::register_workspace(pool, workspace).await.map_err(ApiError::internal)
-}
-
-async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
-    let b = body_value(&raw)?;
-    if !b.is_object() {
-        return Err(ApiError::validation(vec![verr("model_attributes_type", &loc(&["body"]), "Input should be a valid dictionary or object to extract fields from", b)]));
-    }
-    let workspace = match b.get("workspace") {
-        None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "workspace"]), "Field required", b.clone())])),
-        Some(Value::String(s)) if s.is_empty() => {
-            return Err(ApiError::validation(vec![verr_ctx(
-                "string_too_short",
-                &loc(&["body", "workspace"]),
-                "String should have at least 1 character",
-                json!(s),
-                json!({"min_length": 1}),
-            )]))
-        }
-        Some(_) => opt_str_field(&b, "workspace")?.unwrap_or_default(),
-    };
-    let model = opt_str_field(&b, "model")?;
-    let thinking = opt_str_field(&b, "thinking_level")?;
-    let mut create = opt_bool_field(&b, "create")?.unwrap_or(false);
-    let wt_from = opt_str_field(&b, "worktree_from")?;
-    let wt_name = opt_str_field(&b, "worktree_name")?;
-    let wt_branch = opt_str_field(&b, "worktree_branch")?;
-    let credential = opt_str_field(&b, "credential_id")?.filter(|c| !c.trim().is_empty());
-    let (model, thinking) = validate_model_settings(model.as_deref(), thinking.as_deref())?;
-
-    let has = |o: &Option<String>| o.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
-    let workspace = if has(&wt_from) || has(&wt_name) || has(&wt_branch) {
-        if !has(&wt_from) || !has(&wt_name) {
-            return Err(ApiError::unprocessable("worktree_from and worktree_name are required for worktree sessions."));
-        }
-        let created = worktrees::create_worktree(&st.pool, wt_from.as_deref().unwrap(), wt_name.as_deref(), wt_branch.as_deref(), false).await?;
-        create = true;
-        created.directory
-    } else {
-        validate_workspace_or_422(&workspace, true)?
-    };
-    let mut session = None;
-    if !create {
-        session = db::get_latest_top_level_session(&st.pool, &workspace).await?;
-    }
-    let created = session.is_none();
-    let session = match session {
-        Some(s) => s,
-        None => {
-            db::create_session(&st.pool, db::NewSession { workspace: workspace.clone(), model, thinking_level: thinking, agent_name: Some("code".into()), ..Default::default() })
-                .await?
-        }
-    };
-    // v3 addition: a new session can start pinned to an account.
-    let session = match credential.filter(|_| created) {
-        Some(cred) => save_run_settings(&st.pool, &session.id.clone(), session, None, None, Some(Some(cred))).await?,
-        None => session,
-    };
-    register_session_workspace(&st.pool, &workspace).await?;
-    let mut m = session_json(&session, &SessionOverlay::default());
-    m.insert("created".into(), json!(created));
-    Ok(json(Value::Object(m)))
-}
-
-async fn session_detail(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    let Some(root) = db::get_session(&st.pool, &sid).await? else { return Err(ApiError::not_found("Session not found.")) };
-    let (lead, _, _) = db::history_page(&st.pool, &sid, None).await?;
-    let pending = manager::find_live_session_serving_session(&sid).and_then(|s| s.pending_interaction_mode());
-    let goal = db::live_session_goal(&st.pool, &sid).await?;
-    let (goal_status, goal_turns) = (goal.as_ref().map(|g| g.status.clone()), goal.as_ref().map(|g| (g.turns_used, g.max_turns)));
-    let sent_from = sent_from_by_id(&st.pool, std::iter::once(&root)).await?.into_values().next();
-    let m = session_json(&root, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: pending, goal_status, goal_turns, sent_from, ..Default::default() });
-    Ok(json_status(StatusCode::OK, &WithMessages { session: m, messages: MessagesView(&lead) }))
-}
-
-async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>, body: Bytes) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    let b = body_value(&body)?;
-    if !b.is_object() {
-        return Err(ApiError::validation(vec![verr("model_attributes_type", &loc(&["body"]), "Input should be a valid dictionary or object to extract fields from", b)]));
-    }
-    let mut errs = vec![];
-    let title = match b.get("title") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(t)) => {
-            let n = t.chars().count();
-            if n < 1 {
-                errs.push(verr_ctx("string_too_short", &loc(&["body", "title"]), "String should have at least 1 character", json!(t), json!({"min_length": 1})));
-            } else if n > 255 {
-                errs.push(verr_ctx("string_too_long", &loc(&["body", "title"]), "String should have at most 255 characters", json!(t), json!({"max_length": 255})));
-            }
-            Some(t.clone())
-        }
-        Some(o) => {
-            errs.push(verr("string_type", &loc(&["body", "title"]), "Input should be a valid string", o.clone()));
-            None
-        }
-    };
-    let mode = match b.get("interaction_mode") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(m)) if m == "code" || m == "plan" => Some(m.clone()),
-        Some(o) => {
-            errs.push(verr_ctx("literal_error", &loc(&["body", "interaction_mode"]), "Input should be 'code' or 'plan'", o.clone(), json!({"expected": "'code' or 'plan'"})));
-            None
-        }
-    };
-    // v3 addition: pin or unpin the session in the sidebar.
-    let pinned = match b.get("pinned") {
-        None | Some(Value::Null) => None,
-        Some(Value::Bool(p)) => Some(*p),
-        Some(o) => {
-            errs.push(verr("bool_type", &loc(&["body", "pinned"]), "Input should be a valid boolean", o.clone()));
-            None
-        }
-    };
-    // v3 additions: the run settings the next message uses, saved as they
-    // are chosen. A key that is present sets the field; `null` clears it
-    // (the agent's default model or level, or Auto for the credential).
-    let mut nullable = |key: &str| -> Option<Option<String>> {
-        match b.get(key) {
-            None => None,
-            Some(Value::Null) => Some(None),
-            Some(Value::String(v)) => Some(Some(v.trim().to_string()).filter(|v| !v.is_empty())),
-            Some(o) => {
-                errs.push(verr("string_type", &loc(&["body", key]), "Input should be a valid string", o.clone()));
-                None
-            }
-        }
-    };
-    let model = nullable("model");
-    let thinking = nullable("thinking_level");
-    let credential = nullable("credential_id");
-    if !errs.is_empty() {
-        return Err(ApiError::validation(errs));
-    }
-    if title.is_none() && mode.is_none() && pinned.is_none() && model.is_none() && thinking.is_none() && credential.is_none() {
-        return Err(value_error("Provide a title, interaction_mode, pinned, model, thinking_level or credential_id.", b));
-    }
-    if let Some(Some(m)) = &model {
-        validate_model_settings(Some(m), None)?;
-    }
-    let clean_title = |t: &Option<String>| -> ApiResult<Option<String>> {
-        match t {
-            None => Ok(None),
-            Some(t) => {
-                let s = t.trim().to_string();
-                if s.is_empty() {
-                    return Err(ApiError::unprocessable("Title cannot be empty."));
-                }
-                Ok(Some(s))
-            }
-        }
-    };
-    let live = mode.as_ref().and_then(|_| manager::find_live_session_serving_session(&sid));
-    let row = db::get_session(&st.pool, &sid).await?.filter(|s| s.parent_session_id.is_none()).ok_or_else(|| ApiError::not_found("Session not found."))?;
-    // Pinning never touches `updated_at`, so it runs first and the other
-    // updates below return the row with the new pin.
-    let row = match pinned {
-        Some(p) => db::set_session_pinned(&st.pool, &sid, p).await?.unwrap_or(row),
-        None => row,
-    };
-    if let Some(live) = live.filter(|l| l.is_busy()) {
-        let m = mode.clone().unwrap();
-        live.queue_interaction_mode(&m);
-        let mut row = row;
-        if let Some(t) = clean_title(&title)? {
-            row = db::update_session(&st.pool, &sid, db::SessionUpdate::user_title(t)).await?.unwrap_or(row);
-        }
-        if model.is_some() || thinking.is_some() || credential.is_some() {
-            row = save_run_settings(&st.pool, &sid, row, model, thinking, credential).await?;
-        }
-        let resp = session_json(&row, &SessionOverlay { running: store().is_running(&sid), pending_interaction_mode: Some(m), ..Default::default() });
-        return Ok(json(Value::Object(resp)));
-    }
-    let mut row = row;
-    if let Some(t) = clean_title(&title)? {
-        row = db::update_session(&st.pool, &sid, db::SessionUpdate::user_title(t)).await?.unwrap_or(row);
-    }
-    if model.is_some() || thinking.is_some() || credential.is_some() {
-        row = save_run_settings(&st.pool, &sid, row, model, thinking, credential).await?;
-    }
-    if let Some(m) = &mode {
-        row = appv3_agent::interaction_mode::set_mode(&st.pool, &sid, m).await?.0;
-        // A goal waits in Plan mode; switching to Code starts its next turn.
-        if m == "code" && appv3_agent::goal::has_active_goal(&st.pool, &sid).await? {
-            resolve_agent_for_existing_session(&st.pool, &sid).await?.goal_after_code_mode(&sid);
-        }
-    }
-    Ok(json(Value::Object(session_json(&row, &SessionOverlay { running: store().is_running(&sid), ..Default::default() }))))
-}
-
-/// Store a session's model, thinking level and pinned credential (each
-/// `Some` field; `Some(None)` clears it). A pinned credential must be an
-/// enabled credential of the session model's provider, from a provider that
-/// pools its credentials; changing the model to another provider returns
-/// the session to Auto.
-async fn save_run_settings(
-    pool: &DbPool,
-    sid: &str,
-    row: db::ChatSession,
-    model: Option<Option<String>>,
-    thinking: Option<Option<String>>,
-    credential: Option<Option<String>>,
-) -> ApiResult<db::ChatSession> {
-    let effective_model = match &model {
-        Some(m) => m.clone(),
-        None => row.model.clone(),
-    };
-    let provider_of = |m: &Option<String>| m.as_deref().and_then(|m| m.split_once(':')).map(|(p, _)| p.to_string());
-    let mut credential = credential;
-    if let Some(Some(id)) = &credential {
-        let Some(owner) = appv3_providers::pool::credential_provider(id) else {
-            return Err(ApiError::unprocessable("That account or key no longer exists."));
-        };
-        if provider_of(&effective_model).is_some_and(|p| p != owner) {
-            return Err(ApiError::unprocessable("That account or key belongs to another provider than the session's model."));
-        }
-        if !appv3_providers::pool::pin_usable(&owner, id) {
-            return Err(ApiError::unprocessable("That account or key is turned off, or the provider's key comes from the server's environment."));
-        }
-    } else if credential.is_none() && model.is_some() {
-        let pinned_provider = row.credential_id.as_deref().and_then(appv3_providers::pool::credential_provider);
-        if pinned_provider.is_some() && pinned_provider != provider_of(&effective_model) {
-            credential = Some(None);
-        }
-    }
-    let upd = db::SessionUpdate { model, thinking_level: thinking, credential_id: credential, ..Default::default() };
-    Ok(db::update_session(pool, sid, upd).await?.unwrap_or(row))
-}
-
-/// `chat_service.delete_session`.
-pub async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> {
-    if db::get_session(pool, session_id).await?.is_none() {
-        return Ok(false);
-    }
-    let tree = db::session_descendants(pool, session_id).await?;
-    let ids: HashSet<String> = tree.iter().map(|(id, _)| db::codec::api_uuid(id)).collect();
-    manager::evict_sessions(&ids).await;
-    for sid in &ids {
-        appv3_agent::subagents::stop_all_subagents(sid).await;
-        appv3_agent::subagents::remove_subagent(sid);
-        appv3_agent::subagents::cleanup_lead_session(sid);
-        appv3_agent::side_question::stop_session(sid);
-        // A deleted session answers nobody: its senders stop waiting on it.
-        appv3_agent::workspace_messages::forget_outstanding_target(sid);
-    }
-    let pages = appv3_agent::mcp_apps::pages_of(pool, &ids.iter().cloned().collect::<Vec<_>>()).await;
-    db::delete_session_rows(pool, session_id).await?;
-    if !pages.is_empty() {
-        appv3_agent::mcp_apps::remove_unused_pages(pool, Some(pages)).await;
-    }
-    let s = settings();
-    for sid in &ids {
-        store().clear(sid);
-        appv3_agent::mcp_apps::forget_session(sid);
-        appv3_agent::snapshot::remove(sid).await;
-        let uploads = s.uploads_dir(sid);
-        let artifacts = s.data_dir.join("sessions").join(sid);
-        let sid2 = sid.clone();
-        blocking(move || {
-            for (p, label) in [(uploads, "uploads_dir"), (artifacts, "session_metadata")] {
-                if p.exists() {
-                    match std::fs::remove_dir_all(&p) {
-                        Ok(()) => tracing::info!("{}_deleted session_id={}", label, sid2),
-                        Err(e) => tracing::error!("session_path_cleanup_failed path={} label={} error={}", p.display(), label, e),
-                    }
-                }
-            }
-        })
-        .await;
-    }
-    tracing::info!("session_deleted session_id={}", session_id);
-    Ok(true)
-}
-
-async fn delete_session_route(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    if !delete_session(&st.pool, &sid).await? {
-        return Err(ApiError::not_found("Session not found."));
-    }
-    Ok(no_content())
-}
-
-async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    Ok(json(appv3_agent::subagents::list_subagents(&sid, &st.pool).await))
-}
-
-/// What a session whose turn ended still waits for (v3 addition): its
-/// subagents still running, then the sessions in other workspaces that owe
-/// it a reply. The same work `background_work` reports as one flag, as rows
-/// a person can open. `state` is `working`, `needs_input` (stopped on a
-/// question or a plan review) or `idle` (not running: stopped, failed, or
-/// not started yet).
-async fn session_waiting(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    let members = appv3_agent::subagents::working_members(&sid);
-    let targets = appv3_agent::workspace_messages::outstanding_targets(&sid);
-    let ids: Vec<String> = members.iter().map(|(_, id)| id.clone()).chain(targets.iter().cloned()).collect();
-    let rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
-    let row = |id: &str| rows.iter().find(|r| db::codec::api_uuid(&r.id) == id);
-    let title = |id: &str| row(id).and_then(|r| r.title.clone()).filter(|t| !t.trim().is_empty());
-    let mut items: Vec<Value> = members
-        .iter()
-        .map(|(handle, id)| json!({"kind": "subagent", "session_id": id, "title": title(id).unwrap_or_else(|| handle.clone()), "label": handle, "workspace": "", "state": "working"}))
-        .collect();
-    if !targets.is_empty() {
-        let running = running_set();
-        let awaiting = db::sessions_awaiting_input(&st.pool).await?;
-        for id in &targets {
-            let Some(r) = row(id) else { continue };
-            let state = if awaiting.contains(&r.id) || awaiting.contains(id) {
-                "needs_input"
-            } else if running.contains(id) || appv3_agent::subagents::has_pending_work(id) {
-                "working"
-            } else {
-                "idle"
-            };
-            let label = appv3_agent::workspace_messages::workspace_name(&st.pool, &r.workspace).await;
-            items.push(json!({"kind": "session", "session_id": id, "title": title(id), "label": label, "workspace": r.workspace, "state": state}));
-        }
-    }
-    Ok(json(json!({"items": items})))
-}
-
-/// A tool call's output, which history and the live feed leave out for most
-/// tools (`appv3_db::api::result_rides_inline`): fetched when the user opens
-/// the call. Looks in the session and the sessions under it.
-async fn tool_result(State(st): State<AppState>, AxPath((raw, tool_call_id)): AxPath<(String, String)>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    let Some(row) = db::find_tool_message_in_tree(&st.pool, &sid, &tool_call_id).await? else {
-        return Err(ApiError::not_found("Tool result not found."));
-    };
-    Ok(json(json!({"tool_call_id": tool_call_id, "name": row.name, "content": row.content.unwrap_or_default()})))
-}
-
-/// A tool call's full arguments, which history sends short for a few tools
-/// (`appv3_db::tool_args`); the card fetches them when the user opens it.
-async fn tool_call_arguments(State(st): State<AppState>, AxPath((raw, tool_call_id)): AxPath<(String, String)>) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    let Some((name, arguments)) = db::find_tool_call_in_tree(&st.pool, &sid, &tool_call_id).await? else {
-        return Err(ApiError::not_found("Tool call not found."));
-    };
-    Ok(json(json!({"tool_call_id": tool_call_id, "name": name, "arguments": arguments})))
-}
-
-// ── history ─────────────────────────────────────────────────────────────────
-
-async fn ensure_agent_ready(root: &db::ChatSession) -> ApiResult<()> {
-    if !root.workspace.is_empty() && root.parent_session_id.is_none() {
-        // A session whose folder was moved or deleted stays readable: its
-        // history lives in the database, only a new turn needs the folder.
-        if manager::validate_workspace(&root.workspace, false).is_ok_and(|p| !std::path::Path::new(&p).is_dir()) {
-            return Ok(());
-        }
-        get_or_start(&root.workspace, Some(&db::codec::api_uuid(&root.id))).await?;
-    } else if root.parent_session_id.is_none() {
-        let cwd = std::env::current_dir().unwrap_or_default().display().to_string();
-        if get_or_start(&cwd, None).await?.is_none() {
-            return Err(ApiError::not_found("No agent configured."));
-        }
-    }
-    Ok(())
-}
-
-/// Session-wide `(estimated_cost_usd, completion_tokens)` per session id.
-type UsageTotals = std::collections::HashMap<String, (f64, i64)>;
-
-/// A session object with its page of messages appended. History bodies are
-/// serialized straight from the rows rather than built as a `Value` tree.
-#[derive(Serialize)]
-struct WithMessages<'a> {
-    #[serde(flatten)]
-    session: Map<String, Value>,
-    messages: MessagesView<'a>,
-}
-
-#[derive(Serialize)]
-struct MemberPart<'a> {
-    name: String,
-    session_id: String,
-    messages: MessagesView<'a>,
-    running: bool,
-    estimated_cost_usd: f64,
-    completion_tokens: i64,
-}
-
-/// The `/history` envelope.
-#[derive(Serialize)]
-struct HistoryBody<'a> {
-    lead: WithMessages<'a>,
-    members: Vec<MemberPart<'a>>,
-    has_more: bool,
-    next_cursor: Option<String>,
-    truncated: bool,
-    pending_question: Option<Value>,
-    /// First page only, and only when the run since the latest prompt is
-    /// longer than the page: that prompt, for the client to pin above it.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    latest_prompt: Option<MessageView<'a>>,
-}
-
-/// A member as the lead's history shows it: who, whether it works, and its
-/// usage. Its rows stay out (`messages` is empty, kept for older clients):
-/// the lead's view never renders them, and opening a member loads its own
-/// session.
-fn member_part(statuses: &[(String, String)], sub: &db::ChatSession, totals: &UsageTotals) -> MemberPart<'static> {
-    let name = sub.agent_name.clone().unwrap_or_else(|| db::codec::api_uuid(&sub.id));
-    let (cost, completion) = totals.get(&sub.id).copied().unwrap_or((0.0, 0));
-    let running = statuses.iter().any(|(n, s)| *n == name && s == "working");
-    MemberPart { name, session_id: db::codec::api_uuid(&sub.id), messages: MessagesView(&[]), running, estimated_cost_usd: cost, completion_tokens: completion }
-}
-
-/// The lead's part of a history response. `totals` is `None` on older pages:
-/// the totals cover the whole session, and only the newest page and the
-/// delta carry them (the client ignores them anywhere else).
-/// `sent_from`: who started this session from another workspace, for the
-/// chat view's "handled by" strip (the newest page and the delta carry it).
-fn lead_part<'a>(root: &db::ChatSession, msgs: &'a [db::SessionMessage], totals: Option<&UsageTotals>, sent_from: Option<Value>) -> WithMessages<'a> {
-    let effective = root.agent_name.clone().unwrap_or_else(|| if root.parent_session_id.is_none() { "code".into() } else { "member".into() });
-    let usage = totals.map(|t| t.get(&root.id).copied().unwrap_or((0.0, 0)));
-    let rid = db::codec::api_uuid(&root.id);
-    let session = session_json(
-        root,
-        &SessionOverlay {
-            agent_name: Some(effective),
-            running: store().is_running(&rid),
-            estimated_cost_usd: usage.map(|(cost, _)| cost),
-            completion_tokens: usage.map(|(_, completion)| completion),
-            sent_from,
-            ..Default::default()
-        },
-    );
-    WithMessages { session, messages: MessagesView(msgs) }
-}
-
-/// The `sent_from` of `root`, when another workspace's send started it.
-async fn sender_of(pool: &DbPool, root: &db::ChatSession) -> ApiResult<Option<Value>> {
-    if root.sent_from_session_id.is_none() {
-        return Ok(None);
-    }
-    Ok(sent_from_by_id(pool, std::iter::once(root)).await?.into_values().next())
-}
-
-/// Usage totals for the lead and its members in one scan.
-async fn usage_totals(pool: &DbPool, root: &db::ChatSession, subs: &[db::ChatSession]) -> ApiResult<UsageTotals> {
-    let ids: Vec<&str> = std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect();
-    Ok(db::session_usage_totals_many(pool, &ids).await?)
-}
-
-/// Every page carries an `ETag`: a client reopening a session that has not
-/// changed gets `304` and no body (a newest page can run to megabytes).
-async fn agent_history(st: State<AppState>, raw: AxPath<String>, q: Qs, headers: axum::http::HeaderMap, peer: Option<axum::Extension<Peer>>) -> ApiResult<Response> {
-    let started = std::time::Instant::now();
-    let page = if q.opt("since").is_some() {
-        "since"
-    } else if q.opt("before").is_some() {
-        "older"
-    } else {
-        "newest"
-    };
-    let session = raw.0.clone();
-    let res = etagged(&headers, agent_history_page(st, raw, q).await).await;
-    let (status, bytes) = match &res {
-        Ok(r) => (r.status().as_u16(), axum::body::HttpBody::size_hint(r.body()).exact().unwrap_or(0)),
-        Err(_) => (0, 0),
-    };
-    let remote = peer.is_some_and(|p| p.0.remote());
-    tracing::info!("history_page_served session_id={} page={} status={} bytes={} remote={} elapsed_ms={}", session, page, status, bytes, remote, started.elapsed().as_millis());
-    res
-}
-
-/// Bytes of a page's rows by what they hold, to see what makes a history
-/// page heavy (logged as `history_page_breakdown`).
-#[derive(Default, Debug, PartialEq)]
-struct RowBytes {
-    content: usize,
-    reasoning: usize,
-    tool_args: usize,
-    tool_results: usize,
-    extra: usize,
-}
-
-impl RowBytes {
-    fn add(&mut self, rows: &[db::SessionMessage]) {
-        let len = |s: &Option<String>| s.as_ref().map_or(0, String::len);
-        for r in rows {
-            if r.role == "tool" {
-                // Only what goes out: most tools' output is fetched on demand.
-                if let (Some(name), Some(text)) = (r.name.as_deref(), r.content.as_deref()) {
-                    if appv3_db::api::result_rides_inline(name, text) {
-                        self.tool_results += text.len();
-                    }
-                }
-            } else {
-                self.content += len(&r.content);
-            }
-            self.reasoning += len(&r.reasoning_content);
-            self.tool_args += appv3_db::api::display_tool_calls_len(r.tool_calls.as_deref());
-            self.extra += appv3_db::api::display_extra_len(r.extra.as_deref());
-        }
-    }
-}
-
-fn log_page_breakdown(sid: &str, lead: &[db::SessionMessage]) {
-    let mut l = RowBytes::default();
-    l.add(lead);
-    tracing::info!(
-        "history_page_breakdown session_id={} rows={} content={} reasoning={} tool_args={} tool_results={} extra={}",
-        sid,
-        lead.len(),
-        l.content,
-        l.reasoning,
-        l.tool_args,
-        l.tool_results,
-        l.extra,
-    );
-}
-
-async fn agent_history_page(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
-    let sid = path_uuid("session_id", &raw)?;
-    let before = q.opt("before");
-    let since = q.opt("since");
-    if before.is_some() && since.is_some() {
-        return Err(ApiError::unprocessable("Pass either 'before' or 'since', not both."));
-    }
-    let pool = &st.pool;
-    if let Some(since) = since {
-        let since_id = py_uuid(&since).ok_or_else(|| ApiError::unprocessable(format!("Invalid since cursor: {since}")))?;
-        let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("The main agent's session was not found.")) };
-        const LIMIT: i64 = 100;
-        let (lead_rows, truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
-        let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
-        ensure_agent_ready(&root).await?;
-        let totals = usage_totals(pool, &root, &subs).await?;
-        let statuses = store().get_agent_statuses(&sid);
-        let lead = lead_part(&root, &lead_rows, Some(&totals), sender_of(pool, &root).await?);
-        let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
-        return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more: false, next_cursor: None, truncated, pending_question: None, latest_prompt: None }));
-    }
-
-    let mut cursor: Option<(i64, Option<String>)> = None;
-    let first_page = before.is_none();
-    if let Some(b) = before.as_deref() {
-        let invalid = || ApiError::unprocessable(format!("Invalid before cursor: {b}"));
-        let (head, raw_id) = match b.split_once('|') {
-            Some((h, i)) => (h, Some(i)),
-            None => (b, None),
-        };
-        let before_id = match raw_id.filter(|i| !i.is_empty()) {
-            Some(i) => Some(py_uuid(i).ok_or_else(invalid)?),
-            None => None,
-        };
-        cursor = Some((head.trim().parse::<i64>().map_err(|_| invalid())?, before_id));
-    }
-    let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("The main agent's session was not found.")) };
-    if !first_page {
-        let ((rows, has_more, boundary), ()) =
-            futures::future::try_join(async { Ok::<_, ApiError>(db::history_page(pool, &sid, cursor.clone()).await?) }, ensure_agent_ready(&root)).await?;
-        let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
-        let lead = lead_part(&root, &rows, None, None);
-        return Ok(json_status(StatusCode::OK, &HistoryBody { lead, members: vec![], has_more, next_cursor, truncated: false, pending_question: None, latest_prompt: None }));
-    }
-    // The newest page reaches back to the latest prompt (see
-    // `first_history_page`). Its reads are independent, so they run at once:
-    // the lead's page, the agent's start, the members with their usage, and
-    // the open question. Members come without rows (`member_part`).
-    let members = async {
-        let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
-        let totals = db::session_usage_totals_many(pool, &std::iter::once(root.id.as_str()).chain(subs.iter().map(|s| s.id.as_str())).collect::<Vec<_>>()).await?;
-        Ok::<_, ApiError>((subs, totals))
-    };
-    let (page, (), (subs, totals), pending) =
-        futures::future::try_join4(async { Ok::<_, ApiError>(db::first_history_page(pool, &root).await?) }, ensure_agent_ready(&root), members, async {
-            Ok::<_, ApiError>(db::get_pending_question(pool, &sid).await?.map(|q| db::api::pending_question_response(&q)))
-        })
-        .await?;
-    let statuses = store().get_agent_statuses(&sid);
-    let db::FirstHistoryPage { rows: lead_rows, has_more, boundary, latest_prompt } = page;
-    log_page_breakdown(&sid, &lead_rows);
-    let next_cursor = boundary.map(|b| format!("{}|{}", b.seq, db::codec::api_uuid(&b.id)));
-    let members = subs.iter().map(|sub| member_part(&statuses, sub, &totals)).collect();
-    let lead = lead_part(&root, &lead_rows, Some(&totals), sender_of(pool, &root).await?);
-    let latest_prompt = latest_prompt.as_ref().map(MessageView);
-    Ok(json_status(StatusCode::OK, &HistoryBody { lead, members, has_more, next_cursor, truncated: false, pending_question: pending, latest_prompt }))
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use appv3_providers::mock::MockProvider;
-    use std::sync::Arc;
-
-    fn agent(thinking_level: Option<&str>) -> appv3_agent::Agent {
-        let mut agent = appv3_agent::Agent::new(Arc::new(MockProvider::new(vec![])), "code", "Hi", vec![], Some("mock:mock".into()));
-        agent.thinking_level = thinking_level.map(String::from);
-        agent
-    }
-
-    #[test]
-    fn a_message_waits_behind_a_running_turn_and_a_held_one_behind_a_question() {
-        // (busy, awaiting a question, held) -> queued
-        assert!(waits_behind_turn(true, false, false), "a steer queues behind a running turn");
-        assert!(waits_behind_turn(true, false, true));
-        assert!(!waits_behind_turn(true, true, false), "a steer replaces an open question");
-        assert!(waits_behind_turn(true, true, true), "a held message waits for the question to be answered");
-        assert!(!waits_behind_turn(false, false, true), "an idle agent runs a held message at once");
-    }
-
-    fn row(role: &str, content: &str, reasoning: Option<&str>, tool_calls: Option<&str>) -> db::SessionMessage {
-        db::SessionMessage {
-            id: "0123456789abcdef0123456789abcdef".into(),
-            session_id: "fedcba9876543210fedcba9876543210".into(),
-            role: role.into(),
-            content: Some(content.into()),
-            reasoning_content: reasoning.map(String::from),
-            tool_calls: tool_calls.map(String::from),
-            tool_call_id: None,
-            name: None,
-            extra: Some("{}".into()),
-            created_at: String::new(),
-            seq: 0,
-            kind: "message".into(),
-            pinned: false,
-        }
-    }
-
-    #[test]
-    fn page_bytes_are_split_by_what_the_rows_hold() {
-        let mut b = RowBytes::default();
-        let goal = db::SessionMessage { name: Some("update_goal".into()), ..row("tool", "output!", None, None) };
-        let read = db::SessionMessage { name: Some("read".into()), ..row("tool", "left out", None, None) };
-        b.add(&[row("assistant", "hello", Some("hmm"), Some("[{\"a\":1}]")), goal, read, row("user", "hi", None, None)]);
-        assert_eq!(b, RowBytes { content: 7, reasoning: 3, tool_args: 9, tool_results: 7, extra: 8 });
-    }
-
-    #[test]
-    fn page_bytes_count_extra_as_sent_not_as_stored() {
-        let mut r = row("tool", "", None, None);
-        r.extra = Some(r#"{"parts": [{"type": "image", "data": "AAAA"}], "duration_ms": 5}"#.into());
-        let mut b = RowBytes::default();
-        b.add(&[r]);
-        assert_eq!(b.extra, r#"{"duration_ms":5}"#.len());
-    }
-
-    #[test]
-    fn serialized_agent_carries_its_thinking_level() {
-        let info = serialize_agent(&agent(Some("high")), None, None);
-        assert_eq!(info["model"], "mock:mock");
-        assert_eq!(info["thinking_level"], "high");
-        assert_eq!(serialize_agent(&agent(None), None, None)["thinking_level"], Value::Null);
-    }
-
-    #[test]
-    fn serialized_agent_lists_preview_only_for_coding_workspaces() {
-        let names = |info: &Value| info["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-        let dir = tempfile::tempdir().unwrap();
-        let coding = serialize_agent(&agent(None), Some(&dir.path().to_string_lossy()), None);
-        assert!(names(&coding).contains(&"preview".to_string()), "{coding}");
-        assert!(!names(&serialize_agent(&agent(None), None, None)).contains(&"preview".to_string()));
-    }
-
-    #[test]
-    fn history_body_keeps_its_wire_shape() {
-        let row = db::SessionMessage {
-            id: "0123456789abcdef0123456789abcdef".into(),
-            session_id: "fedcba9876543210fedcba9876543210".into(),
-            role: "assistant".into(),
-            content: None,
-            reasoning_content: None,
-            tool_calls: Some(r#"[{"id": "c"}]"#.into()),
-            tool_call_id: None,
-            name: None,
-            extra: None,
-            created_at: "2026-09-23 06:56:28.000000".into(),
-            seq: 5,
-            kind: "chat".into(),
-            pinned: false,
-        };
-        let rows = [row];
-        let session: Map<String, Value> = [("id".to_string(), json!("l"))].into_iter().collect();
-        let member = MemberPart { name: "m".into(), session_id: "s".into(), messages: MessagesView(&[]), running: true, estimated_cost_usd: 0.5, completion_tokens: 3 };
-        let body = HistoryBody {
-            lead: WithMessages { session, messages: MessagesView(&rows) },
-            members: vec![member],
-            has_more: true,
-            next_cursor: Some("5|x".into()),
-            truncated: false,
-            pending_question: None,
-            latest_prompt: None,
-        };
-        let msg = r#"{"id":"01234567-89ab-cdef-0123-456789abcdef","role":"assistant","tool_calls":[{"id": "c"}],"seq":5,"kind":"chat","created_at":"2026-09-23T06:56:28Z"}"#;
-        let expected = format!(
-            r#"{{"lead":{{"id":"l","messages":[{msg}]}},"members":[{{"name":"m","session_id":"s","messages":[],"running":true,"estimated_cost_usd":0.5,"completion_tokens":3}}],"has_more":true,"next_cursor":"5|x","truncated":false,"pending_question":null}}"#
-        );
-        assert_eq!(String::from_utf8(serde_json::to_vec(&body).unwrap()).unwrap(), expected);
-        // A run longer than the page carries its prompt; the key is absent otherwise.
-        let pinned = HistoryBody { latest_prompt: Some(MessageView(&rows[0])), ..body };
-        let expected = format!(r#"{},"latest_prompt":{msg}}}"#, &expected[..expected.len() - 1]);
-        assert_eq!(serde_json::to_string(&pinned).unwrap(), expected);
-        let delta = HistoryBody {
-            lead: WithMessages { session: Map::new(), messages: MessagesView(&[]) },
-            members: vec![],
-            has_more: false,
-            next_cursor: None,
-            truncated: true,
-            pending_question: Some(json!({"id": "q"})),
-            latest_prompt: None,
-        };
-        assert_eq!(
-            serde_json::to_string(&delta).unwrap(),
-            r#"{"lead":{"messages":[]},"members":[],"has_more":false,"next_cursor":null,"truncated":true,"pending_question":{"id":"q"}}"#
-        );
-    }
-}
+mod tests;

@@ -3,7 +3,8 @@
  * stands before the router (and Settings) exist, so it brings its own frame.
  */
 import { OverlayHeader, AppOverlay, OVERLAY_MAX_WIDTH } from '@/components/ui/app-overlay'
-import { PhoneAccountContent } from '@/components/settings/pages/settings.account.phone'
+import { PhoneAccountContent } from '@/components/settings/pages/settings.remote.phone'
+import { FEATURE_NAME } from '@/components/settings/pages/remote-copy'
 import { Callout } from '@/components/ui/callout'
 
 export function AccountSheet({ open, onClose, note }: {
@@ -13,8 +14,8 @@ export function AccountSheet({ open, onClose, note }: {
   note?: string | null
 }) {
   return (
-    <AppOverlay open={open} onClose={onClose} label="Account" maxWidth={OVERLAY_MAX_WIDTH.narrow} appLevel>
-      <OverlayHeader title="Account" onClose={onClose} />
+    <AppOverlay open={open} onClose={onClose} label={FEATURE_NAME} maxWidth={OVERLAY_MAX_WIDTH.narrow} appLevel>
+      <OverlayHeader title={FEATURE_NAME} onClose={onClose} />
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-safe">
         {note && <Callout tone="info" role="status">{note}</Callout>}
         <PhoneAccountContent />

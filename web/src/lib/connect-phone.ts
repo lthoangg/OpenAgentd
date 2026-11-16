@@ -1,7 +1,7 @@
 /**
  * **Connect your phone** (desktop footer, command palette): one click to the
  * QR code a phone scans to add this computer to the account. It opens
- * Settings → Account with a sign-in request, and the Account page signs in
+ * Settings → Remote control with a sign-in request, and the Account page signs in
  * (server and client both on) when it sees one while this computer is a
  * guest. The page does the sign-in so its errors and the "only this
  * computer" check show where they always do. Light: no account code here,
@@ -24,12 +24,12 @@ interface ConnectPhoneState {
 export const useConnectPhoneStore = create<ConnectPhoneState>(() => ({ requested: 0, handled: 0 }))
 
 /**
- * Opens Settings → Account; with `signIn` (the default, for a guest) the page
+ * Opens Settings → Remote control; with `signIn` (the default, for a guest) the page
  * starts the sign-in. A sign-in already under way just shows its screen.
  */
 export function startConnectPhone({ signIn = true }: { signIn?: boolean } = {}): void {
   if (signIn) useConnectPhoneStore.setState((s) => ({ requested: s.requested + 1 }))
-  useSettingsStore.getState().openSettings('account')
+  useSettingsStore.getState().openSettings('remote')
 }
 
 /** True once per request: the caller signs in. */

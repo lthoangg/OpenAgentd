@@ -1,9 +1,10 @@
 /**
- * DirectSessionsCard — Settings → Server switch for direct sessions: the
- * account's devices reach this computer on the home network with their
+ * DirectSessionsRow — the Settings → Switch computer switch for direct sessions:
+ * the account's devices reach this computer on the home network with their
  * account keys instead of through the relay. Shown only while this
- * computer is in an account as a server. It is not network access (the
- * access key) and shares nothing with it.
+ * computer is in an account as a server, as a row of "Let other devices
+ * connect" (`NetworkAccessCard`). It is not network access (the access key)
+ * and shares nothing with it.
  */
 import { useEffect, useState } from 'react'
 
@@ -24,7 +25,7 @@ export function directFirewallNote(os: OS): string | null {
   return null
 }
 
-export function DirectSessionsCard() {
+export function DirectSessionsRow() {
   const status = useCloudStatusQuery().data
   const server = status?.state === 'connected' && status.server !== false
   const [setting, setSetting] = useState<DirectSetting | null>(null)
@@ -61,7 +62,7 @@ export function DirectSessionsCard() {
     : 'Your devices connect through your account.'
 
   return (
-    <PanelSection title="Your account's devices" flush>
+    <>
       <PanelRow
         label="Let your account's devices connect directly on this network"
         labelId="direct-sessions-label"
@@ -80,6 +81,15 @@ export function DirectSessionsCard() {
           <Callout tone="error" role="alert">{error}</Callout>
         </div>
       ) : null}
+    </>
+  )
+}
+
+/** The row in a section of its own, for a host without network access. */
+export function DirectSessionsCard() {
+  return (
+    <PanelSection title="Let other devices connect" flush>
+      <DirectSessionsRow />
     </PanelSection>
   )
 }

@@ -31,11 +31,11 @@
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
   <key>NSCameraUsageDescription</key>
-  <string>OpenAgentd uses the camera to scan the QR code that connects this phone to your server.</string>
+  <string>OpenAgentd uses the camera to scan QR codes that add your iPhone, iPad or computers, or connect to a computer on your network.</string>
   <!-- Reading the account's signing key (Keychain `.userPresence`) asks for
        Face ID; without this key iOS blocks Face ID and asks for the passcode. -->
   <key>NSFaceIDUsageDescription</key>
-  <string>Confirm changes to your OpenAgentd account.</string>
+  <string>Confirm adding or removing devices in your OpenAgentd account.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>OpenAgentd connects to local OpenAgentd servers on your network.</string>
   <key>NSMicrophoneUsageDescription</key>

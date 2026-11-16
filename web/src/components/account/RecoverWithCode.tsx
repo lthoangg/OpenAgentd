@@ -11,7 +11,7 @@
  */
 import { useState } from 'react'
 
-import { Body } from '@/components/settings/pages/account-copy'
+import { Body } from '@/components/settings/pages/remote-copy'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Field } from '@/components/ui/field'
@@ -48,8 +48,8 @@ export function RecoverWithCode({ busy, onRecover, onCancel, device }: {
     >
       <p className="font-medium text-(--color-text)">Lost your phone? Use your recovery code.</p>
       <p>
-        Type the recovery code you saved when you set up your account, then sign in in the browser. This {device} then
-        approves new devices, and your other devices are signed out: sign them in again from here.
+        Type the recovery code you saved when you set up your account, then sign in in the browser. This {device} can then
+        add devices, and your other devices are signed out: add them again from here.
       </p>
       <Field label="Recovery code" htmlFor="recovery-code">
         <Input
@@ -81,7 +81,7 @@ export function RecoveredNote({ device, onDone, busy }: { device: string; onDone
     <Callout tone="info" role="status" title="You're back in.">
       <Body>
         <p>
-          This {device} now approves new devices. Your other devices were signed out: sign them in again, and approve
+          This {device} can now add devices. Your other devices were signed out: sign them in again, and add
           them here.
         </p>
         <p>Your recovery code stays the same. Keep it somewhere safe.</p>

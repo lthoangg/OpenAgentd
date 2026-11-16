@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports verify verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
+.PHONY: all run dev kill-dev-ports verify verify-quick verify-changed verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
 .PHONY: build-v3 verify-v3
 
 # Default target
@@ -30,7 +30,8 @@ build-v3: ## Build optimized OpenAgentd v3 release binary
 verify-v3: ## Check and test all appv3 Rust crates
 	cargo fmt --all --check --manifest-path appv3/Cargo.toml
 	cargo clippy --manifest-path appv3/Cargo.toml --all-targets -- -D warnings
-	cargo test --manifest-path appv3/Cargo.toml --all-targets
+	@cargo nextest --version >/dev/null 2>&1 || { echo "error: cargo-nextest not found; install it with 'cargo install cargo-nextest --locked' or 'brew install cargo-nextest'"; exit 1; }
+	cargo nextest run --manifest-path appv3/Cargo.toml --all-targets
 
 kill-dev-ports: ## Stop processes listening on this checkout's dev ports (PORT, WEB_PORT)
 	@command -v lsof >/dev/null 2>&1 || { echo "error: 'lsof' not found"; exit 1; }
@@ -53,6 +54,22 @@ kill-dev-ports: ## Stop processes listening on this checkout's dev ports (PORT, 
 	done
 
 verify: verify-v3 verify-scripts verify-web verify-docs verify-version ## Run the portable pre-merge contract
+
+# Static checks only, so the pre-push hook can afford to run it every time.
+# The command ACL is here because a missing entry compiles, passes every
+# cargo check, and fails at runtime.
+verify-quick: verify-docs verify-version ## Fast static checks (seconds): command ACL, secrets, file sizes, docs, versions, cargo fmt, web lint + types; the pre-push hook runs it
+	python3 scripts/check_tauri_commands.py
+	python3 scripts/check_no_secrets.py
+	python3 scripts/check_file_size.py
+	cargo fmt --all --check --manifest-path appv3/Cargo.toml
+	cd native/shell-core && cargo fmt --check
+	cd native/cloud && cargo fmt --check
+	cd web && bun run lint
+	cd web && bun run typecheck
+
+verify-changed: ## Run verify-quick plus the verify-* targets covering the paths changed since the upstream branch
+	python3 scripts/verify_changed.py
 
 # The repository has no Python project; the tooling tests install their few
 # deps into the local, git-ignored .venv.
@@ -92,12 +109,15 @@ verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both
 	cd native/shell-core && cargo test
 
 verify-desktop: ## Check, test, and lint the desktop Rust crate
+	python3 scripts/check_tauri_commands.py desktop/src-tauri
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo check --locked
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo test --locked
-	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
+	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets -- -D warnings
 
-verify-mobile: ## Check the mobile Rust crate
+verify-mobile: ## Check and lint the mobile Rust crate
+	python3 scripts/check_tauri_commands.py mobile/src-tauri
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
+	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo clippy --locked --all-targets -- -D warnings
 
 health: ## Rank web frontend god files + detect circular imports (text report)
 	python3 -m scripts.codehealth --lang ts

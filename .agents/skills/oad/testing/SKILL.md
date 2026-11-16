@@ -20,11 +20,11 @@ implementation, fix the root cause, then run the surface's full suite.
 
 | Surface | Focused | Full gate |
 |---|---|---|
-| Backend `appv3/` | `cargo test --manifest-path appv3/Cargo.toml -p <crate> [name_filter]` | `make verify-v3` (fmt check, clippy `-D warnings`, all tests) |
+| Backend `appv3/` | `cargo test --manifest-path appv3/Cargo.toml -p <crate> [name_filter]` | `make verify-v3` (fmt check, clippy `-D warnings`, all tests under `cargo nextest`) |
 | Web `web/` | `cd web && bun test --parallel src/__tests__/<path>.test.tsx` | `make verify-web` (oxlint, `tsc -b` incl. tests, full suite) |
 | Shared native crate | `cd native/shell-core && cargo test <filter>` | `make verify-shell-core` |
 | Desktop shell | see `references/native.md` | `make verify-desktop` |
-| Mobile shell | — | `make verify-mobile` (check only) |
+| Mobile shell | — | `make verify-mobile` (check and clippy `-D warnings`) |
 | Scripts, installers, workflows | `.venv/bin/python -m pytest scripts/tests/<file> -q` | `make verify-scripts` |
 
 Crates are named `appv3-<dir>` (`appv3-api`, `appv3-agent`, `appv3-tools`, …);
@@ -69,4 +69,6 @@ API or SSE changes need both backend and web checks, and event types must match
 
 - [ ] New behavior has a test in the right place; a bug fix has a test that failed first.
 - [ ] The full gate for every touched surface passes.
+- [ ] A change a user can see or do was driven on the running app at a phone
+  width and a desktop width → load `oad/drive`.
 - [ ] Ready to ship → load `oad/commit`.

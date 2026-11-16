@@ -19,10 +19,9 @@ import {
   InputComposer,
   type FileRef,
   type InputComposerHandle,
-  type SendDelivery,
-  type SlashCommand,
-  type SnippetCommand,
 } from '../InputComposer'
+import type { SlashCommand, SnippetCommand } from '../InputComposer/commands'
+import type { SendDelivery } from '../InputComposer/deliveries'
 import { JumpToLatestChip } from '../JumpToLatestChip'
 import { RevertNotice } from '../RevertNotice'
 import type { ComposerActions } from './PlusMenu'
@@ -62,6 +61,8 @@ export interface ComposerProps {
   interactionModeDisabled?: boolean
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
+  /** The undo left the files as they were; the notice says so. */
+  revertKeptFiles?: boolean
   onRedo?: () => void
   onRedoAll?: () => void
   historyPrompts?: string[]
@@ -207,7 +208,7 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     <div data-composer-tray="" className="contents">
       <JumpToLatestChip />
       {aboveComposer}
-      <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
+      <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} keptFiles={inputProps.revertKeptFiles} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
     </div>
   )
 

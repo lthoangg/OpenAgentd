@@ -59,7 +59,7 @@ export function ConnectionBanner({ retry = true }: {
     const result = await connectBundledBackend(apiBaseUrl())
     setStarting(false)
     if (result.ok && result.reload) reloadForBackendSwitch()
-    else if (!result.ok) setDialogOpen(true)
+    else if (!result.ok && !result.cancelled) setDialogOpen(true)
   }
 
   return (

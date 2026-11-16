@@ -1,7 +1,7 @@
 /**
  * The account's computers, as rows of the one list of computers
  * (`AppBackendPanel`'s `accountRows`): the phone's Computers screen and the
- * desktop app's Settings → Server.
+ * desktop app's Settings → Switch computer.
  *
  * One row per server of the account (spec 3.4: sessions open only on
  * devices with the server role; this device and clients left out). A
@@ -169,8 +169,8 @@ export function AccountComputerRows({
       <div data-account-note="" className={cn(ROW_PAD, 'space-y-1 text-xs leading-relaxed text-(--color-text-2)')}>
         <p className="font-medium text-(--color-text)">No computers in your account yet</p>
         <p>{isDesktopShell()
-          ? 'On another computer, open OpenAgentd, go to Settings → Account and sign in to your account.'
-          : 'On your computer, open OpenAgentd, go to Settings → Account and sign in. You approve it here.'}</p>
+          ? 'On another computer, open OpenAgentd, go to Settings → Remote control and sign in to your account.'
+          : 'On your computer, open OpenAgentd, go to Settings → Remote control and sign in. Then scan its code from this phone.'}</p>
       </div>
     )
   }
@@ -185,7 +185,8 @@ export function AccountComputerRows({
     })
     setOpening(null)
     if (!result.ok) {
-      setError(result.error)
+      // Back on the switching screen: the list is as it was, free to pick another.
+      if (!result.cancelled) setError(result.error)
       return
     }
     if (result.reload) reloadForBackendSwitch()

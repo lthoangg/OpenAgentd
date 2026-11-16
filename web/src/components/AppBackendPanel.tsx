@@ -1,7 +1,8 @@
+// size-ceiling: 1082 — move ComputersList, ServerForm and ServerRow into files of their own
 /**
  * AppBackendPanel — choose which computer's OpenAgentd this app talks to.
  *
- * One panel, three hosts: Settings → Server renders it as a page,
+ * One panel, three hosts: Settings → Switch computer renders it as a page,
  * `AppBackendDialog` wraps it for the places that need it before or outside
  * Settings (the loading screen, the footer health dot, a scanned connect
  * link), and the phone's Computers screen shows it as its list. All
@@ -144,7 +145,7 @@ interface AppBackendPanelProps {
   /** Fill the form and test it; the user still confirms with Connect. */
   prefill?: AppBackendPrefill | null
   /**
-   * Include desktop network access. The dialog does; Settings → Server shows
+   * Include desktop network access. The dialog does; Settings → Switch computer shows
    * its own "Access from other devices" card.
    */
   showNetworkAccess?: boolean
@@ -361,7 +362,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     })
     setPending(false)
     if (!result.ok) {
-      onError(result.error)
+      // Back on the switching screen: nothing to say, the list is as it was.
+      if (!result.cancelled) onError(result.error)
       return false
     }
     setStatus(result.status)
@@ -409,7 +411,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     const result = await connectBundledBackend(currentBackendOrigin(status))
     setPending(false)
     if (!result.ok) {
-      setListError(result.error)
+      if (!result.cancelled) setListError(result.error)
       return
     }
     setStatus(result.status)

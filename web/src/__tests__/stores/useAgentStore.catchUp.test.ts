@@ -4,7 +4,6 @@
  */
 import { mock, describe, it, expect, beforeEach } from "bun:test"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 let streamCallbacks: any = null
 const mockSessionHistorySince = mock(async () => ({ lead: { messages: [], running: true }, members: [], truncated: false })) as any
 const mockSessionHistory = mock(async () => { throw new Error("a resume must not take the full page") }) as any
@@ -14,7 +13,6 @@ const mockSessionHistory = mock(async () => { throw new Error("a resume must not
   sessionHistory: mockSessionHistory,
   agentStatus: mock(async () => ({ lead: null, members: [] })),
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"

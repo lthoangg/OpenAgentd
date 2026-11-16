@@ -52,7 +52,7 @@ missing pagination, large SSE payloads, React re-renders from unselected store
 reads or inline object props, work on every streamed token.
 
 **Contracts** — An SSE or wire change matches `appv3/crates/agent/data/sse_events.json`,
-updates the web client in the same change, and is recorded in `appv3/REPORT.md`.
+updates the web client in the same change, and is recorded in `appv3/report/changes.md`.
 Release versions move only through `scripts/bump_version.sh`.
 
 ## 4. Classify findings
@@ -70,8 +70,8 @@ Lead with correctness and security, then architecture, then the rest.
 ## 5. Check the verification story
 
 - Which gates ran: `make verify-v3`, `make verify-web`, `make verify-docs`, native targets (`oad/testing`)?
-- UI changes: checked at a narrow (≤768 px) and a wide viewport, touch and pointer, against `DESIGN.md`?
-- User-visible change: entry in `documents/docs/features.md`?
+- UI changes: driven at a phone width and a desktop width with `oad/drive` (which journeys, and the evidence folder), and read against the chapter of `design/` that `DESIGN.md` names?
+- User-visible change: entry in its area file under `documents/docs/features/`?
 
 ## 6. Output
 

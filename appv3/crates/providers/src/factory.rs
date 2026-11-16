@@ -1,7 +1,7 @@
 //! Provider factory.
 
 use crate::anthropic::{AnthropicProvider, ANTHROPIC_API_BASE};
-use crate::catalog::SUPPORTED_PROVIDERS;
+use crate::catalog::supported_providers;
 use crate::creds::CredentialStore;
 use crate::google::{GoogleGenAiProvider, API_BASE_URL as GOOGLE_BASE};
 use crate::oauth::TokenSlot;
@@ -271,7 +271,7 @@ pub fn build_member(name: &str, model: &str, model_kwargs: Kwargs, creds: &Crede
         }
         _ => match crate::plugin::find_provider_plugin(name) {
             Some(plugin) => plugin.build(crate::plugin::BuildContext { provider_id: name.to_string(), model: model.to_string(), model_kwargs: kw, credentials: creds.clone() }),
-            None => Err(ProviderError::Unconfigured(format!("Unsupported provider '{name}'. Supported providers: {}", SUPPORTED_PROVIDERS.join(", ")))),
+            None => Err(ProviderError::Unconfigured(format!("Unsupported provider '{name}'. Supported providers: {}", supported_providers().join(", ")))),
         },
     }
 }
@@ -457,6 +457,24 @@ mod tests {
         let mut kw = Kwargs::new();
         kw.insert("responses_api".into(), serde_json::json!(false));
         assert!(!openai_provider("sk-test", "gpt-4.1", kw).unwrap().use_responses);
+    }
+
+    /// The catalogue (`data/provider_catalog.json`) is what Settings offers.
+    /// An id it lists without an arm in `build_member` would be offered and
+    /// then refused as unsupported on the first message.
+    #[test]
+    fn every_provider_in_the_catalogue_has_a_builder() {
+        let ids = supported_providers();
+        assert!(ids.len() >= 18 && ids.contains(&"zai") && ids.contains(&"ollama"), "{ids:?}");
+        for id in ids {
+            let creds = CredentialStore::for_credential(id, Default::default());
+            if let Err(e) = build_member(id, "some-model", Kwargs::new(), &creds, None) {
+                assert!(
+                    !e.to_string().starts_with("Unsupported provider"),
+                    "{id} is in provider_catalog.json but build_member in providers/src/factory.rs has no arm for it: add the arm, or a COMPAT_SPECS entry"
+                );
+            }
+        }
     }
 
     #[test]

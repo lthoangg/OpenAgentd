@@ -19,8 +19,8 @@ TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
 cd native/shell-core && cargo test <filter>
 ```
 
-Full gates: `make verify-desktop`, `make verify-mobile` (check only; the mobile
-crate's tests live in `src/lib.rs`), `make verify-shell-core`, or all three with
+Full gates: `make verify-desktop`, `make verify-mobile` (check and clippy, no
+tests; the mobile crate's tests live in `src/lib.rs`), `make verify-shell-core`, or all three with
 `make verify-native`. Native builds grow `target/` to several GB; run
 `cargo clean` in the crate when space matters.
 

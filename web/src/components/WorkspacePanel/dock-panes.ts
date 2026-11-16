@@ -21,7 +21,7 @@
  * ``restoreDockPanes`` carry it across sessions (a save from the two-group
  * panel restores as two stacked panes).
  */
-import { type DockTab, isViewTab, terminalTabId } from './dock-tabs'
+import { type DockTab, isViewTab, REVIEW_TAB, terminalTabId } from './dock-tabs'
 
 export type PaneId = string
 /** ``row``: side by side. ``column``: stacked. */
@@ -667,7 +667,8 @@ export function restoreDockPanes(saved: unknown): DockPanes | null {
   if (typeof saved !== 'object' || saved === null) return null
   const value = saved as Record<string, unknown>
   if (!Array.isArray(value.tabs) || !value.tabs.every(isTab)) return null
-  const tabs = value.tabs as DockTab[]
+  // The review tab takes today's name, not the one saved with it.
+  const tabs = (value.tabs as DockTab[]).map((tab) => (tab.type === 'review' ? REVIEW_TAB : tab))
   if (value.v !== 2) return restoreTwoGroups(value, tabs)
   const read = readLayout(value.layout, new Set())
   if (!read || typeof value.panes !== 'object' || value.panes === null) return null

@@ -1,8 +1,11 @@
 //! `GET /api/modules` and the Modules section of `agentd doctor`, against the
-//! real binary in throw-away `HOME`/XDG roots (the harness of
-//! `serve_shutdown.rs`). Nothing here touches real user data.
+//! real binary in throw-away `HOME`/XDG roots (`common::sandbox`). Nothing
+//! here touches real user data.
 #![cfg(unix)]
 
+mod common;
+
+use common::{free_port, sandbox};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -12,66 +15,14 @@ use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// The server's built-in modules, in start order.
-const BUILTIN: [&str; 16] = [
-    "workspace",
-    "otel",
-    "lsp",
-    "mcp",
-    "subagents",
-    "sessions",
-    "stream_store",
-    "snapshots",
-    "agents",
-    "scheduler",
-    "preview",
-    "terminal",
-    "model_registry",
-    "shell_snapshot",
-    "config_watch",
-    "restart_resume",
-];
+/// The server's built-in modules, in start order: the server's own table,
+/// so a module added there is checked here without a second list.
+fn builtin() -> Vec<&'static str> {
+    appv3_api::modules::builtin_ids()
+}
 
 /// The access key of the keyed server below.
 const ACCESS_KEY: &str = "modules-test-key-0123456789";
-
-/// Point `cmd` at throw-away `HOME`/XDG roots under `root`, and drop every
-/// variable that could aim it at real data or hand it a real secret.
-fn sandbox(cmd: &mut Command, root: &Path) {
-    std::fs::create_dir_all(root.join("home")).unwrap();
-    for (k, d) in [
-        ("OPENAGENTD_DATA_DIR", "data"),
-        ("OPENAGENTD_CONFIG_DIR", "config"),
-        ("OPENAGENTD_STATE_DIR", "state"),
-        ("OPENAGENTD_CACHE_DIR", "cache"),
-        ("OPENAGENTD_WORKSPACE_DIR", "ws"),
-        ("HOME", "home"),
-    ] {
-        cmd.env(k, root.join(d));
-    }
-    cmd.env("OPENAGENTD_ENV", "production").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false").env("NO_COLOR", "1");
-    for k in [
-        "OPENAGENTD_DESKTOP_TOKEN",
-        "OPENAGENTD_ACCESS_KEY",
-        "OPENAGENTD_HANDSHAKE_FILE",
-        "DATABASE_URL",
-        "OPENAGENTD_DATABASE_URL",
-        "AGENTS_DIR",
-        "OPENAGENTD_AGENTS_DIR",
-        "SKILLS_DIR",
-        "OPENAGENTD_SKILLS_DIR",
-        "OPENAGENTD_PLUGINS_DIRS",
-        "CHAT_WORKSPACE_DIR",
-        "OPENAGENTD_CHAT_WORKSPACE_DIR",
-        "APP_ENV",
-        "RUST_LOG",
-        "LOG_LEVEL",
-        "OPENAGENTD_LOG_LEVEL",
-        "OPENAI_API_KEY",
-    ] {
-        cmd.env_remove(k);
-    }
-}
 
 /// A running `agentd server serve` in a sandbox. Stopped when dropped
 /// (SIGTERM, then SIGKILL), so a failed assertion leaves no server behind.
@@ -192,12 +143,8 @@ fn assert_all_running(out: &str) {
     assert_eq!(section.len(), 1, "one collapsed line:\n{out}");
     let words: Vec<&str> = section[0].split_whitespace().collect();
     let total: usize = words.get(1).and_then(|n| n.parse().ok()).unwrap_or_else(|| panic!("no count in:\n{out}"));
-    assert!(total >= BUILTIN.len(), "{out}");
+    assert!(total >= builtin().len(), "{out}");
     assert_eq!(words.join(" "), format!("✓ {total} of {total} modules running"), "{out}");
-}
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
 }
 
 /// A server from before `/api/modules`: answers every request with 404.
@@ -233,7 +180,8 @@ fn the_server_reports_every_builtin_module_as_running() {
     let ids: Vec<&str> = modules.iter().map(|m| m["id"].as_str().unwrap()).collect();
     assert_eq!(ids[0], "workspace", "the workspace exists before anything reads it: {ids:?}");
     assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len(), "an id twice: {ids:?}");
-    for id in BUILTIN {
+    assert!(builtin().contains(&"cloud"), "the server's table, not a copy: {:?}", builtin());
+    for id in builtin() {
         let m = modules.iter().find(|m| m["id"] == id).unwrap_or_else(|| panic!("module {id} missing: {ids:?}"));
         assert_eq!(m["state"], "running", "{m}\n{}", server.stderr());
         assert!(m["error"].is_null(), "{m}");

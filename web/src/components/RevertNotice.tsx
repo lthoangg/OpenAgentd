@@ -5,7 +5,8 @@
  * One word pair for the whole feature — Undo and Redo. The caption says what
  * is undone and what happens next (Redo brings it back; a new message
  * discards it), so nothing here lives in a tooltip alone. The undone messages
- * can be opened under the row.
+ * can be opened under the row. After Undo messages the caption also says the
+ * files stayed, and Redo makes no claim about file changes.
  */
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -19,11 +20,13 @@ import { cn } from '@/lib/utils'
 interface RevertNoticeProps {
   count: number
   messages?: Array<{ role: string; content: string }>
+  /** The undo moved the conversation only; files were not changed. */
+  keptFiles?: boolean
   onRedo?: () => void
   onRedoAll?: () => void
 }
 
-export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: RevertNoticeProps) {
+export function RevertNotice({ count, messages = [], keptFiles = false, onRedo, onRedoAll }: RevertNoticeProps) {
   const [expanded, setExpanded] = useState(false)
   // Collapse whenever the undone count resets to 0 (redo or new session),
   // so the next undo doesn't open already-expanded.
@@ -31,10 +34,11 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
     if (count === 0) setExpanded(false)
   }, [count])
   if (count <= 0) return null
+  const files = keptFiles ? ' Files were not changed.' : ''
   const caption =
     count === 1
-      ? 'Undid the last message. Redo brings it back; sending a new message discards it.'
-      : `Undid the last ${count} messages. Redo brings them back; sending a new message discards them.`
+      ? `Undid the last message.${files} Redo brings it back; sending a new message discards it.`
+      : `Undid the last ${count} messages.${files} Redo brings them back; sending a new message discards them.`
   const canShow = messages.length > 0
 
   return (
@@ -50,7 +54,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                 </Button>
               }
             />
-            <TooltipContent>Redo the last message you undid, with its file changes</TooltipContent>
+            <TooltipContent>{`Redo the last message you undid${keptFiles ? '' : ', with its file changes'}`}</TooltipContent>
           </Tooltip>
           {count > 1 && onRedoAll && (
             <Tooltip>
@@ -61,7 +65,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                   </Button>
                 }
               />
-              <TooltipContent>Redo every message you undid, with their file changes</TooltipContent>
+              <TooltipContent>{`Redo every message you undid${keptFiles ? '' : ', with their file changes'}`}</TooltipContent>
             </Tooltip>
           )}
           {canShow && (

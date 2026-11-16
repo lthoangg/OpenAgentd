@@ -183,7 +183,7 @@ const cloudRequest = (path: string, method: 'GET' | 'POST', body?: unknown, proo
  */
 export const APPROVAL_HEADER = 'X-Agentd-Approval'
 /** What the server says without the proof; shown as is where there is no app to give one. */
-export const APPROVE_ELSEWHERE = 'Approve in the OpenAgentd app on this computer, or run agentd cloud approve in Terminal.'
+export const APPROVE_ELSEWHERE = 'Approve in the OpenAgentd app on this computer, or run agentd remote approve in Terminal.'
 export const REMOVE_ELSEWHERE = 'Remove devices in the OpenAgentd app on this computer.'
 
 export const getCloudStatus = () => cloudRequest('/status', 'GET')

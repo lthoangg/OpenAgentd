@@ -30,8 +30,9 @@ gh issue list --repo lthoangg/openagentd --state open --search "<area from the d
 
 - Triage related issues as fixed, partial, or unrelated. Fixed → `Fixes #<n>` in the
   PR body; related but open → `Refs #<n>`. Comment on an issue when the link is not obvious.
-- User-visible changes need entries in `documents/docs/features.md` with this
-  version before the bump PR (see `oad/commit` for what belongs there). If none are
+- User-visible changes need entries under `documents/docs/features/` with this
+  version before the bump PR (see `oad/commit` for what belongs there). List them
+  with `grep -rn '\[v<version>\]' documents/docs/features/`. If none are
   needed, say why in the PR body.
 
 ## 3. Version PR

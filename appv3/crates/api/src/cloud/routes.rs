@@ -415,7 +415,7 @@ async fn direct_answer(ext: Extensions) -> ApiResult<Response> {
     json_of(&super::direct::answer())
 }
 
-/// The switch in Settings → Server: `{ "on": bool, "port": u16 | null }`,
+/// The switch in Settings → Switch computer: `{ "on": bool, "port": u16 | null }`,
 /// `port` while direct sessions are accepted. Only this computer reads or
 /// changes it.
 async fn direct_setting(ext: Extensions) -> ApiResult<Response> {

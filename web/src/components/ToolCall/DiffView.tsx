@@ -4,7 +4,7 @@ import { Chip, type ChipTone } from '@/components/ui/chip'
 import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { isFailedResult } from './toolResultStatus'
-import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
+import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult/LspDiagnostics'
 
 interface SingleFileDiffProps {
   path: string

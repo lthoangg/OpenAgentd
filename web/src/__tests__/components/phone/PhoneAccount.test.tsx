@@ -23,7 +23,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { ServersScreen } = await import('@/components/phone/ServersScreen')
-const { PhoneAccountContent } = await import('@/components/settings/pages/settings.account.phone')
+const { PhoneAccountContent } = await import('@/components/settings/pages/settings.remote.phone')
 const { queryClient } = await import('@/lib/query-client')
 const { resetPhoneCloudPush, phoneCloudPollInterval } = await import('@/queries/phone-cloud')
 
@@ -122,55 +122,54 @@ describe('computers on the Computers screen', () => {
 })
 
 describe('Account page', () => {
-  it('has no second Account heading above the signed-out card (the sheet is titled Account)', async () => {
-    shell({ state: 'guest', notice: null, supported: true })
+  it('has no second heading above the QR code (the sheet is titled Remote control)', async () => {
+    shell({ state: 'guest', notice: null, supported: true }, { cloud_sign_in: () => status })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Account' })).toBeNull()
+    expect(await screen.findByText(/tap/)).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Remote control' })).toBeNull()
   })
 
-  it('offers a guest Sign in and explains a notice', async () => {
-    shell({ state: 'guest', notice: 'revoked', supported: true })
+  it('explains the notice that made the phone a guest again, above the new code', async () => {
+    shell({ state: 'guest', notice: 'revoked', supported: true }, { cloud_sign_in: () => status })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByText('This device was removed from your account.')).toBeTruthy()
-    expect(screen.getByText('Sign in to use your computers from anywhere.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(await screen.findByText('It was signed out and keeps working on its own. Your local sessions and settings are unchanged.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'No iPhone nearby? Sign in with Google' })).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('says why a join was refused, with the wait the cloud asked for', async () => {
+  it('says why no code can be shown, with the wait the cloud asked for, and asks for none by itself', async () => {
     shell({ state: 'guest', notice: 'rate_limited', supported: true, retry_after: 45 })
     render(<PhoneAccountContent />)
 
     expect(await screen.findByText('OpenAgentd is getting too many requests from this network. Try again in 45 seconds.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(ran('cloud_sign_in')).toHaveLength(0)
   })
 
   it('says the account already has 3 devices waiting', async () => {
     shell({ state: 'guest', notice: 'too_many_pending', supported: true })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByText('3 devices are already waiting to join; wait a few minutes or reject them on a device that approves.')).toBeTruthy()
+    expect(await screen.findByText('3 devices are already waiting to join; wait a few minutes or turn them down on a device that can add devices.')).toBeTruthy()
   })
 
-  it('asks no roles up front, and folds the invitation and the recovery code under Other ways to sign in', async () => {
-    shell({ state: 'guest', notice: null, supported: true })
+  it('asks no roles up front, and keeps Google and the recovery code as links', async () => {
+    shell({ state: 'guest', notice: null, supported: true }, { cloud_sign_in: () => status })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'No iPhone nearby? Sign in with Google' })).toBeTruthy()
     expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Paste link' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Other ways to sign in' }))
-    expect(screen.getByText('Have an invitation?')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Paste link' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' })).toBeTruthy()
   })
 
   it('recovers the account with the recovery code', async () => {
     const CODE = Array.from({ length: 13 }, () => 'WXYZ').join('-')
+    const SCAN: PhoneCloudStatus = { state: 'signing_in', user_code: 'ABCD-EFGH', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600, add_link: 'agentd://add?c=ABCDEFGH&d=me&k=test-only' }
     shell({ state: 'guest', notice: null, supported: true }, {
+      cloud_sign_in: () => { status = SCAN; return status },
+      cloud_cancel: () => { status = { state: 'guest', notice: null, supported: true }; return status },
       cloud_recover: () => {
         status = { state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600, recovering: true }
         return status
@@ -178,12 +177,13 @@ describe('Account page', () => {
     })
     render(<PhoneAccountContent />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Lost your phone? Use your recovery code' }))
     fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: CODE } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText('Recovering your account')).toBeTruthy()
+    // The code on screen stops first: a recovery is its own sign-in.
+    expect(ran('cloud_cancel').length).toBeGreaterThan(0)
     expect(ran('cloud_recover')[0].args).toEqual({ code: CODE })
     expect(screen.getByText('WXYZ-1234')).toBeTruthy()
   })
@@ -218,24 +218,26 @@ describe('Account page', () => {
     expect(screen.queryByText('Sign in to use your computers from anywhere.')).toBeNull()
   })
 
-  it('shows the sign-in code, opens the page only for https, and cancels', async () => {
-    shell({ state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600 }, {
+  it('shows the recovery sign-in code, opens the page only for https, and cancels', async () => {
+    shell({ state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600, recovering: true }, {
       cloud_cancel: () => { status = { state: 'guest', notice: null, supported: true }; return status },
+      cloud_sign_in: () => status,
     })
     render(<PhoneAccountContent />)
 
     expect(await screen.findByText('account.openagentd.dev/device')).toBeTruthy()
     expect(screen.getByText('WXYZ-1234')).toBeTruthy()
     expect(screen.getByText('AA11 BB22')).toBeTruthy()
-    expect(screen.getByText(/you can finish once you are approved/)).toBeTruthy()
+    expect(screen.getByText(/the same device ID/)).toBeTruthy()
+    expect(screen.queryByText(/waitlist/i)).toBeNull()
     expect(screen.getByRole('button', { name: 'Open page' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'No iPhone nearby? Sign in with Google' })).toBeTruthy()
   })
 
   it('has no Open page for a url that is not https', async () => {
-    shell({ state: 'signing_in', user_code: 'WXYZ-1234', url: 'http://account.example/device', fingerprint: 'f', expires_in: 600 })
+    shell({ state: 'signing_in', user_code: 'WXYZ-1234', url: 'http://account.example/device', fingerprint: 'f', expires_in: 600, recovering: true })
     render(<PhoneAccountContent />)
     expect(await screen.findByText('WXYZ-1234')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Open page' })).toBeNull()
@@ -245,7 +247,7 @@ describe('Account page', () => {
     shell({ state: 'joining', fingerprint: 'AA11 BB22', code: '418207' })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByText('Approve this phone on a device already in your account: Settings → Account → Pending approvals.')).toBeTruthy()
+    expect(await screen.findByText(/open OpenAgentd and tap Review/)).toBeTruthy()
     expect(screen.getByText('418 207')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
   })
@@ -268,6 +270,8 @@ describe('Account page', () => {
   it('polls every 2 s only while something waits on the person', () => {
     const waiting: PhoneCloudStatus[] = [
       { state: 'signing_in', user_code: 'X', url: 'https://a.b', fingerprint: 'f', expires_in: 1 },
+      { state: 'scanned', fingerprint: 'f' },
+      { state: 'confirming', choices: ['17', '42', '85'] },
       { state: 'joining', fingerprint: 'f', code: null },
       { state: 'recovery', code: 'A-B', check: [1, 2] },
     ]
@@ -310,17 +314,18 @@ describe('recovery code', () => {
 
     fireEvent.change(screen.getByLabelText('Type group 5'), { target: { value: 'EEEEE' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
-    expect(await screen.findByText('Only this phone can approve new devices.')).toBeTruthy()
+    expect(await screen.findByText('Only this phone can add devices.')).toBeTruthy()
     expect(ran('cloud_confirm_recovery')[1].args).toEqual({ first: 'BBBBB', second: 'EEEEE' })
   })
 
   it('can be cancelled', async () => {
     shell({ state: 'recovery', code: CODE, check: [1, 3] }, {
       cloud_cancel: () => { status = { state: 'guest', notice: null, supported: true }; return status },
+      cloud_sign_in: () => status,
     })
     render(<PhoneAccountContent />)
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'No iPhone nearby? Sign in with Google' })).toBeTruthy()
   })
 })
 
@@ -339,7 +344,7 @@ describe('connected account', () => {
     // One list: no separate Account panel, no key in the main view.
     expect(screen.queryByText('This device')).toBeNull()
     expect(screen.queryByText('AA11 BB22')).toBeNull()
-    expect(screen.getByText('Only this phone can approve new devices.')).toBeTruthy()
+    expect(screen.getByText('Only this phone can add devices.')).toBeTruthy()
     // Not this phone itself.
     expect(screen.getAllByRole('button', { name: /^Remove / })).toHaveLength(1)
 
@@ -371,7 +376,7 @@ describe('connected account', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Details of build-box' }))
     const details = await screen.findByRole('dialog', { name: 'build-box' })
     expect(details.textContent).toContain('SystemLinux')
-    expect(details.textContent).toContain('Key9C02 E1B7')
+    expect(details.textContent).toContain('Device ID9C02 E1B7')
     expect(details.textContent).toContain('SharingCan be opened by your devices')
     // Any computer of the account is renamed here, through its link.
     fireEvent.click(within(details).getByRole('button', { name: 'Rename' }))
@@ -425,7 +430,7 @@ describe('connected account', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(await screen.findByText('Sign out of your account?')).toBeTruthy()
-    expect(screen.getByText(/This phone is the only device that can approve others/)).toBeTruthy()
+    expect(screen.getByText(/This phone is the only device that can add devices/)).toBeTruthy()
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Sign out' }))
     expect(await screen.findByText('Signed out. Local sessions and settings are unchanged.')).toBeTruthy()
   })
@@ -497,7 +502,7 @@ describe('names and approvers kept by the account', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Details of Work Mac' }))
     const details = await screen.findByRole('dialog', { name: 'Work Mac' })
     expect(within(details).queryByRole('button', { name: 'Rename' })).toBeNull()
-    expect(details.textContent).toContain('Only a device that approves new devices can rename it.')
+    expect(details.textContent).toContain('Only a device that can add devices can rename it.')
   })
 
   it('uploads the names this app remembered, once, where the account has none', async () => {
@@ -524,8 +529,8 @@ describe('names and approvers kept by the account', () => {
     })
     render(<PhoneAccountContent />)
 
-    expect(await screen.findByText('Only this phone can approve new devices.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Let Work Mac approve' }))
+    expect(await screen.findByText('Only this phone can add devices.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Let Work Mac add devices' }))
     await waitFor(() => expect(ran('cloud_make_approver').map((call) => call.args)).toEqual([{ deviceId: 'dev-mac' }]))
   })
 
@@ -540,7 +545,7 @@ describe('names and approvers kept by the account', () => {
     })
     render(<PhoneAccountContent />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Let Work Mac approve' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Let Work Mac add devices' }))
     expect((await screen.findByRole('alert')).textContent).toContain('That device is no longer in your account.')
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Details of Work Mac' })).toBeNull())
   })
@@ -549,7 +554,7 @@ describe('names and approvers kept by the account', () => {
     shell(CONNECTED, { cloud_devices: () => [NAMED_ME, { ...MAC_NAMED, signer: true }] })
     render(<PhoneAccountContent />)
     expect(await screen.findByText('Work Mac')).toBeTruthy()
-    expect(screen.queryByText(/can approve new devices\./)).toBeNull()
+    expect(screen.queryByText(/can add devices\./)).toBeNull()
   })
 })
 
@@ -584,7 +589,7 @@ describe('approval sheet', () => {
 
     // Asked for server only: client cannot be turned on, and a server-only device does not approve by default.
     expect((within(sheet).getByRole('checkbox', { name: /can open my other computers/ }) as HTMLInputElement).disabled).toBe(true)
-    fireEvent.click(within(sheet).getByRole('checkbox', { name: 'Can approve other devices' }))
+    fireEvent.click(within(sheet).getByRole('checkbox', { name: 'Can add devices' }))
     fireEvent.click(match)
     await waitFor(() => expect(ran('cloud_approve_confirm')).toHaveLength(1))
     expect(ran('cloud_approve_confirm')[0].args).toEqual({ enrollmentId: 'enr-1', approver: true, server: true, client: false })
@@ -645,7 +650,7 @@ describe('approval sheet', () => {
     })
     fireEvent.click(await within(sheet).findByRole('button', { name: "Don't match" }))
 
-    expect(await screen.findByText("Request cancelled. If you didn't start it, someone may be trying to join your account.")).toBeTruthy()
+    expect(await screen.findByText("Not added. Try again on the device you're adding.")).toBeTruthy()
     expect(ran('cloud_approve_reject')[0].args).toEqual({ enrollmentId: 'enr-1' })
     expect(ran('cloud_approve_confirm')).toHaveLength(0)
     // Done after a rejection does not reject again.
@@ -660,7 +665,7 @@ describe('approval sheet', () => {
       cloud_approve_confirm: () => CONNECTED,
     })
     await within(sheet).findByText('418 207')
-    const approver = within(sheet).getByRole('checkbox', { name: 'Can approve other devices' })
+    const approver = within(sheet).getByRole('checkbox', { name: 'Can add devices' })
     expect((approver as HTMLInputElement).checked).toBe(true)
     fireEvent.click(within(sheet).getByRole('checkbox', { name: /My other devices can open/ }))
     fireEvent.click(within(sheet).getByRole('button', { name: 'Codes match' }))

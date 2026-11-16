@@ -7,7 +7,7 @@
  * over their content, in panes split right and down as often as there is
  * room (⌘\, ⌘⇧\, or a tab dragged onto a pane's edge; a terminal is a tab
  * like any other). Desktop geometry is a ratio of the shell's center
- * region (measured here from ``centerRef``) in ``side`` mode, or the whole
+ * region (measured by ``useDockFrame`` from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
  * side-by-side split; then it leaves the composer uncovered unless
  * maximized). Mobile keeps the fixed full-screen sheet with one strip.
@@ -18,97 +18,61 @@
  * over its full width and follows the edge swipe that closes it. A narrow
  * mouse window and a tablet keep the sheet under the app header.
  *
- * Tab state lives in ``useDockTabs`` (remembered per session) and Git write actions in
- * ``useGitActions``; this component owns the queries and the layout.
+ * Tab state lives in ``useDockTabs`` (remembered per session), the frame (open,
+ * close, width, motion) in ``useDockFrame``, the shared queries in
+ * ``useDockQueries``, the panes' geometry in ``usePaneLayout``, and Git write
+ * actions in ``useGitActions``; this component puts each pane's tab strip and
+ * content together.
  *
  * Once opened, the shell keeps the dock mounted: closing it (``open``
  * false) tweens it shut and then parks it hidden and inert, so its tabs,
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  getCodingWorkspaceStatus,
-  getCodingWorkspaceGitHistory,
-} from '@/api/client'
+// Not compiled: the React Compiler skipped WorkspacePanel (a ref written in
+// render) before its split; compiling it is a change of its own to verify.
+'use no memo'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/useToastStore'
-import { queryKeys } from '@/queries'
 import { useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useSideQuestions } from '@/queries/useSideQuestionsQuery'
-import {
-  WORKSPACE_TREE_STALE_MS,
-  workspaceFileListQueryOptions,
-} from '@/queries/workspace-files'
-import {
-  COMMIT_DIFF_STALE_MS,
-  WORKSPACE_DIFF_STALE_MS,
-  commitDiffQueryOptions,
-  workspaceChangesQueryOptions,
-} from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { useIsPhone } from '@/hooks/use-is-phone'
-import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
-import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
 import {
-  PANEL_SLIDE_MS,
   PanelResizeHandle,
   ResizableAside,
-  onPanelSlideBeside,
-  settledWidthBesidePanels,
-  usePanelSlideBeside,
-  type LiveWidth,
 } from '@/components/ResizableAside'
-import { useToggleTween } from '@/hooks/useToggleTween'
-import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
-import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
-import { useTouchFirst } from '@/hooks/use-touch-first'
-import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
-  DOCK_DEFAULT_RATIO,
-  DOCK_MIN_WIDTH,
   DOCK_PANE_MIN_HEIGHT,
   DOCK_PANE_MIN_WIDTH,
-  dockMaxWidth,
-  ratioFromWidth,
-  resolveDockLayout,
-  sideDockWidth,
-  type DockLayout,
 } from '@/lib/workbench-layout'
-import { SNAP_THRESHOLD_PX, snapToDetent } from '@/lib/resize-snap'
-import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
+import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
-import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
-import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
+import { type PreviewTarget, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import {
-  type ChangedFileStatus,
   type ChangedFileInfo,
-  type DiffFileSection,
-  changedFilesFromResponse,
-  collectChangedFiles,
-  collectDiffSections,
 } from './WorkspacePanel/diff-helpers'
 
-import { GitReviewSubPanel } from './WorkspacePanel/GitReviewSubPanel'
-import { CommitHistorySubPanel } from './WorkspacePanel/CommitHistorySubPanel'
 import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
-import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
-import { usePhonePageWidth } from './WorkspacePanel/usePhonePageWidth'
+import { PhoneReviewBar } from './WorkspacePanel/PhoneReviewBar'
+import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { useDockOpenFocus } from './WorkspacePanel/useDockOpenFocus'
+import { useDockQueries } from './WorkspacePanel/useDockQueries'
+import { DockPreviewPages, usePreviewListeners } from './WorkspacePanel/DockPreviewPages'
+import { ReviewTabView } from './WorkspacePanel/ReviewTabView'
+import { barStyle, paneStyle, usePaneLayout } from './WorkspacePanel/usePaneLayout'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
 import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
@@ -116,12 +80,6 @@ import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockA
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
 import { useDockTabs } from './WorkspacePanel/useDockTabs'
-import {
-  type GitSubTab,
-  GitViewToolbar,
-  gitViewPanelId,
-  gitViewTabId,
-} from './WorkspacePanel/GitViewToolbar'
 import {
   type AttachmentTabRequest,
   type TerminalRunRequest,
@@ -143,19 +101,11 @@ import {
 } from './WorkspacePanel/dock-tabs'
 import {
   type Axis,
-  type PaneBox,
   type PaneId,
-  type PaneLayout,
-  type SplitBar,
-  isPaneLeaf,
-  layoutBoxes,
-  paneOrder,
-  sizesWithBarAt,
 } from './WorkspacePanel/dock-panes'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
-const PreviewTabView = lazySurface(() => import('./Preview/PreviewTabView'), 'PreviewTabView')
 const AttachmentTabView = lazySurface(() => import('./WorkspacePanel/AttachmentTabView'), 'AttachmentTabView')
 const PlanTabView = lazySurface(() => import('./WorkspacePanel/PlanTabView'), 'PlanTabView')
 const GoalTabView = lazySurface(() => import('./WorkspacePanel/GoalTabView'), 'GoalTabView')
@@ -163,45 +113,13 @@ const TerminalSubPanel = lazySurface(() => import('./WorkspacePanel/TerminalSubP
 const CommitTabView = lazySurface(() => import('./WorkspacePanel/CommitTabView'), 'CommitTabView')
 const DiffTabView = lazySurface(() => import('./WorkspacePanel/DiffTabView'), 'DiffTabView')
 
-export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
-
 const EMPTY_TODOS: TodoItem[] = []
-/** Dev server a new preview tab opens when the workspace has no last URL. */
 /** Tabs the pane menu's Refresh reloads: the ones read from the workspace's files and Git. */
 const REFRESHABLE_TABS: ReadonlySet<DockTab['type']> = new Set(['review', 'file', 'diff'])
+/** Dev server a new preview tab opens when the workspace has no last URL. */
 const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 /** Stable empty ref: with no center element the width falls back to the viewport. */
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
-/** A closed dock parks (hidden, inert) once its close tween (0.22 s) is done. */
-const PARK_AFTER_MS = 260
-/** A phone's page leaves on the drawer spring, which takes about half a second to come to rest. */
-const PHONE_PARK_AFTER_MS = 500
-/** px a narrow mouse window's drawer slides (the phone's page slides its whole width). */
-const DRAWER_TRAVEL_PX = 272
-
-/**
- * A pane's place over the panes' area (``top``: an inset from its top, the
- * tab strip for a preview page). The hairline before a pane belongs to the
- * bar there, so the pane starts 1px in.
- */
-function paneStyle(box: PaneBox, top = '0px'): React.CSSProperties {
-  const x = box.left > 0 ? 1 : 0
-  const y = box.top > 0 ? 1 : 0
-  return {
-    left: `calc(${box.left * 100}% + ${x}px)`,
-    top: `calc(${box.top * 100}% + ${y}px + ${top})`,
-    width: `calc(${box.width * 100}% - ${x}px)`,
-    height: `calc(${box.height * 100}% - ${y}px - ${top})`,
-  }
-}
-
-/** A bar's 7px hit area, centred on the line between two panes. */
-function barStyle(bar: SplitBar): React.CSSProperties {
-  const { box, at } = bar
-  return bar.axis === 'row'
-    ? { left: `calc(${(box.left + at * box.width) * 100}% - 3px)`, top: `${box.top * 100}%`, height: `${box.height * 100}%` }
-    : { top: `calc(${(box.top + at * box.height) * 100}% - 3px)`, left: `${box.left * 100}%`, width: `${box.width * 100}%` }
-}
 
 export function WorkspacePanel({
   workspace,
@@ -311,25 +229,8 @@ export function WorkspacePanel({
   // A phone is touch and narrow: its Review panel is a page over the chat. A
   // narrow mouse window (``mobile`` without touch) keeps the drawer.
   const phone = useIsPhone() && mobile
-  const phonePageWidth = usePhonePageWidth(phone)
-  const gitViewIdBase = useId()
-  // Preview listener behind each preview tab; file tabs of one workspace
-  // share a listener, so it closes only with the last tab using it.
-  const previewIdsRef = useRef(new Map<string, string>())
-  const handlePreviewId = useCallback((tabId: string, previewId: string) => {
-    previewIdsRef.current.set(tabId, previewId)
-  }, [])
-  const handleTabClosed = useCallback((tab: DockTab) => {
-    if (tab.type !== 'preview') return
-    const ids = previewIdsRef.current
-    const previewId = ids.get(tab.id)
-    ids.delete(tab.id)
-    if (previewId && ![...ids.values()].includes(previewId)) {
-      // The listener is going away: no hidden copy may reopen it.
-      usePreviewKeepAliveStore.getState().forgetPreviewId(previewId)
-      void closePreview(previewId).catch(() => {})
-    }
-  }, [])
+  // Each preview tab's listener, closed with the last tab using it (DockPreviewPages.tsx).
+  const { handlePreviewId, handleTabClosed } = usePreviewListeners()
   // Where you are decides: Chat and a folder without Git have no Changes
   // view. Until the workspace tree says which this is, the view is offered as
   // usual but git is not probed.
@@ -415,253 +316,56 @@ export function WorkspacePanel({
     onNoRoomToSplit: noRoomToSplit,
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
-  // Where the phone bar's "+" menu is open, if it is.
-  const [phoneOpenMenu, setPhoneOpenMenu] = useState(false)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
   const [desktopCommitActions, setDesktopCommitActions] = useState<(CommitActionTarget & { x: number; y: number }) | null>(null)
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
-  const commitsScrollRef = useRef<HTMLDivElement>(null)
   const handledFileOpenKeyRef = useRef(-1)
-  // Closed and done animating: hidden and inert until it opens again. Not
-  // inert at once, so the shell can still see focus inside it and return it.
-  const [parked, setParked] = useState(false)
-  useEffect(() => {
-    if (open) {
-      setParked(false)
-      return
-    }
-    const timer = window.setTimeout(() => setParked(true), phone ? PHONE_PARK_AFTER_MS : PARK_AFTER_MS)
-    return () => window.clearTimeout(timer)
-  }, [open, phone])
-  // Whether the open or close tween (mounting counts as opening on a phone)
-  // is still running. Only then, and while closed, is the body pinned to the
-  // open width; any other width change moves the body with the dock's edge.
-  // The phone sheet settles on its animation's end; desktop slides its width
-  // with a CSS transition for a fixed time (``useToggleTween``).
-  const [toggle, setToggle] = useState({ open, running: mobile })
-  if (toggle.open !== open) setToggle({ open, running: mobile })
-  const settleToggle = () => setToggle((current) => (current.running ? { ...current, running: false } : current))
-  // Mounted by the toggle: lay out one frame at 0 wide, so the width has a
-  // start to slide from (layout is flushed before the second render).
-  const [entering, setEntering] = useState(slideIn && open && !mobile)
-  useLayoutEffect(() => {
-    if (!entering) return
-    void document.body.getBoundingClientRect()
-    setEntering(false)
-  }, [entering])
-  const shownOpen = open && !entering
-  const sliding = useToggleTween(shownOpen, PANEL_SLIDE_MS) && !mobile
-
-  // ── Geometry ───────────────────────────────────────────────────────────────
-  const dockRatio = useLayoutStore((s) => s.dockRatio)
-  const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  // Maximize, restore and Escape slide the width like open and close; a
-  // drag-resize never sets this, so it stays instant.
-  const maximizeSliding = useToggleTween(dockMaximized, PANEL_SLIDE_MS) && !mobile
-  // The sidebar showing or hiding changes the center: re-measured in the
-  // commit its slide starts, the dock slides to its new ratio alongside it,
-  // on the same curve, and the chat between them moves in one motion.
-  const measuredCenter = useElementWidth(centerRef, settledWidthBesidePanels, onPanelSlideBeside)
-  const besideSliding = usePanelSlideBeside(centerRef) && !mobile
-  const center = centerWidth ?? measuredCenter
-  const touch = useTouchFirst()
-  const liveLayout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized, touch })
-  // A dock that was beside the chat closes beside it. Closing frees room the
-  // sidebar may take at once (its clamp leaves an open dock 340px), which can
-  // drop the center under the side-by-side minimum mid-slide: switching to
-  // the overlay then would pull the dock out of the row, snap the chat to
-  // full width and slide the dock over it.
-  const [openMode, setOpenMode] = useState(liveLayout.mode)
-  if (open && openMode !== liveLayout.mode) setOpenMode(liveLayout.mode)
-  const layout: DockLayout = !open && openMode === 'side' && liveLayout.mode === 'overlay' && !dockMaximized
-    ? { mode: 'side', width: sideDockWidth(center, dockRatio, { touch }) }
-    : liveLayout
-  const overlay = !mobile && layout.mode === 'overlay'
-  // The default width a drag snaps onto: where a double-click puts the edge.
-  const dockDetent = sideDockWidth(center, DOCK_DEFAULT_RATIO, { touch })
-  const dockResize = {
-    width: layout.width,
-    min: DOCK_MIN_WIDTH,
-    max: dockMaxWidth(center, { touch }),
-    edge: 'left' as const,
-    detent: dockDetent,
-    // Snapped onto the default, it is the default ratio, not a rounded one.
-    onCommit: (width: number) => useLayoutStore.getState().setDockRatio(width === dockDetent ? DOCK_DEFAULT_RATIO : ratioFromWidth(width, center)),
-    onReset: () => useLayoutStore.getState().resetDockRatio(),
-    disabled: mobile || overlay || !open,
-    label: 'Resize Review panel',
-  }
-  // Desktop sets the width as a style and slides it only while showing or
-  // hiding (never for a drag or a window resize). Closed or sliding, the
-  // body keeps its open width, clipped rather than reflowed, so it rides
-  // the moving edge.
-  // The phone sheet follows an edge swipe by ``translate`` (see
-  // ``lib/drawer-motion``): no re-render per frame, and a release springs on
-  // with the finger's speed. A narrow mouse window's drawer fades (below) as it
-  // slides 272px; a phone's page is opaque and slides its whole width, in from
-  // the right when the toggle mounts it.
-  useDrawerMotion('workspace-panel', {
-    open: shownOpen,
-    enabled: mobile,
-    hidden: phone ? phonePageWidth : DRAWER_TRAVEL_PX,
-    reduced: prefersReducedMotion ?? false,
-    slideIn: phone && slideIn,
+  // How the dock opens, closes, parks, sizes and slides (useDockFrame.ts).
+  const {
+    parked,
+    settleToggle,
+    shownOpen,
+    sliding,
+    dockMaximized,
+    overlay,
+    dockResize,
+    dockMotion,
+    maximizeState,
+  } = useDockFrame({ open, mobile, phone, slideIn, centerRef, centerWidth, prefersReducedMotion })
+  // Where focus lands as the dock covers the chat or opens empty (useDockOpenFocus.ts).
+  useDockOpenFocus({
+    open,
+    overlay,
+    activeTabId,
+    tabButtonRefs,
+    tabCount: visibleTabs.length,
+    launcherFocusKey,
+    handledLauncherFocusKeyRef: parentHandledLauncherFocusKeyRef,
   })
-  const dockMotion = ({ width, isResizing }: LiveWidth) => ({
-    // A phone's page has nothing for framer to animate: the drawer driver slides it.
-    animate: phone
-      ? {}
-      : !shownOpen
-        ? (mobile ? { opacity: 0 } : { width: 0 })
-        : !mobile
-          ? { width: overlay ? layout.width : width }
-          : { opacity: 1 },
-    transition: { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
-    pinWidth: !mobile && (!open || toggle.running || sliding || maximizeSliding) ? (overlay ? layout.width : width) : undefined,
-    instantWidth: !mobile,
-    tweenWidth: sliding || maximizeSliding || besideSliding,
-  })
-  // The toggle is meaningless while a narrow window already forces overlay.
-  const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized
-  // Covering the chat makes it inert, which drops its focus onto <body>:
-  // take it on the active tab, or the launcher's first row when empty.
-  useClaimStrandedFocus(open && overlay, activeTabId, () =>
-    tabButtonRefs.current.get(activeTabId) ?? document.querySelector<HTMLElement>('[data-dock-launcher] button'))
-  // Opened by the user with nothing in it, the launcher is the choice to
-  // make: its first row takes focus, so ↓ and Return pick. Not when the
-  // panel comes back open with the window, nor when it opens on a tab.
-  const localHandledLauncherFocusKeyRef = useRef(0)
-  const handledLauncherFocusKeyRef = parentHandledLauncherFocusKeyRef ?? localHandledLauncherFocusKeyRef
-  const tabCountRef = useRef(visibleTabs.length)
-  tabCountRef.current = visibleTabs.length
-  useEffect(() => {
-    if (!open || !launcherFocusKey || handledLauncherFocusKeyRef.current === launcherFocusKey) return
-    let frame = requestAnimationFrame(() => {
-      // A second frame: a view request's tab lands in the render after this one.
-      frame = requestAnimationFrame(() => {
-        // Marked here, not before: a cancelled run (Strict Mode) must not use it up.
-        handledLauncherFocusKeyRef.current = launcherFocusKey
-        if (tabCountRef.current > 0) return
-        const row = document.querySelector<HTMLElement>('[data-dock-launcher] button')
-        if (row && !row.closest('[inert]')) row.focus()
-      })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [open, launcherFocusKey, handledLauncherFocusKeyRef])
 
   // ── Server state ──────────────────────────────────────────────────────────
-  const files = useQuery({
-    ...workspaceFileListQueryOptions(workspace),
-    enabled: open,
-    staleTime: WORKSPACE_TREE_STALE_MS,
-  })
-  // The changed paths only; each file's diff body loads when it is expanded
-  // or opened in a tab (see ``workspace-git.ts``).
-  const changes = useQuery({
-    ...workspaceChangesQueryOptions(workspace),
-    enabled: open && gitKnown,
-    staleTime: WORKSPACE_DIFF_STALE_MS,
-  })
-  const queryClient = useQueryClient()
-  /** Refetch the changed paths and every diff body on screen. */
-  const refreshChanges = useCallback(() => {
-    void changes.refetch()
-    void queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
-  }, [changes, queryClient, workspace])
-  const workspaceStatus = useQuery({
-    queryKey: queryKeys.coding.status(workspace),
-    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
-    enabled: open && gitKnown,
-    staleTime: 10_000,
-  })
-  const changedFiles = useMemo(() => changedFilesFromResponse(changes.data), [changes.data])
-  // Working-tree status per changed path; ``has`` doubles as "is changed".
-  const changedPaths = useMemo(() => new Map(changedFiles.map((file) => [file.path, file.status])), [changedFiles])
-  const filesByPath = useMemo(() => new Map((files.data?.files ?? []).map((file) => [file.path, file])), [files.data?.files])
-
-  const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
-  const subTab = gitState.subTab
   // Git's own queries run only while its tab shows in a pane on screen.
   const reviewShown = shownPanes.some((pane) => activeTabs[pane]?.id === REVIEW_TAB_ID)
-  // Each Changes view (changes, commits) keeps its place across tab switches.
-  const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
-  const expandedCommitSha = gitState.expandedCommitSha
-  const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
-  const expandedCommitFiles = useMemo(() => new Set(gitState.expandedCommitFiles), [gitState.expandedCommitFiles])
-
-  // Stable setters (read the store at call time) so the memoized Git list
-  // views below are not re-rendered by a fresh callback on every dock render.
-  const setSubTab = useCallback((tab: GitSubTab) => useGitPanelStore.getState().setSubTab(workspace, tab), [workspace])
-  const setExpandedCommitSha = useCallback((updater: string | null | ((prev: string | null) => string | null)) => {
-    const store = useGitPanelStore.getState()
-    const current = (store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitSha
-    store.setExpandedCommitSha(workspace, typeof updater === 'function' ? updater(current) : updater)
-  }, [workspace])
-  const setExpandedCommitFiles = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    const store = useGitPanelStore.getState()
-    const current = new Set((store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitFiles)
-    store.setExpandedCommitFiles(workspace, Array.from(typeof updater === 'function' ? updater(current) : updater))
-  }, [workspace])
-  const historyLimit = 50
-  const gitHistory = useInfiniteQuery({
-    queryKey: queryKeys.coding.history(workspace, historyLimit),
-    queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, signal),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
-    enabled: open && gitKnown && reviewShown && subTab === 'commits',
-    staleTime: 10_000,
-  })
-
-  const commits = useMemo(() => gitHistory.data?.pages.flatMap((page) => page.commits) ?? [], [gitHistory.data?.pages])
+  const {
+    files,
+    changes,
+    refreshChanges,
+    workspaceStatus,
+    changedFiles,
+    changedPaths,
+    filesByPath,
+    gitState,
+    gitHistory,
+    commits,
+    handleRefresh,
+  } = useDockQueries({ workspace, open, gitKnown, noGit, reviewShown })
 
   const isLatestCommit = useMemo(() => {
     const activeSha = mobileCommitActions?.sha ?? desktopCommitActions?.sha
     if (!activeSha || commits.length === 0) return false
     return activeSha === commits[0].sha
   }, [mobileCommitActions, desktopCommitActions, commits])
-
-  const commitsAhead = workspaceStatus.data?.commits_ahead ?? null
-  const commitsBehind = workspaceStatus.data?.commits_behind ?? null
-  const upstream = workspaceStatus.data?.upstream ?? null
-
-  const commitDiff = useQuery({
-    ...commitDiffQueryOptions(workspace, expandedCommitSha ?? ''),
-    enabled: open && gitKnown && reviewShown && subTab === 'commits' && expandedCommitSha !== null,
-    staleTime: COMMIT_DIFF_STALE_MS,
-  })
-  const commitDiffText = commitDiff.data?.diff
-
-  // React Query hands back a new result object every render; the list views
-  // get memoized slices of the fields they read so ``memo`` can skip them.
-  // ``isFetching`` matters only to a failed list's Retry; reading it always
-  // would re-render the rows on every background refetch.
-  const changesRetrying = changes.isError && changes.isFetching
-  const changesView = useMemo(
-    () => ({ isLoading: changes.isLoading, isError: changes.isError, isFetching: changesRetrying, refetch: changes.refetch, data: changes.data }),
-    [changes.isLoading, changes.isError, changesRetrying, changes.refetch, changes.data],
-  )
-  const filesView = useMemo(() => ({ isLoading: files.isLoading, data: files.data }), [files.isLoading, files.data])
-  const { isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData } = gitHistory
-  const historyFetching = historyError && gitHistory.isFetching
-  const historyView = useMemo(
-    () => ({ isLoading: historyLoading, isError: historyError, isFetching: historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData }),
-    [historyLoading, historyError, historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetchHistory, historyData],
-  )
-  // ``isFetching`` matters only to a failed load's Retry (as for the lists above).
-  const commitDiffRetrying = commitDiff.isError && commitDiff.isFetching
-  const commitDiffView = useMemo(
-    () => ({ isLoading: commitDiff.isLoading, isError: commitDiff.isError, isFetching: commitDiffRetrying, refetch: commitDiff.refetch }),
-    [commitDiff.isLoading, commitDiff.isError, commitDiffRetrying, commitDiff.refetch],
-  )
-  const commitChangedFiles = useMemo(() => {
-    if (!commitDiffText) return []
-    return collectChangedFiles({ workspace, is_git_repo: true, diff: commitDiffText })
-  }, [commitDiffText, workspace])
-  const commitDiffSections = useMemo(() => {
-    if (!commitDiffText) return new Map<string, DiffFileSection>()
-    return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiffText })
-  }, [commitDiffText, workspace])
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   // Files, diffs and commits opened from a list or a link are previews: the
@@ -728,35 +432,6 @@ export function WorkspacePanel({
   // A phone's "+" is in the page's navigation bar, for the pane in focus.
   const phoneOpenItems = phone ? openItemsFor(focused) : []
 
-  const handleRefresh = useCallback(() => {
-    void files.refetch()
-    if (noGit) return
-    refreshChanges()
-    void workspaceStatus.refetch()
-    if (subTab === 'commits') {
-      void gitHistory.refetch()
-    }
-  }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, noGit])
-
-  const toggleDiffExpanded = useCallback((path: string) => {
-    useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
-  }, [workspace])
-  const allExpanded = changedFiles.length > 0 && changedFiles.every((f) => expandedDiffs.has(f.path))
-  const toggleExpandAll = () => {
-    useGitPanelStore.getState().setExpandedDiffs(workspace, allExpanded ? [] : changedFiles.map((f) => f.path))
-  }
-
-  // Expansions persist per workspace; forget files that are no longer
-  // changed so a later edit to them does not reopen as a stale peek and the
-  // stored list does not grow forever. A capped list (over 5,000 files)
-  // cannot prove a path is gone.
-  useEffect(() => {
-    if (!changes.data?.is_git_repo || changes.data.truncated) return
-    const stored = useGitPanelStore.getState().workspaces[workspace]?.expandedDiffs ?? []
-    const kept = stored.filter((path) => changedPaths.has(path))
-    if (kept.length !== stored.length) useGitPanelStore.getState().setExpandedDiffs(workspace, kept)
-  }, [changes.data, changedPaths, workspace])
-
   useEffect(() => {
     if (handledFileOpenKeyRef.current === selectedFileOpenKey) return
     if (!selectedFilePath) return
@@ -796,162 +471,45 @@ export function WorkspacePanel({
     },
   })
 
+  // The Git tab: its toolbar and the Changes or Commits list (ReviewTabView.tsx).
   const reviewView = (
-    <div className="flex h-full min-h-0 flex-col">
-      {changes.data?.is_git_repo && (
-        <GitViewToolbar
-          idBase={gitViewIdBase}
-          subTab={subTab}
-          onSubTabChange={setSubTab}
-          changedCount={changedFiles.length}
-          commitsAhead={commitsAhead}
-          commitsBehind={commitsBehind}
-          upstream={upstream}
-          mobile={mobile}
-          allExpanded={changedFiles.length > 0 ? allExpanded : null}
-          onToggleExpandAll={toggleExpandAll}
-          // A phone has no pane menu to hold it.
-          onRefresh={mobile ? handleRefresh : undefined}
-        />
-      )}
-      <div
-        ref={rememberReviewScroll}
-        id={changes.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
-        role={changes.data?.is_git_repo ? 'tabpanel' : undefined}
-        aria-labelledby={changes.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
-        // Vertical only: ``overflow: auto`` lets one over-wide row pan the
-        // whole list sideways.
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y"
-      >
-        {subTab === 'changes' ? (
-          <GitReviewSubPanel
-            workspace={workspace}
-            changedFiles={changedFiles}
-            changes={changesView}
-            files={filesView}
-            selectedFilePath={selectedFilePath}
-            expandedDiffs={expandedDiffs}
-            toggleDiffExpanded={toggleDiffExpanded}
-            mobile={mobile}
-            setMobileFileActions={setMobileFileActions}
-            setDesktopFileActions={setDesktopFileActions}
-          />
-        ) : (
-          <CommitHistorySubPanel
-            workspace={workspace}
-            gitHistory={historyView}
-            commits={commits}
-            expandedCommitSha={expandedCommitSha}
-            setExpandedCommitSha={setExpandedCommitSha}
-            expandedCommitFiles={expandedCommitFiles}
-            setExpandedCommitFiles={setExpandedCommitFiles}
-            commitDiff={commitDiffView}
-            commitChangedFiles={commitChangedFiles}
-            commitDiffSections={commitDiffSections}
-            commitsScrollRef={commitsScrollRef}
-            openCommitTab={openCommitPreview}
-            mobile={mobile}
-            setMobileCommitActions={setMobileCommitActions}
-            setDesktopCommitActions={setDesktopCommitActions}
-            setMobileFileActions={setMobileFileActions}
-            setDesktopFileActions={setDesktopFileActions}
-          />
-        )}
-      </div>
-    </div>
+    <ReviewTabView
+      workspace={workspace}
+      gitState={gitState}
+      queriesEnabled={open && gitKnown && reviewShown}
+      mobile={mobile}
+      changes={changes}
+      files={files}
+      gitHistory={gitHistory}
+      commits={commits}
+      changedFiles={changedFiles}
+      status={workspaceStatus.data}
+      selectedFilePath={selectedFilePath}
+      onRefresh={handleRefresh}
+      openCommitTab={openCommitPreview}
+      setMobileFileActions={setMobileFileActions}
+      setDesktopFileActions={setDesktopFileActions}
+      setMobileCommitActions={setMobileCommitActions}
+      setDesktopCommitActions={setDesktopCommitActions}
+    />
   )
 
   // ── Panes ─────────────────────────────────────────────────────────────────
-  // Maximize (⌘⇧D) grows the whole panel: every pane stays on screen.
-  const onScreen = useMemo(() => new Set(shownPanes), [shownPanes])
-  const many = onScreen.size > 1
-  // A bar being dragged: its split's sizes until the drop.
-  const [liveSizes, setLiveSizes] = useState<{ key: string; sizes: number[] } | null>(null)
-  const { panes: boxes, bars } = useMemo(
-    () => layoutBoxes(panes.layout, onScreen, (key) => (liveSizes?.key === key ? liveSizes.sizes : undefined)),
-    [panes.layout, onScreen, liveSizes],
-  )
-  // Panes in the order they were made, so a split never moves one in the
-  // DOM (a moved iframe reloads); F6 follows the layout (``data-focus-order``).
-  const paneIds = useMemo(() => Object.keys(panes.panes).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))), [panes.panes])
-  const layoutIndex = useMemo(() => new Map(paneOrder(panes.layout).map((id, index) => [id, index])), [panes.layout])
-  // A split's new pane fades in at ``base`` (opacity only: pane sizes are
-  // never animated). The panes already there at mount, and a phone, do not.
-  const knownPanes = useRef<Set<string> | null>(null)
-  useLayoutEffect(() => {
-    const known = knownPanes.current
-    knownPanes.current = new Set(paneIds)
-    if (!known || mobile || prefersReducedMotion) return
-    for (const id of paneIds) {
-      if (known.has(id)) continue
-      const node = panesRef.current?.querySelector<HTMLElement>(`[data-dock-pane="${id}"]`)
-      if (node && typeof node.animate === 'function') {
-        node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATIONS_S.base * 1000, easing: cssEasing(EASINGS.out) })
-      }
-    }
-  }, [paneIds, mobile, prefersReducedMotion])
-  // The panel-wide Maximize sits on the top-right pane, as in an editor.
-  const cornerPane = useMemo(() => {
-    let best: PaneId | null = null
-    let right = -1
-    for (const [pane, box] of boxes) {
-      if (box.top === 0 && box.left + box.width > right + 1e-9) {
-        best = pane
-        right = box.left + box.width
-      }
-    }
-    return best
-  }, [boxes])
+  // Where each pane sits and how the bars between them resize (usePaneLayout.ts).
+  const {
+    boxes,
+    bars,
+    many,
+    paneIds,
+    layoutIndex,
+    cornerPane,
+    barValueNow,
+    dragBar,
+    stepBar,
+    evenOut,
+  } = usePaneLayout({ panes, shownPanes, panesRef, resizeSplit, mobile, prefersReducedMotion })
 
-  const splitAt = (path: readonly number[]): Extract<PaneLayout, { axis: Axis }> | null => {
-    let node: PaneLayout = panes.layout
-    for (const index of path) {
-      if (isPaneLeaf(node)) return null
-      node = node.children[index]
-    }
-    return isPaneLeaf(node) ? null : node
-  }
-  /** A bar's split on screen, in px, and the least share a pane keeps there. */
-  const barExtent = (bar: SplitBar) => {
-    const rect = panesRef.current?.getBoundingClientRect()
-    if (!rect) return null
-    const row = bar.axis === 'row'
-    const start = row ? rect.left + bar.box.left * rect.width : rect.top + bar.box.top * rect.height
-    const size = row ? bar.box.width * rect.width : bar.box.height * rect.height
-    return size > 0 ? { start, size, min: (row ? DOCK_PANE_MIN_WIDTH : DOCK_PANE_MIN_HEIGHT) / size } : null
-  }
-  /** Moves a bar to a pointer position; answers whether it snapped onto the even split. */
-  const dragBar = (bar: SplitBar, clientX: number, clientY: number, done: boolean): boolean => {
-    const node = splitAt(bar.path)
-    const extent = barExtent(bar)
-    if (!node || !extent) return false
-    const pointer = ((bar.axis === 'row' ? clientX : clientY) - extent.start) / extent.size
-    // ``evenOut`` gives each shown pane an equal share: the bar's detent.
-    const even = (bar.shown.indexOf(bar.before) + 1) / bar.shown.length
-    const { value: at, snapped } = snapToDetent(pointer, even, SNAP_THRESHOLD_PX / extent.size)
-    const sizes = sizesWithBarAt(node.sizes, bar, at, extent.min)
-    if (!done) {
-      setLiveSizes({ key: bar.path.join('.'), sizes })
-      return snapped
-    }
-    setLiveSizes(null)
-    resizeSplit(bar.path, sizes)
-    return snapped
-  }
-  const stepBar = (bar: SplitBar, px: number) => {
-    const node = splitAt(bar.path)
-    const extent = barExtent(bar)
-    if (node && extent) resizeSplit(bar.path, sizesWithBarAt(node.sizes, bar, bar.at + px / extent.size, extent.min))
-  }
-  /** Double-click or Enter: the panes of that split share its room evenly. */
-  const evenOut = (bar: SplitBar) => {
-    const node = splitAt(bar.path)
-    if (!node) return
-    const share = bar.shown.reduce((total, index) => total + node.sizes[index], 0) / bar.shown.length
-    resizeSplit(bar.path, node.sizes.map((size, index) => (bar.shown.includes(index) ? share : size)))
-  }
-
-  /** Show in Changes: the Changes list with this file's diff open. */
+  /** Reveal in Git: the Changes list with this file's diff open. */
   const revealInGit = useCallback((path: string) => {
     const store = useGitPanelStore.getState()
     store.setSubTab(workspace, 'changes')
@@ -1100,67 +658,10 @@ export function WorkspacePanel({
     )
   }
 
-  // Preview tabs stay mounted so the page and its comments survive tab
-  // switches and moves between panes: one layer over the panes, each page
-  // placed over its pane's body, in a fixed order (a moved iframe reloads).
-  const previewTabs = paneIds
-    .flatMap((pane) => (strips[pane] ?? [])
-      .filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
-      .map((tab) => ({ tab, pane })))
-    .sort((a, b) => (a.tab.id < b.tab.id ? -1 : a.tab.id > b.tab.id ? 1 : 0))
-
-  // A click in a page goes to its frame, so no pointer event reaches the
-  // pane: the window's blur, with the frame focused, says where focus went.
-  useEffect(() => {
-    if (mobile) return
-    let timer = 0
-    const onBlur = () => {
-      window.clearTimeout(timer)
-      // After the blur: the frame is the active element by then everywhere.
-      timer = window.setTimeout(() => {
-        const frame = document.activeElement
-        if (!(frame instanceof HTMLIFrameElement)) return
-        const pane = frame.closest('[data-dock-preview-pane]')?.getAttribute('data-dock-preview-pane')
-        if (pane) focusPane(pane)
-      }, 0)
-    }
-    window.addEventListener('blur', onBlur)
-    return () => {
-      window.removeEventListener('blur', onBlur)
-      window.clearTimeout(timer)
-    }
-  }, [mobile, focusPane])
-
   // Overlaying a narrow chat, the panel stops above the composer so the
   // message can be written beside the diff; maximized, it covers both.
   const leavesComposer = overlay && !dockMaximized
 
-  // A phone's navigation bar: ‹ Chat (the one way out: no × beside it), the
-  // title, and the "+" that opens a view or tool, as the tab strip's does on
-  // other layouts. The tab strip under it draws the hairline; an empty page
-  // has none, so the bar does.
-  const phoneStripShown = (strips[focused]?.length ?? 0) > 0
-  const phoneBar = phone && (
-    <PhoneNavBar
-      className={phoneStripShown ? 'border-transparent!' : undefined}
-      back={onRequestClose ? { label: 'Chat', onBack: onRequestClose } : undefined}
-      title="Review panel"
-      trailing={phoneOpenItems.length > 0 && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Open in Review panel"
-          aria-haspopup="dialog"
-          aria-expanded={phoneOpenMenu}
-          className="text-(--color-accent)!"
-          onClick={() => setPhoneOpenMenu(true)}
-        >
-          <Plus size={20} aria-hidden="true" className="size-5" />
-        </Button>
-      )}
-    />
-  )
 
   return (
     <ResizableAside
@@ -1219,51 +720,39 @@ export function WorkspacePanel({
         }}
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
-        {phoneBar}
+        <PhoneReviewBar
+          phone={phone}
+          items={phoneOpenItems}
+          stripShown={(strips[focused]?.length ?? 0) > 0}
+          onRequestClose={onRequestClose}
+        />
         <div ref={panesRef} data-dock-panes="" className="relative min-h-0 flex-1">
           {paneIds.map(renderPane)}
-          {previewTabs.map(({ tab, pane }) => {
-            const box = boxes.get(pane)
-            const showing = box !== undefined && activeTabs[pane]?.id === tab.id
-            return (
-              <div
-                key={tab.id}
-                data-dock-preview={tab.id}
-                data-dock-preview-pane={pane}
-                className={cn('absolute', !showing && 'hidden')}
-                style={box ? paneStyle(box, 'var(--spacing-tab-bar)') : undefined}
-                onFocusCapture={() => focusPane(pane)}
-                onPointerDownCapture={() => focusPane(pane)}
-              >
-                <PreviewTabView
-                  workspace={workspace}
-                  tabId={tab.id}
-                  target={tab.target}
-                  navKey={tab.navKey}
-                  onPreviewId={handlePreviewId}
-                  onSendComments={onSendPreviewComments}
-                  onOpenTarget={openPreviewTarget}
-                  active={open && showing}
-                  onRequestClose={closeTab}
-                />
-              </div>
-            )
-          })}
-          {bars.map((bar) => {
-            const sizes = (liveSizes?.key === bar.path.join('.') ? liveSizes.sizes : splitAt(bar.path)?.sizes) ?? []
-            const pair = (sizes[bar.before] ?? 0) + (sizes[bar.after] ?? 0)
-            return (
-              <PaneSplitHandle
-                key={`${bar.path.join('.')}:${bar.after}`}
-                axis={bar.axis}
-                style={barStyle(bar)}
-                valueNow={pair > 0 ? Math.round(((sizes[bar.before] ?? 0) / pair) * 100) : 50}
-                onDrag={(x, y, done) => dragBar(bar, x, y, done)}
-                onStep={(px) => stepBar(bar, px)}
-                onReset={() => evenOut(bar)}
-              />
-            )
-          })}
+          <DockPreviewPages
+            workspace={workspace}
+            open={open}
+            mobile={mobile}
+            paneIds={paneIds}
+            strips={strips}
+            boxes={boxes}
+            activeTabs={activeTabs}
+            focusPane={focusPane}
+            onPreviewId={handlePreviewId}
+            onSendComments={onSendPreviewComments}
+            onOpenTarget={openPreviewTarget}
+            onRequestClose={closeTab}
+          />
+          {bars.map((bar) => (
+            <PaneSplitHandle
+              key={`${bar.path.join('.')}:${bar.after}`}
+              axis={bar.axis}
+              style={barStyle(bar)}
+              valueNow={barValueNow(bar)}
+              onDrag={(x, y, done) => dragBar(bar, x, y, done)}
+              onStep={(px) => stepBar(bar, px)}
+              onReset={() => evenOut(bar)}
+            />
+          ))}
         </div>
         <CloseTerminalDialog
           open={confirmCloseOpen}
@@ -1272,7 +761,6 @@ export function WorkspacePanel({
           onConfirm={confirmCloseTab}
           onCancel={cancelCloseTab}
         />
-        <DockOpenSheet open={phoneOpenMenu} items={phoneOpenItems} onClose={() => setPhoneOpenMenu(false)} />
         <DockActionMenus
           workspace={workspace}
           mobileFileActions={mobileFileActions}

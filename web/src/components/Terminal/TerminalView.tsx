@@ -16,10 +16,12 @@
  * `useThemePreference`; the store swaps every session's palette so hidden
  * terminals wake up already matching.
  *
- * Font: a fixed Nerd Font stack and size (`lib/terminal-font.ts`).
+ * Font: a fixed Nerd Font stack at the app's Text size (`lib/terminal-font.ts`).
  *
  * `data-swipe-ignore` opts the surface out of mobile edge-swipe so
- * xterm owns its own touches (scrollback, selection).
+ * xterm owns its own touches. On touch a drag only scrolls: xterm selects
+ * with a mouse, so the long-press menu's Select Text opens the output as
+ * plain text (`TerminalTextView`) for the platform's own selection.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -27,16 +29,25 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { MessageSquarePlus } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
+import { TERMINAL_FONT_FAMILY, terminalFontSize } from '@/lib/terminal-font'
 import { TerminalActionSheet } from './TerminalActionSheet'
+import { readCommandFieldOn, TerminalCommandField, writeCommandFieldOn } from './TerminalCommandField'
+import { TerminalContextMenu } from './TerminalContextMenu'
 import { addToChatShortcutLabel } from './terminal-keys'
 import { TerminalKeyBar } from './TerminalKeyBar'
+import { TerminalTextView } from './TerminalTextView'
 import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
+import type { TerminalMenuAction } from './terminal-menu'
+import { stickyModifierTransform, type StickyModifiers } from './terminal-modifiers'
+import { terminalBufferText, type TerminalText } from './terminal-text'
 import { useLongPressSurface } from './use-long-press-surface'
 import { useTerminalAutoFocus } from './use-terminal-autofocus'
 
@@ -55,21 +66,28 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const meta = useTerminalStore((s) => s.sessions[sessionId])
   const status = meta?.status ?? 'error'
   const handleReady = meta?.handleReady ?? false
-  const [ctrlArmed, setCtrlArmed] = useState(false)
-  const ctrlArmedRef = useRef(false)
+  const [modifiers, setModifiersState] = useState<StickyModifiers>({ ctrl: false, alt: false })
+  const modifiersRef = useRef<StickyModifiers>({ ctrl: false, alt: false })
   const isMobile = useIsMobile()
   const touchFirst = useTouchFirst()
+  const keyboardOpen = useKeyboardOpen()
+  const [focusWithin, setFocusWithin] = useState(false)
+  const [commandFieldOn, setCommandFieldOn] = useState(readCommandFieldOn)
+  const commandFieldRef = useRef<HTMLInputElement>(null)
   const { resolved } = useThemePreference()
+  const textSize = useDisplayPrefsStore((s) => s.textSize)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const [textSnapshot, setTextSnapshot] = useState<TerminalText | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const [findSeed, setFindSeed] = useState('')
   const [findSignal, setFindSignal] = useState(0)
   const [hasSelection, setHasSelection] = useState(false)
   const workspace = meta?.contextKey ?? null
 
-  const setCtrl = useCallback((armed: boolean) => {
-    ctrlArmedRef.current = armed
-    setCtrlArmed(armed)
+  const setModifiers = useCallback((next: StickyModifiers) => {
+    modifiersRef.current = next
+    setModifiersState(next)
   }, [])
 
   // Keep every live terminal's palette in sync with the app theme.
@@ -77,30 +95,23 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
 
-  // Sticky-Ctrl transform: single character → control code.
-  // Handles a–z (0x01–0x1a), plus [, \, ], ^, _, ?, @.
-  // Registered on the store so it applies to keystrokes from xterm's own
-  // onData wiring, not just the mobile key bar.
+  // The terminal reads at the app's Text size, live.
   useEffect(() => {
-    useTerminalStore.getState().setInputTransform(sessionId, (data: string): string => {
-      if (!ctrlArmedRef.current || data.length !== 1) return data
-      setCtrl(false)
-      const ch = data.toLowerCase()
-      const code = ch.charCodeAt(0)
-      if (code >= 97 && code <= 122) return String.fromCharCode(code - 96)
-      if (ch === '[') return '\x1b'
-      if (ch === '\\') return '\x1c'
-      if (ch === ']') return '\x1d'
-      if (ch === '^') return '\x1e'
-      if (ch === '_') return '\x1f'
-      if (ch === '?') return '\x7f'
-      if (ch === '@' || ch === '0') return '\x00'
-      return data
-    })
+    useTerminalStore.getState().syncFontSize(terminalFontSize(textSize))
+  }, [textSize])
+
+  // Sticky Ctrl/Alt (terminal-modifiers.ts): the next key is sent with them,
+  // then they release. Registered on the store so it applies to keystrokes
+  // from xterm's own onData wiring and to the key bar's keys alike.
+  useEffect(() => {
+    useTerminalStore.getState().setInputTransform(sessionId, stickyModifierTransform(
+      () => modifiersRef.current,
+      () => setModifiers({ ctrl: false, alt: false }),
+    ))
     return () => {
       useTerminalStore.getState().setInputTransform(sessionId, (d) => d)
     }
-  }, [sessionId, setCtrl])
+  }, [sessionId, setModifiers])
 
   // Attach: re-parent the store-owned xterm DOM into our container.
   // Detach on unmount WITHOUT disposing — the session lives on.
@@ -209,65 +220,127 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const sendKey = useCallback(
     (data: string) => {
       useTerminalStore.getState().sendInput(sessionId, data)
-      getTerminalRuntime(sessionId)?.handle?.term.focus()
+      // Typing in the command field: the key goes to the shell (^C, history
+      // arrows) but the field keeps the keyboard.
+      if (document.activeElement !== commandFieldRef.current) getTerminalRuntime(sessionId)?.handle?.term.focus()
     },
     [sessionId],
   )
+
+  const submitLine = useCallback((line: string) => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    if (!term) return
+    // xterm's paste, as Run in terminal: bracketed, through the same input path.
+    if (line !== '') term.paste(line)
+    useTerminalStore.getState().sendInput(sessionId, '\r')
+  }, [sessionId])
+
+  const toggleCommandField = useCallback(() => {
+    const next = !commandFieldOn
+    setCommandFieldOn(next)
+    writeCommandFieldOn(next)
+    // The keyboard follows: into the new field, or back to the terminal.
+    if (next) requestAnimationFrame(() => commandFieldRef.current?.focus())
+    else getTerminalRuntime(sessionId)?.handle?.term.focus()
+  }, [commandFieldOn, sessionId])
+
+  const pasteFromBar = useCallback(() => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    // term.paste, not raw input: it honours bracketed-paste mode.
+    if (term) void pasteIntoTerminal(term)
+  }, [sessionId])
 
   const reconnect = useCallback(() => {
     useTerminalStore.getState().reconnect(sessionId)
   }, [sessionId])
 
-  // Long-press on the terminal surface itself: Select All / Copy / Paste.
-  // xterm's own touch handling covers scroll + drag-to-select, but there's
-  // no native context menu on touch, so this fills the gap on a phone and
-  // on a tablet however wide (a mouse press never counts as a hold).
-  const surfaceLongPress = useLongPressSurface(isMobile || touchFirst, () => {
+  // Long-press on the terminal surface itself opens the terminal menu. Touch
+  // has no context menu and xterm's touch handling only scrolls, so this
+  // fills the gap on a phone and on a tablet however wide (a mouse press
+  // never counts as a hold).
+  const touchMenu = isMobile || touchFirst
+  const surfaceLongPress = useLongPressSurface(touchMenu, () => {
     mediumHapticFeedback()
     setActionSheetOpen(true)
   })
 
-  const selectAll = useCallback(() => {
-    getTerminalRuntime(sessionId)?.handle?.term.selectAll()
-    setActionSheetOpen(false)
-  }, [sessionId])
-
-  const copySelection = useCallback(async () => {
-    const term = getTerminalRuntime(sessionId)?.handle?.term
-    if (term) await copyTerminalSelection(term)
-    setActionSheetOpen(false)
-  }, [sessionId])
-
-  const pasteClipboard = useCallback(async () => {
-    const term = getTerminalRuntime(sessionId)?.handle?.term
-    // term.paste, not raw input: it honours bracketed-paste mode.
-    if (term && (await pasteIntoTerminal(term))) term.focus()
-    setActionSheetOpen(false)
-  }, [sessionId])
-
   const addToChat = useCallback(() => {
     const term = getTerminalRuntime(sessionId)?.handle?.term
     if (term && addTerminalSelectionToChat(term)) term.clearSelection()
-    setActionSheetOpen(false)
   }, [sessionId])
 
-  const findFromSheet = useCallback(() => {
-    setActionSheetOpen(false)
-    // After the sheet has closed, so it does not take the focus back.
-    window.setTimeout(openFind, 0)
-  }, [openFind])
+  // One handler for both forms of the menu (touch sheet, pointer menu).
+  const runMenuAction = useCallback((action: TerminalMenuAction) => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    if (!term) return
+    switch (action) {
+      case 'select-text':
+        setTextSnapshot(terminalBufferText(term.buffer.active))
+        // Put the soft keyboard away: selecting needs the whole screen.
+        term.blur()
+        break
+      case 'copy':
+        void copyTerminalSelection(term)
+        break
+      case 'paste':
+        // term.paste, not raw input: it honours bracketed-paste mode.
+        void pasteIntoTerminal(term).then((pasted) => {
+          if (pasted) term.focus()
+        })
+        break
+      case 'select-all':
+        term.selectAll()
+        break
+      case 'find':
+        // After the menu has closed, so it does not take the focus back.
+        window.setTimeout(openFind, 0)
+        break
+      case 'add-to-chat':
+        addToChat()
+        break
+      case 'clear':
+        useTerminalStore.getState().clear(sessionId)
+        break
+    }
+  }, [addToChat, openFind, sessionId])
+
+  const closeTextView = useCallback(() => setTextSnapshot(null), [])
 
   const search = getTerminalRuntime(sessionId)?.handle?.search
+  // A phone always has the key bar; a tablet while its soft keyboard is up
+  // for this terminal (with a hardware keyboard the soft one stays down).
+  const showKeyBar = status === 'connected' && (isMobile || (touchFirst && keyboardOpen && focusWithin))
 
   return (
-    <div className="flex h-full flex-col" data-swipe-ignore>
+    <div
+      className="flex h-full flex-col"
+      data-swipe-ignore
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
+      }}
+    >
       <div className="relative min-h-0 flex-1 overflow-hidden bg-(--color-surface) p-2">
         <div
           ref={containerRef}
           data-testid="terminal-surface"
           className="h-full w-full"
           {...surfaceLongPress}
+          onContextMenu={(event) => {
+            // Touch: the long press opens the sheet. A pointer: the terminal's
+            // menu, not the webview's menu for xterm's hidden input.
+            event.preventDefault()
+            if (!touchMenu) setContextMenuAt({ x: event.clientX, y: event.clientY })
+          }}
         />
+        {textSnapshot && (
+          <TerminalTextView
+            text={textSnapshot}
+            fontFamily={TERMINAL_FONT_FAMILY}
+            fontSize={getTerminalRuntime(sessionId)?.handle?.term.options.fontSize ?? 13}
+            onClose={closeTextView}
+          />
+        )}
         {((findOpen && search) || (!isMobile && !findOpen && hasSelection)) && (
           <div className="absolute right-4 top-2 z-20 flex flex-col items-end gap-1">
             {findOpen && search && (
@@ -316,24 +389,36 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           </div>
         )}
       </div>
-      {isMobile && status === 'connected' && (
+      {showKeyBar && commandFieldOn && <TerminalCommandField onSubmit={submitLine} inputRef={commandFieldRef} />}
+      {showKeyBar && (
         <TerminalKeyBar
           onKey={sendKey}
-          ctrlArmed={ctrlArmed}
-          onCtrlToggle={() => setCtrl(!ctrlArmedRef.current)}
+          onPaste={pasteFromBar}
+          ctrlArmed={modifiers.ctrl}
+          onCtrlToggle={() => setModifiers({ ...modifiersRef.current, ctrl: !modifiersRef.current.ctrl })}
+          altArmed={modifiers.alt}
+          onAltToggle={() => setModifiers({ ...modifiersRef.current, alt: !modifiersRef.current.alt })}
+          lineOn={commandFieldOn}
+          onLineToggle={toggleCommandField}
         />
       )}
 
       <TerminalActionSheet
         open={actionSheetOpen}
-        onOpenChange={setActionSheetOpen}
+        onClose={() => setActionSheetOpen(false)}
         hasSelection={hasSelection}
-        onSelectAll={selectAll}
-        onCopy={() => void copySelection()}
-        onPaste={() => void pasteClipboard()}
-        onFind={findFromSheet}
-        onAddToChat={addToChat}
+        os={getPlatform().os}
+        onAction={runMenuAction}
       />
+      {contextMenuAt && (
+        <TerminalContextMenu
+          at={contextMenuAt}
+          onDismiss={() => setContextMenuAt(null)}
+          hasSelection={getTerminalRuntime(sessionId)?.handle?.term.hasSelection() ?? hasSelection}
+          os={getPlatform().os}
+          onAction={runMenuAction}
+        />
+      )}
     </div>
   )
 }

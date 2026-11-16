@@ -404,3 +404,33 @@ async fn a_plugin_copied_into_the_folder_loads_without_a_restart() {
     }
     assert!(appv3_agent::skills::discover_skills(None).iter().any(|s| s.name == "review-kit/code-review"));
 }
+
+/// A plugin skill's frontmatter names its folder (`name: code-review`), as the
+/// Agent Skills format requires; Settings shows it as valid, and the composer
+/// offers it as a slash command that has the agent load it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn plugin_skills_are_valid_in_settings_and_run_as_slash_commands() {
+    let e = env().await;
+    let _g = serial().lock().await;
+    e.fresh().await;
+    copy_dir(&fixture("review-kit"), &e.plugins.join("review-kit"));
+    appv3_api::plugins::reload().await;
+
+    let (st, list) = e.call("GET", "/api/skills", None).await;
+    assert_eq!(st, StatusCode::OK, "{list}");
+    let row = list["skills"].as_array().unwrap().iter().find(|s| s["name"] == "review-kit/code-review").cloned().unwrap_or_else(|| panic!("{list}"));
+    assert_eq!((row["valid"].as_bool(), row["error"].clone()), (Some(true), Value::Null), "{row}");
+    let (st, detail) = e.call("GET", "/api/skills/review-kit/code-review", None).await;
+    assert_eq!((st, detail["error"].clone()), (StatusCode::OK, Value::Null), "{detail}");
+
+    let (st, commands) = e.call("GET", "/api/commands", None).await;
+    assert_eq!(st, StatusCode::OK, "{commands}");
+    let command = commands["commands"].as_array().unwrap().iter().find(|c| c["name"] == "review-kit/code-review").cloned().unwrap_or_else(|| panic!("{commands}"));
+    assert_eq!(command["source"], "skill", "{command}");
+    assert!(command["description"].as_str().unwrap().starts_with("Review a diff"), "{command}");
+
+    let (st, rendered) = e.call("POST", "/api/commands/review-kit/code-review/render", Some(json!({"arguments": "focus on the parser"}))).await;
+    assert_eq!(st, StatusCode::OK, "{rendered}");
+    let content = rendered["content"].as_str().unwrap();
+    assert!(content.contains("`review-kit/code-review`") && content.ends_with("focus on the parser"), "{content}");
+}

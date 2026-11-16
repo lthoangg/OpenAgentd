@@ -5,13 +5,13 @@ import { createRef } from "react"
 import { InputComposer } from "@/components/InputComposer"
 import type { InputComposerHandle } from "@/components/InputComposer"
 import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
-import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer.files"
+import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer/files"
+import { buildHistoryEntries } from "@/components/InputComposer/history"
 import {
-  buildHistoryEntries,
   filterMentions,
   filterSlashCommands,
   filterSnippetCommands,
-} from "@/components/InputComposer.menus"
+} from "@/components/InputComposer/menus"
 import type { AgentCapabilities } from "@/api/types"
 
 let isMobile = false
@@ -689,6 +689,17 @@ describe("InputComposer — run deck", () => {
     act(() => actions!.setDraft("/btw "))
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     expect(textarea.value).toBe("/btw ")
+  })
+
+  it("opens the file picker from the + control's attach outside the native app", () => {
+    let actions: { attach: (kind?: "photos" | "files") => void } | null = null
+    render(<InputComposer onSubmit={() => {}} renderPlus={(a) => { actions = a; return null }} />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const click = mock(() => {})
+    input.click = click
+    act(() => actions!.attach())
+    act(() => actions!.attach("photos"))
+    expect(click).toHaveBeenCalledTimes(2)
   })
 
   it("draws no border on the deck controls: only the composer field has one", () => {

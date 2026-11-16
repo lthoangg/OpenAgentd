@@ -11,7 +11,7 @@ import {
   installTypeScriptLsp,
   updateDeniedPathsSettings,
 } from '@/api/client'
-import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
+import { BlockedFilesSettingsPage } from '@/components/settings/pages/settings.blocked_files'
 
 // ── API client ──────────────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ function renderWithQueryClient(ui: React.ReactNode) {
   )
 }
 
-describe('DeniedPathsSettingsPage', () => {
+describe('BlockedFilesSettingsPage', () => {
   it('renders pattern rows from the server', async () => {
     const original = globalThis.fetch
     globalThis.fetch = mock(
@@ -156,7 +156,7 @@ describe('DeniedPathsSettingsPage', () => {
         ),
     )
     try {
-      renderWithQueryClient(<DeniedPathsSettingsPage />)
+      renderWithQueryClient(<BlockedFilesSettingsPage />)
       await waitFor(() => {
         expect(screen.getByDisplayValue('**/.env')).toBeTruthy()
         expect(screen.getByDisplayValue('secrets/**')).toBeTruthy()
@@ -173,7 +173,7 @@ describe('DeniedPathsSettingsPage', () => {
         new Response(JSON.stringify({ denied_patterns: [] }), { status: 200 }),
     )
     try {
-      renderWithQueryClient(<DeniedPathsSettingsPage />)
+      renderWithQueryClient(<BlockedFilesSettingsPage />)
       await waitFor(() => {
         expect(screen.getByText('Nothing is blocked')).toBeTruthy()
       })

@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "unicorn", "typescript"],
+  "plugins": ["react", "unicorn", "typescript", "import"],
   "categories": {
     "correctness": "error"
   },
@@ -11,6 +11,16 @@
     "react/immutability": "off",
     "react/globals": "off",
     "react/purity": "off",
+    "react/rules-of-hooks": "error",
+    "import/no-cycle": "error",
+    "typescript/no-explicit-any": "error",
+    "no-restricted-globals": [
+      "error",
+      {
+        "name": "fetch",
+        "message": "Call the backend through src/api/, which owns backend URLs and auth injection."
+      }
+    ],
     "eslint/no-unused-vars": [
       "error",
       {
@@ -36,7 +46,51 @@
     "typescript/no-base-to-string": "off",
     "typescript/no-floating-promises": "off",
     "typescript/no-meaningless-void-operator": "off",
-    "typescript/await-thenable": "off",
     "typescript/no-redundant-type-constituents": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/__tests__/**", "scripts/*.bench.tsx"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/await-thenable": "off",
+        "no-restricted-globals": "off"
+      }
+    },
+    {
+      "files": [
+        "src/api/**",
+        "src/components/settings/pages/settings.models/credentialApi.ts",
+        "src/components/FileViewerPanel.tsx",
+        "src/hooks/useDeepLinkRouter.ts",
+        "src/lib/server-probe.ts",
+        "src/components/FileLightbox.tsx",
+        "src/components/AgentChatView/helpers.ts",
+        "src/components/WorkspacePanel/AttachmentTabView.tsx",
+        "src/lib/tauri-download.ts"
+      ],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
+    },
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              { "name": "clsx", "message": "ui/ primitives use cn() from @/lib/utils and the local class maps." },
+              { "name": "tailwind-merge", "message": "ui/ primitives use cn() from @/lib/utils and the local class maps." },
+              { "name": "class-variance-authority", "message": "ui/ primitives use the local variant maps (see ui/button.tsx)." }
+            ],
+            "patterns": [
+              { "group": ["@radix-ui/*", "@base-ui/*", "@base-ui-components/*", "@headlessui/*"], "message": "ui/ primitives are dependency-free; build on the existing ones in this folder." }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

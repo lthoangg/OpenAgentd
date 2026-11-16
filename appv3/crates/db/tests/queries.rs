@@ -383,7 +383,7 @@ async fn undo_boundary_then_cleanup_matches_v2_semantics() {
 
     let target = find_undo_target(&pool, &s).await.unwrap().unwrap();
     assert_eq!(target.id, u2.id);
-    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&target, None))), ..Default::default() }).await.unwrap().unwrap();
+    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&target, None, false))), ..Default::default() }).await.unwrap().unwrap();
     // Boundary hides u2+a2 from the LLM window without mutating rows.
     let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
     assert_eq!(win.len(), 2);
@@ -585,7 +585,7 @@ async fn first_history_page_reaches_past_a_staged_undo() {
     save_steps(&pool, &s.id, 20).await;
     assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), HISTORY_PAGE_SIZE as usize);
 
-    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&undone, None))), ..Default::default() }).await.unwrap().unwrap();
+    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&undone, None, false))), ..Default::default() }).await.unwrap().unwrap();
     let page = first_history_page(&pool, &s).await.unwrap();
     assert_eq!(page.rows[0].id, first.id);
     assert_eq!(page.rows.len(), 1 + 150 + 1 + 20);

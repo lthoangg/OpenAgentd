@@ -13,12 +13,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { AgentEditorPage } from './settings.agents.$name'
 import { errorMessage } from '@/utils/errors'
 import { isUnconfiguredModel } from '@/lib/model-readiness'
 
-export function AgentsListPage() {
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+/** What the main agent is called on screen; its file is `code`. */
+export const MAIN_AGENT_LABEL = 'Main agent'
+
+interface AgentsListPageProps {
+  selectedName?: string | null
+  /** Opens an agent's editor (the `agents-edit` drill-down, as skills and connectors do). */
+  onSelect: (name: string) => void
+}
+
+export function AgentsListPage({ selectedName = null, onSelect }: AgentsListPageProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [newProfileName, setNewProfileName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
@@ -32,24 +39,21 @@ export function AgentsListPage() {
       const isLead = a.name === 'code' || a.role === 'lead'
       return {
         key: a.name,
-        active: selectedAgent === a.name,
-        title: a.name,
-        titleMono: true,
-        badge: isLead ? 'main' : 'subagent',
-        badgeTone: isLead ? 'info' : 'neutral',
+        active: selectedName === a.name,
+        // The main agent by what it is, not its file name ("code").
+        title: isLead ? MAIN_AGENT_LABEL : a.name,
+        titleMono: !isLead,
+        badge: isLead ? undefined : 'subagent',
+        badgeTone: 'neutral',
         description: a.description || (isLead ? 'The agent you chat with' : 'Takes tasks from the main agent'),
         ...(a.model && !isUnconfiguredModel(a.model)
           ? { meta: a.model }
           : { metaChip: 'model not set' }),
         invalidReason: !a.valid ? (a.error ?? 'Invalid configuration') : undefined,
-        onClick: () => setSelectedAgent(a.name),
+        onClick: () => onSelect(a.name),
       }
     })
-  }, [data?.agents, selectedAgent])
-
-  if (selectedAgent) {
-    return <AgentEditorPage name={selectedAgent} onBack={() => setSelectedAgent(null)} />
-  }
+  }, [data?.agents, selectedName, onSelect])
 
   const handleOpenCreate = () => {
     setNewProfileName('')
@@ -84,7 +88,7 @@ You are **${cleanName}**, a specialized subagent.
       await createMut.mutateAsync({ name: cleanName, content: template })
       push({ tone: 'success', title: `Created subagent "${cleanName}"`, description: cleanName !== raw ? `Saved as ${cleanName}` : undefined })
       setCreateOpen(false)
-      setSelectedAgent(cleanName)
+      onSelect(cleanName)
     } catch (err) {
       setCreateError(errorMessage(err))
     }

@@ -1,3 +1,4 @@
+// size-ceiling: 1247 — move the inline tests (345 lines) to a sibling file
 //! Backend sidecar supervisor for the native `agentd` binary.
 //!
 //! Spawns `<runtime> server serve --handshake --generate-token

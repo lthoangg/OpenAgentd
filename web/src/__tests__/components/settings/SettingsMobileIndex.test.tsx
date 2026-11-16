@@ -41,8 +41,8 @@ afterEach(() => {
 describe('SettingsMobileIndex', () => {
   it('lists every group and every section that needs no capability or desktop shell', () => {
     renderIndex()
-    for (const group of SETTINGS_GROUPS) {
-      expect(screen.getByRole('heading', { name: group.label })).toBeInTheDocument()
+    for (const group of SETTINGS_GROUPS.filter((g) => g.label !== null)) {
+      expect(screen.getByRole('heading', { name: group.label! })).toBeInTheDocument()
     }
     for (const section of SETTINGS_SECTIONS.filter((s) => !s.capability && !s.desktopOnly)) {
       expect(screen.getByRole('button', { name: new RegExp(`^${section.label}`) })).toBeInTheDocument()
@@ -72,7 +72,7 @@ describe('SettingsMobileIndex', () => {
     const selected: TopLevelSection[] = []
     renderIndex([], (section) => { selected.push(section) })
     await userEvent.click(screen.getByRole('button', { name: /^Models/ }))
-    expect(selected).toEqual(['providers'])
+    expect(selected).toEqual(['models'])
   })
 
   describe('search', () => {
@@ -85,9 +85,9 @@ describe('SettingsMobileIndex', () => {
       renderIndex()
       await userEvent.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'text size')
       const results = within(screen.getByRole('list', { name: 'Search results' }))
-      expect(results.getByRole('button', { name: 'Text size, in Appearance' })).toBeInTheDocument()
+      expect(results.getByRole('button', { name: 'Text size, in General' })).toBeInTheDocument()
       // The section list gives way to the results.
-      expect(screen.queryByRole('heading', { name: 'Advanced' })).toBeNull()
+      expect(screen.queryByRole('heading', { name: 'Work' })).toBeNull()
     })
 
     it('opens the setting that was tapped, in its section', async () => {
@@ -96,7 +96,7 @@ describe('SettingsMobileIndex', () => {
       await userEvent.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'fallback')
       await userEvent.click(screen.getByRole('button', { name: 'Accounts and fallback order, in Models' }))
       expect(hits).toHaveLength(1)
-      expect(hits[0]).toMatchObject({ kind: 'setting', section: 'providers', label: 'Accounts and fallback order' })
+      expect(hits[0]).toMatchObject({ kind: 'setting', section: 'models', label: 'Accounts and fallback order' })
     })
 
     it('opens just the section when no handler for results is given', async () => {
@@ -104,7 +104,7 @@ describe('SettingsMobileIndex', () => {
       renderIndex([], (section) => { selected.push(section) })
       await userEvent.type(screen.getByRole('searchbox', { name: 'Search settings' }), 'fallback')
       await userEvent.click(screen.getByRole('button', { name: 'Accounts and fallback order, in Models' }))
-      expect(selected).toEqual(['providers'])
+      expect(selected).toEqual(['models'])
     })
 
     it('says when nothing matches, and brings the groups back when cleared', async () => {
@@ -113,7 +113,7 @@ describe('SettingsMobileIndex', () => {
       await userEvent.type(search, 'zzz')
       expect(screen.getByText('No settings match “zzz”.')).toBeInTheDocument()
       await userEvent.clear(search)
-      expect(screen.getByRole('heading', { name: 'Advanced' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Work' })).toBeInTheDocument()
     })
   })
 

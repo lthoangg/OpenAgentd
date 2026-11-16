@@ -55,7 +55,6 @@ const ORIGINAL_XHR_SET_HEADER = XMLHttpRequest.prototype.setRequestHeader
  */
 async function freshAuth(): Promise<AuthModule> {
   const path = `@/api/auth?nonce=${Math.random()}`
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (await import(/* @vite-ignore */ path as any)) as AuthModule
 }
 

@@ -39,7 +39,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { AddDeviceSheet } = await import('@/components/phone/AddDeviceSheet')
-const { PhoneAccountContent } = await import('@/components/settings/pages/settings.account.phone')
+const { PhoneAccountContent } = await import('@/components/settings/pages/settings.remote.phone')
 const { queryClient } = await import('@/lib/query-client')
 
 import type { InvitePoll } from '@/api/phone-cloud'
@@ -81,7 +81,7 @@ describe('AddDeviceSheet', () => {
     expect(screen.queryByText(LINK)).toBeNull()
 
     expect(screen.queryByRole('button', { name: "Can't scan? Use a link" })).toBeNull()
-    expect(screen.getByText(/To add a computer, choose Sign in on it/)).toBeTruthy()
+    expect(screen.getByText(/close this, tap Scan on Computers/)).toBeTruthy()
   })
 
   it('adds a candidate only when the person taps Add', async () => {
@@ -90,7 +90,7 @@ describe('AddDeviceSheet', () => {
     await screen.findByRole('img', { name: 'Invitation QR code' })
     poll = { state: 'candidate', candidate: CANDIDATE }
     expect((await screen.findByTestId('invite-candidate', {}, { timeout: 4000 })).textContent).toBe('Linux · 9C02 E1B7')
-    expect(screen.getByText('Add it only if the new device shows the same.')).toBeTruthy()
+    expect(screen.getByText('Add it only if the new device shows the same device ID.')).toBeTruthy()
     // Seeing a valid candidate adds nothing by itself.
     await waitFor(() => expect(ran('cloud_invite_poll').length).toBeGreaterThan(1), { timeout: 4000 })
     expect(ran('cloud_invite_add')).toHaveLength(0)
@@ -196,7 +196,7 @@ describe('AddDeviceSheet', () => {
     await screen.findByRole('img', { name: 'Invitation QR code' })
     fireEvent.click(screen.getByRole('button', { name: 'Use a 6-digit code instead' }))
     expect(screen.getByText('Sign in')).toBeTruthy()
-    expect(screen.getByText(/compare the 6-digit code on both screens/)).toBeTruthy()
+    expect(screen.getByText(/check the number on both screens/)).toBeTruthy()
   })
 })
 
@@ -205,44 +205,5 @@ describe('Account page', () => {
     render(<PhoneAccountContent />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a device' }))
     expect(await screen.findByRole('img', { name: 'Invitation QR code' })).toBeTruthy()
-  })
-})
-
-describe('joining with an invitation on a phone', () => {
-  const invited = { state: 'invited', fingerprint: '5D1E 0A77', kind: 'ios' }
-
-  beforeEach(() => {
-    handlers.cloud_status = () => ({ state: 'guest', notice: null, supported: true })
-    handlers.cloud_join_invite = () => invited
-  })
-
-  it('joins with a scanned invitation and shows what to compare', async () => {
-    scanned = LINK
-    render(<PhoneAccountContent />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Scan invitation' }))
-    await waitFor(() => expect(ran('cloud_join_invite')).toHaveLength(1))
-    expect(ran('cloud_join_invite')[0]?.args).toEqual({ link: LINK })
-    expect(await screen.findByText('iOS · 5D1E 0A77')).toBeTruthy()
-  })
-
-  it('refuses a QR code that is not an invitation', async () => {
-    scanned = 'openagentd://connect?url=http://192.168.1.20:4082'
-    render(<PhoneAccountContent />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Scan invitation' }))
-    expect(await screen.findByText(/That QR code is not an invitation/)).toBeTruthy()
-    expect(ran('cloud_join_invite')).toHaveLength(0)
-  })
-
-  it('joins with a pasted link, and keeps Sign in for a new account or the 6-digit code', async () => {
-    render(<PhoneAccountContent />)
-    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Other ways to sign in' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Paste link' }))
-    fireEvent.change(screen.getByLabelText('Invitation link'), { target: { value: LINK } })
-    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
-    await waitFor(() => expect(ran('cloud_join_invite')).toHaveLength(1))
-    expect(await screen.findByText('iOS · 5D1E 0A77')).toBeTruthy()
   })
 })

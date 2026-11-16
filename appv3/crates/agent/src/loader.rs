@@ -426,7 +426,7 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 /// Former names of injected tools, and `lsp`, which no agent gets any more.
 /// Agent files written before the renames still list them; they are skipped
 /// like the injected tools, never pruned from the user's file.
-const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan", "lsp"];
+pub(crate) const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan", "lsp"];
 
 /// Default tool registry: the tools an agent file can name
 /// (`tool_registry::TOOLS`). MCP tools are reached through the `mcp` tool,
@@ -617,6 +617,17 @@ mod tests {
         assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level.as_deref(), Some("high"));
         std::fs::write(&p, "---\nname: code\nmodel: openai:gpt-5\n---\n\nHi\n").unwrap();
         assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level, None);
+    }
+
+    /// `script` needs no `tools:` entry: every lead gets it, whatever it lists.
+    #[test]
+    fn every_lead_gets_script_without_listing_it() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("writer.md");
+        let factory: ProviderFactory = Arc::new(|_, _| Ok(Arc::new(appv3_providers::mock::MockProvider::new(vec![])) as Arc<dyn LlmProvider>));
+        std::fs::write(&p, "---\nname: writer\nmodel: openai:gpt-5\ntools: [read]\n---\n\nHi\n").unwrap();
+        let agent = rebuild_agent_from_disk(&p, &factory).unwrap();
+        assert!(agent.tools.get("script").is_some(), "{:?}", agent.tools.names());
     }
 
     /// An agent file written before the renames lists the former names. They

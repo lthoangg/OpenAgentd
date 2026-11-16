@@ -40,9 +40,13 @@ Review the staged changes (`git diff --cached`). Focus on: $ARGUMENTS
   that text is appended after a blank line.
 - The body is sent as the user's message, so write it as an instruction to the agent.
 
+Every skill is in the `/` menu too, after the commands (`/review-kit:code-review`):
+running it asks the agent to load that skill, with the typed text appended. A
+command with the same name as a skill hides the skill's entry.
+
 ## Names to avoid
 
-`btw`, `compact`, `undo`, `redo`, `redo-all`, `new`, `stop` and `init` are
+`btw`, `compact`, `undo`, `undo-messages`, `redo`, `redo-all`, `new`, `stop` and `init` are
 built into the chat input, and `memory` is a built-in command; a file with one
 of these names is shadowed or shadows a built-in. Pick another name.
 

@@ -49,22 +49,23 @@ import { ICON_SIZE } from '@/components/settings/tokens'
 import { SettingsMobileIndex } from '@/components/settings/SettingsMobileIndex'
 import { SettingsSearchField, SettingsSearchResults, useSettingsSearch } from '@/components/settings/SettingsSearch'
 import { revealSetting, type SettingsHit } from '@/components/settings/settings-index'
-import { AboutSettingsPage } from '@/components/settings/pages/settings.index'
+import { AboutSettingsPage } from '@/components/settings/pages/settings.about'
 import { GeneralSettingsPage } from '@/components/settings/pages/settings.general'
-import { ConnectionSettingsPage } from '@/components/settings/pages/settings.connection'
-import { AccountSettingsPage } from '@/components/settings/pages/settings.account'
-import { PhoneAccountSettingsPage } from '@/components/settings/pages/settings.account.phone'
+import { SwitchComputerSettingsPage } from '@/components/settings/pages/settings.switch_computer'
+import { RemoteSettingsPage } from '@/components/settings/pages/settings.remote'
+import { PhoneRemoteSettingsPage } from '@/components/settings/pages/settings.remote.phone'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
 import { AgentsListPage } from '@/components/settings/pages/settings.agents'
+import { AgentEditorPage } from '@/components/settings/pages/settings.agents.$name'
 import { SkillsListPage } from '@/components/settings/pages/settings.skills'
 import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
 import { SkillEditorPage } from '@/components/settings/pages/settings.skills.$name'
-import { McpListPage } from '@/components/settings/pages/settings.mcp'
-import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
-import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
+import { ConnectorsListPage } from '@/components/settings/pages/settings.connectors'
+import { NewConnectorPage } from '@/components/settings/pages/settings.connectors.new'
+import { ConnectorDetailPage } from '@/components/settings/pages/settings.connectors.$name'
 import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
-import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
-import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
+import { ModelsSettingsPage } from '@/components/settings/pages/settings.models'
+import { BlockedFilesSettingsPage } from '@/components/settings/pages/settings.blocked_files'
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
 import { SessionsSettingsPage } from '@/components/settings/pages/settings.sessions'
 import { MediaSettingsPage } from '@/components/settings/pages/settings.media'
@@ -193,10 +194,26 @@ function ModalSidebar({
       <SettingsSearchField search={search} onOpen={onOpenHit} wrapperClassName="settings-rail:hidden" />
       <RailSearch onOpen={onOpenHit} />
       {search.searching && <SettingsSearchResults search={search} onOpen={onOpenHit} className="settings-rail:hidden" />}
-      <div className={cn('flex flex-col', search.searching && 'settings-list:hidden')}>
+      <div className={cn('flex flex-1 flex-col', search.searching && 'settings-list:hidden')}>
         {SETTINGS_GROUPS.map((group) => {
           const items = sections.filter((s) => s.group === group.id)
           if (items.length === 0) return null
+          // The footer group (About) has no label: it sits apart at the bottom.
+          if (group.label === null) {
+            return (
+              <div key={group.id} className="mt-auto flex flex-col gap-0.5 border-t border-(--color-border-subtle) pt-1.5 settings-list:pt-2">
+                {items.map((item) => (
+                  <SidebarRow
+                    key={item.id}
+                    item={item}
+                    count={counts[item.id]}
+                    active={active === item.id}
+                    onClick={() => onSelect(item.id)}
+                  />
+                ))}
+              </div>
+            )
+          }
           return (
             <div
               key={group.id}
@@ -246,13 +263,22 @@ function SectionContent({
       return <GeneralSettingsPage />
     case 'desktop':
       return <DesktopSettingsPage />
-    case 'connection':
-      return <ConnectionSettingsPage />
-    case 'account':
+    case 'switch_computer':
+      return <SwitchComputerSettingsPage />
+    case 'remote':
       // On the phone the account is the phone's own, not a server's.
-      return isPhoneCloudShell() ? <PhoneAccountSettingsPage /> : <AccountSettingsPage />
+      return isPhoneCloudShell() ? <PhoneRemoteSettingsPage /> : <RemoteSettingsPage />
     case 'agents':
-      return <AgentsListPage />
+      return (
+        <AgentsListPage
+          selectedName={selectedName}
+          onSelect={(name) => setSection('agents-edit', name)}
+        />
+      )
+    case 'agents-edit':
+      return selectedName ? (
+        <AgentEditorPage name={selectedName} onBack={() => setSection('agents')} />
+      ) : null
     case 'skills':
       return (
         <SkillsListPage
@@ -272,39 +298,37 @@ function SectionContent({
       return selectedName ? (
         <SkillEditorPage name={selectedName} onBack={() => setSection('skills')} />
       ) : null
-    case 'mcp':
+    case 'connectors':
       return (
-        <McpListPage
+        <ConnectorsListPage
           selectedName={selectedName}
-          onSelect={(name) => setSection('mcp-edit', name)}
-          onNew={() => setSection('mcp-new')}
+          onSelect={(name) => setSection('connectors-edit', name)}
+          onNew={() => setSection('connectors-new')}
         />
       )
-    case 'mcp-new':
+    case 'connectors-new':
       return (
-        <NewMcpServerPage
-          onBack={() => setSection('mcp')}
-          onCreated={(name) => setSection('mcp-edit', name)}
+        <NewConnectorPage
+          onBack={() => setSection('connectors')}
+          onCreated={(name) => setSection('connectors-edit', name)}
         />
       )
-    case 'mcp-edit':
+    case 'connectors-edit':
       return selectedName ? (
-        <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
+        <ConnectorDetailPage name={selectedName} onBack={() => setSection('connectors')} />
       ) : null
     case 'memory':       return <MemorySettingsPage />
     case 'plugins':      return <PluginsSettingsPage />
-    case 'providers':    return <ProvidersSettingsPage />
-    case 'denied_paths': return <DeniedPathsSettingsPage />
+    case 'models':        return <ModelsSettingsPage />
+    case 'blocked_files': return <BlockedFilesSettingsPage />
     case 'workspaces':   return <WorkspacesSettingsPage />
-    // The store resolves the merged ids to ``titles``; listed for the type.
-    case 'titles':
-    case 'context':
-    case 'goals':
-    case 'telemetry':    return <SessionsSettingsPage />
+    case 'sessions':     return <SessionsSettingsPage />
     case 'media':        return <MediaSettingsPage />
-    case 'about':
-    default:             return <AboutSettingsPage />
+    case 'about':        return <AboutSettingsPage />
   }
+  // No default above: a section without a case is a type error on this line.
+  section satisfies never
+  return <AboutSettingsPage />
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────
@@ -328,13 +352,6 @@ export function SettingsModal() {
     setSection(hit.section)
     setReveal(hit.kind === 'setting' ? { anchor: hit.anchor, nonce: Date.now() } : null)
   }
-  // A section id that became a heading of Sessions opens at that heading.
-  const anchor = useSettingsStore((s) => s.anchor)
-  useEffect(() => {
-    if (!open || !anchor) return
-    setReveal({ anchor, nonce: Date.now() })
-    useSettingsStore.setState({ anchor: null })
-  }, [open, anchor])
   useEffect(() => {
     if (!open || !reveal) return undefined
     let tries = 0

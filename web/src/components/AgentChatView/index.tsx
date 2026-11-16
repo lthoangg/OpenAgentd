@@ -1,105 +1,70 @@
 /**
  * AgentChatView — top-level layout for the agent chat route.
  *
- * Owns:
- *   - Side panels (``Sidebar``, the Review panel, todos popover, command
- *     palette) and the docked composer with its run deck.
- *   - The header (token totals, panel toggles).
- *   - Mount-time SSE connect + session restore (carefully sequenced so
- *     ``loadSession`` runs *before* ``connectStream`` to avoid wiping
- *     replayed mid-turn state — see comment inside the init effect).
- *   - Keyboard shortcuts and the Command Palette assembly.
+ * Wires the parts in this folder together: the frame (``ChatFrame``) with
+ * header, sidebar and status bar; the chat column (``ChatPlaceholders``, the
+ * draft screen, ``ActiveAgentView``, then ``ChatComposer`` or
+ * ``SubagentBanner``); the Review dock (``useDockCover``); the panels and
+ * the Command Palette. Mount-time SSE connect + session restore live in
+ * ``useSessionBootstrap`` (``loadSession`` runs *before* ``connectStream``
+ * so replayed mid-turn state is not wiped).
  *
- * Stream subscriptions are split into the smallest selectors that work
- * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
- * that returning a freshly-built object on every render would trigger.
+ * Store reads are small selectors (``useChatSessionState`` is one shallow
+ * selector of primitives): returning a freshly-built object on every render
+ * would loop.
  */
-import { failureToast } from '@/lib/failure-toast'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
-import { AgentView } from '../AgentView'
-import type { OpenSessionHandler } from '../AgentView/UserBubble'
+import { ActiveAgentView } from './ActiveAgentView'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { NewSessionScreen } from '../NewSession/NewSessionScreen'
 import { ModelSetupCard } from '../NewSession/ModelSetupCard'
 import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
-import { useTodosQuery } from '@/queries/useTodosQuery'
-import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
-import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
-import { useGoalSessionState } from '@/hooks/useGoalSessionState'
-import { goalHeaderState } from '@/lib/work'
-import { useHealthQuery, useProvidersQuery } from '@/queries'
-import { modelReadiness } from '@/lib/model-readiness'
+import { useHealthQuery } from '@/queries'
 import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
-import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
-import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
-import { useShallow } from 'zustand/react/shallow'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
-import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useReportShownSession } from '@/lib/island-setting'
-import { useElementWidthSelect } from '@/hooks/use-element-width'
-import { onPanelSlideBeside, settledWidthBesidePanels } from '@/components/ResizableAside'
-import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
-import { dockOverlaysChat } from '@/lib/workbench-layout'
-import { useTouchFirst } from '@/hooks/use-touch-first'
-import { lastPreviewUrl, previewsAvailable } from '@/api/preview'
-import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
-import type { DesignFeedback } from '@/lib/design-feedback'
-import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
-import { previewTargetForFeedback } from '../Preview/preview-comments'
-import { usePreviewToolAutoOpen } from './usePreviewToolAutoOpen'
-import { useToastStore } from '@/stores/useToastStore'
-import { useBtwStore } from '@/stores/useBtwStore'
+import { useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
+import { previewsAvailable } from '@/api/preview'
+import { useChatPreview } from './useChatPreview'
+import { useDockCover } from './useDockCover'
+import { useSessionLinks } from './useSessionLinks'
+import { useLeadModel } from './useLeadModel'
+import { useChatSessionState } from './useChatSessionState'
+import { useSessionWork } from './useSessionWork'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useAgentsQuery } from '@/queries/useAgentsQuery'
-import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { FolderCode, FileUp, WifiOff } from 'lucide-react'
+import { FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, dispatchAppShortcut, shortcutLabel } from '@/lib/app-shortcuts'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
-import { Composer } from '../composer/Composer'
-import { RunChip } from '../composer/RunChip'
-import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
-import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
-import { BtwPanel } from '../BtwPanel'
-import { PhoneStatusLine, RunBar } from '../composer/RunBar'
-import { PinnedQuestion } from '../AskUser'
-import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
 import { AppFooter } from '../AppFooter'
 import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
-import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
-import { OPEN_SESSION_EVENT, isOpenSessionRequest } from '@/utils/workspace-messages'
+import { workspaceLabel } from '@/utils/workspace'
 import { workspaceRelativePath } from '@/utils/file-refs'
-import type {
-  AgentCapabilities as AgentCapabilitiesType,
-  ContentBlock,
-  MessageAttachment,
-} from '@/api/types'
+import type { ContentBlock } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
-import { PhoneStack } from '@/components/phone/PhoneStack'
-import { ServersScreen } from '@/components/phone/LazyServersScreen'
 import { AgentChatHeader } from './AgentChatHeader'
+import { ChatFrame, type PhoneStackState } from './ChatFrame'
+import { ChatComposer } from './ChatComposer'
+import { SubagentBanner } from './SubagentBanner'
+import { NoWorkspace, OpeningScreen, ServerUnreachable, SessionNotFound } from './ChatPlaceholders'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
 import { MissingFolderBanner, useFolderMissing } from './MissingFolderBanner'
-import { HandledByStrip } from './HandledByStrip'
 import { takeQuietOpen } from '@/lib/quiet-open'
 import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
@@ -108,69 +73,10 @@ import { useSessionBootstrap } from './useSessionBootstrap'
 import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
-import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, pushStoppedToast, stopTurn, useReturnQueuedAfterFailure } from './heldMessages'
+import { composerHistoryPrompts } from './helpers'
+import { useReturnQueuedAfterFailure } from './heldMessages'
 
-type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
-const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
-
-const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
-/** Stable selector: the shell only needs to know when the split stops fitting. */
-const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
-const isCenterTooNarrowForTouch = (width: number) => dockOverlaysChat(width, false, { touch: true })
-
-interface ActiveAgentViewProps {
-  emptyState?: React.ReactNode
-  onMentionFileOpen?: (path: string) => void
-  onOpenSession?: OpenSessionHandler
-  fileRefOpener?: FileRefOpener
-  onRetry?: () => void
-  onSwitchModel?: () => void
-  /** The docked composer is up: its tray carries the jump-to-latest chip. */
-  jumpToLatestInComposer?: boolean
-}
-
-const ActiveAgentView = memo(function ActiveAgentView({
-  emptyState,
-  onMentionFileOpen,
-  onOpenSession,
-  fileRefOpener,
-  onRetry,
-  onSwitchModel,
-  jumpToLatestInComposer,
-}: ActiveAgentViewProps) {
-  const activeStream = useAgentStore((s) => {
-    if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
-    return Object.values(s.agentStreams)[0]
-  })
-
-  const activeBlocks = activeStream?.blocks ?? EMPTY_BLOCKS
-  const activeCurrentBlocks = activeStream?.currentBlocks ?? EMPTY_BLOCKS
-  const activeStatus = activeStream?.status ?? 'idle'
-  const activeLastError = activeStream?.lastError ?? null
-  const activeAwaitingRestart = isAwaitingRestartOutput(activeStream)
-
-  return (
-    <AgentView
-      blocks={activeBlocks}
-      currentBlocks={activeCurrentBlocks}
-      isWorking={activeStatus === 'working'}
-      isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
-      isAwaitingRestart={activeAwaitingRestart}
-      isError={activeStatus === 'error'}
-      lastError={activeLastError}
-      onMentionFileOpen={onMentionFileOpen}
-      onOpenSession={onOpenSession}
-      fileRefOpener={fileRefOpener}
-      emptyState={emptyState}
-      onRetry={onRetry}
-      onSwitchModel={onSwitchModel}
-      jumpToLatestInComposer={jumpToLatestInComposer}
-      marksScrollEdge
-    />
-  )
-})
 
 interface AgentChatViewProps {
   sessionId?: string
@@ -187,94 +93,15 @@ interface AgentChatViewProps {
   phoneStack?: PhoneStackState
 }
 
-export interface PhoneStackState {
-  atSessions: boolean
-  onBack: () => void
-  /** Servers is on top (Sessions and the chat are pushed off it). */
-  atServers?: boolean
-  /** From Sessions down to Servers (‹ Servers, the edge swipe, Android Back). */
-  onBackToServers?: () => void
-  /** From Servers up to the Sessions of the server in use. */
-  onOpenSessions?: () => void
-}
-
-interface ChatFrameProps {
-  phoneStack?: PhoneStackState
-  /** The phone's edge swipe and Back may pop to Sessions. */
-  backEnabled: boolean
-  header: React.ReactNode
-  sidebar: React.ReactNode
-  footer: React.ReactNode
-  /** The chat column and the Review panel. */
-  children: React.ReactNode
-}
-
-/**
- * The workbench around the chat. Desktop: the header, the sidebar beside
- * the chat, the status bar. A phone: a navigation stack, the sidebar as the
- * Sessions screen with the chat, header and all, pushed over it; and that
- * stack is itself the page of a second one, over the Servers screen. Only
- * one of the two takes the edge swipe and Back at a time: the inner one
- * while a chat is pushed, the outer one while Sessions is on top.
- */
-function ChatFrame({ phoneStack, backEnabled, header, sidebar, footer, children }: ChatFrameProps) {
-  // Swiping left on Servers opens Sessions only while a server answers.
-  const connected = useHealthQuery().isSuccess
-  const body = <div className="relative flex min-h-0 flex-1 overflow-hidden">{children}</div>
-  if (!phoneStack) {
-    return (
-      <>
-        {header}
-        <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          {sidebar}
-          {children}
-        </div>
-        {footer}
-      </>
-    )
-  }
-  const sessionsStack = (
-    <PhoneStack
-      root={sidebar}
-      page={<div className="flex h-full flex-col">{header}{body}</div>}
-      pushed={!phoneStack.atSessions}
-      onBack={phoneStack.onBack}
-      backEnabled={backEnabled}
-    />
-  )
-  const { onBackToServers, onOpenSessions } = phoneStack
-  const atServers = Boolean(phoneStack.atServers)
-  // Servers loads (and pings its servers) while it is on top or one swipe
-  // away under Sessions, so a swipe back reveals the real list, not the
-  // panel's placeholder rows; under a chat it rests.
-  return (
-    <div className="relative min-h-0 flex-1">
-      {onBackToServers && onOpenSessions ? (
-        <PhoneStack
-          root={<ServersScreen active={phoneStack.atSessions} onOpenSessions={onOpenSessions} />}
-          page={sessionsStack}
-          pushed={!atServers}
-          onBack={onBackToServers}
-          backEnabled={backEnabled && phoneStack.atSessions && !atServers}
-          onForward={backEnabled ? onOpenSessions : undefined}
-          forwardBlocked={!connected}
-        />
-      ) : sessionsStack}
-    </div>
-  )
-}
-
 export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false, phoneStack }: AgentChatViewProps) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   // Opened while the server is down, nothing loaded, so no workspace is known:
   // say so instead of asking for a workspace.
   const serverDown = useHealthQuery().isError
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
   const isPhone = useIsPhone()
-  const { isMacOverlay, os } = usePlatform()
+  const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
   // Chat sessions run on the same screen as project workspaces but the root is
@@ -302,44 +129,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
 
-  const storeState = useAgentStore(
-    useShallow((s) => {
-      const leadStream = s.leadName ? s.agentStreams[s.leadName] : undefined
-      return {
-        connectStream: s.connectStream,
-        loadAgentStatus: s.loadAgentStatus,
-        loadSession: s.loadSession,
-        catchUpLiveTurn: s.catchUpLiveTurn,
-        beginResolvedSession: s.beginResolvedSession,
-        consumeResolvedSessionReady: s.consumeResolvedSessionReady,
-        setupRequired: s.setupRequired,
-        dismissSetupRequired: s.dismissSetupRequired,
-
-        isAgentWorking: s.isAgentWorking,
-        sessionId: s.sessionId,
-        parentSessionId: s.parentSessionId,
-        leadName: s.leadName,
-        sessionTitle: s.sessionTitle,
-        sessionSentFrom: s.sessionSentFrom,
-        sessionInteractionMode: s.sessionInteractionMode,
-        sessionPendingInteractionMode: s.sessionPendingInteractionMode,
-        sessionModel: s.sessionModel,
-        sessionFastMode: s.sessionFastMode,
-
-        leadRevertedCount: leadStream?.revertedCount ?? 0,
-        leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
-        leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
-        leadHasLiveBlocks: (leadStream?.currentBlocks.length ?? 0) > 0,
-
-        leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
-        leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
-        leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
-        leadCachedPercent: leadStream?.usage.cachedPercent,
-        // The lead's and its subagents' spend so far.
-        sessionCostUsd: Object.values(s.agentStreams).reduce((total, stream) => total + (stream.usage?.estimatedCostUsd ?? 0), 0),
-      }
-    })
-  )
+  const storeState = useChatSessionState()
 
   const {
     connectStream,
@@ -363,6 +153,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
     leadRevertedCount,
     leadRevertedMessages,
+    revertKeepsFiles,
     leadHasVisibleBlocks,
     leadHasLiveBlocks,
     leadPromptTokens,
@@ -461,103 +252,37 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // Review panel's groups, status bar). Phones have no keyboard areas.
   useFocusRegions(!isMobile)
 
-  // The other end of a workspace message: the sender's session from the
-  // request's chip, the replier's session from a reply report.
-  const handleOpenSession = useCallback((targetSessionId: string, targetWorkspace: string) => {
-    if (targetWorkspace) saveLastWorkspace(targetWorkspace)
-    navigate({ to: '/$sessionId', params: { sessionId: targetSessionId } })
-  }, [navigate])
-  // From a subagent's session back to the lead's: the header button and the
-  // "Return to main agent" banner share it.
-  const handleOpenLead = useCallback(() => {
-    if (parentSessionId) navigate({ to: '/$sessionId', params: { sessionId: parentSessionId } })
-  }, [navigate, parentSessionId])
-  // The ``workspace`` tool card asks for the same switch by event,
-  // which keeps ToolCall free of the router.
-  useEffect(() => {
-    const onOpen = (event: Event) => {
-      const request = (event as CustomEvent<unknown>).detail
-      if (isOpenSessionRequest(request)) handleOpenSession(request.sessionId, request.workspace)
-    }
-    window.addEventListener(OPEN_SESSION_EVENT, onOpen)
-    return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen)
-  }, [handleOpenSession])
+  const { handleOpenSession, handleOpenLead } = useSessionLinks(parentSessionId)
 
   const leadBlocks = useAgentStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
   ))
   const historyPrompts = useMemo(() => composerHistoryPrompts(leadBlocks), [leadBlocks])
-  // ↑/↓ recall in the composer shows the recalled prompt in the transcript;
-  // walking back out to an empty draft returns to the live end, as ⌥⌘↓ past
-  // the newest prompt does. Reads blocks at call time to stay stable.
-  const handleHistoryRecall = useCallback((prompt: string | null) => {
-    const transcript = useTranscriptFollowStore.getState()
-    if (prompt === null) {
-      transcript.jumpToLatest?.()
-      return
-    }
-    const { leadName, agentStreams } = useAgentStore.getState()
-    const id = newestUserBlockId((leadName ? agentStreams[leadName]?.blocks : undefined) ?? EMPTY_BLOCKS, prompt)
-    if (id) transcript.showPrompt?.(id)
-  }, [])
 
-  const { data: todosData } = useTodosQuery(sessionIdState)
-  const todos = todosData?.todos ?? []
-  const { data: planData } = useSessionPlanQuery(sessionIdState)
-  const plan = planData?.plan ?? null
-  const planAwaitingReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
-  const { mutate: clearPlan } = useClearSessionPlanMutation()
-  const handleClearPlan = useCallback(() => {
-    if (!sessionIdState) return
-    clearPlan(sessionIdState, {
-      onError: (err) => pushToast(failureToast("Couldn't clear the plan", err)),
-    })
-  }, [sessionIdState, clearPlan, pushToast])
+  const {
+    todos,
+    plan,
+    planAwaitingReview,
+    handleClearPlan,
+    goal,
+    paletteGoal,
+    headerGoalState,
+    goalControls,
+  } = useSessionWork({ sessionId: sessionIdState, workspace, handleOpenGoal })
 
-  // ── Session goal ───────────────────────────────────────────────────────────
-  const { data: goalData } = useSessionGoalQuery(sessionIdState)
-  const goal = goalData?.goal ?? null
-  // The goal lives in the dock's Goal tab (its actions too): the palette
-  // lists one entry that opens it, even before there is a goal, so it can be
-  // found; the tab's empty state says how a goal starts.
-  const paletteGoal = useMemo(
-    () => (workspace ? { onShow: handleOpenGoal, active: Boolean(goal && goal.status !== 'cleared') } : undefined),
-    [workspace, goal, handleOpenGoal],
-  )
-  // The header's Task list button shows the live goal as a ring and tooltip.
-  const goalSession = useGoalSessionState(sessionIdState, goal)
-  const headerGoalState = useMemo(() => goalHeaderState(goal, goalSession, todosData?.todos ?? []), [goal, goalSession, todosData])
-  const goalControls = useGoalControls(sessionIdState)
-  const providersQ = useProvidersQuery()
-
-  // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = workspace
   const hasWorkspace = Boolean(workspace)
   const folderMissing = useFolderMissing(sessionId ? workspace : null)
   const isSessionLoading = sessionLoading
-  const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasWorkspace)
-  const leadAgent = agentRegistryData?.agents?.[0]
-  const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
-  // Can a message run? A real model whose provider is connected. Unknown
-  // while either list loads, so no setup prompt flashes on a working setup.
-  const modelReady = modelReadiness(
-    providersQ.data?.providers,
-    agentRegistryData ? (sessionModel || leadAgent?.model || null) : undefined,
-  )
-  const needsModelSetup = modelReady.status === 'needs-model' || modelReady.status === 'needs-provider'
-
-  // When the session overrides the agent's model (e.g. user switches from
-  // model A to model B mid-session), the trigger threshold must reflect the
-  // *active* model, not the agent config model.  Look up the session model in
-  // the registry; fall back to the lead agent's pre-computed value.
-  const { data: registryData } = useRegistryQuery()
-  const summaryTriggerTokens = useMemo(() => {
-    if (sessionModel) {
-      const entry = registryData?.models?.find((m) => m.id === sessionModel)
-      if (entry?.summary_trigger_tokens) return entry.summary_trigger_tokens
-    }
-    return leadAgent?.summary_trigger_tokens
-  }, [sessionModel, registryData, leadAgent])
+  const {
+    providersData,
+    agentRegistryLoading,
+    leadAgent,
+    leadCapabilities,
+    modelReady,
+    needsModelSetup,
+    summaryTriggerTokens,
+  } = useLeadModel(workspace, sessionModel)
   // Workspace file/folder list for the InputComposer's @-mention picker.
   // Fetched lazily once a workspace is attached.
   const { refs: fileRefs } = useFileRefsQuery({
@@ -628,39 +353,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     setFindOpen(false)
   }, [sessionIdState])
 
-  const handleOpenNewPreview = useCallback(() => {
-    if (!workspace) return
-    handleOpenPreview({ kind: 'url', url: lastPreviewUrl(workspace) ?? 'http://localhost:5173' })
-  }, [handleOpenPreview, workspace])
-
-  const handleSendPreviewComments = useCallback((feedback: DesignFeedback) => {
-    inputRef.current?.addDesignFeedback(feedback)
-    // A phone shows the Review panel over the chat: go back to the message
-    // box, where the comments now are.
-    if (isMobile) setWorkspacePanel(null)
-    inputRef.current?.focus()
-  }, [isMobile, setWorkspacePanel])
-
-  // A feedback chip's x sends its comments back to their Preview tab's list,
-  // opening that tab on desktop (it picks them up whenever it next mounts).
-  const handleDesignFeedbackRemoved = useCallback((feedback: DesignFeedback) => {
-    if (!workspace) return
-    useReturnedFeedbackStore.getState().give({ workspace, feedback })
-    const target = previewTargetForFeedback(feedback)
-    if (target && !isMobile && previewsAvailable()) handleOpenPreview(target, { focusOnly: true })
-  }, [handleOpenPreview, isMobile, workspace])
-
-  // The `preview` tool card's Open button, and the agent opening a page
-  // (desktop only: phones keep the chat on screen).
-  useEffect(() => {
-    const onOpen = (event: Event) => {
-      const target = (event as CustomEvent<unknown>).detail
-      if (isPreviewTarget(target)) handleOpenPreview(target)
-    }
-    window.addEventListener(OPEN_PREVIEW_EVENT, onOpen)
-    return () => window.removeEventListener(OPEN_PREVIEW_EVENT, onOpen)
-  }, [handleOpenPreview])
-  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && previewsAvailable(), onOpen: handleOpenPreview, workspace })
+  const {
+    handleOpenNewPreview,
+    handleSendPreviewComments,
+    handleDesignFeedbackRemoved,
+  } = useChatPreview({ workspace, isMobile, inputRef, setWorkspacePanel, handleOpenPreview })
 
   const {
     slashCommands,
@@ -684,41 +381,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   useReturnQueuedAfterFailure({ sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
   useReportShownSession(sessionIdState)
-
-  // ``/btw <question>``: a side question, never sent to the chat; a bare
-  // ``/btw`` shows them again. Either shows the dock's BTW tab on desktop
-  // with a workspace, else the panel above the composer. Returns false when
-  // ``content`` is not one.
-  // The composer clears itself right after submit, so a refused draft is
-  // put back on the next task.
-  const handleBtwSubmit = useCallback((content: string, files?: File[]): boolean => {
-    const action = btwSubmit(content, files, sessionIdState)
-    const giveBack = () => setTimeout(() => {
-      inputRef.current?.setValue(content)
-      if (files?.length) inputRef.current?.setFiles(files)
-    }, 0)
-    switch (action.kind) {
-      case 'not-btw':
-        return false
-      case 'no-session':
-        pushToast({ tone: 'info', title: 'Start a conversation first', description: 'Side questions answer from what the session already holds.' })
-        giveBack()
-        break
-      case 'attachments':
-        pushToast({ tone: 'error', title: "Side questions can't include attachments", description: 'Remove the files, or send them as a normal message.' })
-        giveBack()
-        break
-      case 'reopen':
-        if (sessionIdState) handleOpenSideQuestions(sessionIdState)
-        break
-      case 'ask':
-        if (!sessionIdState) break
-        void useBtwStore.getState().ask(sessionIdState, action.question)
-        handleOpenSideQuestions(sessionIdState)
-        break
-    }
-    return true
-  }, [sessionIdState, pushToast, handleOpenSideQuestions])
 
   const {
     paletteCommands,
@@ -756,45 +418,14 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     setWorkspacePanel,
   })
 
-  // Review dock geometry: a ratio of the center region (chat + dock), with a
-  // maximized / narrow-window overlay that covers the chat instead of
-  // squeezing it. The chat stays mounted underneath so its scroll position
-  // and live stream survive a maximize round-trip. The dock measures the
-  // center itself; the shell subscribes to one bit so a sidebar tween or a
-  // window drag does not re-render this whole tree every frame.
-  const centerRef = useRef<HTMLDivElement>(null)
-  const touchFirst = useTouchFirst()
-  const centerTooNarrow = useElementWidthSelect(
+  const {
     centerRef,
-    touchFirst ? isCenterTooNarrowForTouch : isCenterTooNarrow,
-    settledWidthBesidePanels,
-    // Decided in the commit a sidebar slide starts, as the dock's mode is.
-    onPanelSlideBeside,
-  )
-  const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  // After its first open the dock stays mounted, closed or not, so its tabs
-  // and their live content (preview pages, unsent comments) survive a close.
-  const dockOpen = workspacePanel !== null
-  const [dockKept, setDockKept] = useState(dockOpen)
-  if (dockOpen && !dockKept) setDockKept(true)
-  // Closed when this view mounted: the dock's first mount is the show
-  // toggle (or the agent opening a view), so it slides in like a later open.
-  const [dockSlidesIn] = useState(!dockOpen)
-  // Over a narrow chat the dock covers the transcript but stops above the
-  // composer, so a message can be written beside the diff; maximized, it
-  // covers both. Whatever it covers stays mounted, inert.
-  const dockOverChat = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
-  const chatCoveredByDock = dockOverChat && dockMaximized
-  const transcriptCoveredByDock = dockOverChat && !dockMaximized
-  // The dock claims focus while it covers the chat; give it back when it
-  // closes or uncovers the chat so it is never left on <body>.
-  useReturnFocusFromDock({
-    open: workspacePanel !== null,
-    covered: chatCoveredByDock,
-    enabled: !isMobile,
-    isInDock: isInReviewDock,
-    onReturn: returnFocusToComposer,
-  })
+    dockOpen,
+    dockKept,
+    dockSlidesIn,
+    chatCoveredByDock,
+    transcriptCoveredByDock,
+  } = useDockCover({ workspace, workspacePanel, isMobile, returnFocusToComposer })
   // A desktop app always has a focused control: never leave focus on
   // <body>, and start in the composer once a session is on screen (with a
   // mouse or trackpad; a touch tablet waits for a tap, see useStartInComposer).
@@ -819,17 +450,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // How the next message runs, for the run deck under the composer.
   const runSettings = useRunSettings(workspace)
-  const composerMode = sessionPendingInteractionMode ?? sessionInteractionMode
-  const canAskSideQuestion = Boolean(sessionIdState) && (leadHasVisibleBlocks || leadHasLiveBlocks)
-  const renderPlus = useCallback((actions: ComposerActions) => (
-    <PlusMenu
-      actions={actions}
-      workspace={workspace}
-      disabled={isSessionLoading}
-      canAskSideQuestion={canAskSideQuestion}
-      hasSnippets={snippetCommands.length > 0}
-    />
-  ), [workspace, isSessionLoading, canAskSideQuestion, snippetCommands.length])
 
   // The docked composer's tray carries the jump-to-latest chip. With no
   // composer (a subagent's session, which only the main agent directs) the
@@ -840,116 +460,52 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // centered, else docked at the bottom of the chat column. While a switch
   // looks up the next session's workspace, the composer stays (disabled)
   // instead of unmounting; sending needs `workspace` itself.
-  // Desktop with a workspace: the dock's BTW tab shows side questions, and
-  // here only the chip reopens it while that tab is not on screen. A phone
-  // shows it as the "btw" pill in the status line above the composer.
-  const btwPanel = dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
-    <BtwPanel
-      sessionId={sessionIdState || null}
-      countEnabled={leadHasVisibleBlocks}
-      chipOnly={dockViewsEnabled}
-      onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
-    />
-  )
   const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
-    <Composer
-      ref={inputRef}
+    <ChatComposer
+      composerRef={inputRef}
       placement={composerInline ? 'inline' : 'docked'}
-      onHandoffCapture={draftHandoff.capture}
-      enterFrom={draftHandoff.active ? draftHandoff.snapshot : null}
-      onSubmit={async (content, files, mentions, delivery) => {
-        if (!workspace) return
-        if (handleBtwSubmit(content, files)) return
-        if (!files || files.length === 0) {
-          const builtInCmd = parseBuiltInSlashCommand(content)
-          if (builtInCmd) {
-            handleSlashCommand(builtInCmd)
-            return
-          }
-        }
-        const expanded = await expandUserCommand(content)
-        await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
-      }}
-      onStop={() => {
-        void stopTurn(inputRef.current)
-        if (isPhone && workspace) pushStoppedToast(workspace, () => inputRef.current)
-      }}
-      onSlashCommand={handleSlashCommand}
-      onSnippetCommand={handleSnippetCommand}
-      slashCommands={slashCommands}
-      snippetCommands={snippetCommands}
-      historyPrompts={historyPrompts}
-      onHistoryRecall={handleHistoryRecall}
-      onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
-      onValueChange={handleDraftValueChange}
-      fileRefs={fileRefs}
-      onFileRefsNeeded={() => setFileRefsEnabled(true)}
-      isStreaming={isAgentWorking}
-      disabled={isSessionLoading}
-      // Desktop: Send says the server is gone instead of looking ready; the
-      // draft stays (desktop mockup 12.1). A phone keeps its send-and-restore.
-      sendBlockedReason={serverDown && !isPhone ? "Can't reach the server. Your message stays here until it is back." : null}
-      placeholder={
-        // While a turn runs the composer shows its own queue/stop hint.
-        isDraft && needsModelSetup
-          ? 'Connect a model to start'
-          : composerMode === 'plan'
-            // Says what Plan mode does before the first message does it.
-            ? 'Plan mode: the agent reads and writes a plan. It changes no files.'
-            : 'Ask anything…'
-      }
+      draftHandoff={draftHandoff}
+      workspace={workspace}
+      sessionId={sessionIdState}
+      isDraft={isDraft}
+      isSessionLoading={isSessionLoading}
+      isAgentWorking={isAgentWorking}
+      isPhone={isPhone}
+      serverDown={serverDown}
+      needsModelSetup={needsModelSetup}
       capabilities={leadCapabilities}
-      // A switch requested mid-turn is queued server-side, so the toggle
-      // shows what the user picked while the turn finishes under the old
-      // mode.
-      interactionMode={composerMode}
-      interactionModePending={sessionPendingInteractionMode !== null}
+      interactionMode={sessionInteractionMode}
+      pendingInteractionMode={sessionPendingInteractionMode}
+      isSwitchingInteractionMode={isSwitchingInteractionMode}
       onInteractionModeChange={(mode) => {
         setIsSwitchingInteractionMode(true)
         void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
           setIsSwitchingInteractionMode(false)
         })
       }}
-      // The new-session draft picks a mode locally; the first message carries it.
-      interactionModeDisabled={isSwitchingInteractionMode || (!sessionIdState && !isDraft)}
+      slashCommands={slashCommands}
+      snippetCommands={snippetCommands}
+      onSlashCommand={handleSlashCommand}
+      onSnippetCommand={handleSnippetCommand}
+      expandUserCommand={expandUserCommand}
+      historyPrompts={historyPrompts}
+      onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
+      onValueChange={handleDraftValueChange}
+      fileRefs={fileRefs}
+      onFileRefsNeeded={() => setFileRefsEnabled(true)}
       revertedCount={leadRevertedCount}
       revertedMessages={leadRevertedMessages}
-      onRedo={() => { void handleSlashCommand('redo') }}
-      onRedoAll={() => { void handleSlashCommand('redo-all') }}
-      renderPlus={renderPlus}
-      deck={(
-        <RunChip
-          settings={runSettings}
-          disabled={isSessionLoading}
-        />
-      )}
-      deckEnd={sessionIdState ? (
-        <ContextMeter
-          input={headerTokens.input}
-          output={headerTokens.output}
-          cachedPercent={headerTokens.cachedPercent}
-          trigger={headerTokens.trigger}
-          sessionCostUsd={sessionCostUsd}
-          canSummarize={leadHasVisibleBlocks && !isAgentWorking}
-        />
-      ) : null}
-      aboveComposer={(
-        <>
-          {/* Another workspace's agent is driving this session. */}
-          <HandledByStrip sentFrom={sessionSentFrom} onOpenSession={handleOpenSession} />
-          {/* What the run waits on, pinned so it cannot scroll away. */}
-          <PinnedQuestion />
-          <PinnedPlanReview />
-          {isPhone ? (
-            // One status line: the run on the left, the "btw" pill on the right.
-            <PhoneStatusLine>
-              <RunBar />
-              {btwPanel}
-            </PhoneStatusLine>
-          ) : null}
-          {!isPhone && btwPanel}
-        </>
-      )}
+      revertKeptFiles={revertKeepsFiles}
+      runSettings={runSettings}
+      tokens={headerTokens}
+      sessionCostUsd={sessionCostUsd}
+      hasVisibleBlocks={leadHasVisibleBlocks}
+      hasLiveBlocks={leadHasLiveBlocks}
+      sentFrom={sessionSentFrom}
+      onOpenSession={handleOpenSession}
+      onOpenSideQuestions={handleOpenSideQuestions}
+      sideQuestionsInDock={dockViewsEnabled}
+      sideQuestionsTabShown={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw'}
     />
   ) : null
 
@@ -1061,7 +617,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             setupMessage={setupRequired?.message ?? null}
             hasConfiguredProvider={!needsModelSetup}
             missingProvider={modelReady.status === 'needs-provider' ? { label: modelReady.provider.label, model: modelReady.model } : null}
-            onOpenProviders={() => openSettings('providers')}
+            onOpenProviders={() => openSettings('models')}
             onChooseModel={() => { if (!useUIStore.getState().runPickerOpen) handleToggleRunPicker() }}
             onDismiss={dismissSetupRequired}
           />
@@ -1070,73 +626,23 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <MissingFolderBanner workspace={workspace} onOpenFolder={handleOpenWorkspaceDialog} />
         )}
         {sessionNotFound && !workspace ? (
-          <EmptyState
-            icon={FolderCode}
-            title="Session not found"
-            body="It may have been deleted, or the link is wrong."
-            action={
-              // A phone's way back is the Sessions list it came from. Desktop
-              // can also look for the session it meant (desktop mockup 12.5).
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button type="button" onClick={() => navigate({ to: isPhone ? '/sessions' : '/', replace: true })}>
-                  {isPhone ? 'Back to Sessions' : 'New session'}
-                </Button>
-                {!isMobile && (
-                  <Button type="button" variant="subtle" onClick={() => dispatchAppShortcut(APP_SHORTCUTS.switchWorkspace, os)}>
-                    Find a session <span className="text-(--color-text-muted)">{shortcutLabel(APP_SHORTCUTS.switchWorkspace, os)}</span>
-                  </Button>
-                )}
-              </div>
-            }
-          />
+          <SessionNotFound />
         ) : isSessionLoading && !chatOnScreen ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
-            <div>
-              <h2 className="text-base font-semibold text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
-              </h2>
-              <p className="mt-1 text-xs text-(--color-text-muted)">
-                {isChatWorkspace
-                  ? 'Loading this conversation.'
-                  : 'Loading the saved workspace for this session.'}
-              </p>
-            </div>
-          </div>
+          <OpeningScreen
+            title={isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
+            body={isChatWorkspace
+              ? 'Loading this conversation.'
+              : 'Loading the saved workspace for this session.'}
+          />
         ) : workspace && agentRegistryLoading && !chatOnScreen ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
-            <div>
-              <h2 className="text-base font-semibold text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
-              </h2>
-              <p className="mt-1 text-xs text-(--color-text-muted)">
-                {isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
-              </p>
-            </div>
-          </div>
+          <OpeningScreen
+            title={isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
+            body={isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
+          />
         ) : !effectiveWorkspace && !isSessionLoading && serverDown ? (
-          <EmptyState
-            icon={WifiOff}
-            title="Can't reach the server"
-            body="This session opens once the server answers again."
-            action={
-              <Button type="button" onClick={() => void queryClient.invalidateQueries()}>
-                Retry
-              </Button>
-            }
-          />
+          <ServerUnreachable />
         ) : !effectiveWorkspace && !isSessionLoading ? (
-          <EmptyState
-            icon={FolderCode}
-            title="No workspace attached"
-            body="Open a workspace, a folder on this computer, to start a session."
-            action={
-              <Button type="button" onClick={handleOpenWorkspaceDialog}>
-                Open workspace…
-              </Button>
-            }
-          />
+          <NoWorkspace onOpenFolder={handleOpenWorkspaceDialog} />
         ) : isDraft && workspace ? (
           <NewSessionScreen
             workspace={workspace}
@@ -1144,12 +650,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             isChat={isChatWorkspace}
             chatWorkspace={chatWorkspace}
             composer={composerInline ? composerElement : null}
-            setup={(modelReady.status === 'needs-model' || modelReady.status === 'needs-provider') && providersQ.data ? (
+            setup={(modelReady.status === 'needs-model' || modelReady.status === 'needs-provider') && providersData ? (
               <ModelSetupCard
                 key={modelReady.status === 'needs-provider' ? modelReady.provider.id : 'needs-model'}
                 readiness={modelReady}
-                providers={providersQ.data.providers}
-                onOpenProviders={() => openSettings('providers')}
+                providers={providersData.providers}
+                onOpenProviders={() => openSettings('models')}
               />
             ) : null}
             isMobile={isMobile}
@@ -1210,26 +716,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         )}
 
         {parentSessionId ? (
-          <div className="mx-auto w-full max-w-3xl px-4 py-3">
-            {/* Phones wrap the sentence and drop the button under it, rather
-                than truncating the explanation to a few words. */}
-            <div data-subagent-banner="" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted) sm:flex-nowrap">
-              <div className="flex min-w-0 items-start gap-2 sm:items-center">
-                <span className="shrink-0 rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-meta font-semibold text-(--color-text)">
-                  {leadName}
-                </span>
-                <span className="sm:truncate">The main agent directs this subagent. Open the main agent's session to send instructions.</span>
-              </div>
-              <Button
-                size="xs"
-                variant="default"
-                onClick={handleOpenLead}
-                className="shrink-0"
-              >
-                Return to main agent
-              </Button>
-            </div>
-          </div>
+          <SubagentBanner leadName={leadName} onOpenLead={handleOpenLead} />
         ) : composerInline ? null : composerElement}
         </main>
         {/* Review dock — only with a workspace attached.

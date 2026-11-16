@@ -63,13 +63,15 @@ Use Settings to configure providers and `agentd --help` for the current CLI surf
 ```
 openagentd/
 ├── appv3/                  # Rust backend (shipped): API, agent runtime, CLI
-│   └── crates/             # core, db, api, agent, tools, providers, cli, …
-│       └── */data/         # Data each crate compiles in (SSE events, prompts, …)
+│   ├── crates/             # core, db, api, agent, tools, providers, cli, …
+│   │   └── */data/         # Data each crate compiles in (SSE events, prompts, …)
+│   └── report/             # Wire and on-disk compatibility log (REPORT.md is its index)
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── desktop/, mobile/       # Tauri shells (desktop bundles the appv3 binary)
+├── design/                 # Design system chapters (DESIGN.md holds the tokens and the map)
 ├── scripts/                # Release, docs, and code-health tools (+ tests/)
 ├── documents/              # Feature catalogue and assets
-│   └── docs/               # Version-cited shipped features
+│   └── docs/               # Version-cited shipped features, one file per area
 └── .github/                # Issue templates, PR template, CI workflows
 ```
 
@@ -89,11 +91,12 @@ Key design rules:
 
 ### Change validation policy
 
-Use [`make verify`](Makefile) for the portable pre-merge contract, or its
-focused `verify-v3`, `verify-scripts`, `verify-web`, `verify-docs`, and
-`verify-version` targets when only one surface changed. Native targets require
-local platform dependencies. Check the nearest `AGENTS.md` before changing a
-subsystem.
+Run `make verify-changed` before you open a PR. It picks the `verify-*`
+targets from the paths you changed, including the surfaces that compile or
+read them. `make verify` runs the whole portable set (`verify-v3`,
+`verify-scripts`, `verify-web`, `verify-docs`, `verify-version`). Native
+targets require local platform dependencies. Check the nearest `AGENTS.md`
+before changing a subsystem.
 
 ### Backend (v3, Rust)
 
@@ -101,7 +104,7 @@ subsystem.
 make run                                 # start server on :8000
 make dev                                 # server + web UI (Vite :5173)
 make dev PORT=8001 WEB_PORT=5174         # another checkout at the same time (own .openagentd/dev/)
-make verify-v3                           # fmt check, clippy -D warnings, tests
+make verify-v3                           # fmt check, clippy -D warnings, tests (needs cargo-nextest)
 cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
 ```
 
@@ -112,7 +115,7 @@ cd web
 bun dev                                  # dev server on :5173 (proxies /api → :8000)
 bun run lint                             # oxlint (type-aware)
 bun run typecheck                        # tsc --noEmit
-bun test src/__tests__                   # unit tests
+bun test --parallel src/__tests__        # tests (always with --parallel)
 bun run build                            # production build
 ```
 
@@ -138,7 +141,9 @@ Migrations run automatically when the server starts — no manual step needed. I
 ### General
 
 - **No unnecessary abstractions.** Thin routes, logic in services/hooks.
-- Pre-commit hooks enforce formatting automatically — install them once:
+- Hooks run file hygiene, `oxlint` and `tsc` at commit, and
+  `make verify-quick` (seconds) at push, on what is committed or staged.
+  Install them once per checkout or worktree:
 
   ```bash
   pre-commit install   # install pre-commit first, e.g. `brew install pre-commit` or `pipx install pre-commit`
@@ -163,10 +168,12 @@ cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
 ### Frontend
 
 ```bash
-cd web && bun test src/__tests__         # ~130 ms, no browser needed
+cd web && bun test --parallel src/__tests__   # no browser needed
 ```
 
-Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid rendering components in unit tests.
+Tests use Bun test, Happy DOM, and Testing Library. Always pass `--parallel`:
+each file needs its own module registry. Component tests live beside store and
+utility tests under `web/src/__tests__/`, mirroring the source path.
 
 ---
 
@@ -174,8 +181,8 @@ Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid 
 
 1. **Open an issue first** for anything non-trivial — discuss the approach before writing code.
 2. **Branch naming:** `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `refactor/<topic>`.
-3. **Before opening a PR:** run the applicable focused checks, then run `make verify`. Run `make verify-native` as well when desktop or mobile Rust code changes and the required native dependencies are available.
-4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+3. **Before opening a PR:** run `make verify-changed`. It includes the native targets when desktop or mobile Rust code changed, which need the native dependencies installed.
+4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `refactor:`, `perf:`, `test:`, `docs:`, `chore:`, `style:`, `ci:`.
 5. **PR description:** fill in the pull request template: what changed, why,
    the exact test commands you ran, risk flags, and `Fixes #<issue>`.
 6. Keep PRs focused — one logical change per PR.
@@ -203,7 +210,8 @@ GitHub issues are the roadmap; shipped capabilities belong in
 - **Documentation:** use the Documentation form for wrong, missing, or unclear
   docs.
 - **Roadmap items:** use `roadmap` plus `enhancement`. When a roadmap item ships,
-  close the issue and add the shipped feature to `documents/docs/features.md`.
+  close the issue and add the shipped feature to its area file under
+  `documents/docs/features/`.
 - **Contributor or coding-agent friction:** use the Agent / repository friction
   form (label `devex`).
 - **Security vulnerabilities:** do not open a public issue. Use GitHub Security

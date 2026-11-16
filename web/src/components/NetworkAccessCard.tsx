@@ -2,9 +2,9 @@
  * NetworkAccessCard — desktop-only switch that lets phones and other
  * computers on the LAN connect to the builtin backend with an access key,
  * without installing the CLI. Mounted by AppBackendPanel in the desktop shell
- * (Settings → Server and the Server dialog).
+ * (Settings → Switch computer and the Server dialog).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ConnectQrCode } from '@/components/ConnectQrCode'
@@ -81,9 +81,12 @@ export function FirewallHint({ os, port }: { os: OS; port: number }) {
   )
 }
 
-export function NetworkAccessCard({ title = 'Network access' }: {
-  /** Heading of the first section; the Network access page passes its own. */
-  title?: string
+export function NetworkAccessCard({ extraRows }: {
+  /**
+   * More ways in, as rows of the same section (Settings → Switch computer adds the
+   * account's devices connecting directly).
+   */
+  extraRows?: ReactNode
 } = {}) {
   const [status, setStatus] = useState<NetworkAccessStatus | null>(null)
   const [port, setPort] = useState(String(DEFAULT_NETWORK_ACCESS_PORT))
@@ -201,7 +204,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
   return (
     <div className="space-y-8">
       <PanelSection
-        title={title}
+        title="Let other devices connect"
         description="Let phones and other computers on your local network use this computer."
         flush
       >
@@ -247,6 +250,8 @@ export function NetworkAccessCard({ title = 'Network access' }: {
             <Callout tone="error" role="alert">{error}</Callout>
           </div>
         ) : null}
+
+        {extraRows}
       </PanelSection>
 
       {listening ? (
@@ -292,7 +297,7 @@ export function NetworkAccessCard({ title = 'Network access' }: {
             </PanelRow>
 
             <PanelRow
-              label="Access key"
+              label="This computer's access key"
               description="Every device needs it. Changing it disconnects devices that use the old one."
               stack
             >

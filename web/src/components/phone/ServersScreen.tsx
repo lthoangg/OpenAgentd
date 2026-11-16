@@ -1,7 +1,7 @@
 /**
  * ServersScreen — the phone's bottom level: Computers → Sessions → a chat.
  *
- * One list of computers, as Settings → Server lists them
+ * One list of computers, as Settings → Switch computer lists them
  * (``AppBackendPanel``, so connecting, keys and editing live in one place):
  * the ones of the phone's account and the ones added by address, under a
  * large "Computers" title that hands over to the bar's small one as it
@@ -47,7 +47,12 @@ import { ConnectionDiagnosticsRow } from '@/components/phone/ConnectionDiagnosti
 import { PullToRefresh } from '@/components/phone/PullToRefresh'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 import { useScanAnyCode } from '@/components/phone/useScanAnyCode'
-import { AddComputerSheet } from '@/components/phone/AddComputerSheet'
+import { AddScannedSheet } from '@/components/phone/AddScannedSheet'
+import { CANT_ADD_DEVICES } from '@/components/settings/pages/remote-copy'
+import { PhoneAccountContent } from '@/components/settings/pages/settings.remote.phone'
+import { Button } from '@/components/ui/button'
+import { useAppStatusWithNames } from '@/lib/account-computers'
+import { thisDeviceName } from '@/lib/device-words'
 import { Callout } from '@/components/ui/callout'
 import { cancelQrScan, canScanQr } from '@/lib/qr-scan'
 import { isPhoneCloudShell } from '@/api/phone-cloud'
@@ -55,10 +60,19 @@ import { usePhoneCloudStatus } from '@/queries/phone-cloud'
 import { useLargeTitleCollapse } from '@/components/Sidebar/useLargeTitleCollapse'
 import { takeServersPrefill, useServersScreenStore } from '@/stores/useServersScreenStore'
 
-/** What the Account sheet says while a scanned computer waits for this phone to sign in. */
-export const ADD_AFTER_SIGN_IN = 'Sign in on this phone. Then it adds the computer you scanned.'
-export const JOINED_WITHOUT_APPROVING =
-  "This phone was added without approving devices, so it can't add the computer. Add it from a device that approves devices."
+/** What the Account sheet says while a scanned device waits for this phone to sign in. */
+export const ADD_AFTER_SIGN_IN = 'Sign in on this phone. Then it adds the device you scanned.'
+export const JOINED_WITHOUT_APPROVING = CANT_ADD_DEVICES
+/** On the Computers screen, once a new device got into the account from its first screen. */
+export const ALL_SET = "You're all set. Your computers are below."
+
+/** States where a new device is still on its way into an account (its first screen stays up). */
+const ON_THE_WAY = new Set(['guest', 'signing_in', 'scanned', 'confirming', 'joining', 'invited', 'recovery'])
+
+/** The first screen's title: "Use your computers on this iPad". */
+export function welcomeTitle(self = thisDeviceName()): string {
+  return `Use your computers on ${self === 'phone' ? 'this phone' : `this ${self}`}`
+}
 
 /** A scanned computer waiting for this phone to sign in. `leftGuest`: a sign-in has started. */
 interface PendingAdd {
@@ -103,6 +117,23 @@ export function ServersScreen({ active, onOpenSessions }: {
   const accountStatus = usePhoneCloudStatus().data
   const accountState = accountStatus?.state
   const signer = accountStatus?.state === 'connected' && accountStatus.signer
+  // A new device (no account, no computer saved by address) opens on the
+  // QR code its other phone scans; "Other ways to connect" shows this screen.
+  const appStatus = useAppStatusWithNames()
+  const [otherWays, setOtherWays] = useState(false)
+  const supported = !(accountStatus?.state === 'guest' && !accountStatus.supported)
+  const welcome = isPhoneCloudShell() && supported && !otherWays && !pendingAdd && !prefill && appStatus !== null
+    && appStatus.servers.length === 0 && accountState !== undefined && ON_THE_WAY.has(accountState)
+  // Joined from the first screen: one line says where the computers are.
+  const [allSet, setAllSet] = useState(false)
+  const wasWelcome = useRef(false)
+  useEffect(() => {
+    if (welcome) wasWelcome.current = true
+    else if (wasWelcome.current && accountState === 'connected') {
+      wasWelcome.current = false
+      setAllSet(true)
+    }
+  }, [welcome, accountState])
   useEffect(() => {
     if (!joinedByScan.current) return
     if (accountState === 'connected') {
@@ -133,6 +164,22 @@ export function ServersScreen({ active, onOpenSessions }: {
     if (pendingAdd && accountState === 'guest') setPendingAdd(null)
   }
   const scan = canScanQr() ? () => { void scanner.scan() } : undefined
+  if (welcome) {
+    return (
+      <div data-servers-screen="" data-new-device-screen="" className="flex h-full w-full min-w-0 flex-col bg-(--bg-page)">
+        <header className="mobile-safe-header shrink-0" />
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-safe">
+          <div className="mx-auto max-w-md space-y-6 py-4">
+            <h1 className="text-large-title font-bold text-(--color-text)">{welcomeTitle()}</h1>
+            <PhoneAccountContent />
+            <div className="flex justify-center">
+              <Button variant="link" size="sm" onClick={() => setOtherWays(true)}>Other ways to connect</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
   return (
     <div data-servers-screen="" className="flex h-full w-full min-w-0 flex-col bg-(--bg-page)">
       <header
@@ -160,6 +207,7 @@ export function ServersScreen({ active, onOpenSessions }: {
           </h1>
         </div>
         <div className="space-y-8 px-4 pb-6">
+          {allSet && connected && <Callout tone="success" role="status">{ALL_SET}</Callout>}
           {scanner.error && <Callout tone="error" role="alert">{scanner.error}</Callout>}
           {addError && !scanner.error && <Callout tone="error" role="alert">{addError}</Callout>}
           <AppBackendPanel
@@ -176,7 +224,7 @@ export function ServersScreen({ active, onOpenSessions }: {
         </div>
       </PullToRefresh>
       <AccountSheet open={accountOpen} onClose={closeAccount} note={pendingAdd ? ADD_AFTER_SIGN_IN : null} />
-      {addComputer && <AddComputerSheet link={addComputer} onClose={() => setAddComputer(null)} />}
+      {addComputer && <AddScannedSheet link={addComputer} onClose={() => setAddComputer(null)} />}
       {scanner.scanning && <QrScanOverlay onCancel={() => { void cancelQrScan() }} />}
     </div>
   )

@@ -4,6 +4,8 @@
 //! only: the model never sees it, and the rows stay ordinary user prompts.
 //! The manager is process-wide, so this file is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::tools::team::DelegateTool;
 use appv3_agent::{manager, subagents};
@@ -14,7 +16,9 @@ use appv3_tools::{Tool, ToolContext, ToolOutput};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use common::wait_until;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -39,14 +43,6 @@ fn setup_roots(root: &Path) {
     std::fs::create_dir_all(&agents).unwrap();
     std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:lead\ntools: []\n---\nYou are the coding agent.\n").unwrap();
     std::fs::write(agents.join("worker.md"), "---\nname: worker\nrole: member\ndescription: Runs builds.\nmodel: mock:worker\ntools:\n  - shell\n---\nYou run builds.\n").unwrap();
-}
-
-async fn wait_until(what: &str, f: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !f() {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
 }
 
 fn text(out: ToolOutput) -> String {

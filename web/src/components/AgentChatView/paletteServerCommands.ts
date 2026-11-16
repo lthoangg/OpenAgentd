@@ -5,7 +5,7 @@
  *
  * Pure so the list is testable from plain data; ``usePaletteServerCommands``
  * supplies the status and each server's health, and wires the handlers to the
- * same connect code Settings → Connection uses.
+ * same connect code Settings → Switch computer uses.
  */
 import { savedServerTitle, type AppBackendStatus, type SavedAppServer } from '@/lib/app-backend'
 import { normalizeServerBaseUrl } from '@/lib/backend-switch'
@@ -39,7 +39,7 @@ export interface ServerCommandHandlers {
   useExternal: (server: SavedAppServer) => void
   /** Opens a computer of the account in this window. */
   useComputer?: (computer: PaletteComputer) => void
-  /** Opens Settings → Connection to add, edit or remove servers. */
+  /** Opens Settings → Switch computer to add, edit or remove servers. */
   manage: () => void
   /** The page opened: check every saved server. */
   checkHealth: () => void
@@ -99,7 +99,7 @@ export function buildServerCommands(input: ServerCommandsInput, handlers: Server
   rows.push({
     id: 'server:manage',
     label: 'Add or manage computers…',
-    description: 'Settings → Server',
+    description: 'Settings → Switch computer',
     keywords: 'add edit remove new servers',
     browseOnly: true,
     action: handlers.manage,

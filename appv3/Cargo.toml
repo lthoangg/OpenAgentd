@@ -21,11 +21,18 @@ members = [
 exclude = ["vendor/anydoc"]
 
 [workspace.package]
-version = "3.56.0"
+version = "3.57.0"
 edition = "2021"
 license = "Apache-2.0"
 homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
+
+# Every crate opts in with `[lints] workspace = true`. Debug and placeholder
+# macros must not reach a shipped binary; tests are linted too.
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
 
 [workspace.dependencies]
 anyhow = "1.0"

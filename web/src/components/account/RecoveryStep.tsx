@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 
-import { Body } from '@/components/settings/pages/account-copy'
+import { Body } from '@/components/settings/pages/remote-copy'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -63,7 +63,7 @@ export function RecoveryStep({
         <Body>
           <p className="font-medium text-(--color-text)">Save your recovery code.</p>
           <p>
-            If you lose every device that can approve others, this code is the only way back into your account.
+            If you lose every device that can add devices, this code is the only way back into your account.
             OpenAgentd can&apos;t recover it for you.
           </p>
           <div

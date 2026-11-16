@@ -18,7 +18,7 @@ import {
   findCommittedMentions,
   buildMentionLookup,
   rankFileRefs,
-} from "@/components/InputComposer.mentions"
+} from "@/components/InputComposer/mentions"
 
 afterEach(cleanup)
 

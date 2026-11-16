@@ -50,7 +50,7 @@ export function ErrorCard({ title, message, details, onRetry, onSwitchModel }: {
             {onRetry && <Button size="xs" onClick={onRetry}>Retry</Button>}
             {onSwitchModel && <Button size="xs" variant="subtle" onClick={onSwitchModel}>Switch model</Button>}
             {hasWayForward && (
-              <Button type="button" size="xs" variant="subtle" onClick={() => useSettingsStore.getState().openSettings('providers')}>
+              <Button type="button" size="xs" variant="subtle" onClick={() => useSettingsStore.getState().openSettings('models')}>
                 Open Providers
               </Button>
             )}

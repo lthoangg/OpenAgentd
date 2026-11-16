@@ -65,6 +65,10 @@ impl ChatSession {
     pub fn redo_anchor(&self) -> Option<String> {
         self.revert_json()?.get("snapshot")?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
     }
+    /// `revert.keep_files` — no undo in the staged chain touched files.
+    pub fn keeps_files(&self) -> bool {
+        self.revert_json().and_then(|r| r.get("keep_files")?.as_bool()).unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

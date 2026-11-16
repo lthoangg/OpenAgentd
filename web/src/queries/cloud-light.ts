@@ -27,7 +27,7 @@ export function cloudPollInterval(status: CloudStatus | undefined): number | fal
 const loadCloudApi = () => import('@/api/cloud')
 
 /**
- * The desktop's "Your computers" (Settings → Server, ⌘K → Switch Server…):
+ * The desktop's "Your computers" (Settings → Switch computer, ⌘K → Switch Server…):
  * read on the app's query client.
  */
 export function useDesktopCloudStatus(enabled: boolean) {

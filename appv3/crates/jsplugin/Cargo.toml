@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 dunce.workspace = true
 appv3-core.workspace = true
@@ -12,6 +15,7 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+futures.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
 uuid.workspace = true
@@ -23,6 +27,7 @@ hex = "0.4"
 rand = "0.10"
 rquickjs = { version = "0.14", features = ["futures", "loader"] }
 oxc_allocator = "0.156"
+oxc_ast = "0.156"
 oxc_codegen = "0.156"
 oxc_diagnostics = "0.156"
 oxc_parser = "0.156"

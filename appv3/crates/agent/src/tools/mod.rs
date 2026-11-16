@@ -4,6 +4,7 @@ pub mod ask_user;
 pub mod goal;
 pub mod plan;
 pub mod preview;
+pub mod script;
 pub mod team;
 pub mod workspace;
 

@@ -298,9 +298,31 @@ pub async fn get_messages_for_llm(pool: &DbPool, session_id: &str) -> Result<Vec
     let started = std::time::Instant::now();
     let rows = db::llm_window_rows(pool, session_id, true).await?;
     let rows_count = rows.len();
-    let messages = apply_llm_content_overrides(deserialize_messages(rows, true));
+    let messages = window_messages(rows);
     tracing::debug!("llm_window_loaded session_id={} rows={} elapsed_ms={}", session_id, rows_count, started.elapsed().as_millis());
     Ok(messages)
+}
+
+/// The LLM window's rows as messages. A reply saved before the window's
+/// summary keeps its text but not its signed thinking: Anthropic binds that
+/// to the conversation the summary replaced, and rejects it once sent after
+/// the summary ("bound to a different conversation").
+fn window_messages(rows: Vec<SessionMessage>) -> Vec<ChatMessage> {
+    // `created_at` is the fixed-width `dt_db` form: text order is time order.
+    let summarized_at = rows.iter().filter(|r| r.kind == db::kind::SUMMARY).map(|r| r.created_at.clone()).max();
+    let stale: HashSet<String> = match &summarized_at {
+        Some(at) => rows.iter().filter(|r| r.role == "assistant" && r.created_at < *at).map(|r| db::codec::api_uuid(&r.id)).collect(),
+        None => HashSet::new(),
+    };
+    let mut messages = apply_llm_content_overrides(deserialize_messages(rows, true));
+    for m in messages.iter_mut() {
+        if let ChatMessage::Assistant(a) = m {
+            if a.meta.db_id.as_ref().is_some_and(|id| stale.contains(id)) {
+                a.drop_signed_thinking();
+            }
+        }
+    }
+    messages
 }
 
 /// Rows → runtime messages without the pair sanitiser (queued injection).
@@ -476,6 +498,46 @@ mod tests {
             ChatMessage::User { content, .. } => content.clone().unwrap_or_default(),
             other => panic!("user: {other:?}"),
         }
+    }
+
+    fn row(id: char, role: &str, kind: &str, created_at: &str, extra: Value) -> SessionMessage {
+        SessionMessage {
+            id: id.to_string().repeat(32),
+            session_id: "1".repeat(32),
+            role: role.into(),
+            content: Some(format!("{role} {id}")),
+            tool_call_id: None,
+            name: None,
+            extra: Some(extra.to_string()),
+            reasoning_content: (role == "assistant").then(|| "why".into()),
+            tool_calls: None,
+            created_at: created_at.into(),
+            seq: 1,
+            kind: kind.into(),
+            pinned: false,
+        }
+    }
+
+    /// A turn kept after our own summary was answered before the summary
+    /// existed: Anthropic rejects its signed thinking ("bound to a different
+    /// conversation"). A reply made after the summary keeps its thinking.
+    #[test]
+    fn replies_saved_before_the_summary_load_without_signed_thinking() {
+        let signed = json!({"reasoning_signature": "sig", "raw_content_blocks": [{"type": "thinking", "thinking": "why", "signature": "sig"}, {"type": "text", "text": "x"}]});
+        let rows = vec![
+            row('a', "user", "summary", "2026-11-16 10:50:53.000000", json!({})),
+            row('b', "assistant", "chat", "2026-11-16 10:40:00.000000", signed.clone()),
+            row('c', "assistant", "chat", "2026-11-16 10:51:00.000000", signed),
+        ];
+
+        let out = window_messages(rows);
+
+        let kept = out[1].as_assistant().unwrap();
+        assert_eq!(kept.reasoning_signature, None);
+        assert_eq!(kept.raw_content_blocks.as_deref(), Some(&[json!({"type": "text", "text": "x"})][..]));
+        let after = out[2].as_assistant().unwrap();
+        assert_eq!(after.reasoning_signature.as_deref(), Some("sig"));
+        assert_eq!(after.raw_content_blocks.as_ref().map(Vec::len), Some(2));
     }
 
     #[test]

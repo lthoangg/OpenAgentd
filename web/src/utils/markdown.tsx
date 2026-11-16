@@ -1,3 +1,4 @@
+// size-ceiling: 951 — 18 components: move the element renderers into utils/markdown/
 /**
  * Shared markdown rendering utilities.
  *
@@ -52,7 +53,6 @@ import {
  * re-fence any outer block whose body contains backtick runs long enough
  * to close it — using one more backtick than the longest inner run.
  */
-// eslint-disable-next-line react-refresh/only-export-components
 export function fixNestedFences(content: string): string {
   // Most streamed prose has no fenced code. Avoid allocating and walking a
   // line array on every display update when nested-fence repair cannot apply.
@@ -222,7 +222,6 @@ const HighlightedCode = memo(function HighlightedCode({
  * - "data:image/png;base64,..." -> null
  * - "blob:..." -> null
  */
-// eslint-disable-next-line react-refresh/only-export-components
 export function extractFileName(rawSrc?: string, resolvedSrc?: string): string | null {
   const target = rawSrc || resolvedSrc
   if (!target) return null
@@ -260,7 +259,6 @@ export function extractFileName(rawSrc?: string, resolvedSrc?: string): string |
  *
  * Exported for direct unit testing.
  */
-// eslint-disable-next-line react-refresh/only-export-components
 export function resolveImageSrc(src: string | undefined, sessionId?: string): string | undefined {
   if (!src) return src
   // Absolute / external / inline — passthrough.
@@ -926,7 +924,6 @@ const _HTML_EXTENSIONS = [..._SETTLED_EXTENSIONS, safeHtmlMarkdownExtension()]
 
 
 /** Parses like `MarkdownBlock` renders; `live` for a stream's last chunk. */
-// eslint-disable-next-line react-refresh/only-export-components
 export function parseMarkdownText(text: string, live: boolean) {
   return parseMarkdown(text, { extensions: live ? _EXTENSIONS : _SETTLED_EXTENSIONS, frontmatter: false, headingIds: false })
 }

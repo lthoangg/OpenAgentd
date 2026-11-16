@@ -1,3 +1,4 @@
+// size-ceiling: 1117 — 63 handlers: one module per group of routes
 //! `/api/settings`.
 
 use crate::error::{ApiError, ApiResult};

@@ -33,6 +33,7 @@
     "allow-set-app-theme",
     "allow-cloud-status",
     "allow-cloud-sign-in",
+    "allow-cloud-pick-number",
     "allow-cloud-recover",
     "allow-cloud-recovered-ack",
     "allow-cloud-join-invite",

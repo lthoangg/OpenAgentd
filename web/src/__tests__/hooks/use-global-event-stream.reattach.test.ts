@@ -7,7 +7,6 @@
  */
 import { mock, describe, it, expect, beforeEach, afterEach } from 'bun:test'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: any) => {}) as any
 ;(mock as any).module('@/api/client', () => ({
   agentStream: mockAgentStream,
@@ -18,7 +17,6 @@ const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: an
 }))
 mock.module('@/lib/desktop-notifications', () => ({ sendDesktopNotification: mock(async () => ({ status: 'sent', message: 'sent' })) }))
 mock.module('@/lib/haptics', () => ({ haptic: () => {}, outcomeHapticFeedback: () => {} }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { reconcileCurrentSession } from '@/hooks/use-global-event-stream'
 import { useAgentStore } from '@/stores/useAgentStore'

@@ -1,3 +1,4 @@
+// size-ceiling: 3496 — holds settings, geometry and the server feed: give each its own module; move the inline tests out first
 //! Agent status island in the MacBook notch (macOS).
 //!
 //! A borderless black webview (`web/island.html`) sits over the notch, or

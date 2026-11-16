@@ -57,8 +57,12 @@ Full instructions the agent reads when it calls skill("skill-name").
   Refer to them as `{SKILL_DIR}/references/...` inside `SKILL.md`; OpenAgentd
   substitutes the skill's directory when the skill loads.
 - Optional Agent Skills fields (`license`, `compatibility`, `metadata`,
-  `allowed-tools`) may stay in the frontmatter. OpenAgentd uses only `name`
-  and `description`, so keep the others when installing a skill.
+  `allowed-tools`) may stay in the frontmatter. OpenAgentd uses `name`,
+  `description` and `disable-model-invocation`, so keep the others when
+  installing a skill.
+- `disable-model-invocation: true` leaves the skill out of the model's skill
+  list: the user runs it from the `/` menu (every skill is listed there), and
+  the `skill` tool still loads it by name.
 - Never overwrite an existing skill without reading it first and confirming
   with the user.
 

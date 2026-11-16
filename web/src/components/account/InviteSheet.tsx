@@ -190,11 +190,11 @@ export function InviteSheet({ actions, description, onClose, allowLink = true }:
   } else if (candidate) {
     body = (
       <div className="space-y-3">
-        <p>A device wants to join:</p>
+        <p>A new device wants to join:</p>
         <p className="font-mono text-sm text-(--color-text)" data-testid="invite-candidate">
           {deviceLabel({ kind: candidate.kind, fingerprint: candidate.fingerprint })}
         </p>
-        <p>Add it only if the new device shows the same.</p>
+        <p>Add it only if the new device shows the same device ID.</p>
       </div>
     )
     footer = (
@@ -207,7 +207,7 @@ export function InviteSheet({ actions, description, onClose, allowLink = true }:
     body = (
       <p>
         On the new device, choose <strong className="text-(--color-text)">Sign in</strong> and use the browser way.
-        Its request shows up under Pending approvals; review it there and compare the 6-digit code on both screens.
+        It shows up here as wanting to join; tap Review and check the number on both screens.
       </p>
     )
     footer = <Button variant="primary" onClick={close}>Done</Button>
@@ -244,11 +244,17 @@ export function InviteSheet({ actions, description, onClose, allowLink = true }:
         <div className="flex justify-center">
           <ConnectQrCode value={invite.link} size={200} label="Invitation QR code" />
         </div>
-        <p>
-          On the new phone, open OpenAgentd and tap Scan QR code on the Computers screen.
-          {allowLink ? ' A computer uses the link instead.' : ' To add a computer, choose Sign in on it, then scan its code from Computers on this phone.'}
-          {' '}It works for 10 minutes, and only while this screen is open.
-        </p>
+        {allowLink ? (
+          <p>
+            On the new phone, open OpenAgentd and tap Scan QR code on the Computers screen. A computer uses the link instead.
+            {' '}It works for 10 minutes, and only while this screen is open.
+          </p>
+        ) : (
+          <p>
+            Easier: close this, tap Scan on Computers, and scan the code the new iPhone, iPad or computer shows.
+            {' '}This code works for 10 minutes, and only while this screen is open.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {allowLink && <Button size="sm" onClick={() => setStep('link-warning')}>Can&apos;t scan? Use a link</Button>}
           <Button size="sm" onClick={() => setStep('code')}>Use a 6-digit code instead</Button>

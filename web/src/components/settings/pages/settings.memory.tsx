@@ -1,5 +1,9 @@
 /**
- * /settings/memory — Persistent Markdown memory viewer, editor, and linter.
+ * Settings → Memory — persistent Markdown memory viewer, editor, and linter.
+ *
+ * Edits wait for the settings save bar, as on every page with an editor:
+ * opening another page, closing Settings or leaving the section with unsaved
+ * edits asks first. A phone edits a page full screen, with Save in its bar.
  */
 import { useState, useEffect, useRef } from 'react'
 import {
@@ -7,7 +11,6 @@ import {
   FileText,
   Plus,
   RefreshCw,
-  Save,
 } from 'lucide-react'
 
 import {
@@ -22,7 +25,6 @@ import {
   type MemoryFindingItem,
 } from '@/api/client'
 import { useToastStore } from '@/stores/useToastStore'
-import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Input } from '@/components/ui/input'
@@ -37,12 +39,9 @@ import {
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 import { Callout } from '@/components/ui/callout'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
-import { settingsRoot } from '@/components/settings/settings-root'
-import { getPlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
-import { useShortcut } from '@/lib/keyboard/hooks'
+import type { DraftControls } from '@/components/settings/useSettingsDraft'
 import { cn } from '@/lib/utils'
 import { createPortal } from 'react-dom'
 import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
@@ -64,6 +63,9 @@ export function MemorySettingsPage() {
   const [draftContent, setDraftContent] = useState<string>('')
   const [newFileOpen, setNewFileOpen] = useState(false)
   const [newFileName, setNewFileName] = useState('')
+  const [newFileError, setNewFileError] = useState<string | null>(null)
+  // A page the user asked to open while the current one has unsaved edits.
+  const [pendingPath, setPendingPath] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [conflictOpen, setConflictOpen] = useState(false)
   // A phone edits a page full screen, Save in its bar (mockup J10 10.5).
@@ -99,17 +101,38 @@ export function MemorySettingsPage() {
     }
   }, [selectedPath, treeData])
 
-  // Keep draft in sync with loaded file
+  // The draft follows the loaded page until it is edited: a refetch (the
+  // agent saved the page, the window regained focus) must never replace
+  // what the user typed. A conflict surfaces on Save instead (412).
+  const baselineRef = useRef<{ path: string | null; content: string | null }>({ path: null, content: null })
   useEffect(() => {
-    if (fileData) {
-      setDraftContent(fileData.content)
-    }
-  }, [fileData])
+    if (!fileData || !selectedPath) return
+    const base = baselineRef.current
+    const edited = base.path === selectedPath && base.content !== null && draftContent !== base.content
+    baselineRef.current = { path: selectedPath, content: fileData.content }
+    if (!edited) setDraftContent(fileData.content)
+    // Only a new snapshot rebases; typing must not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileData, selectedPath])
 
   // Only a loaded page can be dirty: while a page loads or fails to load the
   // editor holds no content of its own, so Save must never write it back.
   const isDirty = fileData ? draftContent !== fileData.content : false
-  useUnsavedSettings(isDirty)
+
+  /** Opens another page, asking first when the open one has unsaved edits. */
+  const openPage = (path: string) => {
+    if (path === selectedPath) return
+    if (isDirty) {
+      setPendingPath(path)
+      return
+    }
+    selectPage(path)
+  }
+  const selectPage = (path: string | null) => {
+    baselineRef.current = { path: null, content: null }
+    setDraftContent('')
+    setSelectedPath(path)
+  }
 
   const handleSave = async () => {
     if (!selectedPath || !fileData) return
@@ -132,17 +155,14 @@ export function MemorySettingsPage() {
     }
   }
 
-  const saveActionRef = useRef({ handleSave, isDirty, isSaving: saveMut.isPending, selectedPath })
-  useEffect(() => {
-    saveActionRef.current = { handleSave, isDirty, isSaving: saveMut.isPending, selectedPath }
-  })
-
-  // ⌘S / Ctrl+S saves the open file.
-  useShortcut(chordOf(APP_SHORTCUTS.save), () => {
-    const current = saveActionRef.current
-    if (!current.selectedPath || !current.isDirty || current.isSaving) return false
-    void current.handleSave()
-  }, { within: settingsRoot })
+  // The page's edits, for the settings save bar (Discard…, Save, ⌘S).
+  const draft: DraftControls = {
+    dirty: isDirty,
+    canSave: Boolean(selectedPath && fileData && isDirty && !saveMut.isPending),
+    isSaving: saveMut.isPending,
+    save: handleSave,
+    reset: () => { if (fileData) setDraftContent(fileData.content) },
+  }
 
   const handleDelete = async () => {
     if (!selectedPath || !fileData) return
@@ -153,7 +173,7 @@ export function MemorySettingsPage() {
       })
       push({ tone: 'success', title: `Deleted "${selectedPath}"` })
       setDeleteOpen(false)
-      setSelectedPath(null)
+      selectPage(null)
       refetchTree()
     } catch (err) {
       if (err instanceof ApiValidationError && err.status === 412) {
@@ -169,6 +189,11 @@ export function MemorySettingsPage() {
     let filename = newFileName.trim()
     if (!filename) return
     if (!filename.endsWith('.md')) filename += '.md'
+    // Creating writes a starter page: never over one that exists.
+    if (treeData?.pages.some((page) => page.path === filename)) {
+      setNewFileError(`${filename} already exists. Open it from the list, or choose another path.`)
+      return
+    }
     try {
       await saveMut.mutateAsync({
         path: filename,
@@ -177,7 +202,7 @@ export function MemorySettingsPage() {
       push({ tone: 'success', title: `Created "${filename}"` })
       setNewFileOpen(false)
       setNewFileName('')
-      setSelectedPath(filename)
+      selectPage(filename)
       refetchTree()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -203,6 +228,7 @@ export function MemorySettingsPage() {
       title="Memory"
       layout="fill"
       description="Markdown notes and standing directives that agents share across workspaces."
+      draft={draft}
       actions={
         <Button variant="default" size="sm" onClick={handleRunLint} disabled={isLinting}>
           <RefreshCw
@@ -303,7 +329,7 @@ export function MemorySettingsPage() {
                   <button
                     key={p.path}
                     type="button"
-                    onClick={() => { setSelectedPath(p.path); if (isPhone) setPhoneEditing(true) }}
+                    onClick={() => { openPage(p.path); if (isPhone && !isDirty) setPhoneEditing(true) }}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       'group flex h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-xs transition-colors pointer-coarse:h-9 pointer-coarse:text-sm',
@@ -361,22 +387,6 @@ export function MemorySettingsPage() {
                       Delete page…
                     </DropdownItem>
                   </Dropdown>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={handleSave}
-                          disabled={!fileData || !isDirty || saveMut.isPending}
-                        >
-                          <Save size={12} aria-hidden="true" />
-                          <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
-                        </Button>
-                      }
-                    />
-                    <TooltipContent>{`Save (${shortcutLabel(APP_SHORTCUTS.save, getPlatform().os)})`}</TooltipContent>
-                  </Tooltip>
                 </div>
               </div>
               <div className="relative flex min-h-0 flex-1 flex-col">
@@ -484,6 +494,22 @@ export function MemorySettingsPage() {
         document.body,
       )}
 
+      <ConfirmDialog
+        open={pendingPath !== null}
+        onOpenChange={(open) => { if (!open) setPendingPath(null) }}
+        title="Discard changes?"
+        description={`Your unsaved edits to ${selectedPath ?? 'this page'} will be lost.`}
+        confirmLabel="Discard changes"
+        onConfirm={() => {
+          const next = pendingPath
+          setPendingPath(null)
+          if (next) {
+            selectPage(next)
+            if (isPhone) setPhoneEditing(true)
+          }
+        }}
+      />
+
       {/* Conflict Dialog (412 Precondition Failed) */}
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
         <DialogContent size="md">
@@ -540,7 +566,7 @@ export function MemorySettingsPage() {
       </Dialog>
 
       {/* New File Dialog */}
-      <Dialog open={newFileOpen} onOpenChange={setNewFileOpen}>
+      <Dialog open={newFileOpen} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setNewFileError(null) }}>
         <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>New memory page</DialogTitle>
@@ -555,11 +581,14 @@ export function MemorySettingsPage() {
           <div className="py-2">
             <Input
               value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
+              onChange={(e) => { setNewFileName(e.target.value); setNewFileError(null) }}
               placeholder="topics/new-page.md"
+              aria-label="Page path"
+              aria-invalid={newFileError !== null}
               className="font-mono text-xs"
               autoFocus
             />
+            {newFileError && <p role="alert" className="mt-2 text-meta text-(--color-error)">{newFileError}</p>}
           </div>
           <DialogFooter>
             <Button onClick={() => setNewFileOpen(false)}>

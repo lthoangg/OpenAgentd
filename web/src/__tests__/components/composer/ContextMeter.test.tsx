@@ -50,17 +50,15 @@ describe('ContextMeter', () => {
     expect(screen.getByRole('button', { name: /^Context 2% full/ }).textContent).toBe('2%')
   })
 
-  it('in Simple waits until the context is 70% full, then says what the number means', () => {
+  it('in Simple shows the ring from the first message, with a bare percentage, as in Full', () => {
     useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
 
-    const { rerender } = render(<ContextMeter input={34_500} output={10} trigger={50000} canSummarize />)
-    expect(screen.queryByRole('button', { name: /^Context/ })).toBeNull()
-
-    rerender(<ContextMeter input={35_000} output={10} trigger={50000} canSummarize />)
-    expect(screen.getByRole('button', { name: /^Context 70% full/ }).textContent).toBe('70% full')
+    render(<ContextMeter input={1000} output={10} trigger={50000} canSummarize />)
+    const ring = screen.getByRole('button', { name: /^Context 2% full/ })
+    expect(ring.textContent).toBe('2%')
 
     // The numbers and Summarize now are behind it, as in Full.
-    fireEvent.click(screen.getByRole('button', { name: /^Context 70% full/ }))
+    fireEvent.click(ring)
     expect(screen.getByRole('button', { name: 'Summarize now' })).toBeTruthy()
   })
 })

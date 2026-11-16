@@ -4,6 +4,8 @@
 //! answered. The manager is process-wide, so this file is its own test
 //! binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::manager;
 use appv3_agent::restart_resume::{self, member_notice, NOTE_KEY, NOT_CONTINUED_NOTE, RESTART_TOOL_RESULT};
@@ -14,6 +16,8 @@ use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+
+use common::wait_until_async;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -60,16 +64,6 @@ async fn cut_off_session(pool: &appv3_db::DbPool, ws: &str, parent: Option<Strin
 
 async fn rows(pool: &appv3_db::DbPool, sid: &str) -> Vec<appv3_db::SessionMessage> {
     appv3_db::llm_window_rows(pool, sid, false).await.unwrap()
-}
-
-async fn wait_for(what: &str, mut done: impl AsyncFnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(10), async {
-        while !done().await {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -143,7 +137,8 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     assert!(manager::find_live_session(&ws, Some(&parked)).is_none());
 
     // Member: the lead got the report and took a turn on it.
-    wait_for("the lead's turn on the report", async || rows(&pool, &lead).await.last().is_some_and(|r| r.role == "assistant" && r.content.as_deref() == Some("mock"))).await;
+    wait_until_async("the lead's turn on the report", async || rows(&pool, &lead).await.last().is_some_and(|r| r.role == "assistant" && r.content.as_deref() == Some("mock")))
+        .await;
     let report_row = rows(&pool, &lead).await.into_iter().find(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1")).expect("member report");
     assert_eq!(report_row.content.as_deref(), Some(member_notice("worker#1").as_str()));
     // It is listed again, stopped, and its cut-off call says a restart stopped it.
@@ -152,7 +147,7 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     assert_eq!(member_tool.content.as_deref(), Some(RESTART_TOOL_RESULT));
 
     // Between turns: the goal took its next turn instead of pausing.
-    wait_for("the goal's next turn", async || appv3_db::latest_session_goal(&pool, &between).await.unwrap().unwrap().turns_used >= 1).await;
+    wait_until_async("the goal's next turn", async || appv3_db::latest_session_goal(&pool, &between).await.unwrap().unwrap().turns_used >= 1).await;
     let g = appv3_db::latest_session_goal(&pool, &between).await.unwrap().unwrap();
     assert_ne!(g.pause_reason.as_deref(), Some("restart"), "{g:?}");
     for sid in [&lead, &between] {

@@ -317,7 +317,7 @@ fn same_path(a: &str, b: &str) -> bool {
 pub const MAIN_CHECKOUT: &str = "main";
 
 fn checkout_matches(t: &Target, name: &str) -> bool {
-    let slug = crate::worktrees::slugify(name);
+    let slug = crate::worktrees::worktree_name(name);
     let base = basename(&t.path);
     t.name.eq_ignore_ascii_case(name) || base.eq_ignore_ascii_case(name) || (!slug.is_empty() && base == slug)
 }
@@ -356,7 +356,7 @@ async fn resolve_checkout(pool: &DbPool, target: &Target, source_workspace: &str
             return same_path(dir, &repo);
         }
         let base = basename(dir);
-        !same_path(dir, &repo) && (base.eq_ignore_ascii_case(name) || base == wt::slugify(name))
+        !same_path(dir, &repo) && (base.eq_ignore_ascii_case(name) || base == wt::worktree_name(name))
     });
     if let Some((dir, _)) = known {
         wt::register_workspace(pool, dir).await.map_err(err)?;
@@ -374,7 +374,7 @@ async fn resolve_checkout(pool: &DbPool, target: &Target, source_workspace: &str
         wt::Placement::Worktree { source, .. } | wt::Placement::Folder { source } => same_path(&source, &repo),
     };
     let base = if same_repo { source_workspace.to_string() } else { repo.clone() };
-    let slug = wt::slugify(name);
+    let slug = wt::worktree_name(name);
     let slug = if slug.is_empty() { "session".to_string() } else { slug };
     let branch = format!("oad/{slug}");
     let info = wt::create_worktree_at(pool, Path::new(&repo), Path::new(&base), Some(&slug), Some(&branch), false).await.map_err(|e| e.detail)?;
@@ -784,7 +784,7 @@ pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cance
         let mut extra = Map::new();
         extra.insert("from_agent".into(), json!(target_name));
         extra.insert("reply_from".into(), json!({"session_id": sid, "workspace": target_ws, "workspace_name": target_name, "status": outcome}));
-        if let Err(e) = crate::subagents::deliver_agent_message(&source, &content, extra, pool).await {
+        if let Err(e) = crate::subagents::report::deliver_agent_message(&source, &content, extra, pool).await {
             tracing::warn!("workspace_message_reply_failed source_session_id={} target_session_id={} error={}", source, sid, e);
             continue;
         }

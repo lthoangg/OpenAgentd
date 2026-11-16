@@ -51,28 +51,28 @@ describe('DeviceRows', () => {
     const promoted: string[] = []
     render(<DeviceRows {...base} devices={[ME, MINI, PHONE]} meSigner canChange onMakeApprover={async (id) => { promoted.push(id) }} />)
 
-    expect(screen.getByText('Only this computer can approve new devices.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Let your phone approve' }))
+    expect(screen.getByText('Only this computer can add devices.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Let your phone add devices' }))
     await waitFor(() => expect(promoted).toEqual(['phone']))
   })
 
   it('has no note once two devices approve', () => {
     render(<DeviceRows {...base} devices={[ME, { ...PHONE, signer: true }]} meSigner canChange onMakeApprover={async () => {}} />)
 
-    expect(screen.queryByText(/can approve new devices/)).toBeNull()
+    expect(screen.queryByText(/can add devices/)).toBeNull()
   })
 
   it('names the lone approver elsewhere, with no action here', () => {
     render(<DeviceRows {...base} devices={[{ ...ME, signer: false }, { ...PHONE, signer: true }]} meSigner={false} canChange onMakeApprover={async () => {}} />)
 
-    expect(screen.getByRole('status').textContent).toContain('Only your phone can approve new devices.')
+    expect(screen.getByRole('status').textContent).toContain('Only your phone can add devices.')
     expect(screen.queryByRole('button', { name: /approve$/ })).toBeNull()
   })
 
   it('shows the promotion failure', async () => {
     render(<DeviceRows {...base} devices={[ME, PHONE]} meSigner canChange onMakeApprover={async () => { throw new Error('Cancelled.') }} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Let your phone approve' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Let your phone add devices' }))
     expect((await screen.findByRole('alert')).textContent).toContain('Cancelled.')
   })
 

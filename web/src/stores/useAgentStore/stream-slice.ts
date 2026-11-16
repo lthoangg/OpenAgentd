@@ -2,12 +2,8 @@ import type { StateCreator } from 'zustand'
 import { postAgentChat, postAgentCommand, agentStream } from '@/api/client'
 import { restoredPromptText } from '@/lib/goal'
 import { applyQuestionResolution, applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
-import {
-  applySSEDeltaBatch,
-  createSSEHandler,
-  isBufferedSSEDelta,
-  type BufferedSSEDelta,
-} from './sse-reducer'
+import { applySSEDeltaBatch, isBufferedSSEDelta, type BufferedSSEDelta } from './sse-content'
+import { createSSEHandler } from './sse-reducer'
 import { isTransientNetworkError } from '@/utils/errors'
 import {
   decideAbort,
@@ -203,7 +199,7 @@ export const createStreamSlice: StateCreator<
     }
   },
 
-  undoAgent: async ({ restoreDraft = true } = {}) => {
+  undoAgent: async ({ restoreDraft = true, keepFiles = false } = {}) => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to undo' })
@@ -222,13 +218,14 @@ export const createStreamSlice: StateCreator<
 
     try {
       set((draft) => { draft.error = null })
-      const response = await postAgentCommand('undo', sessionId)
+      const response = await postAgentCommand('undo', sessionId, { keepFiles })
       enqueueWorkspaceInvalidation(set, workspace, sessionId, mergeChangedPaths(response.changed_paths))
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       const boundaryIso = response.message?.created_at
       const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
       set((draft) => {
         draft._leadRevertTime = boundaryTime
+        draft.revertKeepsFiles = response.keep_files === true
         Object.values(draft.agentStreams).forEach((stream) => {
           stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {
@@ -254,7 +251,7 @@ export const createStreamSlice: StateCreator<
     }
   },
 
-  revertToMessage: async (blockId, { restoreDraft = true } = {}) => {
+  revertToMessage: async (blockId, { restoreDraft = true, keepFiles = false } = {}) => {
     const leadBlocks = () => {
       const { leadName, agentStreams } = get()
       return (leadName ? agentStreams[leadName]?.blocks : undefined) ?? []
@@ -272,7 +269,7 @@ export const createStreamSlice: StateCreator<
     // if a response is not the boundary we expect.
     const steps = blocks.slice(index).filter((b) => isDirectUserBlock(b) || b.type === 'compaction').length
     for (let step = 0; step < steps; step += 1) {
-      const response = await get().undoAgent({ restoreDraft: false })
+      const response = await get().undoAgent({ restoreDraft: false, keepFiles })
       if (!response) return null
       if (!leadBlocks().some((block) => block.id === blockId)) break
     }
@@ -322,6 +319,7 @@ export const createStreamSlice: StateCreator<
       const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
       set((draft) => {
         draft._leadRevertTime = boundaryTime
+        draft.revertKeepsFiles = response.keep_files === true
         Object.values(draft.agentStreams).forEach((stream) => {
           stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {

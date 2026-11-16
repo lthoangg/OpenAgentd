@@ -19,7 +19,7 @@ export function useVisibleSettingsSections(): readonly SettingsSectionDef[] {
   const phoneStatus = usePhoneCloudStatus().data
   const accountUnsupported = phoneStatus?.state === 'guest' && !phoneStatus.supported
   return SETTINGS_SECTIONS.filter((s) =>
-    (s.id === 'account' && phone
+    (s.id === 'remote' && phone
       ? !accountUnsupported
       : !s.capability || (capabilities?.includes(s.capability) ?? false))
     && (!s.desktopOnly || desktop)
@@ -46,7 +46,7 @@ export function useSettingsSectionCounts(): Partial<Record<TopLevelSection, stri
   const rules = deniedPathsQ.data?.denied_patterns.length
   return {
     skills: counted(skills, 'skill', 'skills'),
-    mcp: signIn > 0 ? `${signIn} needs sign-in` : counted(servers?.length, 'connector', 'connectors'),
-    denied_paths: counted(rules, 'rule', 'rules'),
+    connectors: signIn > 0 ? `${signIn} needs sign-in` : counted(servers?.length, 'connector', 'connectors'),
+    blocked_files: counted(rules, 'rule', 'rules'),
   }
 }

@@ -254,6 +254,10 @@ pub fn thousands(n: usize) -> String {
 
 #[async_trait]
 impl Hook for ToolResultOffloadHook {
+    /// A script needs a nested call's whole result, not a file pointer.
+    fn wraps_nested_calls(&self) -> bool {
+        false
+    }
     async fn after_tool(&self, ctx: &RunContext, meta: &SharedMeta, tc: &ToolCall, _scope: &mut ToolCallScope, result: &mut String) {
         let chars = result.chars().count();
         let name = tc.function.name.as_str();
@@ -308,16 +312,70 @@ pub struct QueuedInjectionHook {
     pub switch: Option<SteerSwitch>,
 }
 
-/// Builds the provider for a session's `(model, thinking_level)` overrides.
-pub type ResolveModel = Arc<dyn Fn(Option<&str>, Option<&str>) -> Result<super::ModelSwitch, String> + Send + Sync>;
+/// Builds the provider for a session's `(model, thinking_level, credential)`
+/// settings.
+pub type ResolveModel = Arc<dyn Fn(Option<&str>, Option<&str>, Option<&str>) -> Result<super::ModelSwitch, String> + Send + Sync>;
+
+/// A session's run settings as its row holds them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RunChoice {
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
+    /// The account the session is pinned to (`chat_sessions.credential_id`).
+    pub credential: Option<String>,
+}
 
 /// The overrides the turn runs with now, and how to build another provider.
 pub struct SteerSwitch {
     pub resolve: ResolveModel,
-    pub current: Mutex<(Option<String>, Option<String>)>,
+    pub current: Mutex<RunChoice>,
 }
 
 impl QueuedInjectionHook {
+    async fn session_choice(&self) -> Option<RunChoice> {
+        let norm = |v: Option<String>| v.filter(|s| !s.is_empty());
+        match appv3_db::get_session(&self.pool, &self.session_id).await {
+            Ok(Some(row)) => Some(RunChoice { model: norm(row.model), thinking_level: norm(row.thinking_level), credential: norm(row.credential_id) }),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!("steer_model_switch_failed session_id={} error={}", self.session_id, e);
+                None
+            }
+        }
+    }
+
+    /// Move the turn to `wanted` from its next model call.
+    fn switch_to(&self, sw: &SteerSwitch, state: &mut AgentState, wanted: RunChoice) {
+        match (sw.resolve)(wanted.model.as_deref(), wanted.thinking_level.as_deref(), wanted.credential.as_deref()) {
+            Ok(next) => {
+                tracing::info!(
+                    "steer_model_switched session_id={} from={} to={} thinking={} credential={}",
+                    self.session_id,
+                    state.meta_str("effective_model").unwrap_or_default(),
+                    next.model_id.as_deref().unwrap_or_default(),
+                    next.thinking_level.as_deref().unwrap_or("default"),
+                    wanted.credential.as_deref().unwrap_or("auto")
+                );
+                *sw.current.lock().unwrap() = wanted;
+                state.model_switch = Some(next);
+            }
+            Err(e) => tracing::warn!("steer_model_switch_failed session_id={} error={}", self.session_id, e),
+        }
+    }
+
+    /// An account picked while the turn runs (the composer saves it on the
+    /// session row, no message needed) serves the next model call.
+    async fn follow_pin(&self, state: &mut AgentState) {
+        let Some(sw) = &self.switch else { return };
+        let Some(row) = self.session_choice().await else { return };
+        let current = sw.current.lock().unwrap().clone();
+        if row.credential == current.credential {
+            return;
+        }
+        // Only the account moves; a model or level change waits for a steer.
+        self.switch_to(sw, state, RunChoice { credential: row.credential, ..current });
+    }
+
     /// A steer the user sent (its row records the settings it was sent
     /// with; a member's report records none) moves the turn to the
     /// session's settings, which the send already saved.
@@ -326,40 +384,20 @@ impl QueuedInjectionHook {
         if !rows.iter().any(|r| r.extra_json().is_some_and(|e| e.get("model").is_some())) {
             return;
         }
-        let row = match appv3_db::get_session(&self.pool, &self.session_id).await {
-            Ok(Some(row)) => row,
-            Ok(None) => return,
-            Err(e) => {
-                tracing::warn!("steer_model_switch_failed session_id={} error={}", self.session_id, e);
-                return;
-            }
-        };
-        let norm = |v: Option<String>| v.filter(|s| !s.is_empty());
-        let wanted = (norm(row.model), norm(row.thinking_level));
+        let Some(wanted) = self.session_choice().await else { return };
         if *sw.current.lock().unwrap() == wanted {
             return;
         }
-        match (sw.resolve)(wanted.0.as_deref(), wanted.1.as_deref()) {
-            Ok(next) => {
-                tracing::info!(
-                    "steer_model_switched session_id={} from={} to={} thinking={}",
-                    self.session_id,
-                    state.meta_str("effective_model").unwrap_or_default(),
-                    next.model_id.as_deref().unwrap_or_default(),
-                    next.thinking_level.as_deref().unwrap_or("default")
-                );
-                *sw.current.lock().unwrap() = wanted;
-                state.model_switch = Some(next);
-            }
-            Err(e) => tracing::warn!("steer_model_switch_failed session_id={} error={}", self.session_id, e),
-        }
+        self.switch_to(sw, state, wanted);
     }
 }
 
 #[async_trait]
 impl Hook for QueuedInjectionHook {
     async fn before_model(&self, _ctx: &RunContext, state: &mut AgentState, _req: &ModelRequest) -> Option<ModelRequest> {
-        if !self.support_interrupt || appv3_db::codec::parse_uuid(&self.session_id).is_none() {
+        appv3_db::codec::parse_uuid(&self.session_id)?;
+        self.follow_pin(state).await;
+        if !self.support_interrupt {
             return None;
         }
         // Rows held until the turn ends stay queued: they start a turn of their own.

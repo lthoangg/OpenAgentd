@@ -11,6 +11,7 @@ import { buildDesignFeedback } from '@/components/Preview/preview-comments'
 import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { useSkippableTimers } from '../../fake-timers'
 
 const WS = '/Users/me/project'
 const ORIGIN = 'http://127.0.0.1:52011'
@@ -988,6 +989,16 @@ describe('PreviewTabView', () => {
   describe('when the app comes back', () => {
     const comeBack = () => act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     const hellos = (commands: Record<string, unknown>[]) => commands.filter((c) => c.type === 'hello').length
+    // The view waits 0.8 s for a loaded page to answer and 2.5 s for a page it
+    // asked again. The tests run those waits early instead of sitting them out.
+    let timers: ReturnType<typeof useSkippableTimers>
+    beforeEach(() => { timers = useSkippableTimers({ atLeast: 500 }) })
+    afterEach(() => timers.restore())
+    /** Lets `ms` of the view's waits pass, and what they start settle. */
+    const pass = async (ms: number) => {
+      await act(async () => { timers.skip(ms) })
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+    }
 
     it('checks the listener again and leaves a page that still answers alone', async () => {
       const { iframe, frameWindow, commands } = await renderView()
@@ -999,7 +1010,7 @@ describe('PreviewTabView', () => {
       await waitFor(() => expect(previewBodies.length).toBe(opens + 1))
       await waitFor(() => expect(hellos(commands)).toBe(asked + 1))
       fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      await pass(3000)
       expect(document.querySelector('iframe')).toBe(iframe)
       expect(screen.queryByRole('alert')).toBeNull()
     })
@@ -1011,25 +1022,27 @@ describe('PreviewTabView', () => {
 
       comeBack()
       await waitFor(() => expect(hellos(commands)).toBe(asked + 1))
+      await pass(3000)
       const fresh = await waitFor(() => {
         const el = document.querySelector('iframe')
         if (!el || el === iframe) throw new Error('not reloaded yet')
         return el
-      }, { timeout: 5000 })
+      })
       // Where the person was, not where the tab first opened.
       expect(fresh.getAttribute('src')).toBe(`${ORIGIN}/pricing?plan=pro`)
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await pass(3000)
       expect(document.querySelector('iframe')).toBe(fresh)
     })
 
     it('leaves a page without the preview script alone: it could not answer before either', async () => {
       const { iframe } = await renderView()
-      expect(await screen.findByText(/did not load the preview script/, undefined, { timeout: 2000 })).toBeTruthy()
+      await pass(1000)
+      expect(screen.getByText(/did not load the preview script/)).toBeTruthy()
       const opens = previewBodies.length
 
       comeBack()
       await waitFor(() => expect(previewBodies.length).toBe(opens + 1))
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      await pass(3000)
       expect(document.querySelector('iframe')).toBe(iframe)
     })
 

@@ -30,6 +30,7 @@ web/src/__tests__/
   queries/          TanStack Query factories
   api/              API client tests
   setup.ts          Global preload (bunfig.toml) — Happy DOM, SVG `?url` stubs, framer-motion stub, 10 s test limit
+  fake-timers.ts    `useFakeTimers` steps every timer by hand; `useSkippableTimers` runs a component's long wait early
 ```
 
 Mirror the source path: `components/Foo.tsx` → `__tests__/components/Foo.test.tsx`.

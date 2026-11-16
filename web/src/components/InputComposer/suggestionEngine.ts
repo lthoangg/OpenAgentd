@@ -13,17 +13,17 @@
  * Split out of InputComposer.tsx (not `.tsx` itself — react-refresh forbids
  * non-component runtime exports from `.tsx` files) so the component only
  * has to wire this hook's output into `<InputComposerSuggestions>` (the render
- * half, in `InputComposer.suggestions.tsx`) and into its own `handleKeyDown` /
+ * half, in `suggestions.tsx`) and into its own `handleKeyDown` /
  * `handleChange` for keyboard navigation and the active-mention window.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import type { SlashCommand, SnippetCommand } from './InputComposer'
-import type { FileRef } from './InputComposer.mentions'
+import type { SlashCommand, SnippetCommand } from '../InputComposer'
+import type { FileRef } from './mentions'
 import {
   filterMentions,
   filterSlashCommands,
   filterSnippetCommands,
-} from './InputComposer.menus'
+} from './menus'
 
 export type SuggestionRange = { start: number; end: number; query: string } | null
 

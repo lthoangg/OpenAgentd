@@ -5,13 +5,13 @@ import { createRef } from "react"
 import { InputComposer } from "@/components/InputComposer"
 import type { InputComposerHandle } from "@/components/InputComposer"
 import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
-import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer.files"
+import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer/files"
 import {
   buildHistoryEntries,
   filterMentions,
   filterSlashCommands,
   filterSnippetCommands,
-} from "@/components/InputComposer.menus"
+} from "@/components/InputComposer/menus"
 import type { AgentCapabilities } from "@/api/types"
 
 let isMobile = false

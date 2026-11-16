@@ -13,7 +13,7 @@ import {
   filesFromDataTransfer,
   isFileTypeAllowed,
   splitFilesByBudget,
-} from './InputComposer.files'
+} from './files'
 import { useToastStore } from '@/stores/useToastStore'
 import { formatBytes } from '@/utils/format'
 

@@ -18,8 +18,8 @@
  */
 import { memo, useEffect, useMemo, useRef } from 'react'
 
-import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputComposer.mentions'
-import { composerMaxHeight } from './InputComposer.autosize'
+import { buildMentionLookup, findCommittedMentions, type FileRef } from './mentions'
+import { composerMaxHeight } from './autosize'
 
 /**
  * The message text's size and line height, worn by the textarea and the

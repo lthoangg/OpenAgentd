@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
 import { useRef } from 'react'
-import { composerMaxHeight, useTextareaAutosize } from '@/components/InputComposer.autosize'
+import { composerMaxHeight, useTextareaAutosize } from '@/components/InputComposer/autosize'
 
 type Api = ReturnType<typeof useTextareaAutosize>
 let api: Api

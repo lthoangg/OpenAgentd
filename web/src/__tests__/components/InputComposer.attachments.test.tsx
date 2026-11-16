@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { InputComposer } from "@/components/InputComposer"
-import { MAX_TOTAL_ATTACHMENT_BYTES, splitFilesByBudget } from "@/components/InputComposer.files"
+import { MAX_TOTAL_ATTACHMENT_BYTES, splitFilesByBudget } from "@/components/InputComposer/files"
 import { useToastStore } from "@/stores/useToastStore"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))

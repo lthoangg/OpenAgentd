@@ -11,7 +11,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { isDraggingFiles } from '@/lib/is-dragging-files'
-import { filesFromDataTransfer } from '../InputComposer.files'
+import { filesFromDataTransfer } from '../InputComposer/files'
 import type { InputComposerHandle } from '../InputComposer'
 
 export interface UseDragDropResult {

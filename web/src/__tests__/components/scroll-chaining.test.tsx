@@ -71,7 +71,7 @@ describe("scroll chaining — overlays trap scroll", () => {
 describe("scroll chaining — anchored popovers trap scroll (source)", () => {
   const cases: Array<[string, string]> = [
     ["dropdown", "src/components/ui/dropdown.tsx"],
-    ["input-bar suggestions", "src/components/InputComposer.suggestions.tsx"],
+    ["input-bar suggestions", "src/components/InputComposer/suggestions.tsx"],
     ["command palette", "src/components/CommandPalette.tsx"],
     ["todos popover", "src/components/TodosPopover.tsx"],
     ["multi-select", "src/components/settings/MultiSelect.tsx"],

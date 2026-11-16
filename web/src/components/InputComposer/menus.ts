@@ -1,5 +1,5 @@
-import { rankFileRefs, type FileRef } from './InputComposer.mentions'
-import type { SlashCommand, SnippetCommand } from './InputComposer'
+import { rankFileRefs, type FileRef } from './mentions'
+import type { SlashCommand, SnippetCommand } from '../InputComposer'
 
 export function buildHistoryEntries(
   localHistory: string[],

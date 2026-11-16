@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback, type CSSProperties, type MutableRefObject } from 'react'
 import { File, Folder } from 'lucide-react'
-import type { SlashCommand } from './InputComposer'
-import type { SuggestionMenu, SuggestionRow } from './InputComposer.suggestionEngine'
+import type { SlashCommand } from '../InputComposer'
+import type { SuggestionMenu, SuggestionRow } from './suggestionEngine'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { usePlatform } from '@/hooks/use-platform'
@@ -14,7 +14,7 @@ const MENU_KEY_CLASS = 'rounded-xs border border-(--color-border) bg-(--bg-key) 
 
 /**
  * Render half of the InputComposer suggestion system. The engine
- * (`InputComposer.suggestionEngine.ts`) decides *which* menu is open and what it
+ * (`suggestionEngine.ts`) decides *which* menu is open and what it
  * contains; this component owns positioning (fixed on mobile so the menu
  * escapes `overflow: hidden` ancestors, absolute on desktop) and paints the
  * single open listbox.

@@ -1,4 +1,4 @@
-// size-ceiling: 1164 — one file per tool's result
+// size-ceiling: 1156 — one file per tool's result
 /**
  * Rich tool result renderers.
  *
@@ -866,14 +866,6 @@ function GenericResult({ result }: { result: string }) {
 // Public dispatcher
 // ---------------------------------------------------------------------------
 
-const FILE_LIST_TOOLS = new Set(['glob', 'grep'])
-const FILE_READ_TOOLS = new Set(['read'])
-const SHELL_TOOLS = new Set(['shell'])
-const WEB_SEARCH_TOOLS = new Set(['web_search'])
-const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
-const SCHEDULE_TOOLS = new Set(['schedule'])
-const TEAM_TOOLS = new Set(['team'])
-
 /** A non-empty string field, or ``null``. */
 function str(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null
@@ -1120,28 +1112,28 @@ function ToolResultInner({ toolName: rawName, operation, result, headerAction, o
   if (toolName === 'lsp') {
     return <LspNavigationResult operation={operation} result={result} />
   }
-  if (WEB_SEARCH_TOOLS.has(toolName)) {
+  if (toolName === 'web_search') {
     return <WebSearchResult result={result} />
   }
-  if (BACKGROUND_PROCESS_TOOLS.has(toolName)) {
+  if (toolName === 'bg') {
     return <BackgroundProcessResult result={result} headerAction={headerAction} onCollapse={onCollapse} />
   }
-  if (SCHEDULE_TOOLS.has(toolName)) {
+  if (toolName === 'schedule') {
     return <ScheduleTaskListResult result={result} />
   }
-  if (SHELL_TOOLS.has(toolName)) {
+  if (toolName === 'shell') {
     return <ShellResult result={result} />
   }
-  if (FILE_LIST_TOOLS.has(toolName)) {
+  if (toolName === 'glob' || toolName === 'grep') {
     return <FileListResult result={result} />
   }
-  if (FILE_READ_TOOLS.has(toolName)) {
+  if (toolName === 'read') {
     return <FileReadResult result={result} />
   }
   if (toolName === 'todo') {
     return <TodoListResult result={result} />
   }
-  if (TEAM_TOOLS.has(toolName)) {
+  if (toolName === 'team') {
     return <TeamToolResult result={result} />
   }
   // web_fetch, date, math, skill, etc.

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import type { AgentCommandResponse } from '@/api/types'
+import type { AgentCommandResponse, CommandSummary } from '@/api/types'
 import { BASE_SLASH_COMMANDS, btwSubmit, filterBaseSlashCommands, parseBtwCommand, parseBuiltInSlashCommand } from '@/components/AgentChatView/helpers'
 import { useSlashCommands } from '@/components/AgentChatView/useSlashCommands'
 import { useBtwStore } from '@/stores/useBtwStore'
@@ -22,8 +22,9 @@ mock.module('@/stores/useAgentStore', () => ({
 }))
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
+let listedCommands: CommandSummary[] = []
 mock.module('@/queries/useCommandsQuery', () => ({
-  useCommandsQuery: () => ({ data: { commands: [] } }),
+  useCommandsQuery: () => ({ data: { commands: listedCommands } }),
 }))
 mock.module('@/queries/useSnippetsQuery', () => ({
   useSnippetsQuery: () => ({ data: { snippets: [] } }),
@@ -193,6 +194,18 @@ describe('useSlashCommands', () => {
     inputRef.current.setFiles.mockClear()
     handleNewSession.mockClear()
     redo.mockImplementation(async () => undefined)
+    listedCommands = []
+  })
+
+  it('lists skills after the custom commands, badged as skills', () => {
+    listedCommands = [
+      { name: 'review', description: 'Review the diff', source: 'global-openagentd' },
+      { name: 'review-kit/code-review', description: 'Review a diff for bugs', source: 'skill' },
+    ]
+    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
+    const custom = result.current.slashCommands.filter((c) => c.keepInputOpen && c.id !== 'btw')
+    expect(custom.map((c) => [c.displayName, c.category])).toEqual([['review', 'command'], ['review-kit:code-review', 'skill']])
+    expect(result.current.userCommandNames.has('review-kit/code-review')).toBe(true)
   })
 
   for (const command of ['redo', 'redo-all'] as const) {

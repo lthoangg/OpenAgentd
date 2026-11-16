@@ -139,8 +139,29 @@ fn summaries(mut items: Vec<MdItem>) -> Vec<Value> {
 
 async fn list_commands(q: Qs) -> ApiResult<Response> {
     let ws = workspace_path(q.get("workspace"))?;
-    let items = blocking(move || discover("commands", ws.as_deref())).await?;
+    let items = blocking(move || {
+        let mut items = discover("commands", ws.as_deref())?;
+        items.extend(skill_commands(ws.as_deref(), &items));
+        Ok::<_, ApiError>(items)
+    })
+    .await?;
     Ok(json(json!({"commands": summaries(items)})))
+}
+
+/// Skills as slash commands (`source: "skill"`), after the user's commands
+/// and the built-ins, which keep their names.
+fn skill_commands(workspace: Option<&Path>, commands: &[MdItem]) -> Vec<MdItem> {
+    skills::discover_skills(workspace)
+        .into_iter()
+        .filter(|s| !s.description.trim().is_empty() && builtin_commands().get(&s.name).is_none() && !commands.iter().any(|c| c.name == s.name))
+        .map(|s| MdItem { body: skill_command_body(&s.name), name: s.name, description: py_strip(&s.description), source: "skill".into() })
+        .collect()
+}
+
+/// What a skill's slash command sends: the agent loads the skill itself, so
+/// the message stays short and the load is tracked like any other.
+fn skill_command_body(name: &str) -> String {
+    format!("Run the `{name}` skill: load it with the `skill` tool, then follow its instructions.")
 }
 
 fn strip_render(rest: &str) -> Option<&str> {
@@ -249,7 +270,13 @@ async fn render_command_route(AxPath(rest): AxPath<String>, q: Qs, body: Bytes) 
         Some(c) => (c.body, false),
         None => match builtin_commands().get(&name) {
             Some(b) => (b["body"].as_str().unwrap_or("").to_string(), true),
-            None => return Err(ApiError::not_found(format!("Command '{name}' not found."))),
+            None => {
+                let (ws, n) = (ws.clone(), name.clone());
+                match blocking(move || skill_commands(ws.as_deref(), &[]).into_iter().find(|s| s.name == n)).await {
+                    Some(skill) => (skill.body, false),
+                    None => return Err(ApiError::not_found(format!("Command '{name}' not found."))),
+                }
+            }
         },
     };
     if builtin && name == "memory" {
@@ -344,7 +371,16 @@ fn editable(path: &Path) -> bool {
     !rel_to(path, &skills::builtin_skills_dir())
 }
 
-/// Parse a skill file → (description, error).
+/// The `name` a skill's frontmatter gives: a plugin skill, listed as
+/// `<plugin>/<folder>`, names its folder (the Agent Skills format).
+fn frontmatter_name(info: &skills::SkillInfo) -> &str {
+    match &info.plugin {
+        Some(plugin) => info.name.strip_prefix(plugin.as_str()).and_then(|rest| rest.strip_prefix('/')).unwrap_or(&info.name),
+        None => &info.name,
+    }
+}
+
+/// Parse a skill file whose frontmatter may name it `name` → (description, error).
 fn parse_skill(name: &str, content: &str) -> (String, Option<String>) {
     match skills::parse_frontmatter_strict(content) {
         StrictFrontmatter::YamlError(e) => (String::new(), Some(format!("Invalid frontmatter: {e}"))),
@@ -417,7 +453,7 @@ async fn list_skills() -> Response {
             match std::fs::read_to_string(&path) {
                 Err(e) => rows.push((info.name.clone(), json!({"name": info.name, "description": "", "valid": false, "error": e.to_string(), "built_in": source == "builtin", "editable": false, "source": source}))),
                 Ok(text) => {
-                    let (desc, err) = parse_skill(&info.name, &text);
+                    let (desc, err) = parse_skill(frontmatter_name(&info), &text);
                     rows.push((info.name.clone(), json!({"name": info.name, "description": desc, "valid": err.is_none(), "error": err, "built_in": source == "builtin", "editable": can_edit, "source": source})));
                 }
             }
@@ -443,7 +479,7 @@ async fn get_skill(AxPath(name): AxPath<String>) -> ApiResult<Response> {
     let Some(info) = blocking(move || find_skill(&n)).await else { return Err(ApiError::not_found(format!("Skill '{name}' not found."))) };
     let path = info.dir.join("SKILL.md");
     let content = std::fs::read_to_string(&path).map_err(|e| ApiError::not_found(e.to_string()))?;
-    let (desc, err) = parse_skill(&name, &content);
+    let (desc, err) = parse_skill(frontmatter_name(&info), &content);
     Ok(json(skill_detail(&name, &path, &content, &desc, err)))
 }
 
@@ -498,7 +534,7 @@ async fn update_skill(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Res
     if !editable(&path) {
         return Err(ApiError::new(403, format!("Skill '{name}' is read-only because it comes from {}.", skill_source(&path))));
     }
-    let (desc, err) = parse_skill(&name, &content);
+    let (desc, err) = parse_skill(frontmatter_name(&info), &content);
     if let Some(e) = err {
         return Err(ApiError::unprocessable(e));
     }

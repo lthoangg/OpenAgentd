@@ -104,13 +104,15 @@ export function useSlashCommands({
     ...baseCommands,
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
+      // The backend lists skills as commands too (`source: 'skill'`).
+      const isSkill = c.source === 'skill'
       return {
         id: c.name,
         label: displayName,
         displayName,
         insertText: displayName,
         description: c.description || `Custom command (${c.source})`,
-        category: 'command',
+        category: isSkill ? 'skill' : 'command',
         keepInputOpen: true,
       }
     }),

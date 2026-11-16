@@ -4666,10 +4666,21 @@ Four orthogonal ways to add capability.
     `remove` reaches no server (the desktop app's listens on a port of its
     own), they say no server answered and that a running server picks the
     change up on its own, instead of saying none is running.
+  - **Plugin skills in the Agent Skills format** `[v3.57.0]` — a plugin
+    skill whose frontmatter `name` is its folder name, as the format
+    requires, now shows as valid in Settings → Skills instead of "does not
+    match directory name". Its siblings can load it by that bare name
+    (`code-review` for `review-kit/code-review`) when no other skill has the name and no
+    other plugin has the folder.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax
   (`/git:commit`) `[v1.27.x]`.
+  - **Skills in the `/` menu** `[v3.57.0]` — every skill is listed after the
+    commands, badged *skill* (`/review-kit:code-review`); running one asks the
+    agent to load it, with the typed text appended. A skill with
+    `disable-model-invocation: true` is left out of the model's skill list,
+    so the agent does not reach for it on its own.
 - **Self-healing skill** `[v1.14.0]` — agent edits its own `.md` config (model,
   tools, MCP) and the runtime picks up the change at end-of-turn.
 

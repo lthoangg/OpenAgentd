@@ -19,7 +19,10 @@ directories).
 - The format is the open Agent Plugins layout, so a folder written for it works
   here, and the `skills/` and `mcp.json` parts of a folder written here work in
   other clients.
-- Names: skills are `<plugin>/<skill>`, MCP servers `<plugin>/<server>`.
+- Names: skills are `<plugin>/<skill>`, MCP servers `<plugin>/<server>`. A
+  skill's frontmatter `name` is its folder name, as the Agent Skills format
+  requires. A bare `<skill>` also loads it when no other skill has that name
+  and no other plugin has that folder, so a plugin's skills can name each other.
   `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` in an MCP server's `args`, `env` and
   `cwd` become the plugin folder and its data folder (kept across updates).
 - Folders reload on their own when a file changes; there is no restart. New

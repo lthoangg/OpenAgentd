@@ -4,7 +4,6 @@
  */
 import { mock, describe, it, expect, beforeEach } from "bun:test"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const sender = { session_id: "app-session", workspace: "/r/app", title: "Orders API" }
 const history = (sentFrom: unknown) => ({
   lead: { id: "s1", agent_name: "lead", title: "Orders table", created_at: null, updated_at: null, sub_sessions: [], messages: [], ...(sentFrom ? { sent_from: sentFrom } : {}) },
@@ -17,7 +16,6 @@ const mockSessionHistory = mock(() => Promise.resolve(history(sender))) as any
   agentStatus: mock(() => Promise.resolve({ lead: null, members: [] })),
   sessionHistory: mockSessionHistory,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from "@/stores/useAgentStore"
 

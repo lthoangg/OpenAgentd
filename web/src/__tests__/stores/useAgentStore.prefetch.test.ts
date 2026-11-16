@@ -4,7 +4,6 @@
  */
 import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const history = (title: string) => ({
   lead: { id: "s1", agent_name: "lead", title, created_at: null, updated_at: null, sub_sessions: [], messages: [] },
   members: [],
@@ -16,7 +15,6 @@ const mockSessionHistory = mock(() => Promise.resolve(history("fetched"))) as an
   agentStatus: mock(() => Promise.resolve({ lead: null, members: [] })),
   sessionHistory: mockSessionHistory,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import {

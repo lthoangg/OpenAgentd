@@ -1028,7 +1028,6 @@ export interface LspDiagnosticItem {
   source: string
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function parseLspDiagnostics(text: string): {
   cleanText: string
   diagnostics: LspDiagnosticItem[]

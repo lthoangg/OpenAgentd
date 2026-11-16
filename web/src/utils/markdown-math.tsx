@@ -116,7 +116,6 @@ export const MathBlock = memo(function MathBlock({ math }: { math: string }) {
   )
 })
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function parseMathBlock(context: BlockParseContext): BlockNode | undefined {
   const first = context.lines[context.index] ?? ''
   const trimmed = first.trim()
@@ -179,7 +178,6 @@ export function parseMathBlock(context: BlockParseContext): BlockNode | undefine
   return undefined
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function transformMathInline(nodes: InlineNode[]): InlineNode[] {
   const result: InlineNode[] = []
   for (const node of nodes) {
@@ -221,7 +219,6 @@ export function transformMathInline(nodes: InlineNode[]): InlineNode[] {
   return result
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function mathMarkdownExtension(): MarkdownExtension {
   return {
     name: 'math',

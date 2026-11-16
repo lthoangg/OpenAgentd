@@ -73,6 +73,24 @@
       "rules": {
         "no-restricted-globals": "off"
       }
+    },
+    {
+      "files": ["src/components/ui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              { "name": "clsx", "message": "ui/ primitives use cn() from @/lib/utils and the local class maps." },
+              { "name": "tailwind-merge", "message": "ui/ primitives use cn() from @/lib/utils and the local class maps." },
+              { "name": "class-variance-authority", "message": "ui/ primitives use the local variant maps (see ui/button.tsx)." }
+            ],
+            "patterns": [
+              { "group": ["@radix-ui/*", "@base-ui/*", "@base-ui-components/*", "@headlessui/*"], "message": "ui/ primitives are dependency-free; build on the existing ones in this folder." }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

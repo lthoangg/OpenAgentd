@@ -13,7 +13,6 @@
  */
 import { mock, describe, it, expect, beforeEach } from 'bun:test'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockSessionHistory = mock(() => Promise.resolve(historyWithQuestion())) as any
 
 const WIRE_QUESTIONS = [
@@ -67,7 +66,6 @@ function historyWithQuestion(overrides: object = {}) {
   postAgentCommand: mock(() => Promise.resolve({ status: 'accepted' })) as any,
   cancelQueuedMessage: mock(() => Promise.resolve()) as any,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 

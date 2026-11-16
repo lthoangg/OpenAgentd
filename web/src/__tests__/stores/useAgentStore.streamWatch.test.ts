@@ -8,7 +8,6 @@
  */
 import { mock, describe, it, expect, beforeEach, afterEach } from 'bun:test'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: any) => {}) as any
 const mockSessionHistory = mock(() =>
   Promise.resolve({
@@ -25,7 +24,6 @@ const mockSessionHistory = mock(() =>
   postAgentCommand: mock(() => Promise.resolve({})),
   agentStatus: mock(() => Promise.resolve(null)),
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { streamWatchClock, STREAM_SILENCE_MS, QUESTION_GRACE_MS } from '@/stores/useAgentStore/stream-slice'

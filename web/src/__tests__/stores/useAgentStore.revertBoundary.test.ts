@@ -1,6 +1,5 @@
 import { mock, describe, it, expect, beforeEach } from "bun:test"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockPostAgentChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
@@ -30,9 +29,7 @@ const mockSessionHistory = mock(() =>
     next_cursor: null,
   })
 ) as any
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 ;(mock as any).module("@/api/client", () => ({
   postAgentChat: mockPostAgentChat,
   postAgentCommand: mockPostAgentCommand,
@@ -40,7 +37,6 @@ const mockSessionHistory = mock(() =>
   agentStatus: mockAgentStatus,
   sessionHistory: mockSessionHistory,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import { applyRevertBoundary } from "@/stores/useAgentStore/helpers"

@@ -119,5 +119,5 @@ function Button({ className, variant = 'default', size = 'default', ref, ...prop
   )
 }
 
-export { Button, buttonVariants } // eslint-disable-line react-refresh/only-export-components
+export { Button, buttonVariants }
 export type { ButtonProps }

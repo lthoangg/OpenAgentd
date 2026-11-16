@@ -184,5 +184,4 @@ function TabsContent({ className, value, hidden, ...props }: TabsContentProps) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }

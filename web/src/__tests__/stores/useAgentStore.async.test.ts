@@ -22,7 +22,6 @@ import { mock, describe, it, expect, beforeEach, afterEach, spyOn } from "bun:te
 // ── Mock @/api/client BEFORE importing the store ──────────────────────────────
 // NOTE: Bun mock types require explicit `any` assertions for compatibility
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const mockPostAgentChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
@@ -56,9 +55,7 @@ const mockSessionHistory = mock(() =>
   })
 ) as any
 const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 (mock as any).module("@/api/client", () => ({
   postAgentChat: mockPostAgentChat,
   cancelQueuedMessage: mockCancelQueuedAgentMessage,
@@ -70,7 +67,6 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 (mock as any).module("@/lib/desktop-notifications", () => ({
   sendDesktopNotification: mockSendDesktopNotification,
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ── Store import (AFTER mock.module) ──────────────────────────────────────────
 
@@ -1583,7 +1579,6 @@ describe("connectStream", () => {
   it("schedules a reconnect after a transient network error while working", () => {
     // Capture the setTimeout callback so we can fire it synchronously.
     let timerCb!: () => void
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
       return 0 as unknown as ReturnType<typeof setTimeout>
@@ -1635,7 +1630,6 @@ describe("connectStream", () => {
   it("clears a pending reconnect timer when starting a new session", () => {
     let timerCb!: () => void
     const clearTimeoutSpy = spyOn(globalThis, "clearTimeout")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
       return 123 as unknown as ReturnType<typeof setTimeout>
@@ -1662,7 +1656,6 @@ describe("connectStream", () => {
 
   it("does not reconnect from the timer if the session changed", () => {
     let timerCb!: () => void
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
       return 0 as unknown as ReturnType<typeof setTimeout>
@@ -1686,7 +1679,6 @@ describe("connectStream", () => {
 
   it("does not reconnect from the timer if already reconnected", () => {
     let timerCb!: () => void
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
       return 0 as unknown as ReturnType<typeof setTimeout>

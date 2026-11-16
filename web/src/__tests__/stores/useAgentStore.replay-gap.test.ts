@@ -8,7 +8,6 @@
  */
 import { mock, describe, it, expect, beforeEach } from "bun:test"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 let streamCallbacks: any = null
 const mockAgentStream = mock((_sid: any, callbacks: any) => { streamCallbacks = callbacks }) as any
 const mockSessionHistorySince = mock(async () => ({ lead: { messages: [] }, members: [], truncated: false })) as any
@@ -18,7 +17,6 @@ const mockSessionHistorySince = mock(async () => ({ lead: { messages: [] }, memb
   sessionHistory: mock(async () => { throw new Error("not used") }),
   agentStatus: mock(async () => ({ lead: null, members: [] })),
 }))
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"

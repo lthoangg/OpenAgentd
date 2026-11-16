@@ -144,7 +144,7 @@ describe('summarizeWork', () => {
     const summary = summarizeWork(blocks)
 
     expect(summary).toEqual({
-      reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, plans: 0, questions: 0, delegations: 1,
+      reads: 2, searches: 3, fetches: 1, commands: 1, scripts: 0, edits: 1, plans: 0, questions: 0, delegations: 1,
       reports: 1, previews: 0, mcpCalls: 0, generations: 0, checks: 1, other: 1, thought: true,
     })
     expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 delegation, 1 report, 1 goal check, 1 other')
@@ -160,6 +160,7 @@ describe('summarizeWork', () => {
   it('names a group for every built-in tool, leaving "other" to tools it does not know', () => {
     const blocks = [
       tool('sk', 'skill'),
+      tool('sc2', 'script'),
       tool('pl', 'plan'), tool('sp', 'submit_plan'), tool('td', 'todo'), tool('sc', 'schedule'),
       tool('au', 'ask_user'), tool('al', 'ask_lead'),
       tool('tm', 'team'), tool('ws', 'workspace'),
@@ -169,7 +170,7 @@ describe('summarizeWork', () => {
     ]
 
     expect(workSummaryDetail(summarizeWork(blocks))).toBe(
-      '1 read, 1 search, 4 plan updates, 2 questions, 2 delegations, 2 preview actions, 1 connector call, 2 generations',
+      '1 read, 1 search, 1 script, 4 plan updates, 2 questions, 2 delegations, 2 preview actions, 1 connector call, 2 generations',
     )
   })
 

@@ -171,7 +171,10 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// it, with a one-line example: models given only the rules treated a tool
 /// result as an array, and read every file instead of grepping them. The
 /// test now counts every base tool from the registry.
-const LEAD_ALWAYS_ON_CHARS: usize = 43_838;
+/// Raised by 518 for the coding prompt to say when `script` beats direct
+/// calls (and to stop reading "use a script only for…" as a ban on it):
+/// leads made 0.2% of their calls with it while shell made 47%.
+const LEAD_ALWAYS_ON_CHARS: usize = 44_356;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

@@ -110,6 +110,7 @@ export interface WorkSummary {
   searches: number
   fetches: number
   commands: number
+  scripts: number
   edits: number
   plans: number
   questions: number
@@ -128,7 +129,7 @@ export interface WorkSummary {
 type StepKind = Exclude<keyof WorkSummary, 'thought'>
 
 /** Each tool's group, by its current name; ``bg`` and ``recall`` are gone but old transcripts hold them. */
-const STEP_KIND: Record<string, StepKind> = {
+export const STEP_KIND: Record<string, StepKind> = {
   read: 'reads',
   // Loading a skill reads its instructions.
   skill: 'reads',
@@ -140,6 +141,7 @@ const STEP_KIND: Record<string, StepKind> = {
   web_fetch: 'fetches',
   shell: 'commands',
   bg: 'commands',
+  script: 'scripts',
   patch: 'edits',
   plan: 'plans',
   submit_plan: 'plans',
@@ -174,7 +176,7 @@ function stepKind(block: ContentBlock): StepKind {
 
 export function summarizeWork(blocks: readonly ContentBlock[]): WorkSummary {
   const summary: WorkSummary = {
-    reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, plans: 0, questions: 0, delegations: 0,
+    reads: 0, searches: 0, fetches: 0, commands: 0, scripts: 0, edits: 0, plans: 0, questions: 0, delegations: 0,
     reports: 0, previews: 0, mcpCalls: 0, generations: 0, checks: 0, other: 0, thought: false,
   }
   for (const block of blocks) {
@@ -195,6 +197,7 @@ export function workSummaryDetail(summary: WorkSummary): string {
     count(summary.searches, 'search', 'searches'),
     count(summary.fetches, 'fetch', 'fetches'),
     count(summary.commands, 'command'),
+    count(summary.scripts, 'script'),
     count(summary.edits, 'edit'),
     count(summary.plans, 'plan update'),
     count(summary.questions, 'question'),

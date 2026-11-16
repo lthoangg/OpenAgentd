@@ -497,6 +497,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     actions, MCP calls, and generations. "Other" is left for plugin and MCP
     server tools, and tools saved under a former name count with their
     current one.
+    Since `[v3.58.0]` a `script` call counts as a script ("1 script"), not
+    as "other".
   - An open row stays pinned to the top of the transcript while its steps
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row

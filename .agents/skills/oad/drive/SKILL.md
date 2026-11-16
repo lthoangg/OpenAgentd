@@ -42,7 +42,8 @@ backend speaks, so each provider's real request and stream code runs:
 | `anthropic:stub` | Anthropic Messages | `Stub reply (messages):` |
 
 A prompt that contains `drive:shell <command>` makes the stub call the `shell`
-tool with that command; after the tool result it answers
+tool with that command, and `drive:script <code>` makes it call the `script`
+tool with that code; after the tool result it answers
 `Stub (<protocol>): the tool finished.` A session is titled after its first
 prompt. The stub's docstring is the full contract.
 

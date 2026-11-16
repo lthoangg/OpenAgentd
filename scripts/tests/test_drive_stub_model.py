@@ -17,10 +17,10 @@ assert _spec and _spec.loader
 stub = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(stub)
 
-SHELL_TOOL = {
-    "chat": [{"type": "function", "function": {"name": "shell"}}],
-    "responses": [{"type": "function", "name": "shell"}],
-    "messages": [{"name": "shell", "input_schema": {}}],
+TOOLS = {
+    "chat": [{"type": "function", "function": {"name": "shell"}}, {"type": "function", "function": {"name": "script"}}],
+    "responses": [{"type": "function", "name": "shell"}, {"type": "function", "name": "script"}],
+    "messages": [{"name": "shell", "input_schema": {}}, {"name": "script", "input_schema": {}}],
 }
 
 
@@ -28,7 +28,7 @@ def user_turn(protocol: str, text: str, *, tools: bool = True, stream: bool = Tr
     """A request whose last message is the user saying ``text``."""
     body: dict = {"model": "stub", "stream": stream}
     if tools:
-        body["tools"] = SHELL_TOOL[protocol]
+        body["tools"] = TOOLS[protocol]
     if protocol == "responses":
         body["input"] = [{"role": "user", "content": [{"type": "input_text", "text": text}]}]
     elif protocol == "messages":
@@ -69,6 +69,16 @@ def test_the_shell_directive_becomes_a_tool_call_only_when_shell_is_offered(prot
 
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
+def test_the_script_directive_becomes_a_script_call_with_the_code(server: str, protocol: str) -> None:
+    prompt = 'drive:script return await tools.read({ path: "README.md" });'
+    code = 'return await tools.read({ path: "README.md" });'
+    assert stub.plan(protocol, user_turn(protocol, prompt)) == ("script", code)
+    assert stub.plan(protocol, user_turn(protocol, prompt, tools=False))[0] == "text"
+    events = stream_events(post(server + PATHS[protocol], user_turn(protocol, prompt)))
+    assert tool_call(protocol, events) == ("script", {"description": "Drive script", "code": code})
+
+
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_a_tool_result_ends_the_turn_instead_of_repeating_the_call(protocol: str) -> None:
     assert stub.plan(protocol, after_tool(protocol)) == ("text", f"Stub ({protocol}): the tool finished.")
 
@@ -103,6 +113,24 @@ def streamed_text(protocol: str, events: list[dict]) -> str:
     return "".join(e["delta"]["text"] for e in events if e["type"] == "content_block_delta")
 
 
+def tool_call(protocol: str, events: list[dict]) -> tuple[str, dict]:
+    """The name and arguments of the one tool call in a stream, which must end as a tool call."""
+    if protocol == "chat":
+        call = next(c["delta"]["tool_calls"][0] for e in events for c in e["choices"] if c["delta"].get("tool_calls"))
+        name, arguments = call["function"]["name"], call["function"]["arguments"]
+        assert [c["finish_reason"] for e in events for c in e["choices"] if c["finish_reason"]] == ["tool_calls"]
+    elif protocol == "responses":
+        item = next(e["item"] for e in events if e["type"] == "response.output_item.done")
+        name, arguments = item["name"], item["arguments"]
+        assert item["type"] == "function_call" and item["call_id"]
+    else:
+        block = next(e["content_block"] for e in events if e["type"] == "content_block_start")
+        name = block["name"]
+        arguments = "".join(e["delta"]["partial_json"] for e in events if e["type"] == "content_block_delta")
+        assert next(e for e in events if e["type"] == "message_delta")["delta"]["stop_reason"] == "tool_use"
+    return name, json.loads(arguments)
+
+
 @pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_text_streams_in_pieces_and_ends_the_way_the_protocol_ends(server: str, protocol: str) -> None:
     raw = post(server + PATHS[protocol], user_turn(protocol, "one two three"))
@@ -125,21 +153,7 @@ def test_text_streams_in_pieces_and_ends_the_way_the_protocol_ends(server: str, 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_a_tool_call_carries_the_command_as_json_arguments(server: str, protocol: str) -> None:
     events = stream_events(post(server + PATHS[protocol], user_turn(protocol, "drive:shell echo hi")))
-    if protocol == "chat":
-        call = next(c["delta"]["tool_calls"][0] for e in events for c in e["choices"] if c["delta"].get("tool_calls"))
-        name, arguments = call["function"]["name"], call["function"]["arguments"]
-        assert [c["finish_reason"] for e in events for c in e["choices"] if c["finish_reason"]] == ["tool_calls"]
-    elif protocol == "responses":
-        item = next(e["item"] for e in events if e["type"] == "response.output_item.done")
-        name, arguments = item["name"], item["arguments"]
-        assert item["type"] == "function_call" and item["call_id"]
-    else:
-        block = next(e["content_block"] for e in events if e["type"] == "content_block_start")
-        name = block["name"]
-        arguments = "".join(e["delta"]["partial_json"] for e in events if e["type"] == "content_block_delta")
-        assert next(e for e in events if e["type"] == "message_delta")["delta"]["stop_reason"] == "tool_use"
-    assert name == "shell"
-    assert json.loads(arguments) == {"command": "echo hi"}
+    assert tool_call(protocol, events) == ("shell", {"command": "echo hi"})
 
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)

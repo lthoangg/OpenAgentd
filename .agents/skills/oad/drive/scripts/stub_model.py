@@ -16,6 +16,9 @@ message:
 - a tool result: ``Stub (<protocol>): the tool finished.``
 - a user message holding ``drive:shell <command>``: one ``shell`` tool call
   with that command (only when the request offers a ``shell`` tool)
+- a user message holding ``drive:script <code>``: one ``script`` tool call
+  that runs that code, described as ``Drive script`` (only when the request
+  offers a ``script`` tool)
 - any other user message: ``Stub reply (<protocol>): <the message>``, streamed
   word by word
 - a request without ``stream``: the title request's own ``<message>`` text,
@@ -38,7 +41,8 @@ from pathlib import Path
 from typing import Any
 
 MODEL = "stub"
-SHELL_DIRECTIVE = re.compile(r"drive:shell\s+(.+)")
+# A directive names the tool to call; the rest of its line is the tool's input.
+DIRECTIVE = re.compile(r"drive:(shell|script)\s+(.+)")
 TITLE_MESSAGE = re.compile(r"<message>\s*(.*?)\s*</message>", re.S)
 CALL_ID = "call_drive_1"
 
@@ -74,14 +78,19 @@ def read_request(protocol: str, body: dict[str, Any]) -> tuple[bool, str, set[st
 
 
 def plan(protocol: str, body: dict[str, Any]) -> tuple[str, str]:
-    """What to answer: ``("text", reply)`` or ``("shell", command)``."""
+    """What to answer: ``("text", reply)``, ``("shell", command)`` or ``("script", code)``."""
     after_tool, user, offered = read_request(protocol, body)
     if after_tool:
         return "text", f"Stub ({protocol}): the tool finished."
-    directive = SHELL_DIRECTIVE.search(user)
-    if directive and "shell" in offered:
-        return "shell", directive.group(1).strip()
+    directive = DIRECTIVE.search(user)
+    if directive and directive.group(1) in offered:
+        return directive.group(1), directive.group(2).strip()
     return "text", f"Stub reply ({protocol}): {user.strip()[:200]}"
+
+
+def tool_arguments(kind: str, value: str) -> str:
+    """The JSON arguments of the tool call a directive asks for."""
+    return json.dumps({"command": value} if kind == "shell" else {"description": "Drive script", "code": value})
 
 
 def pieces(text: str) -> list[str]:
@@ -99,8 +108,8 @@ def chat_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
         return {"id": "stub-1", "object": "chat.completion.chunk", "created": int(time.time()), "model": MODEL, "choices": [choice]}
 
     events = [chunk({"role": "assistant", "content": ""})]
-    if kind == "shell":
-        call = {"index": 0, "id": CALL_ID, "type": "function", "function": {"name": "shell", "arguments": json.dumps({"command": value})}}
+    if kind != "text":
+        call = {"index": 0, "id": CALL_ID, "type": "function", "function": {"name": kind, "arguments": tool_arguments(kind, value)}}
         events += [chunk({"tool_calls": [call]}), chunk({}, "tool_calls")]
     else:
         events += [chunk({"content": piece}) for piece in pieces(value)]
@@ -112,9 +121,9 @@ def chat_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
 
 def responses_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
     events: list[dict] = [{"type": "response.created", "response": {"id": "resp_stub_1", "status": "in_progress"}}]
-    if kind == "shell":
-        arguments = json.dumps({"command": value})
-        item = {"type": "function_call", "id": "fc_stub_1", "call_id": CALL_ID, "name": "shell", "arguments": ""}
+    if kind != "text":
+        arguments = tool_arguments(kind, value)
+        item = {"type": "function_call", "id": "fc_stub_1", "call_id": CALL_ID, "name": kind, "arguments": ""}
         events += [
             {"type": "response.output_item.added", "output_index": 0, "item": item},
             {"type": "response.function_call_arguments.delta", "item_id": "fc_stub_1", "output_index": 0, "delta": arguments},
@@ -136,9 +145,9 @@ def responses_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
 def messages_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
     message = {"id": "msg_stub_1", "type": "message", "role": "assistant", "model": MODEL, "content": [], "stop_reason": None, "usage": {"input_tokens": 10, "output_tokens": 0}}
     events: list[dict] = [{"type": "message_start", "message": message}]
-    if kind == "shell":
-        block = {"type": "tool_use", "id": "toolu_drive_1", "name": "shell", "input": {}}
-        deltas = [{"type": "input_json_delta", "partial_json": json.dumps({"command": value})}]
+    if kind != "text":
+        block = {"type": "tool_use", "id": "toolu_drive_1", "name": kind, "input": {}}
+        deltas = [{"type": "input_json_delta", "partial_json": tool_arguments(kind, value)}]
         stop = "tool_use"
     else:
         block = {"type": "text", "text": ""}

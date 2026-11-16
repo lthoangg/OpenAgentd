@@ -93,7 +93,6 @@ import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import {
-  type ChangedFileStatus,
   type ChangedFileInfo,
   type DiffFileSection,
   changedFilesFromResponse,
@@ -164,12 +163,10 @@ const TerminalSubPanel = lazySurface(() => import('./WorkspacePanel/TerminalSubP
 const CommitTabView = lazySurface(() => import('./WorkspacePanel/CommitTabView'), 'CommitTabView')
 const DiffTabView = lazySurface(() => import('./WorkspacePanel/DiffTabView'), 'DiffTabView')
 
-export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
-
 const EMPTY_TODOS: TodoItem[] = []
-/** Dev server a new preview tab opens when the workspace has no last URL. */
 /** Tabs the pane menu's Refresh reloads: the ones read from the workspace's files and Git. */
 const REFRESHABLE_TABS: ReadonlySet<DockTab['type']> = new Set(['review', 'file', 'diff'])
+/** Dev server a new preview tab opens when the workspace has no last URL. */
 const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 /** Stable empty ref: with no center element the width falls back to the viewport. */
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }

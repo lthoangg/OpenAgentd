@@ -231,6 +231,7 @@ the rule depends on you reading it, for the reason given.
 | A wire or on-disk change is recorded in `appv3/report/changes.md` | Judgment: only a person knows a change is a wire change |
 | A shipped user-visible change is in the feature catalogue | Judgment: `make verify-version` checks only the release line |
 | Bun tests run with `--parallel` | Judgment: the package scripts pass it; a bare `bun test` does not fail |
+| Splitting a component leaves the React Compiler's choice as it was: code it skipped stays under `'use no memo'` until compiling it is verified on its own | Judgment: the bundle budget in `bun run build` fails only once the added memo code passes the limit |
 | A UI change works at a phone width and a desktop width | `oad/drive` journeys (run on demand; they need a built backend, so no `make verify` target runs them) |
 
 ## Agent workflows

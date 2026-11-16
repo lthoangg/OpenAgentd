@@ -10,10 +10,15 @@ use sqlx::{Row, SqlitePool};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use appv3_agent::worktrees as wt;
+
 struct Candidate {
     path: PathBuf,
     reason: &'static str,
     bytes: u64,
+    /// A managed worktree: the repository it belongs to. Removed through
+    /// git, so git and the sidebar stop listing it.
+    worktree_of: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -121,9 +126,10 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
     };
     let live: HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
     let mut expired: Vec<String> = vec![];
-    let mut coding_workspaces: HashSet<String> = HashSet::new();
+    // Every folder a session ran in: worktrees there are still in use.
+    let mut session_workspaces: HashSet<String> = HashSet::new();
     for r in &rows {
-        coding_workspaces.insert(resolve(Path::new(&r.workspace)).display().to_string());
+        session_workspaces.insert(resolve(Path::new(&r.workspace)).display().to_string());
         if let (Some(c), Some(at)) = (cutoff, r.created_at) {
             if at < c && !expired.contains(&r.id) {
                 expired.push(r.id.clone());
@@ -138,7 +144,7 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
         for child in child_dirs(&s.state_dir.join(rel)) {
             if old_enough(&child, cutoff) {
                 let bytes = dir_size(&child);
-                candidates.push(Candidate { path: child, reason, bytes });
+                candidates.push(Candidate { path: child, reason, bytes, worktree_of: None });
             }
         }
     }
@@ -148,10 +154,10 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
             if is_uuid(&n) && expired.contains(&n) {
                 let reason = if coding.contains(&n) { expired_reason.0 } else { expired_reason.1 };
                 let bytes = dir_size(&child);
-                out.push(Candidate { path: child, reason, bytes });
+                out.push(Candidate { path: child, reason, bytes, worktree_of: None });
             } else if !live.contains(&n) && is_uuid(&n) && old_enough(&child, cutoff) {
                 let bytes = dir_size(&child);
-                out.push(Candidate { path: child, reason: orphan_reason, bytes });
+                out.push(Candidate { path: child, reason: orphan_reason, bytes, worktree_of: None });
             }
         }
     };
@@ -159,14 +165,17 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
     scan(s.state_dir.join("snapshot"), ("expired coding session snapshots", "expired session snapshots"), "old session snapshots", &mut candidates);
 
     // The current worktrees root and the pre-v3.50.0 one in the data dir.
+    // One with uncommitted or untracked changes is left alone: it holds work.
     for repo in s.worktree_roots().iter().flat_map(|root| child_dirs(root)) {
         for child in child_dirs(&repo) {
-            if coding_workspaces.contains(&resolve(&child).display().to_string()) {
+            if session_workspaces.contains(&resolve(&child).display().to_string()) || !old_enough(&child, cutoff) {
                 continue;
             }
-            if old_enough(&child, cutoff) && appv3_api::routes::agent::worktrees::find_managed_worktree_source(&child).await.is_some() {
+            let Some(source) = wt::find_managed_worktree_source(&child).await else { continue };
+            let clean = wt::run_git(&child, &["status", "--porcelain"]).await.is_ok_and(|o| o.code == 0 && o.stdout.trim().is_empty());
+            if clean {
                 let bytes = dir_size(&child);
-                candidates.push(Candidate { path: child, reason: "old managed git worktrees", bytes });
+                candidates.push(Candidate { path: child, reason: "old managed git worktrees", bytes, worktree_of: Some(PathBuf::from(source)) });
             }
         }
     }
@@ -197,9 +206,34 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
             }
             tx.commit().await?;
         }
+        let mut sources: Vec<&PathBuf> = vec![];
         for c in &candidates {
-            let _ = std::fs::remove_dir_all(&c.path);
+            match &c.worktree_of {
+                // Through git: the branch stays unless every commit is
+                // elsewhere, and the sidebar row is marked removed.
+                Some(source) => match wt::remove_worktree(source, &c.path, false).await {
+                    Ok(_) => {
+                        let path = resolve(&c.path).display().to_string();
+                        if appv3_db::get_workspace_by_path(db, &path).await.ok().flatten().is_some() {
+                            let _ = appv3_db::mark_coding_workspace_deleted(db, &path).await;
+                        }
+                        if !sources.contains(&source) {
+                            sources.push(source);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("cleanup_worktree_remove_failed path={} err={}", c.path.display(), e);
+                        continue;
+                    }
+                },
+                None => {
+                    let _ = std::fs::remove_dir_all(&c.path);
+                }
+            }
             deleted.push(c.path.clone());
+        }
+        for source in sources {
+            let _ = wt::run_git(source, &["worktree", "prune"]).await;
         }
     }
     let (mut reclaimed, mut verr) = (None, None);

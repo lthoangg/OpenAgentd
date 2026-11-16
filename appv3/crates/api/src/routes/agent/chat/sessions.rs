@@ -405,12 +405,32 @@ async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> {
     Ok(true)
 }
 
-pub(super) async fn delete_session_route(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
+/// `DELETE /sessions/{id}`. With `?remove_worktree=true` (v3 addition), an
+/// OpenAgentd worktree the session ran in goes too once nothing else uses
+/// it and nothing would be lost; the answer says what happened to it.
+pub(super) async fn delete_session_route(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &raw)?;
+    let remove_worktree = q.opt("remove_worktree").is_some_and(|v| v == "true" || v == "1");
+    let workspace = if remove_worktree { db::get_session(&st.pool, &sid).await?.map(|s| s.workspace).filter(|w| !w.is_empty()) } else { None };
     if !delete_session(&st.pool, &sid).await? {
         return Err(ApiError::not_found("Session not found."));
     }
-    Ok(no_content())
+    if !remove_worktree {
+        return Ok(no_content());
+    }
+    use appv3_agent::worktrees::{remove_if_unused, UnusedWorktree};
+    let outcome = match workspace {
+        Some(ws) => remove_if_unused(&st.pool, &ws).await.unwrap_or_else(|e| {
+            tracing::warn!("worktree_cleanup_failed workspace={ws} err={e}");
+            UnusedWorktree::InUse
+        }),
+        None => UnusedWorktree::InUse,
+    };
+    Ok(json(match outcome {
+        UnusedWorktree::InUse => json!({"deleted": true, "worktree": null}),
+        UnusedWorktree::Removed { name } => json!({"deleted": true, "worktree": {"name": name, "removed": true}}),
+        UnusedWorktree::Kept { name, reason } => json!({"deleted": true, "worktree": {"name": name, "removed": false, "reason": reason}}),
+    }))
 }
 
 pub(super) async fn session_subagents(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {

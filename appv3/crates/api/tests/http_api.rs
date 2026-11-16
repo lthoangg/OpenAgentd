@@ -1526,7 +1526,9 @@ async fn wait_idle(sid: &str) {
 /// (it sent the previous chat's id). That must not start the session there,
 /// or a later plan approval resumes that copy and runs tools in the wrong repo.
 /// Opening a worktree made with `git worktree add`, or a subfolder, files it
-/// under its repository in the tree; a folder gone from disk is `missing`.
+/// under its repository in the tree; a worktree gone from disk drops off,
+/// keeping its sessions as a former checkout; one git lists but no session
+/// opened yet is listed too.
 async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
     let git = |dir: &std::path::Path, args: &[&str]| {
         let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
@@ -1551,7 +1553,11 @@ async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
         assert_eq!(st, StatusCode::OK, "{v}");
     }
     let gone_path = path(&gone);
+    let (st, s) = c.json("POST", "/api/agent/sessions/resolve", Some(json!({"workspace": gone_path}))).await;
+    assert_eq!(st, StatusCode::OK, "{s}");
     std::fs::remove_dir_all(&gone).unwrap();
+    let unopened = root.join("tree-repo-new");
+    git(&repo, &["worktree", "add", "-q", "-b", "new", unopened.to_str().unwrap()]);
     let (_, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
     let repos = v["repositories"].as_array().unwrap();
     assert!(!repos.iter().any(|r| r["path"] == json!(path(&outside)) || r["path"] == json!(path(&repo.join("web")))), "no repository rows of their own: {v}");
@@ -1560,10 +1566,11 @@ async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
     assert_eq!(r["git"], json!(true), "a folder with .git is a Git repository: {v}");
     let wts = r["worktrees"].as_array().unwrap();
     let entry = |p: &std::path::Path| wts.iter().find(|w| w["path"] == json!(path(p))).cloned().unwrap_or_else(|| panic!("{} under the repository: {v}", p.display()));
-    assert_eq!(entry(&outside), json!({"path": path(&outside), "name": "tree-repo-fix", "managed": false, "kind": "worktree", "missing": false}));
-    assert_eq!(entry(&repo.join("web")), json!({"path": path(&repo.join("web")), "name": "web", "managed": false, "kind": "folder", "missing": false}));
-    let gone_entry = wts.iter().find(|w| w["path"] == json!(gone_path)).unwrap_or_else(|| panic!("the removed worktree stays listed: {v}"));
-    assert_eq!(gone_entry["missing"], json!(true));
+    assert_eq!(entry(&outside), json!({"path": path(&outside), "name": "tree-repo-fix", "managed": false, "kind": "worktree", "external": true, "missing": false}));
+    assert_eq!(entry(&repo.join("web")), json!({"path": path(&repo.join("web")), "name": "web", "managed": false, "kind": "folder", "external": false, "missing": false}));
+    assert_eq!(entry(&unopened), json!({"path": path(&unopened), "name": "tree-repo-new", "managed": false, "kind": "worktree", "external": true, "missing": false}));
+    assert!(!wts.iter().any(|w| w["path"] == json!(gone_path)), "a worktree gone from disk drops off: {v}");
+    assert_eq!(r["former_checkouts"], json!([{"path": gone_path, "name": "tree-repo-gone"}]), "its session stays with the repository: {v}");
 }
 
 async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path, other: &std::path::Path) {

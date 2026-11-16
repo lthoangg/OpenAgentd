@@ -110,6 +110,10 @@ async fn remove_worktree(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     // `dry_run` reports what the removal would do to the branch, for the
     // confirmation dialog.
     let dry_run = opt_bool_field(&b, "dry_run")?.unwrap_or(false);
+    if !dry_run {
+        // File it while git still knows it, so the deleted row keeps its repository.
+        wt::ensure_registered(&st.pool, &directory.display().to_string()).await.map_err(ApiError::internal)?;
+    }
     let done = wt::remove_worktree(&source, &directory, dry_run).await?;
     if !dry_run {
         db::mark_coding_workspace_deleted(&st.pool, &directory.display().to_string()).await?;
@@ -138,6 +142,7 @@ async fn rename_worktree(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     if name.is_empty() {
         return Err(ApiError::unprocessable("Worktree title is required."));
     }
+    wt::ensure_registered(&st.pool, &directory.display().to_string()).await.map_err(ApiError::internal)?;
     let row = db::rename_coding_workspace(&st.pool, &directory.display().to_string(), name).await?;
     let display = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| directory.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
     Ok(json(json!({"name": display, "directory": row.path, "branch": null, "managed": row.managed})))

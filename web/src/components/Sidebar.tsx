@@ -1,4 +1,4 @@
-// size-ceiling: 1560 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 1320 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -31,7 +31,7 @@
  * at once. Switching the active workspace auto-expands it.
  */
 import { failureToast } from '@/lib/failure-toast'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -54,7 +54,6 @@ import {
 } from '@/lib/workbench-layout'
 import {
   Activity,
-  Check,
   ChevronRight,
   Command,
   Folder,
@@ -63,13 +62,10 @@ import {
   Loader2,
   MessageCircle,
   MoreHorizontal,
-  Pencil,
   Plus,
   Settings,
   SquarePen,
-  Trash2,
   TriangleAlert,
-  X,
 } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
@@ -77,7 +73,7 @@ import { sessionWorking } from '@/lib/active-sessions'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
-import { getCodingWorkspaceTree, listSessions, setCodingWorkspaceVisibility } from '@/api/client'
+import { getCodingWorkspaceTree, listSessions } from '@/api/client'
 import { WORKSPACES_KEY, renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
 import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
 import type { WorkspaceRelocateResponse } from '@/api/types'
@@ -89,16 +85,7 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
-import { ACTION_SHEET_ROW_CLASS } from '@/components/ui/action-sheet'
-import { BottomSheet } from '@/components/ui/bottom-sheet'
-import { Chip } from '@/components/ui/chip'
 import { Collapsible } from '@/components/ui/collapsible'
-import {
-  CONTEXT_MENU_ITEM_CLASS,
-  CONTEXT_MENU_ITEM_DANGER_CLASS,
-  ContextMenu,
-  ContextMenuSeparator,
-} from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal } from '@/components/ui/list-row'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -106,7 +93,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
-import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo } from '@/api/types'
+import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
@@ -148,6 +135,8 @@ import { CreateWorktreeDialog, RenameWorktreeDialog } from './Sidebar/WorktreeDi
 import { useSessionActions } from './Sidebar/useSessionActions'
 import { SessionActionsMenu } from './Sidebar/SessionActionsMenu'
 import { WorkspaceActionsContextMenu, WorkspaceActionsSheet } from './Sidebar/WorkspaceActionsMenu'
+import { CheckoutMenu, useCheckoutFilter } from './Sidebar/CheckoutMenu'
+import { MissingBadge } from './Sidebar/MissingBadge'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 // Hiding undoes from the toast for as long as a delete does.
@@ -207,44 +196,6 @@ interface SidebarProps {
    * chip, which opens the Server dialog.
    */
   onOpenServers?: () => void
-}
-
-/**
- * A workspace or checkout whose folder is gone from disk: a warning, not an
- * error. A small ⚠ in the warning tone beside the name, not a chip, so the
- * name keeps the whole row. It has no tooltip of its own: its row's says
- * "Folder not found at <path>".
- */
-function MissingBadge() {
-  return (
-    <span
-      data-sidebar-missing=""
-      role="img"
-      aria-label="Folder not found"
-      className="flex shrink-0 items-center text-(--accent-orange-text)"
-    >
-      <TriangleAlert size={12} aria-hidden="true" />
-    </span>
-  )
-}
-
-/** One pick-one row of a repository's checkout menu. */
-function CheckoutMenuItem({ checked, title, onSelect, children }: { checked: boolean; title?: string; onSelect: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={checked}
-      title={title}
-      className={`${CONTEXT_MENU_ITEM_CLASS} ${checked ? 'text-(--color-text)' : ''}`}
-      onClick={onSelect}
-    >
-      <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
-        {checked && <Check size={12} />}
-      </span>
-      {children}
-    </button>
-  )
 }
 
 export function Sidebar({
@@ -379,9 +330,6 @@ export function Sidebar({
   // "Locate folder…" for a workspace whose folder is gone. ``native`` picks
   // with the OS dialog (the desktop app on its own server).
   const [relocateTarget, setRelocateTarget] = useState<{ path: string; native: boolean } | null>(null)
-  // Repository path → the one checkout its list shows (its own path or a
-  // worktree's). Absent means every checkout.
-  const [checkoutFilter, setCheckoutFilter] = useState<Record<string, string>>({})
   const [checkoutMenu, setCheckoutMenu] = useState<{ repo: string; x: number; y: number } | null>(null)
 
   // Every caller has just changed the tree on the server, so a cached copy
@@ -421,7 +369,9 @@ export function Sidebar({
       native = false
     }
     setRelocateTarget({ path, native })
-  }, [isTauri, isTauriMobile])
+    // Stable `useState` setters are listed for the React Compiler, which
+    // otherwise skips optimizing the whole component.
+  }, [isTauri, isTauriMobile, setRelocateTarget])
   const handleRelocated = useCallback((result: WorkspaceRelocateResponse) => {
     setRelocateTarget(null)
     renameSavedWorkspace(result.from, result.workspace)
@@ -430,7 +380,7 @@ export function Sidebar({
     pushToast(result.warnings.length > 0
       ? { tone: 'error', title: `Moved to ${workspaceLabel(result.workspace)}, but git needs a hand`, description: result.warnings.join('\n') }
       : { tone: 'info', title: `Moved to ${workspaceLabel(result.workspace)}` })
-  }, [pushToast, refreshSessionList])
+  }, [pushToast, refreshSessionList, setRelocateTarget])
   // Scheduled on the page toolbar: the caller's way, else the way the
   // drawer's Scheduled section opens it.
   const openScheduler = onOpenScheduler ?? (() => {
@@ -711,49 +661,11 @@ export function Sidebar({
     setExpandedWorkspaces((current) => addExpandedPaths(current, [activeWorktreeSource]))
   }, [activeWorktreeSource])
 
-  // Opening a session its repository's checkout filter hides (from Needs
-  // you, search, another window) shows every checkout again. Picking a
-  // filter never moves the current session, so that choice sticks.
-  useEffect(() => {
-    if (!activeWorkspace) return
-    const repository = activeWorktreeSource ?? activeWorkspace
-    setCheckoutFilter((current) => {
-      const selected = current[repository]
-      if (selected === undefined || selected === activeWorkspace) return current
-      const next = { ...current }
-      delete next[repository]
-      return next
-    })
-  }, [currentSessionId, activeWorkspace, activeWorktreeSource])
+  const { checkoutFilter, selectCheckout } = useCheckoutFilter({ currentSessionId, activeWorkspace, activeWorktreeSource })
 
-  const selectCheckout = (repository: string, checkout: string | null) => {
-    setCheckoutFilter((current) => {
-      const next = { ...current }
-      if (checkout === null) delete next[repository]
-      else next[repository] = checkout
-      return next
-    })
-  }
   const checkoutMenuRepository = checkoutMenu
     ? repositoryCheckouts(checkoutMenu.repo, workspaceByPath.get(checkoutMenu.repo), worktreeActions.removedWorktreePaths, checkoutFilter[checkoutMenu.repo])
     : null
-  const checkoutMenuSelection = checkoutMenuRepository?.selectedWorktree
-  const checkoutMenuWorktree: WorktreeInfo | null = checkoutMenuSelection
-    ? { name: checkoutMenuSelection.name, directory: checkoutMenuSelection.path, managed: checkoutMenuSelection.managed }
-    : null
-
-  // A checkout that is not OpenAgentd's to delete (a subfolder, an outside
-  // worktree, or one whose folder is gone) leaves the sidebar only.
-  const hideCheckout = (path: string) => {
-    void setCodingWorkspaceVisibility(path, true)
-      .then(async () => {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
-        await refreshWorkspaceTree()
-      })
-      .catch((err: unknown) => {
-        pushToast(failureToast("Couldn't remove it from the sidebar", err))
-      })
-  }
 
 
   const workspaceDisplayName = (path: string) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))
@@ -1377,168 +1289,16 @@ export function Sidebar({
         {...workspaceMenuActions}
       />
 
-      {checkoutMenu && checkoutMenuRepository && mobileLongPressActions && (
-        // Touch: a sheet (mockup J8 8.4), names in sans, each row with its
-        // session count and what runs there.
-        <BottomSheet open onClose={() => setCheckoutMenu(null)} label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}>
-          <div data-worktree-sheet="" className="flex flex-col px-2 pb-3">
-            {[
-              { path: null as string | null, name: 'Workspace and worktrees', counted: [...checkoutMenuRepository.worktrees.map((w) => w.path), checkoutMenu.repo] },
-              { path: checkoutMenu.repo as string | null, name: 'Main workspace', counted: [checkoutMenu.repo] },
-              ...checkoutMenuRepository.worktrees.map((w) => ({ path: w.path as string | null, name: w.name, counted: [w.path] })),
-            ].map((row) => {
-              const rowSessions = row.counted.flatMap((p) => sessionsByWorkspace.get(p) ?? [])
-              const running = rowSessions.filter(sessionWorking).length
-              const checked = checkoutMenuRepository.selected === row.path
-              return (
-                <button
-                  key={row.path ?? 'all'}
-                  type="button"
-                  role="radio"
-                  aria-checked={checked}
-                  onClick={() => { selectCheckout(checkoutMenu.repo, row.path); setCheckoutMenu(null) }}
-                  className={cn(ACTION_SHEET_ROW_CLASS, 'min-h-14 items-center')}
-                >
-                  <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate text-sm text-(--color-text)">{row.name}</span>
-                    <span className="block truncate text-meta text-(--color-text-muted)">
-                      {`${rowSessions.length} ${rowSessions.length === 1 ? 'session' : 'sessions'}${running > 0 ? ` · ${running} running` : ''}`}
-                    </span>
-                  </span>
-                  {checked && <Check size={16} aria-hidden="true" />}
-                </button>
-              )
-            })}
-            <div className="my-1 border-t border-(--color-border)" />
-            <button
-              type="button"
-              className={ACTION_SHEET_ROW_CLASS}
-              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); worktreeActions.openWorktreeDialog(repo) }}
-            >
-              <Plus size={16} aria-hidden="true" />
-              Create worktree…
-            </button>
-            {checkoutMenuWorktree && (
-              <button type="button" className={ACTION_SHEET_ROW_CLASS} onClick={() => { setCheckoutMenu(null); worktreeActions.handleWorktreeEdit(checkoutMenuWorktree) }}>
-                <Pencil size={16} aria-hidden="true" />
-                {`Rename ${checkoutMenuWorktree.name}…`}
-              </button>
-            )}
-            {checkoutMenuWorktree?.managed && (
-              <button
-                type="button"
-                className={cn(ACTION_SHEET_ROW_CLASS, 'text-(--color-error)')}
-                disabled={worktreeActions.worktreeRemoving === checkoutMenuWorktree.directory}
-                onClick={() => { setCheckoutMenu(null); worktreeActions.setRemoveWorktreeTarget(checkoutMenuWorktree) }}
-              >
-                <Trash2 size={16} aria-hidden="true" />
-                {`Delete worktree ${checkoutMenuWorktree.name}…`}
-              </button>
-            )}
-          </div>
-        </BottomSheet>
-      )}
-      {checkoutMenu && checkoutMenuRepository && !mobileLongPressActions && (
-        <ContextMenu
-          at={checkoutMenu}
-          label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}
-          onDismiss={() => setCheckoutMenu(null)}
-          className="min-w-48 max-w-64"
-        >
-          <CheckoutMenuItem
-            checked={checkoutMenuRepository.selected === null}
-            onSelect={() => { selectCheckout(checkoutMenu.repo, null); setCheckoutMenu(null) }}
-          >
-            Workspace and worktrees
-          </CheckoutMenuItem>
-          <CheckoutMenuItem
-            checked={checkoutMenuRepository.selected === checkoutMenu.repo}
-            onSelect={() => { selectCheckout(checkoutMenu.repo, checkoutMenu.repo); setCheckoutMenu(null) }}
-          >
-            <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-            Workspace
-          </CheckoutMenuItem>
-          {checkoutMenuRepository.worktrees.map((item) => (
-            <CheckoutMenuItem
-              key={item.path}
-              checked={checkoutMenuRepository.selected === item.path}
-              title={item.missing ? `Folder not found at ${item.path}` : undefined}
-              onSelect={() => { selectCheckout(checkoutMenu.repo, item.path); setCheckoutMenu(null) }}
-            >
-              {item.kind === 'folder'
-                ? <Folder size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-                : <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
-              <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-              {item.missing
-                ? <MissingBadge />
-                : item.kind === 'folder'
-                  ? <Chip>folder</Chip>
-                  : !item.managed && <Chip>external</Chip>}
-            </CheckoutMenuItem>
-          ))}
-          <ContextMenuSeparator />
-          <button
-            type="button"
-            role="menuitem"
-            className={CONTEXT_MENU_ITEM_CLASS}
-            onClick={() => {
-              const repo = checkoutMenu.repo
-              setCheckoutMenu(null)
-              worktreeActions.openWorktreeDialog(repo)
-            }}
-          >
-            <Plus size={12} aria-hidden="true" />
-            Create worktree…
-          </button>
-          {/* Worktree actions act on the selected worktree, which the chip
-              names, so the menu never needs a second level. */}
-          {checkoutMenuWorktree && (
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                setCheckoutMenu(null)
-                worktreeActions.handleWorktreeEdit(checkoutMenuWorktree)
-              }}
-            >
-              <Pencil size={12} aria-hidden="true" />
-              {`Rename ${checkoutMenuWorktree.name}…`}
-            </button>
-          )}
-          {checkoutMenuWorktree?.managed && (
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_DANGER_CLASS}
-              disabled={worktreeActions.worktreeRemoving === checkoutMenuWorktree.directory}
-              onClick={() => {
-                setCheckoutMenu(null)
-                worktreeActions.setRemoveWorktreeTarget(checkoutMenuWorktree)
-              }}
-            >
-              <Trash2 size={12} aria-hidden="true" />
-              {`Delete worktree ${checkoutMenuWorktree.name}…`}
-            </button>
-          )}
-          {checkoutMenuWorktree && !checkoutMenuWorktree.managed && (
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                const target = checkoutMenuWorktree.directory
-                selectCheckout(checkoutMenu.repo, null)
-                setCheckoutMenu(null)
-                hideCheckout(target)
-              }}
-            >
-              <X size={12} aria-hidden="true" />
-              {`Hide ${checkoutMenuWorktree.name} from sidebar`}
-            </button>
-          )}
-        </ContextMenu>
-      )}
+      <CheckoutMenu
+        checkoutMenu={checkoutMenu}
+        setCheckoutMenu={setCheckoutMenu}
+        checkoutMenuRepository={checkoutMenuRepository}
+        mobileLongPressActions={mobileLongPressActions}
+        sessionsByWorkspace={sessionsByWorkspace}
+        selectCheckout={selectCheckout}
+        worktreeActions={worktreeActions}
+        refreshWorkspaceTree={refreshWorkspaceTree}
+      />
 
       <SessionActionsMenu actions={sessionActions} />
 

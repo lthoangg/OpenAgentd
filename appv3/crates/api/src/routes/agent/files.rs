@@ -85,7 +85,7 @@ fn safe_resolve(root: &Path, rel: &str) -> ApiResult<PathBuf> {
 }
 
 /// MIME type guess (TypeScript overrides the stdlib's `video/mp2t`).
-pub fn guess_mime(p: &Path) -> String {
+fn guess_mime(p: &Path) -> String {
     let suffix = p.extension().map(|e| format!(".{}", e.to_string_lossy().to_lowercase())).unwrap_or_default();
     if [".ts", ".mts", ".cts", ".tsx"].contains(&suffix.as_str()) {
         return "text/typescript".into();

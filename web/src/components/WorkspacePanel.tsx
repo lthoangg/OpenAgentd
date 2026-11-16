@@ -37,9 +37,6 @@ import { useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useSideQuestions } from '@/queries/useSideQuestionsQuery'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useIsPhone } from '@/hooks/use-is-phone'
-import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
-import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
 import {
   PanelResizeHandle,
   ResizableAside,
@@ -68,7 +65,7 @@ import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
-import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
+import { PhoneReviewBar } from './WorkspacePanel/PhoneReviewBar'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
 import { useDockQueries } from './WorkspacePanel/useDockQueries'
 import { DockPreviewPages, usePreviewListeners } from './WorkspacePanel/DockPreviewPages'
@@ -317,8 +314,6 @@ export function WorkspacePanel({
     onNoRoomToSplit: noRoomToSplit,
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
-  // Where the phone bar's "+" menu is open, if it is.
-  const [phoneOpenMenu, setPhoneOpenMenu] = useState(false)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
   const [desktopCommitActions, setDesktopCommitActions] = useState<(CommitActionTarget & { x: number; y: number }) | null>(null)
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
@@ -680,32 +675,6 @@ export function WorkspacePanel({
   // message can be written beside the diff; maximized, it covers both.
   const leavesComposer = overlay && !dockMaximized
 
-  // A phone's navigation bar: ‹ Chat (the one way out: no × beside it), the
-  // title, and the "+" that opens a view or tool, as the tab strip's does on
-  // other layouts. The tab strip under it draws the hairline; an empty page
-  // has none, so the bar does.
-  const phoneStripShown = (strips[focused]?.length ?? 0) > 0
-  const phoneBar = phone && (
-    <PhoneNavBar
-      className={phoneStripShown ? 'border-transparent!' : undefined}
-      back={onRequestClose ? { label: 'Chat', onBack: onRequestClose } : undefined}
-      title="Review panel"
-      trailing={phoneOpenItems.length > 0 && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Open in Review panel"
-          aria-haspopup="dialog"
-          aria-expanded={phoneOpenMenu}
-          className="text-(--color-accent)!"
-          onClick={() => setPhoneOpenMenu(true)}
-        >
-          <Plus size={20} aria-hidden="true" className="size-5" />
-        </Button>
-      )}
-    />
-  )
 
   return (
     <ResizableAside
@@ -764,7 +733,12 @@ export function WorkspacePanel({
         }}
       >
         {!mobile && !overlay && open && <PanelResizeHandle edge="left" />}
-        {phoneBar}
+        <PhoneReviewBar
+          phone={phone}
+          items={phoneOpenItems}
+          stripShown={(strips[focused]?.length ?? 0) > 0}
+          onRequestClose={onRequestClose}
+        />
         <div ref={panesRef} data-dock-panes="" className="relative min-h-0 flex-1">
           {paneIds.map(renderPane)}
           <DockPreviewPages
@@ -800,7 +774,6 @@ export function WorkspacePanel({
           onConfirm={confirmCloseTab}
           onCancel={cancelCloseTab}
         />
-        <DockOpenSheet open={phoneOpenMenu} items={phoneOpenItems} onClose={() => setPhoneOpenMenu(false)} />
         <DockActionMenus
           workspace={workspace}
           mobileFileActions={mobileFileActions}

@@ -36,7 +36,7 @@ describe('phone layout contracts', () => {
   })
 
   it('wraps the subagent banner on phones instead of truncating its sentence', () => {
-    const view = src('AgentChatView/index.tsx')
+    const view = src('AgentChatView/SubagentBanner.tsx')
     expect(view).toMatch(/data-subagent-banner="" className="flex flex-wrap [^"]*sm:flex-nowrap"/)
     expect(view).toContain('<span className="sm:truncate">The main agent directs this subagent.')
   })

@@ -42,7 +42,7 @@ web/src/
     ui/                     primitives (button, dialog, popover, dropdown, tooltip, tabs, inline-title-input, …)
     AgentChatView/          chat screen: header, overlays (useOverlayState), session bootstrap
     AgentView/              transcript (index.tsx, BlockRenderer.tsx); UserBubble.tsx renders mentions and design feedback cards
-    InputComposer*.ts(x)    composer: mentions, suggestions, attachments, delivery menu
+    InputComposer/          composer: index.tsx, mentions, suggestions, attachments, delivery menu
     FloatingInputComposer.tsx
     WorkspacePanel/         review dock: tab bar, drag reorder (useTabDrag), Git, commits
     Terminal/  Preview/     terminal tabs, Preview tab and design comments
@@ -63,7 +63,7 @@ web/src/
 | State desync | the Zustand store, the TanStack Query key, `cache-invalidation-bridge.ts` |
 | Wire shape | `api/types.ts`, the query or mutation, and what the backend actually stored |
 | Streaming / SSE | `stores/useAgentStore/sse-reducer.ts`, `appv3/crates/agent/data/sse_events.json` |
-| Mentions and file refs | `InputComposer.mentions.ts`, `UserBubble.tsx`, `utils/file-refs.ts`, `useOverlayState.ts` |
+| Mentions and file refs | `InputComposer/mentions.ts`, `UserBubble.tsx`, `utils/file-refs.ts`, `useOverlayState.ts` |
 | Keyboard and focus | `lib/keyboard/`, `hooks/use-dock-focus.ts`, `lib/desktop-shell.ts` |
 | Primitive bug | `components/ui/*.tsx`: portal positioning, `useDeferredUnmount` called before early returns |
 | CSS / layout | Tailwind classes, `index.css` tokens, dark-mode variants, `DESIGN.md` and its `design/` chapters |

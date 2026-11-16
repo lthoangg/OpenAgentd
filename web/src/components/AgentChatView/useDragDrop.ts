@@ -59,7 +59,7 @@ export function useDragDrop(inputRef: RefObject<InputComposerHandle | null>): Us
     if (!inputRef.current) return
     if (isDraggingFiles(e.dataTransfer)) {
       // The input bar sits inside this column and handles drops on itself
-      // (InputComposer.attachments.ts). Its handler calls ``preventDefault`` and
+      // (InputComposer/attachments.ts). Its handler calls ``preventDefault`` and
       // the event still bubbles up here, so without this guard a drop on the
       // pill would attach every file twice. We deliberately let it bubble
       // rather than ``stopPropagation`` at the source: the counter reset and

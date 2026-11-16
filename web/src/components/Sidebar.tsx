@@ -1,4 +1,4 @@
-// size-ceiling: 1739 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 1560 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -57,10 +57,8 @@ import {
   Check,
   ChevronRight,
   Command,
-  Copy,
   Folder,
   FolderPlus,
-  FolderSearch,
   GitBranch,
   Loader2,
   MessageCircle,
@@ -119,7 +117,6 @@ import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
 import { WorkspaceGroupDots, workspaceGroupsLabel } from './Sidebar/WorkspaceGroupDots'
 import { SessionStatusMark } from './Sidebar/SessionStatusMark'
-import { WorkspaceGroupToggles } from './Sidebar/WorkspaceGroupToggles'
 import { groupColor } from './Sidebar/groupColor'
 import {
   addExpandedPaths,
@@ -144,13 +141,13 @@ import { SidebarPageContext } from './Sidebar/SidebarPageContext'
 import { SidebarScroller } from './Sidebar/SidebarScroller'
 import { useLargeTitleCollapse } from './Sidebar/useLargeTitleCollapse'
 import { CountChip } from './Sidebar/CountChip'
-import { MenuShortcut } from './Sidebar/MenuShortcut'
 import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 import { OpenWorkspaceDialog, useOpenWorkspaceDialog } from './Sidebar/OpenWorkspaceDialog'
 import { useWorktreeActions } from './Sidebar/useWorktreeActions'
 import { CreateWorktreeDialog, RenameWorktreeDialog } from './Sidebar/WorktreeDialogs'
 import { useSessionActions } from './Sidebar/useSessionActions'
 import { SessionActionsMenu } from './Sidebar/SessionActionsMenu'
+import { WorkspaceActionsContextMenu, WorkspaceActionsSheet } from './Sidebar/WorkspaceActionsMenu'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 // Hiding undoes from the toast for as long as a delete does.
@@ -761,11 +758,14 @@ export function Sidebar({
 
   const workspaceDisplayName = (path: string) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))
 
-  const mobileWorkspaceActionsTitle = mobileWorkspaceActions?.kind === 'chat'
-    ? (chatWorkspace?.name ?? 'Chat')
-    : mobileWorkspaceActions
-      ? workspaceLabel(mobileWorkspaceActions.path)
-      : 'Workspace actions'
+  // What a workspace's menus (desktop and phone) can do.
+  const workspaceMenuActions = {
+    workspaceByPath,
+    newSessionIn,
+    openRelocate,
+    openWorktreeDialog: worktreeActions.openWorktreeDialog,
+    hideWorkspaceFromSidebar,
+  }
   // ``aria-keyshortcuts`` for ⌘N, on the New session button and its menu entry.
   const newSessionKeys = isPrimaryModifierOS(os) ? 'Meta+N' : 'Control+N'
   // Status grouping lists the waiting sessions itself. The sidebar puts this
@@ -1351,104 +1351,13 @@ export function Sidebar({
       <OpenWorkspaceDialog state={openWorkspace} error={error} isTauriMobile={isTauriMobile} />
 
       {/* A workspace's long-press menu on a phone: a sheet from the bottom
-          edge, like the session one below. */}
-      <BottomSheet
-        open={mobileWorkspaceActions !== null}
-        onClose={() => setMobileWorkspaceActions(null)}
-        label={mobileWorkspaceActionsTitle}
-      >
-        <div className="px-4 pb-1">
-          <p className="text-sm font-medium text-(--color-text) [overflow-wrap:anywhere]">{mobileWorkspaceActionsTitle}</p>
-          <p className="text-xs text-(--color-text-muted)">
-            {mobileWorkspaceActions?.kind === 'chat'
-              ? 'Choose a chat action.'
-              : 'Choose a main workspace action.'}
-          </p>
-        </div>
-        <div className="flex flex-col px-2 pb-3">
-            <button
-              type="button"
-              className={ACTION_SHEET_ROW_CLASS}
-              onClick={() => {
-                const action = mobileWorkspaceActions
-                setMobileWorkspaceActions(null)
-                if (action) newSessionIn(action.sessionPath)
-              }}
-            >
-              <Plus size={16} aria-hidden="true" />
-              New session
-            </button>
-            {/* Chat's root is the home directory — the path is noise there,
-                and there is no repository to act on. */}
-            {mobileWorkspaceActions?.kind !== 'chat' && (
-              <button
-                type="button"
-                className={ACTION_SHEET_ROW_CLASS}
-                onClick={() => {
-                  const action = mobileWorkspaceActions
-                  setMobileWorkspaceActions(null)
-                  if (action) void navigator.clipboard.writeText(action.path)
-                }}
-              >
-                <Copy size={16} aria-hidden="true" />
-                Copy path
-              </button>
-            )}
-            {mobileWorkspaceActions?.kind === 'main' && (
-              <>
-                {workspaceByPath.get(mobileWorkspaceActions.path)?.missing && (
-                  <button
-                    type="button"
-                    data-sidebar-locate=""
-                    className={ACTION_SHEET_ROW_CLASS}
-                    onClick={() => {
-                      const action = mobileWorkspaceActions
-                      setMobileWorkspaceActions(null)
-                      if (action) void openRelocate(action.path)
-                    }}
-                  >
-                    <FolderSearch size={16} aria-hidden="true" />
-                    Locate folder…
-                  </button>
-                )}
-                {workspaceByPath.get(mobileWorkspaceActions.path)?.git !== false && (
-                <button
-                  type="button"
-                  className={ACTION_SHEET_ROW_CLASS}
-                  onClick={() => {
-                    const action = mobileWorkspaceActions
-                    setMobileWorkspaceActions(null)
-                    if (action) worktreeActions.openWorktreeDialog(action.path)
-                  }}
-                >
-                  <GitBranch size={16} aria-hidden="true" />
-                  Create worktree…
-                </button>
-                )}
-                <WorkspaceGroupToggles
-                  workspace={mobileWorkspaceActions.path}
-                  variant="sheet"
-                  onManage={() => {
-                    setMobileWorkspaceActions(null)
-                    openSettings('workspaces')
-                  }}
-                />
-                <button
-                  type="button"
-                  className={ACTION_SHEET_ROW_CLASS}
-                  onClick={() => {
-                    const action = mobileWorkspaceActions
-                    setMobileWorkspaceActions(null)
-                    if (action) hideWorkspaceFromSidebar(action.path)
-                  }}
-                >
-                  <span className="size-4 shrink-0" aria-hidden="true" />
-                  Hide from sidebar
-                </button>
-              </>
-            )}
-        </div>
-      </BottomSheet>
+          edge, like the session one. */}
+      <WorkspaceActionsSheet
+        mobileWorkspaceActions={mobileWorkspaceActions}
+        setMobileWorkspaceActions={setMobileWorkspaceActions}
+        chatName={chatWorkspace?.name}
+        {...workspaceMenuActions}
+      />
 
       <CreateWorktreeDialog worktrees={worktreeActions} error={error} />
 
@@ -1460,101 +1369,13 @@ export function Sidebar({
         onRelocated={handleRelocated}
       />
 
-      {desktopWorkspaceActions && (
-        <ContextMenu
-          at={desktopWorkspaceActions}
-          label={`Actions for ${workspaceLabel(desktopWorkspaceActions.path)}`}
-          onDismiss={() => setDesktopWorkspaceActions(null)}
-          className="min-w-48"
-        >
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              // ⌘N starts a session in the workspace on screen: the key and the
-              // entry agree only for that one, so only its menu shows the key.
-              aria-keyshortcuts={desktopWorkspaceActions.sessionPath === activeWorkspace ? newSessionKeys : undefined}
-              onClick={() => {
-                const action = desktopWorkspaceActions
-                setDesktopWorkspaceActions(null)
-                newSessionIn(action.sessionPath)
-              }}
-            >
-              <Plus size={12} aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">New session</span>
-              {desktopWorkspaceActions.sessionPath === activeWorkspace && (
-                <MenuShortcut>{shortcutLabel(APP_SHORTCUTS.newSession, os)}</MenuShortcut>
-              )}
-            </button>
-            <ContextMenuSeparator />
-            {workspaceByPath.get(desktopWorkspaceActions.path)?.missing && (
-              <button
-                type="button"
-                role="menuitem"
-                data-sidebar-locate=""
-                className={CONTEXT_MENU_ITEM_CLASS}
-                onClick={() => {
-                  const action = desktopWorkspaceActions
-                  setDesktopWorkspaceActions(null)
-                  void openRelocate(action.path)
-                }}
-              >
-                <FolderSearch size={12} aria-hidden="true" />
-                Locate folder…
-              </button>
-            )}
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                const action = desktopWorkspaceActions
-                setDesktopWorkspaceActions(null)
-                void navigator.clipboard.writeText(action.path)
-              }}
-            >
-              <Copy size={12} aria-hidden="true" />
-              Copy path
-            </button>
-            {/* A folder without Git has no worktrees to make. */}
-            {workspaceByPath.get(desktopWorkspaceActions.path)?.git !== false && (
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                const action = desktopWorkspaceActions
-                setDesktopWorkspaceActions(null)
-                worktreeActions.openWorktreeDialog(action.path)
-              }}
-            >
-              <GitBranch size={12} aria-hidden="true" />
-              Create worktree…
-            </button>
-            )}
-            <WorkspaceGroupToggles
-              workspace={desktopWorkspaceActions.path}
-              variant="menu"
-              onManage={() => {
-                setDesktopWorkspaceActions(null)
-                openSettings('workspaces')
-              }}
-            />
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                const action = desktopWorkspaceActions
-                setDesktopWorkspaceActions(null)
-                hideWorkspaceFromSidebar(action.path)
-              }}
-            >
-              <span className="size-3 shrink-0" aria-hidden="true" />
-              Hide from sidebar
-            </button>
-        </ContextMenu>
-      )}
+      <WorkspaceActionsContextMenu
+        desktopWorkspaceActions={desktopWorkspaceActions}
+        setDesktopWorkspaceActions={setDesktopWorkspaceActions}
+        activeWorkspace={activeWorkspace}
+        newSessionKeys={newSessionKeys}
+        {...workspaceMenuActions}
+      />
 
       {checkoutMenu && checkoutMenuRepository && mobileLongPressActions && (
         // Touch: a sheet (mockup J8 8.4), names in sans, each row with its

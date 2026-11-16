@@ -15,7 +15,6 @@
  * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -28,11 +27,6 @@ import { NewSessionScreen } from '../NewSession/NewSessionScreen'
 import { ModelSetupCard } from '../NewSession/ModelSetupCard'
 import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
-import { useTodosQuery } from '@/queries/useTodosQuery'
-import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
-import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
-import { useGoalSessionState } from '@/hooks/useGoalSessionState'
-import { goalHeaderState } from '@/lib/work'
 import { useHealthQuery } from '@/queries'
 import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -46,7 +40,7 @@ import { useDockCover } from './useDockCover'
 import { useSessionLinks } from './useSessionLinks'
 import { useLeadModel } from './useLeadModel'
 import { useChatSessionState } from './useChatSessionState'
-import { useToastStore } from '@/stores/useToastStore'
+import { useSessionWork } from './useSessionWork'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { FileUp } from 'lucide-react'
@@ -107,7 +101,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // say so instead of asking for a workspace.
   const serverDown = useHealthQuery().isError
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
   const isPhone = useIsPhone()
   const { isMacOverlay } = usePlatform()
@@ -268,33 +261,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   ))
   const historyPrompts = useMemo(() => composerHistoryPrompts(leadBlocks), [leadBlocks])
 
-  const { data: todosData } = useTodosQuery(sessionIdState)
-  const todos = todosData?.todos ?? []
-  const { data: planData } = useSessionPlanQuery(sessionIdState)
-  const plan = planData?.plan ?? null
-  const planAwaitingReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
-  const { mutate: clearPlan } = useClearSessionPlanMutation()
-  const handleClearPlan = useCallback(() => {
-    if (!sessionIdState) return
-    clearPlan(sessionIdState, {
-      onError: (err) => pushToast(failureToast("Couldn't clear the plan", err)),
-    })
-  }, [sessionIdState, clearPlan, pushToast])
-
-  // ── Session goal ───────────────────────────────────────────────────────────
-  const { data: goalData } = useSessionGoalQuery(sessionIdState)
-  const goal = goalData?.goal ?? null
-  // The goal lives in the dock's Goal tab (its actions too): the palette
-  // lists one entry that opens it, even before there is a goal, so it can be
-  // found; the tab's empty state says how a goal starts.
-  const paletteGoal = useMemo(
-    () => (workspace ? { onShow: handleOpenGoal, active: Boolean(goal && goal.status !== 'cleared') } : undefined),
-    [workspace, goal, handleOpenGoal],
-  )
-  // The header's Task list button shows the live goal as a ring and tooltip.
-  const goalSession = useGoalSessionState(sessionIdState, goal)
-  const headerGoalState = useMemo(() => goalHeaderState(goal, goalSession, todosData?.todos ?? []), [goal, goalSession, todosData])
-  const goalControls = useGoalControls(sessionIdState)
+  const {
+    todos,
+    plan,
+    planAwaitingReview,
+    handleClearPlan,
+    goal,
+    paletteGoal,
+    headerGoalState,
+    goalControls,
+  } = useSessionWork({ sessionId: sessionIdState, workspace, handleOpenGoal })
 
   const agentWorkspace = workspace
   const hasWorkspace = Boolean(workspace)

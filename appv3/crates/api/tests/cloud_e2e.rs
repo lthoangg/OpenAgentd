@@ -85,6 +85,8 @@ async fn relayed(tunnel: &relay::Tunnel, raw: &str) -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn phone_and_server_through_the_account() {
+    // Letters wait for an unseen notification; a short wait keeps this test fast.
+    appv3_api::cloud::letters::set_unseen_grace(Duration::from_millis(400));
     let temp = tempfile::tempdir().unwrap();
     for (key, name) in [("CONFIG", "config"), ("DATA", "data"), ("CACHE", "cache"), ("STATE", "state"), ("WORKSPACE", "workspace")] {
         std::fs::create_dir_all(temp.path().join(name)).unwrap();
@@ -238,6 +240,20 @@ async fn phone_and_server_through_the_account() {
     // Its title says which computer of the account it came from.
     let (s, _) = local_with(&app, "PUT", "/api/server/name", Some(json!({"name": "studio-mini"}))).await;
     assert_eq!(s, StatusCode::OK);
+    // 4a. Seen on a screen: the phone is not told. The person looks at the
+    // session (a client reports it), so its letter is dropped after the wait.
+    let seen_session = "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e11";
+    appv3_agent::broadcaster::publish(
+        "desktop_notification",
+        json!({"type": "desktop_notification", "notification_id": "n0", "kind": "assistant_done", "session_id": seen_session, "title": "Done · api", "body": "Seen at the desk."}),
+    );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let (s, _) = local_with(&app, "POST", &format!("/api/agent/{seen_session}/seen"), None).await;
+    assert_eq!(s, StatusCode::OK);
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert!(phone.cloud.letters().await.unwrap().is_empty(), "a notification seen on a screen does not reach the phone");
+
+    // 4b. Unseen: it reaches the phone after the wait, sealed.
     let session_id = "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e10";
     appv3_agent::broadcaster::publish(
         "desktop_notification",
@@ -261,7 +277,7 @@ async fn phone_and_server_through_the_account() {
     let stranger = DeviceKeys::generate();
     assert!(letter::open(&stranger.r#box, &host_box, &ctx, &sealed).is_err());
 
-    // 4b. Unsigned removal signals: the relay lists the server as revoked,
+    // 4c. Unsigned removal signals: the relay lists the server as revoked,
     // then closes its presence with 4001. The roster still lists it, so it
     // closes its sessions, keeps its keys and comes back online.
     let version = phone.roster.as_ref().unwrap().version();

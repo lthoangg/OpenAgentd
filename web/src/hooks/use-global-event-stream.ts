@@ -451,7 +451,7 @@ async function handleEvent(
     }
     // Raised about the session the person is looking at: it is seen, so the
     // server keeps it off the phone (`cloud/letters.rs`).
-    if (sessionId && useAgentStore.getState().sessionId === sessionId && pageHasAttention()) reportSessionSeen(sessionId)
+    if (sessionId && useAgentStore.getState().sessionId === sessionId && pageHasAttention()) reportSessionSeen(sessionId, { now: true })
     if (replayed) {
       // Decided once the replay ends (see flushReplayQuestions).
       if (kind === 'input_needed' && sessionId) replayQuestions.push({ id, sessionId, title: event.title, body: event.body })

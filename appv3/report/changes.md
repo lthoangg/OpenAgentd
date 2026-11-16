@@ -11,9 +11,10 @@ server keeps the time in memory only, nothing on disk.
 
 A letter for the account's phones (`cloud/letters.rs`) is no longer sent at
 once: it waits 60 s and is dropped when its session was seen after it was
-raised. A letter with no session always goes. Held letters go out at once
-when the host's cloud task ends normally. The cloud API and the sealed
-letter format are unchanged.
+raised (a report up to 2 s before still counts: the two can cross). A
+letter with no session always goes. Held letters go out at once when the
+host's cloud task ends normally. The cloud API and the sealed letter format
+are unchanged.
 
 ## `script` tool (v3.57.0)
 

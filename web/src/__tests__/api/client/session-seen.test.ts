@@ -40,6 +40,13 @@ describe('reportSessionSeen', () => {
     expect(calls).toHaveLength(3)
   })
 
+  it('reports a notification about the session at once, even inside the gap', () => {
+    reportSessionSeen('s1')
+    clock += 3000
+    reportSessionSeen('s1', { now: true })
+    expect(calls).toEqual([['s1/seen', 'POST'], ['s1/seen', 'POST']])
+  })
+
   it('never throws when the server is old or unreachable', async () => {
     fail = true
     expect(() => reportSessionSeen('s3')).not.toThrow()

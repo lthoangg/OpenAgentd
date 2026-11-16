@@ -10,11 +10,16 @@ import { apiBaseUrl } from '../base-url'
 export const SEEN_REPORT_GAP_MS = 10_000
 const lastReport = new Map<string, number>()
 
-export function reportSessionSeen(sessionId: string): void {
+/**
+ * `now`: report even inside the gap. A notification about the session on
+ * screen needs a report after it was raised; one from moments earlier,
+ * when the session opened, does not cover it.
+ */
+export function reportSessionSeen(sessionId: string, options?: { now?: boolean }): void {
   const key = `${apiBaseUrl()}|${sessionId}`
   const now = Date.now()
   const last = lastReport.get(key)
-  if (last !== undefined && now - last < SEEN_REPORT_GAP_MS) return
+  if (!options?.now && last !== undefined && now - last < SEEN_REPORT_GAP_MS) return
   lastReport.set(key, now)
   if (lastReport.size > 200) lastReport.delete(lastReport.keys().next().value as string)
   void fetch(`${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/seen`, { method: 'POST' }).catch(() => undefined)

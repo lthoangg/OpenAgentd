@@ -26,6 +26,7 @@
 //! this server: the cloud learns no more than before.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::Duration;
 
@@ -45,9 +46,25 @@ const OUTBOX_MAX: usize = 64;
 /// How long a letter waits for its notification to be seen on a screen
 /// before it goes to the phone.
 pub const UNSEEN_GRACE: Duration = Duration::from_secs(60);
+/// A report this much before a notification still counts: the client's
+/// report and the server's notification can cross.
+pub const SEEN_SLACK: Duration = Duration::from_secs(2);
+/// [`UNSEEN_GRACE`] in milliseconds, unless a test set another.
+static GRACE_MS: AtomicU64 = AtomicU64::new(UNSEEN_GRACE.as_millis() as u64);
+
+/// The wait in force: [`UNSEEN_GRACE`], or what a test set.
+pub fn unseen_grace() -> Duration {
+    Duration::from_millis(GRACE_MS.load(Ordering::Relaxed))
+}
+
+/// Shortens the wait so an end-to-end test need not sleep a minute.
+#[doc(hidden)]
+pub fn set_unseen_grace(grace: Duration) {
+    GRACE_MS.store(grace.as_millis() as u64, Ordering::Relaxed);
+}
 
 /// When each session was last seen on a screen, in the API's (hyphenated)
-/// id form. Only the last [`UNSEEN_GRACE`] matters, so older entries go.
+/// id form. Only the last wait matters, so older entries go.
 static SEEN: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
 
 fn session_key(session: &str) -> String {
@@ -59,28 +76,31 @@ fn session_key(session: &str) -> String {
 pub fn mark_seen(session: &str) {
     let now = Instant::now();
     let Ok(mut seen) = SEEN.lock() else { return };
-    seen.retain(|_, at| now.duration_since(*at) <= UNSEEN_GRACE);
+    let keep = unseen_grace() + SEEN_SLACK;
+    seen.retain(|_, at| now.duration_since(*at) <= keep);
     seen.insert(session_key(session), now);
 }
 
-/// When `session` was last seen, within the last [`UNSEEN_GRACE`].
+/// When `session` was last seen, within the last wait.
 pub(crate) fn seen_at(session: &str) -> Option<Instant> {
     SEEN.lock().ok()?.get(&session_key(session)).copied()
 }
 
 /// Whether a letter raised at `raised_at` still goes to the phone: nobody
-/// saw its session since. A letter with no session cannot be seen.
+/// saw its session since (less [`SEEN_SLACK`]). A letter with no session
+/// cannot be seen.
 pub fn unseen(seen_at: Option<Instant>, raised_at: Instant) -> bool {
-    seen_at.is_none_or(|at| at < raised_at)
+    seen_at.is_none_or(|at| at + SEEN_SLACK < raised_at)
 }
 
 struct Held {
     letter: Letter,
     session: Option<String>,
     raised_at: Instant,
+    due: Instant,
 }
 
-/// Letters waiting [`UNSEEN_GRACE`] for their notification to be seen.
+/// Letters waiting [`unseen_grace`] for their notification to be seen.
 #[derive(Default)]
 pub struct Holding {
     held: Vec<Held>,
@@ -93,20 +113,20 @@ impl Holding {
         if letter.collapse.is_some() {
             self.held.retain(|h| !(h.letter.to == letter.to && h.letter.collapse == letter.collapse));
         }
-        self.held.push(Held { letter, session, raised_at: now });
+        self.held.push(Held { letter, session, raised_at: now, due: now + unseen_grace() });
         if self.held.len() > OUTBOX_MAX {
             self.held.remove(0);
         }
     }
 
     pub fn next_due(&self) -> Option<Instant> {
-        self.held.iter().map(|h| h.raised_at + UNSEEN_GRACE).min()
+        self.held.iter().map(|h| h.due).min()
     }
 
     /// The letters whose wait ended at `now` and whose session nobody saw
     /// (`seen_at`), oldest first. Seen ones are dropped.
     pub fn take_due(&mut self, now: Instant, seen_at: impl Fn(&str) -> Option<Instant>) -> Vec<Letter> {
-        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.held).into_iter().partition(|h| h.raised_at + UNSEEN_GRACE <= now);
+        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.held).into_iter().partition(|h| h.due <= now);
         self.held = later;
         let mut out = vec![];
         for h in due {
@@ -553,5 +573,8 @@ mod tests {
         assert!(!unseen(at, raised));
         assert!(unseen(None, raised));
         assert!(unseen(seen_at("0192f5a0-0000-7d3e-8f40-a1b2c3d4e5f6"), raised));
+        // A report that crossed the notification still counts; an older one does not.
+        assert!(!unseen(Some(raised), raised + SEEN_SLACK));
+        assert!(unseen(Some(raised), raised + SEEN_SLACK + Duration::from_millis(1)));
     }
 }

@@ -63,13 +63,15 @@ Use Settings to configure providers and `agentd --help` for the current CLI surf
 ```
 openagentd/
 ├── appv3/                  # Rust backend (shipped): API, agent runtime, CLI
-│   └── crates/             # core, db, api, agent, tools, providers, cli, …
-│       └── */data/         # Data each crate compiles in (SSE events, prompts, …)
+│   ├── crates/             # core, db, api, agent, tools, providers, cli, …
+│   │   └── */data/         # Data each crate compiles in (SSE events, prompts, …)
+│   └── report/             # Wire and on-disk compatibility log (REPORT.md is its index)
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── desktop/, mobile/       # Tauri shells (desktop bundles the appv3 binary)
+├── design/                 # Design system chapters (DESIGN.md holds the tokens and the map)
 ├── scripts/                # Release, docs, and code-health tools (+ tests/)
 ├── documents/              # Feature catalogue and assets
-│   └── docs/               # Version-cited shipped features
+│   └── docs/               # Version-cited shipped features, one file per area
 └── .github/                # Issue templates, PR template, CI workflows
 ```
 

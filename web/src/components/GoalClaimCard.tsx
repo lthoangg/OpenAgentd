@@ -55,7 +55,7 @@ function Evidence({ items, label, defaultOpen }: { items: string[]; label: strin
 type CardKind = Exclude<GoalClaim['kind'], 'other'>
 
 /**
- * One card frame for every outcome (DESIGN.md → Transcript cards): a caps
+ * One card frame for every outcome (DESIGN.md → Cards in the transcript): a caps
  * "Goal check" strip with the outcome as a chip on its right. Colour sits
  * on the chip only; the frame stays neutral.
  */

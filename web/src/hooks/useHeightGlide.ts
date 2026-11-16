@@ -8,7 +8,7 @@
  * where it is drawn to the new one at ``fast`` (``ease-out``), then lets go
  * (``height: auto`` again). A change mid-glide starts from the drawn height,
  * so typing quickly never jumps. Height is a layout property: this is for
- * small, isolated boxes only (DESIGN.md → Motion lists them).
+ * small, isolated boxes only (DESIGN.md → Motion, which lists them).
  *
  * The first size is taken as is (the box opened at it); reduced motion and
  * a missing Web Animations API snap.

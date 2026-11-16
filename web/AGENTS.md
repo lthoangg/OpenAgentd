@@ -56,9 +56,12 @@ cycle.
 
 ## UI constraints
 
-- Read root `DESIGN.md` and reuse tokens from `src/styles/tokens.css` (palette,
-  motion) and `src/index.css` (Tailwind theme, radius, spacing) and existing
-  primitives before adding colors, spacing, type, radius, elevation, or motion.
+- Read root `DESIGN.md` and the chapter under `design/` its map names for what
+  you change. Reuse tokens from `src/styles/tokens.css` (palette, motion) and
+  `src/index.css` (Tailwind theme, radius, spacing) and existing primitives
+  before adding colors, spacing, type, radius, elevation, or motion.
+- Cite a design rule in a comment or a lint message by its heading, as
+  `DESIGN.md → Motion`; `make verify-docs` fails on a name that no chapter has.
 - Build the shared UI mobile-first. Gate platform behavior through existing
   `useIsMobile()` / `usePlatform()` hooks, account for safe areas and desktop
   chrome, and provide touch equivalents for hover/right-click behavior.

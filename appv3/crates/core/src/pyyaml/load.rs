@@ -308,7 +308,7 @@ enum St {
 
 const TAG_PREFIX: &str = "tag:yaml.org,2002:";
 /// CPython's default recursion limit lets PyYAML compose ~494 nested flow nodes
-/// (block nesting a few fewer — frame counts differ; see REPORT §3b).
+/// (block nesting a few fewer — frame counts differ; see REPORT.md §3, "YAML loading").
 const MAX_DEPTH: usize = 494;
 
 struct Loader {

@@ -41,7 +41,7 @@
 @custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
 /* A phone: narrow (or a landscape phone, short) and touch, the same test as
  * useIsMobile plus a coarse pointer, so a narrow mouse window and a tablet
- * keep the dense desktop scale (DESIGN.md → Touch density). The block form:
+ * keep the dense desktop scale (DESIGN.md → Phone scale). The block form:
  * the shorthand splits at the query's comma and reads the landscape half as
  * a selector, which compiles to an invalid rule. */
 @custom-variant phone {
@@ -1257,7 +1257,7 @@ html[data-app-hidden="true"] *::after {
   font-size: 0.85em;
   font-family: var(--font-mono);
   /* Inline code is prose, not syntax: plain text colour on the key tint
-   * (DESIGN.md → Colour: colour carries meaning only). */
+   * (DESIGN.md → Colors: colour is for meaning only). */
   color: var(--color-text);
   /* A span that wraps keeps its border and padding on every line instead of
    * leaving an open-ended box at the break (narrow panes, long commands). */
@@ -1662,7 +1662,7 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
-/* Touch density (DESIGN.md): one compact touch size, 36px, for list rows
+/* Touch density (DESIGN.md → Mobile Touch Parity Scaling): one compact touch size, 36px, for list rows
    and every other control, so small phones (iPhone mini) still show a
    useful amount of content. A row and its inline actions (also 36px, via
    their ``pointer-coarse:`` sizes) line up. Rows sized from the token
@@ -1701,7 +1701,7 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
-/* Phone (DESIGN.md → Touch density): the composer's size. At Default 15px
+/* Phone (DESIGN.md → Phone scale): the composer's size. At Default 15px
    for row titles, buttons, menus, fields, chat and bar titles; 13px for a
    row's second line and code; 12px for times and captions. Rows and every
    button are 40px (4px more in the Android app, Material's size); the

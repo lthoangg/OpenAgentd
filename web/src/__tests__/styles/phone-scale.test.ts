@@ -1,5 +1,5 @@
 /**
- * Phone scale (DESIGN.md → Touch density): on a phone, the composer's size
+ * Phone scale (DESIGN.md → Phone scale): on a phone, the composer's size
  * at Default: 15px text in rows, buttons, menus, fields and chat, 13px
  * second lines and code, 12px times, 40px rows and buttons (4px more in the
  * Android app), a 44px header; Compact a step under it, Large Apple's

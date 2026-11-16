@@ -1,5 +1,5 @@
 /**
- * Wording guard for text people read (DESIGN.md, "Touch follows the input").
+ * Wording guard for text people read (DESIGN.md → Touch behaviour follows the input).
  *
  * The same screens run under a mouse and under a finger, so text does not
  * say "click" or "tap" unless it can only be read on one of them. Every

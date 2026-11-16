@@ -212,12 +212,15 @@ the rule depends on you reading it, for the reason given.
 | Release versions agree everywhere | `make verify-version` |
 | Build jobs hold no signing secret | `scripts/tests/test_release_signing_isolation.py` |
 | CI runs a gate when a path it covers changes | `scripts/tests/test_verify_changed.py` |
-| Markdown links, `make` targets, and guide paths exist | `make verify-docs` |
+| Markdown links, `make` targets, and backticked repository paths in guides exist | `make verify-docs` |
+| A Markdown file stays under 50 KB, and its index links every part | `make verify-docs` |
+| A cited design rule (`DESIGN.md → Name`) or report section (`REPORT.md §N`) exists | `make verify-docs` |
+| The colours in `DESIGN.md` equal the light theme in `web/src/styles/tokens.css` | `make verify-docs` |
 | Workspace roots go through `validate_workspace` | Judgment: a raw path still compiles (backlog: a workspace type) |
 | Secrets are compared in constant time | Judgment: no lint can tell a secret from another string |
 | Subprocesses take argument lists | Judgment: review of each new `Command` |
 | Route handlers stay thin | Judgment: a matter of degree |
-| A wire or on-disk change is recorded in `appv3/REPORT.md` | Judgment: only a person knows a change is a wire change |
+| A wire or on-disk change is recorded in `appv3/report/changes.md` | Judgment: only a person knows a change is a wire change |
 | A shipped user-visible change is in the feature catalogue | Judgment: `make verify-version` checks only the release line |
 | Bun tests run with `--parallel` | Judgment: the package scripts pass it; a bare `bun test` does not fail |
 | A UI change works at a phone width and a desktop width | `oad/drive` journeys (run on demand; they need a built backend, so no `make verify` target runs them) |

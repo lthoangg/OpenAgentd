@@ -17,6 +17,8 @@
  * word). This bar only renders their state.
  * `Paste` asks the parent, which pastes through xterm (bracketed paste, so
  * several lines go in as one paste instead of running one by one).
+ * The first key, pinned while the bar scrolls, turns the command line field
+ * (`TerminalCommandField`) on or off.
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -26,6 +28,7 @@ import {
   ArrowRight,
   ArrowUp,
   ClipboardPaste,
+  TextCursorInput,
 } from 'lucide-react'
 
 import { haptic } from '@/lib/haptics'
@@ -43,6 +46,9 @@ interface TerminalKeyBarProps {
   /** Sticky-Alt state (armed = the next key is sent with Alt). */
   altArmed: boolean
   onAltToggle: () => void
+  /** The command line field is on. */
+  lineOn: boolean
+  onLineToggle: () => void
 }
 
 const ARROW_KEYS = [
@@ -178,7 +184,7 @@ function Separator() {
   return <div className="mx-0.5 h-5 w-px shrink-0 bg-(--color-border)" aria-hidden="true" />
 }
 
-export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArmed, onAltToggle }: TerminalKeyBarProps) {
+export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArmed, onAltToggle, lineOn, onLineToggle }: TerminalKeyBarProps) {
   const send = useCallback(
     (seq: string) => {
       haptic('tick')
@@ -194,6 +200,21 @@ export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArm
       role="toolbar"
       aria-label="Terminal keys"
     >
+      <button
+        type="button"
+        aria-label="Command line field"
+        aria-pressed={lineOn}
+        // Pinned: the field's switch stays in reach while the bar scrolls.
+        className={cn(KEY_CLASS, 'sticky left-0 z-10 gap-1 shadow-(--shadow-depth)', lineOn && ARMED_CLASS)}
+        onPointerDown={preventFocusLoss}
+        onClick={() => {
+          haptic('tick')
+          onLineToggle()
+        }}
+      >
+        <TextCursorInput className="h-3.5 w-3.5" aria-hidden="true" />
+        Line
+      </button>
       <button type="button" className={KEY_CLASS} onPointerDown={preventFocusLoss} onClick={() => send('\x1b')}>
         Esc
       </button>

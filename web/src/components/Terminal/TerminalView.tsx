@@ -38,6 +38,7 @@ import { lazySurface } from '@/lib/lazy-surface'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { TERMINAL_FONT_FAMILY } from '@/lib/terminal-font'
 import { TerminalActionSheet } from './TerminalActionSheet'
+import { readCommandFieldOn, TerminalCommandField, writeCommandFieldOn } from './TerminalCommandField'
 import { TerminalContextMenu } from './TerminalContextMenu'
 import { addToChatShortcutLabel } from './terminal-keys'
 import { TerminalKeyBar } from './TerminalKeyBar'
@@ -70,6 +71,8 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const touchFirst = useTouchFirst()
   const keyboardOpen = useKeyboardOpen()
   const [focusWithin, setFocusWithin] = useState(false)
+  const [commandFieldOn, setCommandFieldOn] = useState(readCommandFieldOn)
+  const commandFieldRef = useRef<HTMLInputElement>(null)
   const { resolved } = useThemePreference()
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | null>(null)
@@ -210,10 +213,29 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const sendKey = useCallback(
     (data: string) => {
       useTerminalStore.getState().sendInput(sessionId, data)
-      getTerminalRuntime(sessionId)?.handle?.term.focus()
+      // Typing in the command field: the key goes to the shell (^C, history
+      // arrows) but the field keeps the keyboard.
+      if (document.activeElement !== commandFieldRef.current) getTerminalRuntime(sessionId)?.handle?.term.focus()
     },
     [sessionId],
   )
+
+  const submitLine = useCallback((line: string) => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    if (!term) return
+    // xterm's paste, as Run in terminal: bracketed, through the same input path.
+    if (line !== '') term.paste(line)
+    useTerminalStore.getState().sendInput(sessionId, '\r')
+  }, [sessionId])
+
+  const toggleCommandField = useCallback(() => {
+    const next = !commandFieldOn
+    setCommandFieldOn(next)
+    writeCommandFieldOn(next)
+    // The keyboard follows: into the new field, or back to the terminal.
+    if (next) requestAnimationFrame(() => commandFieldRef.current?.focus())
+    else getTerminalRuntime(sessionId)?.handle?.term.focus()
+  }, [commandFieldOn, sessionId])
 
   const pasteFromBar = useCallback(() => {
     const term = getTerminalRuntime(sessionId)?.handle?.term
@@ -360,6 +382,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           </div>
         )}
       </div>
+      {showKeyBar && commandFieldOn && <TerminalCommandField onSubmit={submitLine} inputRef={commandFieldRef} />}
       {showKeyBar && (
         <TerminalKeyBar
           onKey={sendKey}
@@ -368,6 +391,8 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           onCtrlToggle={() => setModifiers({ ...modifiersRef.current, ctrl: !modifiersRef.current.ctrl })}
           altArmed={modifiers.alt}
           onAltToggle={() => setModifiers({ ...modifiersRef.current, alt: !modifiersRef.current.alt })}
+          lineOn={commandFieldOn}
+          onLineToggle={toggleCommandField}
         />
       )}
 

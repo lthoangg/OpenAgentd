@@ -12,11 +12,14 @@ function renderBar(overrides?: {
   onCtrlToggle?: () => void
   altArmed?: boolean
   onAltToggle?: () => void
+  lineOn?: boolean
+  onLineToggle?: () => void
 }) {
   const onKey = overrides?.onKey ?? mock(() => {})
   const onPaste = overrides?.onPaste ?? mock(() => {})
   const onCtrlToggle = overrides?.onCtrlToggle ?? mock(() => {})
   const onAltToggle = overrides?.onAltToggle ?? mock(() => {})
+  const onLineToggle = overrides?.onLineToggle ?? mock(() => {})
   render(
     <TerminalKeyBar
       onKey={onKey}
@@ -25,9 +28,11 @@ function renderBar(overrides?: {
       onCtrlToggle={onCtrlToggle}
       altArmed={overrides?.altArmed ?? false}
       onAltToggle={onAltToggle}
+      lineOn={overrides?.lineOn ?? false}
+      onLineToggle={onLineToggle}
     />,
   )
-  return { onKey, onPaste, onCtrlToggle, onAltToggle }
+  return { onKey, onPaste, onCtrlToggle, onAltToggle, onLineToggle }
 }
 
 /** Each key's visible label, or its name for icon keys, in bar order. */
@@ -40,6 +45,7 @@ describe('TerminalKeyBar', () => {
   it('puts the keys a shell needs most first: Esc, Ctrl, Alt, Tab, ^C, then the arrows', () => {
     renderBar()
     expect(keyOrder()).toEqual([
+      'Line',
       'Esc', 'Ctrl', 'Alt', 'Tab', '^C',
       'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right',
       '|', '/', '~', '-',
@@ -101,6 +107,18 @@ describe('TerminalKeyBar', () => {
     renderBar({ onKey, onPaste })
     fireEvent.click(screen.getByRole('button', { name: 'Paste' }))
     expect(onPaste).toHaveBeenCalledTimes(1)
+    expect(onKey).not.toHaveBeenCalled()
+  })
+
+  it('has the command line switch first, pinned, showing whether the field is on', () => {
+    const onLineToggle = mock(() => {})
+    const onKey = mock(() => {})
+    renderBar({ lineOn: true, onLineToggle, onKey })
+    const line = screen.getByRole('button', { name: 'Command line field' })
+    expect(line.getAttribute('aria-pressed')).toBe('true')
+    expect(line.className).toContain('sticky')
+    fireEvent.click(line)
+    expect(onLineToggle).toHaveBeenCalledTimes(1)
     expect(onKey).not.toHaveBeenCalled()
   })
 

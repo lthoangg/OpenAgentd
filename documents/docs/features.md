@@ -3880,6 +3880,12 @@ agent against it.
     the bar's own keys: Ctrl+← jumps a word. The bar's Paste goes in as one
     paste, so several lines no longer run one by one. On an iPad the bar
     shows while the soft keyboard is up for the terminal.
+  - **Command line field** `[v3.57.0]`: **Line**, the key bar's first key
+    (it stays in place while the bar scrolls), adds an ordinary text field
+    above the bar where Vietnamese Telex and other input methods, dictation
+    and the cursor work as in any app. Return sends the line with Enter (an
+    empty Return sends Enter); the bar's keys still reach the shell while
+    the field keeps the keyboard. The choice is kept on the device.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace

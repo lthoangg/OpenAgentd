@@ -220,6 +220,8 @@ export interface AgentStoreState {
    */
   isLoadingHistory: boolean
   _leadRevertTime: number | null
+  /** The staged undo moved messages only; Redo leaves files alone too. */
+  revertKeepsFiles: boolean
   /**
    * ISO ``created_at`` of the newest message the server has confirmed across the
    * lead and every member session. Cursor for ``reconcileTurnTail``; ``null``
@@ -280,15 +282,18 @@ export interface AgentStoreActions {
    */
   setSessionRunSettings: (patch: RunSettingsPatch) => Promise<boolean>
   compactAgent: () => Promise<void>
-  /** ``restoreDraft: false`` skips putting the undone prompt back in the composer. */
-  undoAgent: (options?: { restoreDraft?: boolean }) => Promise<AgentCommandResponse | undefined>
+  /**
+   * ``restoreDraft: false`` skips putting the undone prompt back in the composer.
+   * ``keepFiles`` undoes the messages only and leaves the workspace files alone.
+   */
+  undoAgent: (options?: { restoreDraft?: boolean; keepFiles?: boolean }) => Promise<AgentCommandResponse | undefined>
   /**
    * Undo back to just before the direct prompt ``blockId`` — later prompts
    * included — and, unless ``restoreDraft`` is false, put it in the composer.
    * Resolves to the reverted prompt, or ``null`` when nothing was reverted.
-   * Redo still brings everything back.
+   * Redo still brings everything back. ``keepFiles`` as in ``undoAgent``.
    */
-  revertToMessage: (blockId: string, options?: { restoreDraft?: boolean }) => Promise<ContentBlock | null>
+  revertToMessage: (blockId: string, options?: { restoreDraft?: boolean; keepFiles?: boolean }) => Promise<ContentBlock | null>
   redoAgent: () => Promise<AgentCommandResponse | undefined>
   redoAllAgent: () => Promise<AgentCommandResponse | undefined>
   consumePendingDraft: () => { content: string; attachments?: MessageAttachment[] } | null

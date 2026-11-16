@@ -328,6 +328,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
+        revertKeepsFiles: s.revertKeepsFiles,
         leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
         leadHasLiveBlocks: (leadStream?.currentBlocks.length ?? 0) > 0,
 
@@ -363,6 +364,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
     leadRevertedCount,
     leadRevertedMessages,
+    revertKeepsFiles,
     leadHasVisibleBlocks,
     leadHasLiveBlocks,
     leadPromptTokens,
@@ -914,6 +916,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       interactionModeDisabled={isSwitchingInteractionMode || (!sessionIdState && !isDraft)}
       revertedCount={leadRevertedCount}
       revertedMessages={leadRevertedMessages}
+      revertKeptFiles={revertKeepsFiles}
       onRedo={() => { void handleSlashCommand('redo') }}
       onRedoAll={() => { void handleSlashCommand('redo-all') }}
       renderPlus={renderPlus}

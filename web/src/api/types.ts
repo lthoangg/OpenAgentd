@@ -247,7 +247,7 @@ export interface SessionResponse {
   parent_session_id?: string | null
   title: string | null
   agent_name: string | null
-  revert?: { message_id?: string } | null
+  revert?: { message_id?: string; keep_files?: boolean } | null
   created_at: string | null
   updated_at: string | null
   /**
@@ -709,6 +709,8 @@ export interface AgentCommandResponse {
    * of just these paths instead of every one on screen.
    */
   changed_paths?: ChangedPaths
+  /** ``undo`` / ``redo``: the undone messages left the workspace files as they were. */
+  keep_files?: boolean
 }
 
 // ── Registry (dropdown catalog) ─────────────────────────────────────────────

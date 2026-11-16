@@ -89,7 +89,17 @@ describe('RevertNotice', () => {
 
     await user.hover(screen.getByRole('button', { name: 'Redo' }))
 
-    expect((await screen.findByRole('tooltip')).textContent).toContain('last message you undid')
+    expect((await screen.findByRole('tooltip')).textContent).toContain('last message you undid, with its file changes')
+  })
+
+  it('after Undo messages, says the files were not changed and Redo claims no file changes', async () => {
+    const user = userEvent.setup()
+    render(<RevertNotice count={1} keptFiles onRedo={() => {}} />)
+    expect(screen.getByText('Undid the last message. Files were not changed. Redo brings it back; sending a new message discards it.')).toBeTruthy()
+
+    await user.hover(screen.getByRole('button', { name: 'Redo' }))
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Redo the last message you undid')
   })
 
   it('shows the undone messages on request, under the row of actions', async () => {

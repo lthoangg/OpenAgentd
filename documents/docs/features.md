@@ -1939,6 +1939,14 @@ run from the terminal (the native Rust binary since v3.0.0).
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
+  - **Undo messages** `[v3.57.0]` — `/undo-messages` (and **Undo messages to
+    here** in a prompt's long-press sheet on a phone) takes the turn back out
+    of the chat but leaves the workspace files as they are; `/undo` still
+    rolls files back too. The undo notice then adds "Files were not changed.",
+    and **Redo** / **Redo all** bring the turns back without touching files. If
+    an earlier Undo in the same run rolled files back, Redo restores files as
+    usual. Not listed in Chat, whose `/undo` never touches files. API:
+    `POST /api/agent/commands` with `{"command": "undo", "keep_files": true}`.
   - **`/btw` side questions** `[v3.17.0, v3.18.0]` — `/btw <question>` asks a quick question
     about the session, even while the agent is working, without interrupting the turn
     or adding anything to the chat. The model answers from the conversation so far,

@@ -41,6 +41,7 @@ import { ModelName } from '@/components/ui/model-name'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { useDisplayPrefsStore, useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
@@ -587,7 +588,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       // Another workspace's agent sent it: rewinding it is that agent's call.
       const sender = sentFrom(block.extra)
       const editable = Boolean(onEdit) && !fromAgent && !lead && !sender
-      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={editable && onEdit ? () => onEdit(block.id) : undefined} onRevert={editable ? () => { void useAgentStore.getState().revertToMessage(block.id, { restoreDraft: false }) } : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sender} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
+      const revert = (keepFiles: boolean) => { void useAgentStore.getState().revertToMessage(block.id, { restoreDraft: false, keepFiles }) }
+      // Chat never rolls files back, so its plain Undo already keeps them.
+      const keepFilesUndo = editable && !isChatWorkspacePath(useAgentStore.getState()._workspace)
+      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={editable && onEdit ? () => onEdit(block.id) : undefined} onRevert={editable ? () => revert(false) : undefined} onRevertMessages={keepFilesUndo ? () => revert(true) : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sender} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />

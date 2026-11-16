@@ -85,7 +85,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'undo-messages', 'new'])
   })
 
   it('shows /redo and /redo-all when revertedCount > 0', () => {
@@ -99,6 +99,7 @@ describe('filterBaseSlashCommands', () => {
       'btw',
       'summarize',
       'undo',
+      'undo-messages',
       'redo',
       'redo-all',
       'new',
@@ -132,7 +133,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: true,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new', 'init'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'undo-messages', 'new', 'init'])
   })
 
   it('lists no /model or /think: the model button under the box opens the same picker', () => {
@@ -149,11 +150,18 @@ describe('filterBaseSlashCommands', () => {
     expect(inChat.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new'])
   })
 
+  it('offers Undo messages beside Undo, saying which one keeps the file changes', () => {
+    const byId = Object.fromEntries(BASE_SLASH_COMMANDS.map((c) => [c.id, c]))
+    expect(byId.undo.description).toBe('Undo the previous message and its file changes')
+    expect(byId['undo-messages']).toMatchObject({ label: 'Undo messages', description: 'Undo the previous message and keep its file changes' })
+    expect(parseBuiltInSlashCommand('/undo-messages')).toBe('undo-messages')
+  })
+
   it('lists /connectors once the agent has a connector, and not before', () => {
     const none = filterBaseSlashCommands({ hasVisibleMessages: true, hasWorkspace: true })
     expect(none.map((c) => c.id)).not.toContain('connectors')
     const some = filterBaseSlashCommands({ hasVisibleMessages: true, hasWorkspace: true, hasConnectors: true })
-    expect(some.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new', 'init', 'connectors'])
+    expect(some.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'undo-messages', 'new', 'init', 'connectors'])
   })
 
   it('says what each row does in the words the rest of the app uses', () => {
@@ -170,7 +178,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'summarize', 'undo', 'undo-messages', 'new'])
   })
 })
 
@@ -242,7 +250,7 @@ describe('useSlashCommands', () => {
     )
 
     const ids = result.current.slashCommands.map((c) => c.id)
-    expect(ids).toEqual(['btw', 'summarize', 'undo', 'redo', 'redo-all', 'new', 'init'])
+    expect(ids).toEqual(['btw', 'summarize', 'undo', 'undo-messages', 'redo', 'redo-all', 'new', 'init'])
   })
 
   const undone = (content: string, extra: Record<string, unknown> | null): AgentCommandResponse => ({
@@ -257,6 +265,15 @@ describe('useSlashCommands', () => {
     undo.mockImplementation(async () => undone('tests pass', null))
     const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
     await act(async () => { result.current.handleSlashCommand('undo') })
+    expect(undo).toHaveBeenLastCalledWith({ keepFiles: false })
+    expect(inputRef.current.setValue).toHaveBeenCalledWith('tests pass')
+  })
+
+  it('/undo-messages undoes with the files kept and gives the prompt back too', async () => {
+    undo.mockImplementation(async () => undone('tests pass', null))
+    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
+    await act(async () => { result.current.handleSlashCommand('undo-messages') })
+    expect(undo).toHaveBeenLastCalledWith({ keepFiles: true })
     expect(inputRef.current.setValue).toHaveBeenCalledWith('tests pass')
   })
 

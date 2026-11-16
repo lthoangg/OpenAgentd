@@ -496,6 +496,7 @@ export function resetSessionState(
   // A saved session's history is not here yet; a draft has none to wait for.
   state.isLoadingHistory = options.sessionId !== null
   state._leadRevertTime = null
+  state.revertKeepsFiles = false
   state._syncedThrough = null
   state._workspace = options.workspace ?? null
   state._loadingOlder = false
@@ -551,6 +552,7 @@ export type SessionSlice = Pick<
   | 'pinnedPrompt'
   | 'isLoadingHistory'
   | '_leadRevertTime'
+  | 'revertKeepsFiles'
   | '_syncedThrough'
   | '_workspace'
   | '_loadingOlder'
@@ -924,6 +926,7 @@ async function loadSessionImpl(
       draft.pinnedPrompt = history.latest_prompt ? parseAgentBlocks([history.latest_prompt])[0] ?? null : null
       draft.isLoadingHistory = false
       draft._leadRevertTime = revertBoundaryTime(history.lead)
+      draft.revertKeepsFiles = history.lead.revert?.keep_files === true
       // Everything in this response is server-confirmed, so nothing is
       // pending reconciliation and the watermark advances to its newest row.
       draft._syncedThrough = newestMessageAt(history)
@@ -992,6 +995,7 @@ export const createSessionSlice: StateCreator<
   pinnedPrompt: null,
   isLoadingHistory: false,
   _leadRevertTime: null,
+  revertKeepsFiles: false,
   _syncedThrough: null,
   _workspace: null,
   _loadingOlder: false,

@@ -33,6 +33,19 @@ describe('UserBubble on a phone', () => {
     expect(onRevert).toHaveBeenCalled()
   })
 
+  it('offers Undo messages to here, which keeps the files, after Undo to here', async () => {
+    const onRevert = mock(() => {})
+    const onRevertMessages = mock(() => {})
+    render(<UserBubble content="Fix the build" onEdit={() => {}} onRevert={onRevert} onRevertMessages={onRevertMessages} />)
+    await hold(screen.getByText('Fix the build'))
+    const sheet = screen.getByRole('dialog', { name: 'Prompt' })
+    const labels = Array.from(sheet.querySelectorAll('button')).map((b) => b.textContent)
+    expect(labels).toEqual(['Edit and resend', 'Copy', 'Undo to here', 'Undo messages to here'])
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Undo messages to here' }))
+    expect(onRevertMessages).toHaveBeenCalled()
+    expect(onRevert).not.toHaveBeenCalled()
+  })
+
   it('disables Edit and Undo while a turn runs', async () => {
     render(<UserBubble content="Fix the build" onEdit={() => {}} onRevert={() => {}} editLocked />)
     await hold(screen.getByText('Fix the build'))

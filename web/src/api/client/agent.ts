@@ -124,11 +124,12 @@ export async function postAgentChat(
 export async function postAgentCommand(
   command: 'continue' | 'compact' | 'undo' | 'redo' | 'redo-all' | 'redo_all',
   sessionId: string,
+  options: { keepFiles?: boolean } = {},
 ): Promise<AgentCommandResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/commands`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, session_id: sessionId }),
+    body: JSON.stringify({ command, session_id: sessionId, ...(options.keepFiles ? { keep_files: true } : {}) }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'POST /agent/commands')
   return res.json()

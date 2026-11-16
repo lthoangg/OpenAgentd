@@ -25,7 +25,8 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
     insertText: 'btw',
   },
   { id: 'summarize', label: 'Summarize', description: 'Summarize earlier messages to make room', aliases: ['compact'] },
-  { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
+  { id: 'undo', label: 'Undo', description: 'Undo the previous message and its file changes' },
+  { id: 'undo-messages', label: 'Undo messages', description: 'Undo the previous message and keep its file changes' },
   { id: 'redo', label: 'Redo', description: 'Redo the last message you undid' },
   { id: 'redo-all', label: 'Redo All', description: 'Redo every message you undid, up to the latest' },
   { id: 'new', label: 'New session', description: 'Start a new session', shortcut: 'newSession' },
@@ -183,6 +184,9 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
       case 'undo':
       case 'summarize':
         return hasVisible && !isWorking
+      // Chat never rolls files back, so its plain Undo already keeps them.
+      case 'undo-messages':
+        return hasVisible && !isWorking && !(ctx.isChat ?? false)
       case 'redo':
       case 'redo-all':
         return revertedCount > 0 && !isWorking

@@ -31,7 +31,7 @@ import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
 
 /** Commands that act on an existing session's history. */
-const SESSION_COMMANDS = new Set(['summarize', 'undo', 'redo', 'redo-all'])
+const SESSION_COMMANDS = new Set(['summarize', 'undo', 'undo-messages', 'redo', 'redo-all'])
 
 export interface UseSlashCommandsArgs {
   /** Workspace path, or `null` while no workspace is attached. */
@@ -168,7 +168,8 @@ export function useSlashCommands({
         useAgentStore.getState().compactAgent()
         break
       case 'undo':
-        void useAgentStore.getState().undoAgent().then(async (response) => {
+      case 'undo-messages':
+        void useAgentStore.getState().undoAgent({ keepFiles: id === 'undo-messages' }).then(async (response) => {
           const message = response?.message
           if (!message || message.role !== 'user' || message.kind === 'summary') return
           // A goal's own turn gives nothing back.

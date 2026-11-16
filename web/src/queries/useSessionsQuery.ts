@@ -216,7 +216,14 @@ export function useUpdateSessionTitleMutation() {
 
 export type DeleteSessionTarget =
   | string
-  | { id: string; parent_session_id?: string | null; holdMs?: number; undo?: AbortSignal }
+  | {
+    id: string
+    parent_session_id?: string | null
+    holdMs?: number
+    undo?: AbortSignal
+    /** Also remove the OpenAgentd worktree it ran in, when unused and safe. */
+    removeWorktree?: boolean
+  }
 
 class DeleteUndone extends Error {}
 
@@ -258,8 +265,8 @@ export function useDeleteSessionMutation() {
       const id = typeof target === 'string' ? target : target.id
       const parentId = typeof target === 'string' ? null : target.parent_session_id
       if (typeof target !== 'string' && target.holdMs) await holdForUndo(target.holdMs, target.undo)
-      await deleteSession(id)
-      return { id, parentId }
+      const result = await deleteSession(id, { removeWorktree: typeof target !== 'string' && target.removeWorktree === true })
+      return { id, parentId, worktree: result?.worktree ?? null }
     },
     onMutate: async (target) => {
       const id = typeof target === 'string' ? target : target.id

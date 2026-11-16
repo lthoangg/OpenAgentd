@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CountChip } from './CountChip'
 import { groupColor } from './groupColor'
-import { orderWorkspacePaths, repositoryCheckouts, sessionActivityTime, sourceWorkspacePaths } from './helpers'
+import { checkoutCountLabel, orderWorkspacePaths, repositoryCheckouts, sessionActivityTime, sourceWorkspacePaths } from './helpers'
 import { MissingBadge } from './MissingBadge'
 import { SessionStatusMark } from './SessionStatusMark'
 import { TREE_INDENT_PX } from './tree-indent'
@@ -208,7 +208,7 @@ export function WorkspaceTree({
         const sourceMissing = Boolean(workspaceByPath.get(path)?.missing)
         const worktreeChipHint = checkouts.selected
           ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
-          : `Showing the workspace and ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`
+          : `Showing the workspace and ${checkoutCountLabel(worktrees).replace(' · ', ' and ')}`
 
         return (
           <div key={path} className="relative" data-sidebar-workspace-group="">
@@ -318,7 +318,7 @@ export function WorkspaceTree({
                         }}
                         aria-haspopup="menu"
                         aria-expanded={checkoutMenuRepo === path}
-                        aria-label={`${worktrees.length} ${worktrees.length === 1 ? 'worktree' : 'worktrees'}`}
+                        aria-label={checkoutCountLabel(worktrees)}
                         aria-description={`${sourceLabel}: ${worktreeChipHint}`}
                       />
                     }
@@ -385,7 +385,7 @@ export function WorkspaceTree({
                   // a one-step way back to every checkout.
                   <div className="flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9">
                     <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
-                      {selectedWorktree
+                      {selectedWorktree && selectedWorktree.kind !== 'folder'
                         ? <GitBranch size={12} className="text-(--accent-orange-text)" />
                         : <Folder size={12} className="text-(--color-accent)" />}
                     </span>

@@ -115,15 +115,28 @@ export function visibleNestedWorktrees(
   repository: CodingWorkspaceTreeRepository | undefined,
   removedWorktreePaths: Set<string>,
 ): CodingWorkspaceTreeWorktree[] {
-  return (repository?.worktrees ?? []).filter(
+  const items = (repository?.worktrees ?? []).filter(
     (item) => !removedWorktreePaths.has(item.path),
   )
+  // Worktrees first, then subfolders: two kinds, never interleaved.
+  return [...items.filter((item) => item.kind !== 'folder'), ...items.filter((item) => item.kind === 'folder')]
+}
+
+/** How a repository's checkouts read: ``2 worktrees · 1 folder``. */
+export function checkoutCountLabel(items: readonly CodingWorkspaceTreeWorktree[]): string {
+  const folders = items.filter((item) => item.kind === 'folder').length
+  const worktrees = items.length - folders
+  const parts = []
+  if (worktrees > 0 || folders === 0) parts.push(`${worktrees} ${worktrees === 1 ? 'worktree' : 'worktrees'}`)
+  if (folders > 0) parts.push(`${folders} ${folders === 1 ? 'folder' : 'folders'}`)
+  return parts.join(' · ')
 }
 
 /**
- * The checkouts a repository row lists: all of them (its own path, then each
- * visible worktree), or the one ``selectedPath`` names. A selection that no
- * longer exists falls back to all.
+ * The checkouts a repository row lists: all of them (its own path, each
+ * visible worktree, and checkouts gone from the list whose sessions it
+ * keeps), or the one ``selectedPath`` names. A selection that no longer
+ * exists falls back to all.
  */
 export function repositoryCheckouts(
   path: string,
@@ -136,17 +149,23 @@ export function repositoryCheckouts(
   selected: string | null
   selectedWorktree: CodingWorkspaceTreeWorktree | null
   listPaths: string[]
+  /** Every checkout whose sessions the row can list, whatever is selected. */
+  allPaths: string[]
   worktreeNames: Map<string, string>
 } {
   const worktrees = visibleNestedWorktrees(repository, removedWorktreePaths)
   const selectedWorktree = worktrees.find((item) => item.path === selectedPath) ?? null
   const selected = selectedPath === path || selectedWorktree ? (selectedPath ?? null) : null
+  const listed = new Set([path, ...worktrees.map((item) => item.path)])
+  const former = (repository?.former_checkouts ?? []).filter((item) => !listed.has(item.path))
+  const allPaths = [path, ...worktrees.map((item) => item.path), ...former.map((item) => item.path)]
   return {
     worktrees,
     selected,
     selectedWorktree,
-    listPaths: selected ? [selected] : [path, ...worktrees.map((item) => item.path)],
-    worktreeNames: new Map(worktrees.map((item) => [item.path, item.name])),
+    listPaths: selected ? [selected] : allPaths,
+    allPaths,
+    worktreeNames: new Map([...worktrees, ...former].map((item) => [item.path, item.name])),
   }
 }
 

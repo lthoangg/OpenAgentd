@@ -9,11 +9,13 @@
  */
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AppWindow, Pencil, Pin, PinOff, Trash2, type LucideIcon } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { usePlatform } from '@/hooks/use-platform'
 import { isMobileApp } from '@/lib/mobile-app'
 import { sessionWorking } from '@/lib/active-sessions'
+import { queryKeys } from '@/queries/keys'
 import {
   useDeleteSessionMutation,
   useSetSessionPinnedMutation,
@@ -63,6 +65,7 @@ export function useSessionActions({
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isMobileApp({ isTauri, os })
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
   const dismissToast = useToastStore((s) => s.dismiss)
   const deleteSession = useDeleteSessionMutation()
@@ -209,11 +212,20 @@ export function useSessionActions({
       stay,
       mutateDelete: (mutationTarget) => deleteSession.mutate(
         typeof mutationTarget === 'string'
-          ? { id: mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal }
+          // A top-level session's OpenAgentd worktree goes with its last
+          // session, unless that would lose work (the server checks).
+          ? { id: mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal, removeWorktree: true }
           : { ...mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal },
         {
           // Past the window the Undo button can't help any more.
           onSettled: () => dismissToast(toastId),
+          onSuccess: ({ worktree }) => {
+            if (!worktree) return
+            void queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() })
+            pushToast(worktree.removed
+              ? { tone: 'info', title: `Removed worktree ${worktree.name}`, description: 'Its last session was deleted.' }
+              : { tone: 'info', title: `Kept worktree ${worktree.name}`, description: `Not removed with its last session: ${worktree.reason ?? 'it holds work'}.` })
+          },
           onError: () => {
             if (undo.signal.aborted) return
             pushToast({ tone: 'error', title: "Couldn't delete session" })

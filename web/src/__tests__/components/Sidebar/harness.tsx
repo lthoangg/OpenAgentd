@@ -118,7 +118,7 @@ globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof 
  * A repository's worktree chip: a branch icon and the count, named "3 worktrees",
  * which opens the checkout menu. The filter it applies is in its description.
  */
-export const WORKTREE_CHIP = { name: /^\d+ worktrees?$/ }
+export const WORKTREE_CHIP = { name: /^\d+ (worktrees?|folders?)( · \d+ folders?)?$/ }
 export const worktreeChip = () => screen.getByRole('button', WORKTREE_CHIP)
 
 mock.module('@tanstack/react-router', () => ({

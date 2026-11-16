@@ -11,16 +11,20 @@ import { hoverIntent } from '@/hooks/use-hover-intent'
 interface PickerOption {
   path: string
   label: string
-  kind: 'chat' | 'repo' | 'worktree'
+  /** ``folder``: a subfolder of a repository, opened as a workspace. */
+  kind: 'chat' | 'repo' | 'worktree' | 'folder'
 }
 
-function pickerOptions(chat: CodingWorkspaceTreeChat | null, repositories: readonly CodingWorkspaceTreeRepository[]): PickerOption[] {
+export function pickerOptions(chat: CodingWorkspaceTreeChat | null, repositories: readonly CodingWorkspaceTreeRepository[]): PickerOption[] {
   const options: PickerOption[] = []
   if (chat) options.push({ path: chat.path, label: chat.name, kind: 'chat' })
   for (const repo of repositories) {
     if (chat && sameWorkspacePath(repo.path, chat.path)) continue
     options.push({ path: repo.path, label: repo.name, kind: 'repo' })
-    for (const worktree of repo.worktrees) options.push({ path: worktree.path, label: worktree.name, kind: 'worktree' })
+    // Worktrees, then subfolders; a folder that is gone cannot host a session.
+    const checkouts = repo.worktrees.filter((item) => !item.missing)
+    for (const item of checkouts.filter((c) => c.kind !== 'folder')) options.push({ path: item.path, label: item.name, kind: 'worktree' })
+    for (const item of checkouts.filter((c) => c.kind === 'folder')) options.push({ path: item.path, label: item.name, kind: 'folder' })
   }
   return options
 }
@@ -160,11 +164,13 @@ export function WorkspacePicker({
                 title={option.kind === 'chat' ? undefined : option.path}
                 {...hoverIntent(() => setActiveIndex(index))}
                 onClick={() => choose(index)}
-                className={`${MENU_ITEM_CLASS} ${index === activeIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2)'} ${option.kind === 'worktree' ? 'pl-7' : ''}`}
+                data-picker-kind={option.kind}
+                className={`${MENU_ITEM_CLASS} ${index === activeIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2)'} ${option.kind === 'worktree' || option.kind === 'folder' ? 'pl-7' : ''}`}
               >
                 {option.kind === 'chat' && <MessageCircle size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />}
                 {option.kind === 'repo' && <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />}
                 {option.kind === 'worktree' && <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
+                {option.kind === 'folder' && <Folder size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
                 <span className={`min-w-0 flex-1 truncate ${option.kind === 'chat' ? '' : 'font-mono'}`}>{option.label}</span>
                 {selected && <Check size={12} className="shrink-0" aria-hidden="true" />}
               </div>

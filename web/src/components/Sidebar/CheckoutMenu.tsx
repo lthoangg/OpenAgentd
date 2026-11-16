@@ -5,7 +5,7 @@
  * desktop, a sheet on touch) also holds the selected worktree's actions.
  */
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, Folder, GitBranch, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { setCodingWorkspaceVisibility } from '@/api/client'
@@ -147,9 +147,14 @@ export function CheckoutMenu({
         <BottomSheet open onClose={() => setCheckoutMenu(null)} label={`Worktrees for ${workspaceLabel(checkoutMenu.repo)}`}>
           <div data-worktree-sheet="" className="flex flex-col px-2 pb-3">
             {[
-              { path: null as string | null, name: 'Workspace and worktrees', counted: [...checkoutMenuRepository.worktrees.map((w) => w.path), checkoutMenu.repo] },
-              { path: checkoutMenu.repo as string | null, name: 'Main workspace', counted: [checkoutMenu.repo] },
-              ...checkoutMenuRepository.worktrees.map((w) => ({ path: w.path as string | null, name: w.name, counted: [w.path] })),
+              { path: null as string | null, name: 'Workspace and worktrees', kind: '', counted: checkoutMenuRepository.allPaths },
+              { path: checkoutMenu.repo as string | null, name: 'Main workspace', kind: '', counted: [checkoutMenu.repo] },
+              ...checkoutMenuRepository.worktrees.map((w) => ({
+                path: w.path as string | null,
+                name: w.name,
+                kind: w.kind === 'folder' ? 'Folder · ' : w.external ? 'External worktree · ' : '',
+                counted: [w.path],
+              })),
             ].map((row) => {
               const rowSessions = row.counted.flatMap((p) => sessionsByWorkspace.get(p) ?? [])
               const running = rowSessions.filter(sessionWorking).length
@@ -166,7 +171,7 @@ export function CheckoutMenu({
                   <span className="min-w-0 flex-1 text-left">
                     <span className="block truncate text-sm text-(--color-text)">{row.name}</span>
                     <span className="block truncate text-meta text-(--color-text-muted)">
-                      {`${rowSessions.length} ${rowSessions.length === 1 ? 'session' : 'sessions'}${running > 0 ? ` · ${running} running` : ''}`}
+                      {`${row.kind}${rowSessions.length} ${rowSessions.length === 1 ? 'session' : 'sessions'}${running > 0 ? ` · ${running} running` : ''}`}
                     </span>
                   </span>
                   {checked && <Check size={16} aria-hidden="true" />}
@@ -222,23 +227,29 @@ export function CheckoutMenu({
             <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
             Workspace
           </CheckoutMenuItem>
-          {checkoutMenuRepository.worktrees.map((item) => (
-            <CheckoutMenuItem
-              key={item.path}
-              checked={checkoutMenuRepository.selected === item.path}
-              title={item.missing ? `Folder not found at ${item.path}` : undefined}
-              onSelect={() => { selectCheckout(checkoutMenu.repo, item.path); setCheckoutMenu(null) }}
-            >
-              {item.kind === 'folder'
-                ? <Folder size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-                : <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
-              <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-              {item.missing
-                ? <MissingBadge />
-                : item.kind === 'folder'
-                  ? <Chip>folder</Chip>
-                  : !item.managed && <Chip>external</Chip>}
-            </CheckoutMenuItem>
+          {checkoutMenuRepository.worktrees.map((item, index, items) => (
+            <Fragment key={item.path}>
+              {/* Subfolders follow the worktrees, under their own heading. */}
+              {item.kind === 'folder' && items[index - 1]?.kind !== 'folder' && (
+                <>
+                  <ContextMenuSeparator />
+                  <div className="px-2 pb-0.5 pt-1 text-meta text-(--color-text-subtle)" data-checkout-folders-heading="">Folders</div>
+                </>
+              )}
+              <CheckoutMenuItem
+                checked={checkoutMenuRepository.selected === item.path}
+                title={item.missing ? `Folder not found at ${item.path}` : undefined}
+                onSelect={() => { selectCheckout(checkoutMenu.repo, item.path); setCheckoutMenu(null) }}
+              >
+                {item.kind === 'folder'
+                  ? <Folder size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+                  : <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
+                <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
+                {item.missing
+                  ? <MissingBadge />
+                  : item.kind !== 'folder' && (item.external ?? !item.managed) && <Chip>external</Chip>}
+              </CheckoutMenuItem>
+            </Fragment>
           ))}
           <ContextMenuSeparator />
           <button

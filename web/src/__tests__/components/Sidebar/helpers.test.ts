@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
+  checkoutCountLabel,
   groupSessionsByWorkspace,
   repositoryCheckouts,
   sourceWorkspacePaths,
@@ -69,6 +70,31 @@ describe('Sidebar helpers', () => {
     expect(removed.selected).toBeNull()
     expect(removed.listPaths).toEqual(['/repo', '/wt/b'])
     expect(repositoryCheckouts('/chat', undefined, none, '/elsewhere').listPaths).toEqual(['/chat'])
+  })
+
+  it('lists worktrees before subfolders and keeps the sessions of gone checkouts', () => {
+    const repository = {
+      path: '/repo',
+      name: 'repo',
+      worktrees: [
+        { path: '/repo/web', name: 'web', managed: false, kind: 'folder' as const },
+        { path: '/wt/a', name: 'a', managed: true, kind: 'worktree' as const },
+      ],
+      former_checkouts: [{ path: '/wt/gone', name: 'gone' }],
+    }
+    const none = new Set<string>()
+
+    const all = repositoryCheckouts('/repo', repository, none, undefined)
+    expect(all.worktrees.map((item) => item.path)).toEqual(['/wt/a', '/repo/web'])
+    expect(all.listPaths).toEqual(['/repo', '/wt/a', '/repo/web', '/wt/gone'])
+    expect(all.worktreeNames.get('/wt/gone')).toBe('gone')
+    // A gone checkout is not one to pick: selecting it falls back to all.
+    expect(repositoryCheckouts('/repo', repository, none, '/wt/gone').selected).toBeNull()
+    expect(repositoryCheckouts('/repo', repository, none, '/wt/a').allPaths).toEqual(all.listPaths)
+
+    expect(checkoutCountLabel(all.worktrees)).toBe('1 worktree · 1 folder')
+    expect(checkoutCountLabel([])).toBe('0 worktrees')
+    expect(checkoutCountLabel([repository.worktrees[0]])).toBe('1 folder')
   })
 
   it('groups sessions by workspace and drops sessions without one', () => {

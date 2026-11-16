@@ -219,6 +219,33 @@ describe('Sidebar workspace trust flow', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
+  it('asks the server to remove the worktree with its last session, and says what became of it', async () => {
+    const user = userEvent.setup()
+    fx.sessionsData = [
+      { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
+    ]
+    fx.workspaceSessionsData = fx.sessionsData
+    useToastStore.setState({ toasts: [] })
+
+    await renderSidebarForSessions('session-1')
+    await user.click(screen.getByLabelText('More actions for Delete me'))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }))
+
+    const [target, options] = deleteSessionMutate.mock.calls.at(-1) as unknown as [
+      { removeWorktree?: boolean },
+      { onSuccess: (result: { worktree: { name: string; removed: boolean; reason?: string } | null }) => void },
+    ]
+    expect(target.removeWorktree).toBe(true)
+    const titles = () => useToastStore.getState().toasts.map((t) => t.title)
+    options.onSuccess({ worktree: null })
+    expect(titles()).toEqual(['Session deleted'])
+    options.onSuccess({ worktree: { name: 'fix', removed: true } })
+    expect(titles()).toContain('Removed worktree fix')
+    options.onSuccess({ worktree: { name: 'wip', removed: false, reason: 'it has uncommitted changes' } })
+    const kept = useToastStore.getState().toasts.find((t) => t.title === 'Kept worktree wip')
+    expect(kept?.description).toBe('Not removed with its last session: it has uncommitted changes.')
+  })
+
   it('asks before deleting a session whose agent is still working, since Undo does not restart it', async () => {
     const user = userEvent.setup()
     fx.sessionsData = [

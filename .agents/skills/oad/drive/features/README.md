@@ -10,6 +10,7 @@ view; find code paths in the source when you need them.
 | [Send a message](message.md) | `message` | A new session in a folder opened through the UI; the reply streams in; the server stored the turn |
 | [Model protocols](protocols.md) | `protocols` | Text and a tool call over Anthropic Messages and OpenAI Responses, picked the way a user picks a model |
 | [Session sidebar](sidebar.md) | `sidebar` | Sessions are listed under their workspace, open on a click, and are found by search |
+| [Worktree list](worktrees.md) | `worktrees` | A worktree removed outside the app drops off while its session stays; a plain-git one is listed as external |
 | [Review panel](review.md) | `review` | A file the agent changed shows in Git with its diff, and matches `git diff` on disk |
 | [Terminal](terminal.md) | `terminal` | A command typed in the panel's terminal runs in the session's workspace |
 | [Script tool row](script.md) | `script` | A `script` call's nested tool calls run; its row shows the code, the calls and the result, and is the same after a reload |

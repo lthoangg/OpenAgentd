@@ -281,7 +281,9 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(worktreeChip())
     const menu = await waitFor(() => screen.getByRole('menu', { name: 'Worktrees for project' }))
     const items = Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="menuitemcheckbox"], [role="menuitem"]')).map((el) => el.textContent)
-    expect(items).toContain('webfolder')
+    // Subfolders come after the worktrees, under their own heading.
+    expect(items.indexOf('web')).toBeGreaterThan(items.indexOf('project-fix'))
+    expect(menu.querySelector('[data-checkout-folders-heading]')?.textContent).toBe('Folders')
     // A missing checkout gets the same mark (its row's title names the folder).
     expect(items).toContain('project-fix')
     const missingItem = within(menu).getByRole('menuitemradio', { name: /^project-fix/ })

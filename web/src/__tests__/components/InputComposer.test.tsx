@@ -691,6 +691,17 @@ describe("InputComposer — run deck", () => {
     expect(textarea.value).toBe("/btw ")
   })
 
+  it("opens the file picker from the + control's attach outside the native app", () => {
+    let actions: { attach: (kind?: "photos" | "files") => void } | null = null
+    render(<InputComposer onSubmit={() => {}} renderPlus={(a) => { actions = a; return null }} />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const click = mock(() => {})
+    input.click = click
+    act(() => actions!.attach())
+    act(() => actions!.attach("photos"))
+    expect(click).toHaveBeenCalledTimes(2)
+  })
+
   it("draws no border on the deck controls: only the composer field has one", () => {
     render(<InputComposer onSubmit={() => {}} interactionMode="code" onInteractionModeChange={() => {}} />)
     for (const name of ["Attach file", "Send message"]) {

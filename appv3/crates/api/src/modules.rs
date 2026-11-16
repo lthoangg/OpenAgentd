@@ -238,6 +238,12 @@ const BUILTIN: &[Spec] = &[
     Spec { id: "cloud", deps: &["workspace"], critical: false, start: Some(|_| Box::pin(crate::cloud::start())), stop: Some(|| Box::pin(crate::cloud::stop())) },
 ];
 
+/// The ids of the built-in modules, in start order. Tests that drive the
+/// real server read the table through this instead of keeping a copy.
+pub fn builtin_ids() -> Vec<&'static str> {
+    BUILTIN.iter().map(|s| s.id).collect()
+}
+
 /// The built-in modules, in start order.
 pub fn builtin(pool: &DbPool) -> Vec<FnModule> {
     BUILTIN

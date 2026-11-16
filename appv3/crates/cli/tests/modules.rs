@@ -12,25 +12,11 @@ use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// The server's built-in modules, in start order.
-const BUILTIN: [&str; 16] = [
-    "workspace",
-    "otel",
-    "lsp",
-    "mcp",
-    "subagents",
-    "sessions",
-    "stream_store",
-    "snapshots",
-    "agents",
-    "scheduler",
-    "preview",
-    "terminal",
-    "model_registry",
-    "shell_snapshot",
-    "config_watch",
-    "restart_resume",
-];
+/// The server's built-in modules, in start order: the server's own table,
+/// so a module added there is checked here without a second list.
+fn builtin() -> Vec<&'static str> {
+    appv3_api::modules::builtin_ids()
+}
 
 /// The access key of the keyed server below.
 const ACCESS_KEY: &str = "modules-test-key-0123456789";
@@ -192,7 +178,7 @@ fn assert_all_running(out: &str) {
     assert_eq!(section.len(), 1, "one collapsed line:\n{out}");
     let words: Vec<&str> = section[0].split_whitespace().collect();
     let total: usize = words.get(1).and_then(|n| n.parse().ok()).unwrap_or_else(|| panic!("no count in:\n{out}"));
-    assert!(total >= BUILTIN.len(), "{out}");
+    assert!(total >= builtin().len(), "{out}");
     assert_eq!(words.join(" "), format!("✓ {total} of {total} modules running"), "{out}");
 }
 
@@ -233,7 +219,8 @@ fn the_server_reports_every_builtin_module_as_running() {
     let ids: Vec<&str> = modules.iter().map(|m| m["id"].as_str().unwrap()).collect();
     assert_eq!(ids[0], "workspace", "the workspace exists before anything reads it: {ids:?}");
     assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len(), "an id twice: {ids:?}");
-    for id in BUILTIN {
+    assert!(builtin().contains(&"cloud"), "the server's table, not a copy: {:?}", builtin());
+    for id in builtin() {
         let m = modules.iter().find(|m| m["id"] == id).unwrap_or_else(|| panic!("module {id} missing: {ids:?}"));
         assert_eq!(m["state"], "running", "{m}\n{}", server.stderr());
         assert!(m["error"].is_null(), "{m}");

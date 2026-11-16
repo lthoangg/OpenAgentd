@@ -16,7 +16,7 @@ const ATTACHMENT_FIELDS = ['filename', 'media_type', 'original_name', 'category'
  * the display attachments beside the rest. The event carries the stored
  * ``extra``, so internal fields (``path``, ``converted_text``) are dropped.
  */
-export function splitEventAttachments(raw: unknown): {
+function splitEventAttachments(raw: unknown): {
   attachments: MessageAttachment[] | undefined
   extra: Record<string, unknown> | undefined
 } {

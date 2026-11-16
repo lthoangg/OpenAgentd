@@ -2,12 +2,8 @@ import type { StateCreator } from 'zustand'
 import { postAgentChat, postAgentCommand, agentStream } from '@/api/client'
 import { restoredPromptText } from '@/lib/goal'
 import { applyQuestionResolution, applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
-import {
-  applySSEDeltaBatch,
-  createSSEHandler,
-  isBufferedSSEDelta,
-  type BufferedSSEDelta,
-} from './sse-reducer'
+import { applySSEDeltaBatch, isBufferedSSEDelta, type BufferedSSEDelta } from './sse-content'
+import { createSSEHandler } from './sse-reducer'
 import { isTransientNetworkError } from '@/utils/errors'
 import {
   decideAbort,

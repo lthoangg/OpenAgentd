@@ -2,7 +2,7 @@
  * Attachment strip state + handlers for InputComposer — file selection, paste,
  * and drag-and-drop.
  *
- * Kept in a separate module (not a `.tsx` component) so InputComposer.tsx's
+ * Kept in a separate module (not a `.tsx` component) so the component's
  * render tree stays focused on layout/markup; this hook owns all the
  * `files` state transitions and DOM event wiring around them.
  */
@@ -117,6 +117,19 @@ export function useInputComposerAttachments({ capabilities }: UseInputComposerAt
     addFiles(dropped)
   }, [addFiles])
 
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const pastedFiles = extractPastedFiles(items)
+    if (pastedFiles.length > 0) {
+      e.preventDefault()
+      // Routed through ``addFiles`` (not a raw ``setFiles``) so pasted
+      // files go through the same size budget as dropped and picked ones.
+      addFiles(pastedFiles)
+      return
+    }
+  }, [extractPastedFiles, addFiles])
+
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.currentTarget.files
     if (!selectedFiles) return
@@ -137,11 +150,11 @@ export function useInputComposerAttachments({ capabilities }: UseInputComposerAt
     addFile,
     removeFile,
     addFiles,
-    extractPastedFiles,
     handleDragEnter,
     handleDragLeave,
     handleDragOver,
     handleDrop,
     handleFileSelect,
+    handlePaste,
   }
 }

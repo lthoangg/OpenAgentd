@@ -183,12 +183,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     blobUrls,
     removeFile,
     addFiles: addAllowedFiles,
-    extractPastedFiles,
     handleDragEnter,
     handleDragLeave,
     handleDragOver,
     handleDrop,
     handleFileSelect,
+    handlePaste,
   } = useInputComposerAttachments({ capabilities })
   // Design feedback chips. Written into the message on send; text set from
   // outside (restores, history) has its blocks turned back into chips.
@@ -428,19 +428,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     // why this can't wait for the next animation frame.
     resetHeightNow()
   }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, rememberPrompt, resetDraftState, resetHeightNow, setFiles, setMentions, setMenuIndex])
-
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items
-    if (!items) return
-    const pastedFiles = extractPastedFiles(items)
-    if (pastedFiles.length > 0) {
-      e.preventDefault()
-      // Routed through ``addAllowedFiles`` (not a raw ``setFiles``) so pasted
-      // files go through the same size budget as dropped and picked ones.
-      addAllowedFiles(pastedFiles)
-      return
-    }
-  }, [extractPastedFiles, addAllowedFiles])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return

@@ -190,7 +190,7 @@ credential or database format changes.
   empty body when `If-None-Match` matches. The body is still computed on
   every request. CORS exposes `ETag` so the phone app (`tauri://localhost`,
   cross-origin) can read it; the web client revalidates the newest history
-  page of its last four sessions. Tests: `api/src/routes/agent/files.rs`,
+  page of its last four sessions. Tests: `api/src/routes/agent/files/tests.rs`,
   `api/tests/http_api.rs` (`history_etag_flow`). v2 always returns 200.
 - **Uploads and media revalidate (v3 only):** `GET /api/agent/{sid}/uploads/…`
   and `/media/…` answer a matching `If-None-Match` (weak comparison, `*`),
@@ -303,7 +303,7 @@ credential or database format changes.
   the diff text that `git-diff/view` cuts at 512 K characters. The dock now
   fetches bodies one file at a time from `git-diff/view?paths=…`, which reads
   paths literally (`--literal-pathspecs`) and keeps the `untracked` list when
-  the tracked diff is cut. Test: `api/src/routes/agent/files/git.rs`. v2 has
+  the tracked diff is cut. Test: `api/src/routes/agent/files/git/tests.rs`. v2 has
   only the whole diff.
 - **Three v2 routes are gone (v3 only):** `GET
   /api/agent/{session_id}/permissions`, `POST

@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * The sidebar column's frame: its width (stored, clamped to the window, and
  * dragged by the resize edge), the desktop slide when it shows or hides, and

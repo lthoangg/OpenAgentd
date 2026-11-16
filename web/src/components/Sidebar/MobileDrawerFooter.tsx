@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * The phone drawer's footer: Settings, Usage and the command palette as
  * icons, the server (which takes the free width and names itself, so the

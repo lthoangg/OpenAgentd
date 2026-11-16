@@ -42,6 +42,9 @@ export function useCheckoutFilter({
   activeWorkspace: string | null
   activeWorktreeSource: string | null | undefined
 }) {
+  // Not compiled, as when this code was part of Sidebar, which the React
+  // Compiler skipped; compiling it is a change of its own to verify.
+  'use no memo'
   // Repository path → the one checkout its list shows (its own path or a
   // worktree's). Absent means every checkout.
   const [checkoutFilter, setCheckoutFilter] = useState<Record<string, string>>({})
@@ -112,6 +115,9 @@ export function CheckoutMenu({
   worktreeActions: WorktreeActions
   refreshWorkspaceTree: () => Promise<void>
 }) {
+  // Not compiled, as when this code was part of Sidebar, which the React
+  // Compiler skipped; compiling it is a change of its own to verify.
+  'use no memo'
   const { openWorktreeDialog, handleWorktreeEdit, setRemoveWorktreeTarget, worktreeRemoving } = worktreeActions
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)

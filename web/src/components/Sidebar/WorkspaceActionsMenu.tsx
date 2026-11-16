@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * A workspace row's actions: New session, Locate folder… (when its folder is
  * gone), Copy path, Create worktree… (a Git repository), its workspace

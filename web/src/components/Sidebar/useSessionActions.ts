@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * What a session row can do, from any of the sidebar's lists: open (⌘-click
  * in a new desktop window), rename in place, pin, and delete with a toast

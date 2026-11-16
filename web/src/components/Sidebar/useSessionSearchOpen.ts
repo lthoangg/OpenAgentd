@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * Whether the sidebar shows session search in place of its lists. Opening
  * it (the Search button, or ⌘⇧F through ``searchSessionsKey``) focuses the

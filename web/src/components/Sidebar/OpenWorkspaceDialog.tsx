@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * Open workspace…: where a new workspace folder comes from. The desktop app
  * on its own server asks the OS folder picker; everywhere else the user

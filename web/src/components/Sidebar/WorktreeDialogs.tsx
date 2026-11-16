@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /** The worktree dialogs: Create worktree and Rename worktree. */
 import { Folder } from 'lucide-react'
 import { workspaceLabel } from '@/utils/workspace'

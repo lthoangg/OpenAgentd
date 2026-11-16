@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * Locate folder… for a workspace whose folder is gone from disk: the
  * relocate dialog, which picks the new folder with the OS dialog when the

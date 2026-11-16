@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /**
  * The workspace tree the sidebar lists: repositories with their worktrees
  * and workspace groups, from the shared query (so a refresh made anywhere,

@@ -124,6 +124,9 @@ export function useQuotaWait({ blocks, liveTail, isTurnOpen, sessionId, held }: 
   /** A switch holds another session's transcript on screen. */
   held: boolean
 }) {
+  // Not compiled, as when this code was part of AgentView, which the React
+  // Compiler skipped; compiling it is a change of its own to verify.
+  'use no memo'
   const activeQuotaWait = useMemo(
     () => latestActiveQuotaWait(blocks, liveTail),
     [blocks, liveTail],

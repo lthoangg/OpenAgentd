@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of Sidebar, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 /** A session's menu: a context menu on desktop, a bottom sheet on a phone. */
 import { Fragment } from 'react'
 import { ActionSheet } from '@/components/ui/action-sheet'

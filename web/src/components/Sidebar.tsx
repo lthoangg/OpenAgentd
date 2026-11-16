@@ -1,4 +1,4 @@
-// size-ceiling: 911 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 886 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -110,11 +110,10 @@ import { CheckoutMenu, useCheckoutFilter } from './Sidebar/CheckoutMenu'
 import { useWorkspaceTree } from './Sidebar/useWorkspaceTree'
 import { WorkspaceTree } from './Sidebar/WorkspaceTree'
 import { MobileDrawerFooter } from './Sidebar/MobileDrawerFooter'
+import { walkSidebarRows } from './Sidebar/rowKeys'
 
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
-/** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
-const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
 
 interface SidebarProps {
   currentSessionId?: string
@@ -668,31 +667,7 @@ export function Sidebar({
         data-focus-region="sidebar"
         className={cn('flex min-h-0 flex-1 flex-col', pinRows && 'shrink-0 self-end')}
         style={pinRows ? { width: sidebarResize.width } : undefined}
-        onKeyDown={(event) => {
-          if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
-          const target = event.target as HTMLElement
-          // Up/Down/Home/End walk the visible rows like a native source list;
-          // Tab still stops on every row and action (DESIGN.md → Keyboard
-          // focus model). Only from a row, so fields and menus keep their keys.
-          if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && target.matches(SIDEBAR_ROW)) {
-            const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(SIDEBAR_ROW))
-              .filter((el) => !el.closest('[inert], [hidden]'))
-            const index = rows.indexOf(target)
-            const next = event.key === 'Home' ? rows[0]
-              : event.key === 'End' ? rows[rows.length - 1]
-              : rows[index + (event.key === 'ArrowDown' ? 1 : -1)]
-            event.preventDefault()
-            next?.focus()
-            return
-          }
-          // Left on a session row climbs to its workspace, like a tree.
-          if (event.key !== 'ArrowLeft') return
-          if (!target.closest('[data-sidebar-session]')) return
-          const header = target.closest('[data-sidebar-workspace-group]')?.querySelector<HTMLElement>('[data-sidebar-workspace]')
-          if (!header) return
-          event.preventDefault()
-          header.focus()
-        }}
+        onKeyDown={walkSidebarRows}
       >
       {/* Always visible, above the scroller: the one-step way to start. The
           Sessions page starts one from ✎ in its top bar instead. */}

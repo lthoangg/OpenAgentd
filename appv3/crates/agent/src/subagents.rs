@@ -1,4 +1,3 @@
-// size-ceiling: 1190 — split lifecycle, messaging and reconcile
 //! Subagent coordination (the paths reachable from `team`, session callbacks and the API).
 
 pub(crate) mod report;

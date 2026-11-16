@@ -88,6 +88,19 @@ def test_validate_repository_reports_each_documentation_contract_violation(tmp_p
     )
 
 
+def test_a_feature_area_file_needs_a_title_and_description_but_no_date(tmp_path):
+    module = _load_module()
+    tracked = _write_repo(tmp_path)
+    area = tmp_path / "documents" / "docs" / "features" / "area.md"
+    area.parent.mkdir()
+    area.write_text('---\ntitle: "Features: Area"\n---\n# Area\n')
+
+    # `status` and `updated` belong to the index, which the release script rewrites.
+    assert module.validate_repository(tmp_path, [*tracked, area]) == [
+        "documents/docs/features/area.md: missing frontmatter field: description"
+    ]
+
+
 def test_every_verify_target_is_named_in_the_root_agents_guide(tmp_path):
     module = _load_module()
     tracked = _write_repo(tmp_path)

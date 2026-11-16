@@ -229,8 +229,11 @@ pass), `oad/release`, and `oad/ios-store` (TestFlight and App Store).
 
 ## Documentation
 
-- Update `documents/docs/features.md` for shipped user-visible behavior. Tag an
-  entry with the release it will ship in: the next version, not the one
+- Record shipped user-visible behavior in the feature catalogue.
+  `documents/docs/features.md` is its index; the entries are in one file per
+  area under `documents/docs/features/`. Open the area file the index names,
+  and update the entry that already describes the feature before adding one.
+  Tag an entry with the release it will ship in: the next version, not the one
   `scripts/release_version.sh` prints. Keep entries factual. This is the one
   statement of the rule; `oad/commit` step 3 says where each other kind of
   change is recorded.

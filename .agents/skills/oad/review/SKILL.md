@@ -71,7 +71,7 @@ Lead with correctness and security, then architecture, then the rest.
 
 - Which gates ran: `make verify-v3`, `make verify-web`, `make verify-docs`, native targets (`oad/testing`)?
 - UI changes: driven at a phone width and a desktop width with `oad/drive` (which journeys, and the evidence folder), and read against `DESIGN.md`?
-- User-visible change: entry in `documents/docs/features.md`?
+- User-visible change: entry in its area file under `documents/docs/features/`?
 
 ## 6. Output
 

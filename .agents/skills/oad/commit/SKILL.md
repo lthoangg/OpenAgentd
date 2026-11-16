@@ -30,7 +30,7 @@ Pick the smallest durable record for what changed:
 
 | Change | Record |
 |---|---|
-| Shipped user-visible capability or behavior change | Version-cited entry in `documents/docs/features.md` (the canonical catalogue), tagged as root `AGENTS.md` (Documentation) says; mark removed features *(deprecated)* for at least one release before deleting them. |
+| Shipped user-visible capability or behavior change | Version-cited entry in the area file under `documents/docs/features/` that the index `documents/docs/features.md` names (the canonical catalogue), tagged as root `AGENTS.md` (Documentation) says; mark removed features *(deprecated)* for at least one release before deleting them. |
 | UI change to what a reply can render, open, or run | `app_guide` in `appv3/crates/agent/data/builtin_prompts.json`, so the agent writes for it. Nowhere else: no other prompt or tool description repeats it. |
 | Product story or first-run/setup change | `README.md` |
 | Non-obvious invariant, security, or architecture rationale | A comment beside the code (why, not what) |

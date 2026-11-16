@@ -208,7 +208,8 @@ GitHub issues are the roadmap; shipped capabilities belong in
 - **Documentation:** use the Documentation form for wrong, missing, or unclear
   docs.
 - **Roadmap items:** use `roadmap` plus `enhancement`. When a roadmap item ships,
-  close the issue and add the shipped feature to `documents/docs/features.md`.
+  close the issue and add the shipped feature to its area file under
+  `documents/docs/features/`.
 - **Contributor or coding-agent friction:** use the Agent / repository friction
   form (label `devex`).
 - **Security vulnerabilities:** do not open a public issue. Use GitHub Security

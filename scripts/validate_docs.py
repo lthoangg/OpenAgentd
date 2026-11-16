@@ -11,6 +11,9 @@ from pathlib import Path
 from urllib.parse import unquote
 
 FRONTMATTER_REQUIREMENTS: tuple[tuple[str, frozenset[str]], ...] = (
+    # Area files of the feature catalogue: the index alone carries the release
+    # line and the `updated:` date that the release script rewrites.
+    ("documents/docs/features/", frozenset({"title", "description"})),
     ("documents/docs/", frozenset({"title", "description", "status", "updated"})),
     (".github/ISSUE_TEMPLATE/", frozenset({"name", "about", "labels"})),
 )

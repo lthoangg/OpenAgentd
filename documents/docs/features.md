@@ -2452,8 +2452,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     install that already has sessions keeps **Full** until the setting is
     changed, and a style picked earlier is kept. Full is the app as before.
     Simple folds each turn's work into one row (the Reader transcript) and:
-    - the model chip names the model only (thinking level and account are
-      in the picker);
+    - the model chip named the model only; from `[v3.57.0]` it names the
+      thinking level and the account too, as in Full;
     - the context ring appeared once the context was 70% full; from
       `[v3.57.0]` it shows from the first message with a bare
       percentage, as in Full;

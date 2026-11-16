@@ -3,7 +3,7 @@
 //! arguments history leaves out until a card is opened.
 
 use super::super::helpers::*;
-use super::{sent_from_by_id, session_json};
+use super::sessions::{sent_from_by_id, session_json};
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::Peer;
 use crate::util::*;

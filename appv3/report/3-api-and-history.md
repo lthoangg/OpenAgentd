@@ -140,10 +140,10 @@ credential or database format changes.
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and
   `before` are ignored and `workspace` still narrows it
-  (`api/src/routes/agent/chat.rs`, tested in `api/tests/http_api.rs`). The
-  sidebar's **Needs you** list uses it, whatever page the sessions are on. v2
-  ignores the parameter and returns a normal page, which the web client
-  filters to the same rows.
+  (`api/src/routes/agent/chat/sessions.rs`, tested in
+  `api/tests/http_api.rs`). The sidebar's **Needs you** list uses it, whatever
+  page the sessions are on. v2 ignores the parameter and returns a normal
+  page, which the web client filters to the same rows.
 - **Session title search:** `GET /api/agent/sessions?q=…` keeps sessions
   whose title contains the text, ignoring ASCII case, with `%` and `_`
   matched literally. It pages like the normal list
@@ -153,10 +153,11 @@ credential or database format changes.
 - **Multi-workspace session list:** `GET /api/agent/sessions?workspaces=…`
   (repeatable) keeps sessions in any of the listed paths, newest first, and
   pages like the normal list; a `workspace` value joins the same list, and
-  `active=true` is narrowed the same way (`api/src/routes/agent/chat.rs`,
-  `db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`). The
-  sidebar uses it to list a repository and its worktrees as one list. v2
-  ignores `workspaces`, and the web client then filters the page it gets.
+  `active=true` is narrowed the same way
+  (`api/src/routes/agent/chat/sessions.rs`, `db/src/queries/sessions.rs`,
+  tested in `api/tests/http_api.rs`). The sidebar uses it to list a
+  repository and its worktrees as one list. v2 ignores `workspaces`, and the
+  web client then filters the page it gets.
 - **Session list sort:** `GET /api/agent/sessions?sort=activity` orders by
   `updated_at` (most recently touched first) and pages with a
   `"<updated_at>|<uuid>"` cursor; `sort=created`, the default, keeps v2's

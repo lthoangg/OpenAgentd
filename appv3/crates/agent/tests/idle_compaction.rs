@@ -3,6 +3,8 @@
 //! share of the compaction trigger. Subagents still working for the lead do
 //! not hold it back; an open question does.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::{AgentSession, UserMessage};
 use appv3_agent::{broadcaster, manager, subagents, Agent};
@@ -13,6 +15,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+use common::wait_until;
 
 /// Settings and env are process-wide, so both tests share one root and run
 /// one at a time.
@@ -232,16 +236,6 @@ impl LlmProvider for Gated {
     }
 }
 
-async fn wait_for(what: &str, mut f: impl FnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(20), async {
-        while !f() {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
-}
-
 /// A lead whose turn ended while its subagent still works is compacted once
 /// the delay passes, and the subagent's report that arrives mid-compaction
 /// is not lost: it runs a lead turn right after the compaction.
@@ -279,11 +273,11 @@ async fn idle_compaction_runs_while_a_subagent_works_and_its_report_follows() {
     lead.set_idle_compaction_delay(Duration::from_millis(150));
     lead.handle_user_message(UserMessage { content: "build it".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
     // (`wait_turn_finished` would also wait out the compaction held below.)
-    wait_for("the member's build to start", || !worker_mock.calls.lock().unwrap().is_empty()).await;
+    wait_until("the member's build to start", || !worker_mock.calls.lock().unwrap().is_empty()).await;
     assert!(subagents::has_working_subagents(&sid), "the member works for the lead");
 
     // The delay passes with the member still working: the compaction starts.
-    wait_for("the idle compaction to start", || gate.entered.load(Ordering::SeqCst)).await;
+    wait_until("the idle compaction to start", || gate.entered.load(Ordering::SeqCst)).await;
     // Keep the report's own turn from arming another compaction.
     lead.set_idle_compaction_delay(Duration::from_secs(3600));
     assert_eq!(lead.state(), "working", "the compaction turn is running");
@@ -314,7 +308,7 @@ async fn idle_compaction_runs_while_a_subagent_works_and_its_report_follows() {
 
     // The compaction finishes, then the lead reads the report.
     gate.release.add_permits(1);
-    wait_for("the lead to answer the report", || lead_mock.calls.lock().unwrap().len() >= 4).await;
+    wait_until("the lead to answer the report", || lead_mock.calls.lock().unwrap().len() >= 4).await;
     tokio::time::timeout(Duration::from_secs(20), lead.wait_turn_finished()).await.expect("lead turn on the report finishes");
     assert_eq!(summaries(&pool, &sid).await, 1, "the compaction completed");
     let calls = lead_mock.calls.lock().unwrap();

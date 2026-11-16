@@ -3,6 +3,8 @@
 //! another's work. Neither cut-short turn reports to the lead. The manager is
 //! process-wide, so this file is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::tools::team::DelegateTool;
 use appv3_agent::{manager, subagents};
@@ -13,7 +15,9 @@ use appv3_tools::{Tool, ToolContext, ToolOutput};
 use serde_json::json;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use common::wait_until;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -39,14 +43,6 @@ fn setup_roots(root: &Path) {
     std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:lead\ntools: []\n---\nYou are the coding agent.\n").unwrap();
     std::fs::write(agents.join("worker.md"), "---\nname: worker\nrole: member\ndescription: Runs builds.\nmodel: mock:worker\ntools:\n  - shell\n---\nYou run builds.\n").unwrap();
     std::fs::write(agents.join("helper.md"), "---\nname: helper\nrole: member\ndescription: Runs tests.\nmodel: mock:helper\ntools:\n  - shell\n---\nYou run tests.\n").unwrap();
-}
-
-async fn wait_until(what: &str, f: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !f() {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
 }
 
 fn user_texts(mock: &MockProvider) -> Vec<String> {

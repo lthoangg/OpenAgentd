@@ -5,6 +5,8 @@
 //! conversation. The registry and manager are process-wide, so this file
 //! is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::{manager, subagents};
 use appv3_providers::mock::MockProvider;
@@ -12,6 +14,8 @@ use appv3_providers::{ChatMessage, LlmProvider};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use common::wait_until_async;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -37,14 +41,6 @@ fn setup_roots(root: &Path) {
     std::fs::create_dir_all(&agents).unwrap();
     std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:mock\ntools: []\n---\nYou are the coding agent.\n").unwrap();
     std::fs::write(agents.join("worker.md"), "---\nname: worker\nrole: member\ndescription: Runs builds.\nmodel: mock:mock\ntools:\n  - shell\n---\nYou run builds.\n").unwrap();
-}
-
-async fn wait_until(what: &str, mut f: impl AsyncFnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !f().await {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
 }
 
 fn sent_text(messages: &[ChatMessage]) -> String {
@@ -87,7 +83,7 @@ async fn a_finished_member_is_unloaded_and_resumes_by_its_handle() {
     let before_spawn = Instant::now();
     subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
     let member_sid = loaded().expect("member registered");
-    wait_until("the lead's turn on the report", async || calls() >= 2).await;
+    wait_until_async("the lead's turn on the report", async || calls() >= 2).await;
     lead_idle().await;
 
     // It stays loaded until the full wait has passed since its report.
@@ -96,7 +92,7 @@ async fn a_finished_member_is_unloaded_and_resumes_by_its_handle() {
     assert_eq!(subagents::describe_subagents(&sid, &pool).await, "- worker#1: done (report delivered)");
 
     // Then any session lookup drops it from memory.
-    wait_until("the member to be unloaded", async || {
+    wait_until_async("the member to be unloaded", async || {
         subagents::unload_finished(Instant::now() + subagents::UNLOAD_FINISHED_AFTER).await;
         loaded().is_none()
     })
@@ -116,14 +112,14 @@ async fn a_finished_member_is_unloaded_and_resumes_by_its_handle() {
     let out = subagents::send_subagent_message(&sid, "worker#1", "now run the tests", &pool).await.expect("worker#1 resumed");
     assert_eq!(out["member_id"], "worker#1");
     assert_eq!(loaded().as_deref(), Some(member_sid.as_str()));
-    wait_until("the member's follow-up model call", async || calls() >= 3).await;
+    wait_until_async("the member's follow-up model call", async || calls() >= 3).await;
     let seen = sent_text(&mock.calls.lock().unwrap()[2].0);
     assert!(seen.contains("[Task from Lead]: run the build"), "{seen}");
     assert!(seen.contains("build finished"), "the member lost its earlier answer: {seen}");
     assert!(seen.contains("[Lead]: now run the tests"), "{seen}");
 
     // Its new report reaches the lead, and it is unloaded again.
-    wait_until("the follow-up report on the lead", async || {
+    wait_until_async("the follow-up report on the lead", async || {
         appv3_db::llm_window_rows(&pool, &sid, false)
             .await
             .unwrap()
@@ -131,9 +127,9 @@ async fn a_finished_member_is_unloaded_and_resumes_by_its_handle() {
             .any(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1") && r.content.as_deref() == Some("tests pass too"))
     })
     .await;
-    wait_until("the lead's turn on the follow-up report", async || calls() >= 4).await;
+    wait_until_async("the lead's turn on the follow-up report", async || calls() >= 4).await;
     lead_idle().await;
-    wait_until("the member to be unloaded again", async || {
+    wait_until_async("the member to be unloaded again", async || {
         subagents::unload_finished(Instant::now() + subagents::UNLOAD_FINISHED_AFTER).await;
         loaded().is_none()
     })

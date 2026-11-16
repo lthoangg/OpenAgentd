@@ -3,6 +3,8 @@
 //! process-wide, so this file is its own test binary and runs the whole
 //! life of one session in order.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::restart_resume::{self, CONTINUE_NOTE, NOTE_KEY};
 use appv3_agent::session::UserMessage;
@@ -13,6 +15,8 @@ use serde_json::Value;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+
+use common::wait_until_async;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -40,16 +44,6 @@ fn setup_roots(root: &Path) {
 
 async fn in_flight(pool: &appv3_db::DbPool) -> Vec<String> {
     appv3_db::list_inflight_turns(pool).await.unwrap().into_iter().map(|r| appv3_db::codec::api_uuid(&r.session_id)).collect()
-}
-
-async fn wait_for(what: &str, mut done: impl AsyncFnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(10), async {
-        while !done().await {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
 }
 
 async fn finish(sid: &str, session: &appv3_agent::session::AgentSession) {
@@ -81,19 +75,19 @@ async fn a_turn_cut_off_by_shutdown_continues_on_the_next_start_and_a_stopped_on
     let session = manager::get_or_start_agent_session(&ws, Some(&sid)).await.unwrap().expect("agent configured");
     session.set_stop_grace(Duration::from_millis(200));
     session.handle_user_message(send("first")).await.unwrap();
-    wait_for("the first turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
+    wait_until_async("the first turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
     // Stop only once the turn is waiting on its model call: a stop before
     // the call (likely on a slow machine) would leave the scripted replies
     // one behind, so the continued turn would get a hang instead of text.
-    wait_for("the first model call", async || mock.calls.lock().unwrap().len() == 1).await;
+    wait_until_async("the first model call", async || mock.calls.lock().unwrap().len() == 1).await;
     assert!(session.handle_stop().await);
     finish(&sid, &session).await;
     assert!(in_flight(&pool).await.is_empty(), "a turn the user stopped is not continued");
 
     // A turn running when the server shuts down keeps its mark.
     session.handle_user_message(send("second")).await.unwrap();
-    wait_for("the second turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
-    wait_for("the second model call", async || mock.calls.lock().unwrap().len() == 2).await;
+    wait_until_async("the second turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
+    wait_until_async("the second model call", async || mock.calls.lock().unwrap().len() == 2).await;
     restart_resume::begin_shutdown();
     manager::stop().await;
     assert_eq!(in_flight(&pool).await, std::slice::from_ref(&sid), "the shutdown left the turn marked");

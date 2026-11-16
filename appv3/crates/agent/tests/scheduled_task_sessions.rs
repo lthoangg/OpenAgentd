@@ -5,6 +5,8 @@
 //! so the next server start ran it again. The manager and scheduler are
 //! process-wide, so this file is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::manager;
 use appv3_agent::scheduler::{self, TaskCreate};
@@ -14,6 +16,8 @@ use async_trait::async_trait;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+
+use common::wait_until_async;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -70,16 +74,6 @@ async fn in_flight(pool: &appv3_db::DbPool) -> Vec<String> {
     appv3_db::list_inflight_turns(pool).await.unwrap().into_iter().map(|r| appv3_db::codec::api_uuid(&r.session_id)).collect()
 }
 
-async fn wait_for(what: &str, mut done: impl AsyncFnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(10), async {
-        while !done().await {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn each_run_of_a_task_without_a_session_gets_its_own_agent_session() {
     let tmp = tempfile::tempdir().unwrap();
@@ -114,9 +108,9 @@ async fn each_run_of_a_task_without_a_session_gets_its_own_agent_session() {
     // Two runs, the second while the first still waits on its model call.
     for n in 1..=2 {
         s.trigger(&t.slug).await.unwrap();
-        wait_for("the run to fire", async || s.get_task(&t.slug).await.unwrap().unwrap().run_count >= n).await;
+        wait_until_async("the run to fire", async || s.get_task(&t.slug).await.unwrap().unwrap().run_count >= n).await;
     }
-    wait_for("both runs marked in flight", async || in_flight(&pool).await.len() == 2).await;
+    wait_until_async("both runs marked in flight", async || in_flight(&pool).await.len() == 2).await;
     let runs = in_flight(&pool).await;
     assert_ne!(runs[0], runs[1], "the runs shared a session");
     let first = manager::find_live_session(&ws, Some(&runs[0])).expect("the first run has its own AgentSession");
@@ -129,5 +123,5 @@ async fn each_run_of_a_task_without_a_session_gets_its_own_agent_session() {
     for live in [&first, &second] {
         tokio::time::timeout(Duration::from_secs(10), live.wait_turn_finished()).await.expect("the run finishes");
     }
-    wait_for("no run left in flight", async || in_flight(&pool).await.is_empty()).await;
+    wait_until_async("no run left in flight", async || in_flight(&pool).await.is_empty()).await;
 }

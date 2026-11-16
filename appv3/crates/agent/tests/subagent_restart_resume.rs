@@ -4,6 +4,8 @@
 //! start a new member from nothing. The registry and manager are
 //! process-wide, so this file is its own test binary.
 
+mod common;
+
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::restart_resume::{self, member_notice};
 use appv3_agent::session::UserMessage;
@@ -12,7 +14,9 @@ use appv3_providers::mock::MockProvider;
 use appv3_providers::{ChatMessage, LlmProvider};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use common::wait_until_async;
 
 fn setup_roots(root: &Path) {
     for (k, d) in [
@@ -37,14 +41,6 @@ fn setup_roots(root: &Path) {
     std::fs::create_dir_all(&agents).unwrap();
     std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:mock\ntools: []\n---\nYou are the coding agent.\n").unwrap();
     std::fs::write(agents.join("worker.md"), "---\nname: worker\nrole: member\ndescription: Runs builds.\nmodel: mock:mock\ntools:\n  - shell\n---\nYou run builds.\n").unwrap();
-}
-
-async fn wait_until(what: &str, mut f: impl AsyncFnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !f().await {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}");
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
 }
 
 fn sent_text(messages: &[ChatMessage]) -> String {
@@ -86,7 +82,7 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
 
     subagents::spawn_subagent(&sid, "worker", "run the build", &ws, &pool, &factory).await.expect("member spawned");
     let member_sid = subagents::with_instance(&sid, "worker#1", |i| i.session_id.clone()).expect("member registered");
-    wait_until("the member's hanging model call", async || calls() >= 3).await;
+    wait_until_async("the member's hanging model call", async || calls() >= 3).await;
 
     // The server shuts down mid-task, and the next process starts with no
     // members in memory.
@@ -101,7 +97,7 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
     assert_eq!(report.members_reported, std::slice::from_ref(&member_sid));
 
     // The lead hears it can resume the member, and its list says so.
-    wait_until("the lead's turn on the notice", async || calls() >= 4).await;
+    wait_until_async("the lead's turn on the notice", async || calls() >= 4).await;
     let lead_rows = appv3_db::llm_window_rows(&pool, &sid, false).await.unwrap();
     let notice = lead_rows.iter().find(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1")).expect("restart notice");
     assert_eq!(notice.content.as_deref(), Some(member_notice("worker#1").as_str()));
@@ -115,14 +111,14 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
     let out = subagents::send_subagent_message(&sid, "worker#1", "continue", &pool).await.expect("worker#1 resumed");
     assert_eq!(out["member_id"], "worker#1");
     assert_eq!(subagents::with_instance(&sid, "worker#1", |i| i.session_id.clone()).as_deref(), Some(member_sid.as_str()));
-    wait_until("the member's continued model call", async || calls() >= 5).await;
+    wait_until_async("the member's continued model call", async || calls() >= 5).await;
     let seen = sent_text(&mock.calls.lock().unwrap()[4].0);
     assert!(seen.contains("[Task from Lead]: run the build"), "{seen}");
     assert!(seen.contains("step-one-done"), "the member lost its earlier work: {seen}");
     assert!(seen.contains("[Lead]: continue"), "{seen}");
 
     // Its report reaches the lead.
-    wait_until("the member's report on the lead", async || {
+    wait_until_async("the member's report on the lead", async || {
         appv3_db::llm_window_rows(&pool, &sid, false)
             .await
             .unwrap()
@@ -130,7 +126,7 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
             .any(|r| r.extra_json().is_some_and(|e| e["from_agent"] == "worker#1") && r.content.as_deref() == Some("worker finished"))
     })
     .await;
-    wait_until("the lead's turn on the report", async || calls() >= 6).await;
+    wait_until_async("the lead's turn on the report", async || calls() >= 6).await;
     if let Some(l) = manager::find_live_session(&ws, Some(&sid)) {
         tokio::time::timeout(Duration::from_secs(20), l.wait_turn_finished()).await.expect("lead turn finishes");
     }

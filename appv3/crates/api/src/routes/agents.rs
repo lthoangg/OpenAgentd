@@ -353,8 +353,6 @@ fn validate_or_restore(rollback_name: Option<&str>, rollback_content: Option<&st
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-const HIDDEN_TOOLS: [&str; 4] = ["skill", "todo", "schedule", "note"];
-
 fn settings_err(e: impl std::fmt::Display) -> ApiError {
     ApiError::internal(e)
 }
@@ -413,7 +411,8 @@ fn tool_catalog() -> Vec<Value> {
             let desc = tool.definition()["function"]["description"].as_str().unwrap_or("").to_string();
             (tool.name().to_string(), desc)
         })
-        .filter(|(n, _)| !HIDDEN_TOOLS.contains(&n.as_str()))
+        // The tools the runtime gives every agent are not offered as choices.
+        .filter(|(n, _)| !appv3_agent::tool_registry::given_without_listing(n))
         .collect();
     catalog.sort_by(|a, b| a.0.cmp(&b.0));
     catalog.into_iter().map(|(n, d)| json!({"name": n, "description": d})).collect()
@@ -660,7 +659,7 @@ mod tests {
             let t = tools.iter().find(|t| t["name"] == n).unwrap_or_else(|| panic!("{n} missing: {names:?}"));
             assert!(!t["description"].as_str().unwrap().is_empty(), "{n}");
         }
-        assert!(names.iter().all(|n| !HIDDEN_TOOLS.contains(n)), "{names:?}");
+        assert!(names.iter().all(|n| !["skill", "todo", "schedule"].contains(n)), "{names:?}");
     }
 
     #[test]

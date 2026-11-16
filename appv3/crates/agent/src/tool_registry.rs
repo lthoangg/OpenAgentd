@@ -183,6 +183,27 @@ pub fn plan_mode_tools() -> impl Iterator<Item = &'static str> {
 mod tests {
     use super::*;
 
+    /// `data/tools.json` is what the web client is held to
+    /// (`web/src/__tests__/api/tools-contract.test.ts`), so a tool added here
+    /// without it would reach the transcript with no row of its own.
+    #[test]
+    fn the_tool_contract_file_lists_the_registry_and_the_former_names() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!("../data/tools.json")).unwrap();
+        let listed: Vec<&str> = contract["tools"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        let names: Vec<&str> = TOOLS.iter().map(|e| e.name).collect();
+        assert_eq!(listed, names, "appv3/crates/agent/data/tools.json must list the tools of TOOLS in tool_registry.rs, in order; then run the web test it names");
+
+        let mut former: Vec<&str> = contract["former_names"].as_object().unwrap().keys().map(String::as_str).collect();
+        for (old, new) in contract["former_names"].as_object().unwrap() {
+            assert!(names.contains(&new.as_str().unwrap()), "tools.json: former name {old} points at {new}, which is not a tool");
+        }
+        former.extend(contract["retired"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()));
+        former.sort_unstable();
+        let mut skipped = crate::loader::FORMER_TOOL_NAMES.to_vec();
+        skipped.sort_unstable();
+        assert_eq!(former, skipped, "FORMER_TOOL_NAMES in loader.rs and former_names + retired in data/tools.json must name the same tools");
+    }
+
     #[test]
     fn plan_mode_allows_the_tools_it_always_allowed() {
         let mut allowed: Vec<&str> = plan_mode_tools().collect();

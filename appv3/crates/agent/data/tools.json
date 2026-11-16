@@ -1,0 +1,18 @@
+{
+  "about": "The built-in tools by name, and the names they had before. tool_registry.rs is the source: a test there holds this file to it, and web/src/__tests__/api/tools-contract.test.ts holds the web client to this file.",
+  "tools": [
+    "skill", "todo", "schedule",
+    "read", "grep", "glob", "patch", "shell", "web_search", "web_fetch",
+    "generate_image", "generate_video",
+    "mcp",
+    "ask_user", "team", "plan", "update_goal", "preview", "ask_lead", "workspace"
+  ],
+  "former_names": {
+    "todo_manage": "todo",
+    "schedule_task": "schedule",
+    "send_to_workspace": "workspace",
+    "delegate": "team",
+    "submit_plan": "plan"
+  },
+  "retired": ["lsp"]
+}

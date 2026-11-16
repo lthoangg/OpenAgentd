@@ -1,4 +1,4 @@
-// size-ceiling: 1586 — move the wait and retry notices and BlockRenderer into AgentView/
+// size-ceiling: 974 — one body: the render window, earlier turns landing under a view hold (touch runway), and prompt jumps share refs with the auto-follow scroller
 /**
  * AgentView — single-agent full-width view (viewMode === 'agent').
  *

@@ -3873,6 +3873,13 @@ agent against it.
     action sheet (Select Text, Copy, Paste, Select All, Find, Add to chat,
     Clear), and a right-click with a mouse opens the same menu with its keys
     instead of the webview's text-field menu.
+  - **Key bar by use** `[v3.57.0]`: Esc, Ctrl, Alt, Tab, ^C and the arrows
+    come first, so ^C no longer sits off-screen on a phone; the bar scrolls
+    to `| / ~ -`, Home, End, PgUp, PgDn, ^D, ^L, ^R and Paste. **Alt** is a
+    sticky modifier like Ctrl (Alt+b, Alt+f, Alt+.), and both now apply to
+    the bar's own keys: Ctrl+← jumps a word. The bar's Paste goes in as one
+    paste, so several lines no longer run one by one. On an iPad the bar
+    shows while the soft keyboard is up for the terminal.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace

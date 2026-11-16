@@ -29,6 +29,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { MessageSquarePlus } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
@@ -43,6 +44,7 @@ import { TerminalKeyBar } from './TerminalKeyBar'
 import { TerminalTextView } from './TerminalTextView'
 import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
 import type { TerminalMenuAction } from './terminal-menu'
+import { stickyModifierTransform, type StickyModifiers } from './terminal-modifiers'
 import { terminalBufferText, type TerminalText } from './terminal-text'
 import { useLongPressSurface } from './use-long-press-surface'
 import { useTerminalAutoFocus } from './use-terminal-autofocus'
@@ -62,10 +64,12 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const meta = useTerminalStore((s) => s.sessions[sessionId])
   const status = meta?.status ?? 'error'
   const handleReady = meta?.handleReady ?? false
-  const [ctrlArmed, setCtrlArmed] = useState(false)
-  const ctrlArmedRef = useRef(false)
+  const [modifiers, setModifiersState] = useState<StickyModifiers>({ ctrl: false, alt: false })
+  const modifiersRef = useRef<StickyModifiers>({ ctrl: false, alt: false })
   const isMobile = useIsMobile()
   const touchFirst = useTouchFirst()
+  const keyboardOpen = useKeyboardOpen()
+  const [focusWithin, setFocusWithin] = useState(false)
   const { resolved } = useThemePreference()
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | null>(null)
@@ -76,9 +80,9 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const [hasSelection, setHasSelection] = useState(false)
   const workspace = meta?.contextKey ?? null
 
-  const setCtrl = useCallback((armed: boolean) => {
-    ctrlArmedRef.current = armed
-    setCtrlArmed(armed)
+  const setModifiers = useCallback((next: StickyModifiers) => {
+    modifiersRef.current = next
+    setModifiersState(next)
   }, [])
 
   // Keep every live terminal's palette in sync with the app theme.
@@ -86,30 +90,18 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
 
-  // Sticky-Ctrl transform: single character → control code.
-  // Handles a–z (0x01–0x1a), plus [, \, ], ^, _, ?, @.
-  // Registered on the store so it applies to keystrokes from xterm's own
-  // onData wiring, not just the mobile key bar.
+  // Sticky Ctrl/Alt (terminal-modifiers.ts): the next key is sent with them,
+  // then they release. Registered on the store so it applies to keystrokes
+  // from xterm's own onData wiring and to the key bar's keys alike.
   useEffect(() => {
-    useTerminalStore.getState().setInputTransform(sessionId, (data: string): string => {
-      if (!ctrlArmedRef.current || data.length !== 1) return data
-      setCtrl(false)
-      const ch = data.toLowerCase()
-      const code = ch.charCodeAt(0)
-      if (code >= 97 && code <= 122) return String.fromCharCode(code - 96)
-      if (ch === '[') return '\x1b'
-      if (ch === '\\') return '\x1c'
-      if (ch === ']') return '\x1d'
-      if (ch === '^') return '\x1e'
-      if (ch === '_') return '\x1f'
-      if (ch === '?') return '\x7f'
-      if (ch === '@' || ch === '0') return '\x00'
-      return data
-    })
+    useTerminalStore.getState().setInputTransform(sessionId, stickyModifierTransform(
+      () => modifiersRef.current,
+      () => setModifiers({ ctrl: false, alt: false }),
+    ))
     return () => {
       useTerminalStore.getState().setInputTransform(sessionId, (d) => d)
     }
-  }, [sessionId, setCtrl])
+  }, [sessionId, setModifiers])
 
   // Attach: re-parent the store-owned xterm DOM into our container.
   // Detach on unmount WITHOUT disposing — the session lives on.
@@ -223,6 +215,12 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     [sessionId],
   )
 
+  const pasteFromBar = useCallback(() => {
+    const term = getTerminalRuntime(sessionId)?.handle?.term
+    // term.paste, not raw input: it honours bracketed-paste mode.
+    if (term) void pasteIntoTerminal(term)
+  }, [sessionId])
+
   const reconnect = useCallback(() => {
     useTerminalStore.getState().reconnect(sessionId)
   }, [sessionId])
@@ -280,9 +278,19 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const closeTextView = useCallback(() => setTextSnapshot(null), [])
 
   const search = getTerminalRuntime(sessionId)?.handle?.search
+  // A phone always has the key bar; a tablet while its soft keyboard is up
+  // for this terminal (with a hardware keyboard the soft one stays down).
+  const showKeyBar = status === 'connected' && (isMobile || (touchFirst && keyboardOpen && focusWithin))
 
   return (
-    <div className="flex h-full flex-col" data-swipe-ignore>
+    <div
+      className="flex h-full flex-col"
+      data-swipe-ignore
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
+      }}
+    >
       <div className="relative min-h-0 flex-1 overflow-hidden bg-(--color-surface) p-2">
         <div
           ref={containerRef}
@@ -352,11 +360,14 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           </div>
         )}
       </div>
-      {isMobile && status === 'connected' && (
+      {showKeyBar && (
         <TerminalKeyBar
           onKey={sendKey}
-          ctrlArmed={ctrlArmed}
-          onCtrlToggle={() => setCtrl(!ctrlArmedRef.current)}
+          onPaste={pasteFromBar}
+          ctrlArmed={modifiers.ctrl}
+          onCtrlToggle={() => setModifiers({ ...modifiersRef.current, ctrl: !modifiersRef.current.ctrl })}
+          altArmed={modifiers.alt}
+          onAltToggle={() => setModifiers({ ...modifiersRef.current, alt: !modifiersRef.current.alt })}
         />
       )}
 

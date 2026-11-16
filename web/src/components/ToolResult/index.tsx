@@ -1,4 +1,4 @@
-// size-ceiling: 988 — one file per tool's result
+// size-ceiling: 932 — one file per tool's result
 /**
  * Rich tool result renderers.
  *
@@ -13,7 +13,7 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { ArrowUpRight, Check, Circle, FileText, ListTodo, Loader2, Minus } from 'lucide-react'
+import { ArrowUpRight, Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useContext, type ReactNode } from 'react'
 import { FileRefButton, FileRefContext, LinkifiedText } from '../FileRefLink'
@@ -28,66 +28,10 @@ import type { LiveSubagent } from '@/api/types'
 import { SubagentRow, openSubagentSession, type SubagentRowProps } from '../ToolCall/SubagentRow'
 import { parseStartedAt, subagentStatusView } from '../ToolCall/subagentStatus'
 import { useSubagentRoster } from '../ToolCall/useSubagentRoster'
+import { FileListResult, FileReadResult } from './FileResults'
 import { GenericResult, tryParseJSON } from './GenericResult'
 import { ShellResult } from './ShellResult'
 import { WebSearchResult } from './WebSearchResult'
-
-// ---------------------------------------------------------------------------
-// Filesystem renderers
-// ---------------------------------------------------------------------------
-
-function FileListResult({ result }: { result: string }) {
-  // glob / grep return newline-separated paths or JSON array
-  const parsed = tryParseJSON(result)
-  const entries: string[] = Array.isArray(parsed)
-    ? parsed.map(String)
-    : truncateForDisplay(result)
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="font-mono text-xs md:text-meta text-(--color-text-muted)">
-        {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-      </span>
-      <ul className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
-        {entries.map((e, i) => (
-          <li
-            key={i}
-            className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
-          >
-            <LinkifiedText text={e} />
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function FileReadResult({ result }: { result: string }) {
-  // Detect the optional "[start-end/total]" header emitted by read when a
-  // range was requested. Promote it to quiet metadata so the code block shows
-  // only the actual file content.
-  const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  const rangeLabel = match ? `Lines ${match[1]}–${match[2]} of ${match[3]}` : ''
-  const body = truncateForDisplay(match ? match[4] : result)
-
-  return (
-    <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
-      <div className="flex min-h-8 items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-0 font-mono label-caps text-(--color-text-muted)">
-        <FileText size={12} className="shrink-0" aria-hidden />
-        <span className="truncate">read</span>
-        <span className="ml-auto shrink-0 font-normal normal-case tracking-normal">
-          {rangeLabel}
-        </span>
-      </div>
-      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
-        {body}
-      </pre>
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Background-process renderer

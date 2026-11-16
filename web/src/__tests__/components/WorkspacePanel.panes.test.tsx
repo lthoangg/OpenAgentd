@@ -238,6 +238,37 @@ describe('splitting the Review panel', () => {
   })
 })
 
+describe('the bar between two panes', () => {
+  /** Split once, with the panes' area 1,000px wide so a pointer position is a share. */
+  async function splitInTwo() {
+    const { update } = await renderPanel({ viewRequest: GIT })
+    await update({ layoutRequest: { action: 'split-right', key: 1 } })
+    const area = document.querySelector<HTMLElement>('[data-dock-panes]')!
+    area.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600, x: 0, y: 0, toJSON: () => ({}) })
+    return screen.getByRole('separator', { name: 'Resize panes' })
+  }
+  const valueNow = () => screen.getByRole('separator', { name: 'Resize panes' }).getAttribute('aria-valuenow')
+
+  it('starts even, steps 16px a key, and evens out again on Enter', async () => {
+    const bar = await splitInTwo()
+    expect(valueNow()).toBe('50')
+    await act(async () => { fireEvent.keyDown(bar, { key: 'ArrowRight' }) })
+    // 500 + 16 of the 1,000px.
+    expect(valueNow()).toBe('52')
+    await act(async () => { fireEvent.keyDown(bar, { key: 'Enter' }) })
+    expect(valueNow()).toBe('50')
+  })
+
+  it('follows a drag live and keeps the split where it is dropped', async () => {
+    const bar = await splitInTwo()
+    await act(async () => { fireEvent.pointerDown(bar, { button: 0, pointerId: 1, clientX: 500, clientY: 10 }) })
+    await act(async () => { fireEvent.pointerMove(bar, { pointerId: 1, clientX: 700, clientY: 10 }) })
+    expect(valueNow()).toBe('70')
+    await act(async () => { fireEvent.pointerUp(bar, { pointerId: 1, clientX: 700, clientY: 10 }) })
+    expect(valueNow()).toBe('70')
+  })
+})
+
 describe('terminals', () => {
   const terminalTab = () => screen.queryByRole('button', { name: 'Terminal 1' })
 

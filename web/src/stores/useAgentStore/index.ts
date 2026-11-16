@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { useToastStore } from '@/stores/useToastStore'
+import { createHistorySlice } from './history-slice'
 import { createSessionSlice } from './session-slice'
 import { createStreamSlice, clearReconnectTimer } from './stream-slice'
 import { createPendingSlice } from './pending-slice'
@@ -74,6 +75,7 @@ export function inferErrorTitle(message: string, category?: string): string {
 export const useAgentStore = create<AgentStore>()(
   immer((...a) => ({
     ...createSessionSlice(...a),
+    ...createHistorySlice(...a),
     ...createStreamSlice(...a),
     ...createPendingSlice(...a),
     ...createUISlice(...a),

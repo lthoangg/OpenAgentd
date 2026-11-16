@@ -1,4 +1,4 @@
-// size-ceiling: 1156 — one file per tool's result
+// size-ceiling: 1129 — one file per tool's result
 /**
  * Rich tool result renderers.
  *
@@ -29,6 +29,7 @@ import type { LiveSubagent } from '@/api/types'
 import { SubagentRow, openSubagentSession, type SubagentRowProps } from '../ToolCall/SubagentRow'
 import { parseStartedAt, subagentStatusView } from '../ToolCall/subagentStatus'
 import { useSubagentRoster } from '../ToolCall/useSubagentRoster'
+import { GenericResult, tryParseJSON } from './GenericResult'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,14 +46,6 @@ interface WebSearchResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function tryParseJSON(raw: string): unknown | null {
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
 
 /** Truncate a string to `max` chars, appending "…" if cut. */
 function truncate(s: string, max: number): string {
@@ -839,26 +832,6 @@ function LspNavigationResult({
         </p>
       )}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Generic fallback renderer
-// ---------------------------------------------------------------------------
-
-function GenericResult({ result }: { result: string }) {
-  // Try pretty-print if JSON
-  const parsed = tryParseJSON(result)
-  const display =
-    parsed !== null && typeof parsed === 'object'
-      ? JSON.stringify(parsed, null, 2)
-      : result
-  const clipped = truncateForDisplay(display)
-
-  return (
-    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)">
-      <LinkifiedText text={clipped} />
-    </pre>
   )
 }
 

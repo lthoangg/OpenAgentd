@@ -1,4 +1,4 @@
-// size-ceiling: 1973 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 1739 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -31,7 +31,7 @@
  * at once. Switching the active workspace auto-expands it.
  */
 import { failureToast } from '@/lib/failure-toast'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -54,7 +54,6 @@ import {
 } from '@/lib/workbench-layout'
 import {
   Activity,
-  AppWindow,
   Check,
   ChevronRight,
   Command,
@@ -67,25 +66,17 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
-  Pin,
-  PinOff,
   Plus,
   Settings,
   SquarePen,
   Trash2,
   TriangleAlert,
   X,
-  type LucideIcon,
 } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { sessionWorking } from '@/lib/active-sessions'
-import {
-  useDeleteSessionMutation,
-  useSessionsQuery,
-  useSetSessionPinnedMutation,
-  useUpdateSessionTitleMutation,
-} from '@/queries/useSessionsQuery'
+import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listSessions, setCodingWorkspaceVisibility } from '@/api/client'
@@ -100,7 +91,7 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
-import { ActionSheet, ACTION_SHEET_ROW_CLASS } from '@/components/ui/action-sheet'
+import { ACTION_SHEET_ROW_CLASS } from '@/components/ui/action-sheet'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { Chip } from '@/components/ui/chip'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -143,19 +134,10 @@ import {
 } from './Sidebar/helpers'
 import { pickWorkspaceDirectory, shouldUseServerWorkspaceBrowser } from './Sidebar/browser'
 import {
-  applySessionDelete,
-  applySessionSelection,
-} from './Sidebar/sessions'
-import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
   restoreHiddenWorkspace,
 } from './Sidebar/workspace'
-import {
-  openSessionInNewWindow,
-  sessionWindowErrorDescription,
-  shouldOpenSessionInNewWindow,
-} from './Sidebar/window'
 import { SessionSearch } from './Sidebar/SessionSearch'
 import { SessionsPageBar, SessionsPageHeader, SessionsPageToolbar } from './Sidebar/SessionsPage'
 import { SidebarPageContext } from './Sidebar/SidebarPageContext'
@@ -167,27 +149,16 @@ import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 import { OpenWorkspaceDialog, useOpenWorkspaceDialog } from './Sidebar/OpenWorkspaceDialog'
 import { useWorktreeActions } from './Sidebar/useWorktreeActions'
 import { CreateWorktreeDialog, RenameWorktreeDialog } from './Sidebar/WorktreeDialogs'
+import { useSessionActions } from './Sidebar/useSessionActions'
+import { SessionActionsMenu } from './Sidebar/SessionActionsMenu'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
-/** How long a deleted session can be brought back before the server forgets it. */
-const SESSION_DELETE_UNDO_MS = 10_000
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
-
-/** One entry of a session's menu (⋯, right-click, the phone's sheet). */
-interface SessionMenuAction {
-  id: string
-  label: string
-  icon: LucideIcon
-  danger?: boolean
-  /** Starts a new group of entries. */
-  separatorBefore?: boolean
-  run: () => void
-}
 
 interface SidebarProps {
   currentSessionId?: string
@@ -321,9 +292,6 @@ export function Sidebar({
   const dismissToast = useToastStore((s) => s.dismiss)
   const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useSessionsQuery()
-  const deleteSession = useDeleteSessionMutation()
-  const updateSessionTitle = useUpdateSessionTitleMutation()
-  const setSessionPinned = useSetSessionPinnedMutation()
   const groupBy = useSidebarViewStore((s) => s.groupBy)
   // The phone has no "Show details" switch: its rows always carry them.
   const storedShowDetails = useSidebarViewStore((s) => s.showDetails)
@@ -338,6 +306,8 @@ export function Sidebar({
   // Indexed once per `workspaceSessions` change instead of re-filtering the full
   // session list for every workspace/worktree row on every render.
   const sessionsByWorkspace = useMemo(() => groupSessionsByWorkspace(workspaceSessions), [workspaceSessions])
+  const sessionActions = useSessionActions({ currentSessionId, workspaceSessions, isMobile, isPage, mobileOpen, onMobileClose })
+  const { editingSessionId, sessionRowHandlers, handleSessionSelect } = sessionActions
 
   // Read straight from the shared query, so a refresh made anywhere (the
   // command palette's workspace switch, another window) shows here too.
@@ -402,13 +372,9 @@ export function Sidebar({
     setError,
     onOpen: (path) => { void openFolderDraft(path) },
   })
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchFocusKey, setSearchFocusKey] = useState(0)
   const searchButtonRef = useRef<HTMLButtonElement>(null)
-  const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
-  const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse } | null>(null)
-  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
   // Workspace action menus act on the repository (``path``); "New session"
   // starts in the checkout its list shows (``sessionPath``).
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; sessionPath: string; x: number; y: number } | null>(null)
@@ -616,14 +582,6 @@ export function Sidebar({
     }
   }
 
-  const toggleSessionPinned = (session: SessionResponse) => {
-    const pinned = !session.pinned_at
-    setSessionPinned.mutate(
-      { id: session.id, pinned },
-      { onError: () => pushToast({ tone: 'error', title: pinned ? "Couldn't pin session" : "Couldn't unpin session" }) },
-    )
-  }
-
   // Remove a workspace (and its worktrees) from the sidebar. Sessions stay in
   // the backend — reopening the same folder later resurfaces them. Leaving a
   // removed active workspace for the empty / route happens inside
@@ -800,151 +758,8 @@ export function Sidebar({
       })
   }
 
-  const openInNewWindow = (session: SessionResponse) => {
-    openSessionInNewWindow({ session }).catch((err) => {
-      console.error("Couldn't open session in new window:", err)
-      pushToast({
-        tone: 'error',
-        title: "Couldn't open session in new window",
-        description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
-      })
-    })
-  }
-
-  const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {
-    if (event && shouldOpenSessionInNewWindow(event, isTauri, os)) {
-      event.preventDefault()
-      event.stopPropagation()
-      openInNewWindow(session)
-      return
-    }
-
-    applySessionSelection({
-      session,
-      workspacePath,
-      navigate,
-      onMobileClose,
-    })
-  }
-
-  // From a row's key (an event) or its swipe action (none).
-  const handleSessionDelete = (e: React.SyntheticEvent | null, session: SessionResponse) => {
-    e?.stopPropagation()
-    requestSessionDelete(session)
-  }
-
-  const handleSessionEdit = (session: SessionResponse) => {
-    setEditingSessionId(session.id)
-  }
-
-  const handleSessionRename = (session: SessionResponse, title: string) => {
-    setEditingSessionId(null)
-    updateSessionTitle.mutate(
-      { id: session.id, title },
-      { onError: () => pushToast({ tone: 'error', title: "Couldn't rename session" }) },
-    )
-  }
 
   const workspaceDisplayName = (path: string) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))
-
-  // Row callbacks shared by every session list (tree, flat views, Pinned).
-  const sessionRowHandlers = {
-    onSessionSelect: handleSessionSelect,
-    onSessionDelete: handleSessionDelete,
-    onSessionEdit: handleSessionEdit,
-    onSessionRename: handleSessionRename,
-    onSessionRenameCancel: () => setEditingSessionId(null),
-    onSessionLongPress: (session: SessionResponse) => setMobileSessionActions({ session }),
-    onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
-      // Phones (browser too): the titled sheet, since a truncated title has
-      // no tooltip on touch.
-      if (isMobile) {
-        setMobileSessionActions({ session })
-        return
-      }
-      setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
-    },
-    onSessionPinToggle: toggleSessionPinned,
-  }
-
-  // One list for a session's ⋯ menu, right-click and the phone's sheet.
-  const sessionMenuActions = (session: SessionResponse): SessionMenuAction[] => {
-    // Subagents are their parent's: no pin, and their title is their task.
-    const topLevel = !session.parent_session_id
-    const actions: SessionMenuAction[] = []
-    if (isTauri && !isTauriMobile) {
-      actions.push({ id: 'window', label: 'Open in new window', icon: AppWindow, run: () => openInNewWindow(session) })
-    }
-    if (topLevel) {
-      actions.push({ id: 'rename', label: 'Rename', icon: Pencil, run: () => handleSessionEdit(session) })
-      actions.push({
-        id: 'pin',
-        label: session.pinned_at ? 'Unpin' : 'Pin',
-        icon: session.pinned_at ? PinOff : Pin,
-        run: () => toggleSessionPinned(session),
-      })
-    }
-    // The ellipsis says a dialog follows, which only a working session gets.
-    actions.push({ id: 'delete', label: sessionWorking(session) ? 'Delete session…' : 'Delete session', icon: Trash2, danger: true, separatorBefore: actions.length > 0, run: () => requestSessionDelete(session) })
-    return actions
-  }
-
-  // Undo or confirm, not both (DESIGN.md): the toast's Undo covers a delete,
-  // so only a session whose agent is still working asks first. Undo brings
-  // the session back but does not restart a stopped turn.
-  function requestSessionDelete(session: SessionResponse) {
-    if (sessionWorking(session)) setDeleteTarget(session)
-    else deleteSessionNow(session)
-  }
-
-  const confirmSessionDelete = () => {
-    if (!deleteTarget) return
-    deleteSessionNow(deleteTarget)
-    setDeleteTarget(null)
-  }
-
-  function deleteSessionNow(target: SessionResponse) {
-    // On the Sessions page, ``currentSessionId`` is the chat kept under the
-    // list, not one on screen: deleting it neither leaves for another session
-    // (that would push a chat over Sessions) nor, on Undo, goes back to it.
-    const stay = isPage && mobileOpen
-    const wasOpen = !stay && target.id === currentSessionId
-    // The row leaves at once; the server delete waits out the Undo window.
-    // Undo (or a refusal) brings the row back.
-    const undo = new AbortController()
-    const toastId = pushToast({
-      tone: 'info',
-      title: 'Session deleted',
-      description: target.title || 'Untitled',
-      action: {
-        label: 'Undo',
-        onAction: () => {
-          undo.abort()
-          if (wasOpen) navigate({ to: '/$sessionId', params: { sessionId: target.id }, replace: true })
-        },
-      },
-    }, SESSION_DELETE_UNDO_MS)
-    applySessionDelete({
-      deleteTarget: target,
-      currentSessionId,
-      workspaceSessions,
-      stay,
-      mutateDelete: (mutationTarget) => deleteSession.mutate(
-        typeof mutationTarget === 'string'
-          ? { id: mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal }
-          : { ...mutationTarget, holdMs: SESSION_DELETE_UNDO_MS, undo: undo.signal },
-        {
-          // Past the window the Undo button can't help any more.
-          onSettled: () => dismissToast(toastId),
-          onError: () => {
-            if (undo.signal.aborted) return
-            pushToast({ tone: 'error', title: "Couldn't delete session" })
-          },
-        },
-      ),
-      navigate,
-    })
-  }
 
   const mobileWorkspaceActionsTitle = mobileWorkspaceActions?.kind === 'chat'
     ? (chatWorkspace?.name ?? 'Chat')
@@ -1904,49 +1719,14 @@ export function Sidebar({
         </ContextMenu>
       )}
 
-      {desktopSessionActions && (
-        <ContextMenu
-          at={desktopSessionActions}
-          label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
-          onDismiss={() => setDesktopSessionActions(null)}
-          className="min-w-44"
-        >
-          {sessionMenuActions(desktopSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
-            <Fragment key={id}>
-              {separatorBefore && <ContextMenuSeparator />}
-              <button
-                type="button"
-                role="menuitem"
-                className={danger ? CONTEXT_MENU_ITEM_DANGER_CLASS : CONTEXT_MENU_ITEM_CLASS}
-                onClick={() => {
-                  setDesktopSessionActions(null)
-                  run()
-                }}
-              >
-                <Icon size={12} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{label}</span>
-              </button>
-            </Fragment>
-          ))}
-        </ContextMenu>
-      )}
-
-      {/* A phone's long-press menu is a sheet from the bottom edge, the iOS
-          app included (``ActionSheet``). */}
-      <ActionSheet
-        open={mobileSessionActions !== null}
-        onClose={() => setMobileSessionActions(null)}
-        title={mobileSessionActions?.session.title || 'Untitled'}
-        description="Choose a session action."
-        items={mobileSessionActions ? sessionMenuActions(mobileSessionActions.session) : []}
-      />
+      <SessionActionsMenu actions={sessionActions} />
 
       <RenameWorktreeDialog worktrees={worktreeActions} error={error} />
 
       <SidebarConfirmDialogs
-        deleteTarget={deleteTarget}
-        setDeleteTarget={setDeleteTarget}
-        onConfirmSessionDelete={confirmSessionDelete}
+        deleteTarget={sessionActions.deleteTarget}
+        setDeleteTarget={sessionActions.setDeleteTarget}
+        onConfirmSessionDelete={sessionActions.confirmSessionDelete}
         removeWorktreeTarget={worktreeActions.removeWorktreeTarget}
         removeWorktreePreview={worktreeActions.removeWorktreePreview}
         setRemoveWorktreeTarget={worktreeActions.setRemoveWorktreeTarget}

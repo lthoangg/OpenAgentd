@@ -13,8 +13,9 @@
  * Split out of InputComposer.tsx (not `.tsx` itself — react-refresh forbids
  * non-component runtime exports from `.tsx` files) so the component only
  * has to wire this hook's output into `<InputComposerSuggestions>` (the render
- * half, in `suggestions.tsx`) and into its own `handleKeyDown` /
- * `handleChange` for keyboard navigation and the active-mention window.
+ * half, in `suggestions.tsx`), pass the menu's keys to `handleMenuKeyDown` /
+ * `handleMenuBeforeInput`, and set the active-mention window from its own
+ * `handleChange`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { SlashCommand, SnippetCommand } from './commands'
@@ -225,6 +226,44 @@ export function useInputComposerSuggestionEngine({
     else setMentionRange(null)
   }, [menu, setValue])
 
+  // ── Keyboard ───────────────────────────────────────────────────────────────
+
+  /** ↑/↓ move the highlight, Enter/Tab commit it, Escape dismisses. True when the key was the menu's. */
+  const handleMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (!menu || menu.selectable.length === 0) return false
+    const count = menu.selectable.length
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setMenuIndex((i) => (i + 1) % count)
+      return true
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMenuIndex((i) => (i - 1 + count) % count)
+      return true
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      commitActive()
+      return true
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      dismiss()
+      return true
+    }
+    return false
+  }, [menu, commitActive, dismiss])
+
+  /** A Return that arrives only as a line-break input (some touch keyboards) commits the open slash command. */
+  const handleMenuBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    if ((e.nativeEvent as InputEvent).inputType !== 'insertLineBreak') return
+    if (menu?.kind !== 'slash') return
+
+    e.preventDefault()
+    commitActive()
+  }
+
   const suggestionsOpen = menu !== null
   useEffect(() => {
     onSuggestionsMenuChange?.(suggestionsOpen)
@@ -241,7 +280,7 @@ export function useInputComposerSuggestionEngine({
     optionRefs,
 
     commit,
-    commitActive,
-    dismiss,
+    handleMenuKeyDown,
+    handleMenuBeforeInput,
   }
 }

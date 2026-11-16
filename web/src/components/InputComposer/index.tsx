@@ -252,8 +252,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     setMenuIndex,
     optionRefs,
     commit,
-    commitActive,
-    dismiss,
+    handleMenuKeyDown,
+    handleMenuBeforeInput,
   } = useInputComposerSuggestionEngine({
     value,
     setValue,
@@ -528,32 +528,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     return true
   }, [mentionRanges, resize, value])
 
-  const handlePickerMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (!menu || menu.selectable.length === 0) return false
-    const count = menu.selectable.length
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setMenuIndex((i) => (i + 1) % count)
-      return true
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setMenuIndex((i) => (i - 1 + count) % count)
-      return true
-    }
-    if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault()
-      commitActive()
-      return true
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      dismiss()
-      return true
-    }
-    return false
-  }, [menu, setMenuIndex, commitActive, dismiss])
-
   const handleHistoryKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false
@@ -572,7 +546,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     // Word-by-word caret movement (Alt/Ctrl+Arrow) is native textarea
     // behaviour; `onSelect` keeps the mention picker in sync afterwards.
     if (handleAtomicMentionDeletion(e)) return
-    if (handlePickerMenuKeyDown(e)) return
+    if (handleMenuKeyDown(e)) return
     if (handleHistoryKeyDown(e)) return
 
     if (
@@ -595,14 +569,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       e.preventDefault()
       submit(isStreaming ? deliveryForKey(e) : 'steer')
     }
-  }
-
-  const handleBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
-    if ((e.nativeEvent as InputEvent).inputType !== 'insertLineBreak') return
-    if (menu?.kind !== 'slash') return
-
-    e.preventDefault()
-    commitActive()
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -774,7 +740,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         value={value}
         onCompositionStart={() => setIsComposing(true)}
         onCompositionEnd={() => setIsComposing(false)}
-        onBeforeInput={handleBeforeInput}
+        onBeforeInput={handleMenuBeforeInput}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         // Caret-only moves (arrow keys, Home/End) don't fire onChange but

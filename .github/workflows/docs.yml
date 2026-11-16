@@ -1,44 +1,13 @@
 name: Documentation contracts
 
+# No path filter: the tooling tests guard files across the repository
+# (installers, workflows, shell configs, mobile scripts, command ACLs), and
+# the suite takes seconds.
 on:
   push:
     branches: [main]
-    paths:
-      - "**/*.md"
-      - "Makefile"
-      - "scripts/**"
-      - "install.ps1"
-      - "desktop/scripts/**"
-      - "desktop/src-tauri/tauri.conf.json"
-      - "desktop/src-tauri/entitlements.plist"
-      - "desktop/src-tauri/Cargo.lock"
-      - "mobile/Makefile"
-      - "mobile/src-tauri/tauri.conf.json"
-      - "web/package.json"
-      - "web/bun.lock"
-      - ".github/workflows/release-desktop.yml"
-      - ".github/workflows/tauri.yml"
-      - ".github/workflows/publish-homebrew-cask.yml"
-      - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "**/*.md"
-      - "Makefile"
-      - "scripts/**"
-      - "install.ps1"
-      - "desktop/scripts/**"
-      - "desktop/src-tauri/tauri.conf.json"
-      - "desktop/src-tauri/entitlements.plist"
-      - "desktop/src-tauri/Cargo.lock"
-      - "mobile/Makefile"
-      - "mobile/src-tauri/tauri.conf.json"
-      - "web/package.json"
-      - "web/bun.lock"
-      - ".github/workflows/release-desktop.yml"
-      - ".github/workflows/tauri.yml"
-      - ".github/workflows/publish-homebrew-cask.yml"
-      - ".github/workflows/docs.yml"
 
 permissions:
   contents: read

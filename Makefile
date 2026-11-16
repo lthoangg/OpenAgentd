@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports verify verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
+.PHONY: all run dev kill-dev-ports verify verify-quick verify-changed verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
 .PHONY: build-v3 verify-v3
 
 # Default target
@@ -54,6 +54,21 @@ kill-dev-ports: ## Stop processes listening on this checkout's dev ports (PORT, 
 
 verify: verify-v3 verify-scripts verify-web verify-docs verify-version ## Run the portable pre-merge contract
 
+# Static checks only, so the pre-push hook can afford to run it every time.
+# The command ACL is here because a missing entry compiles, passes every
+# cargo check, and fails at runtime.
+verify-quick: verify-docs verify-version ## Fast static checks (seconds): command ACL, secrets, docs, versions, cargo fmt, web lint + types; the pre-push hook runs it
+	python3 scripts/check_tauri_commands.py
+	python3 scripts/check_no_secrets.py
+	cargo fmt --all --check --manifest-path appv3/Cargo.toml
+	cd native/shell-core && cargo fmt --check
+	cd native/cloud && cargo fmt --check
+	cd web && bun run lint
+	cd web && bun run typecheck
+
+verify-changed: ## Run verify-quick plus the verify-* targets covering the paths changed since the upstream branch
+	python3 scripts/verify_changed.py
+
 # The repository has no Python project; the tooling tests install their few
 # deps into the local, git-ignored .venv.
 SCRIPTS_VENV := .venv
@@ -92,11 +107,13 @@ verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both
 	cd native/shell-core && cargo test
 
 verify-desktop: ## Check, test, and lint the desktop Rust crate
+	python3 scripts/check_tauri_commands.py desktop/src-tauri
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo check --locked
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo test --locked
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets -- -D warnings
 
 verify-mobile: ## Check and lint the mobile Rust crate
+	python3 scripts/check_tauri_commands.py mobile/src-tauri
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo clippy --locked --all-targets -- -D warnings
 

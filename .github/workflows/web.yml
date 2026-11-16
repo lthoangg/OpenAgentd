@@ -1,12 +1,17 @@
 name: Web
 
+# Besides web/, this runs for the backend data and the shell sources that
+# the web tests read to hold the UI to them (SSE events, the app guide, the
+# preview inspector, menu shortcuts, widget and window sizes).
 on:
   push:
     branches: [main]
     paths:
       - "web/**"
-      - "appv3/crates/agent/data/sse_events.json"
+      - "appv3/crates/agent/data/**"
+      - "appv3/crates/preview/assets/**"
       - "Makefile"
+      - "desktop/src-tauri/src/**"
       - "desktop/src-tauri/tauri*.conf.json"
       - "desktop/src-tauri/Cargo.toml"
       - "desktop/src-tauri/Cargo.lock"
@@ -17,8 +22,10 @@ on:
     branches: [main]
     paths:
       - "web/**"
-      - "appv3/crates/agent/data/sse_events.json"
+      - "appv3/crates/agent/data/**"
+      - "appv3/crates/preview/assets/**"
       - "Makefile"
+      - "desktop/src-tauri/src/**"
       - "desktop/src-tauri/tauri*.conf.json"
       - "desktop/src-tauri/Cargo.toml"
       - "desktop/src-tauri/Cargo.lock"

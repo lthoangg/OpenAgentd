@@ -128,13 +128,18 @@ def validate_repository(root: Path, markdown_files: list[Path]) -> list[str]:
 
     root_agents = root / "AGENTS.md"
     if root_agents.is_file():
-        for referenced in sorted(
-            set(AGENTS_PATH_RE.findall(root_agents.read_text(encoding="utf-8")))
-        ):
+        agents_text = root_agents.read_text(encoding="utf-8")
+        for referenced in sorted(set(AGENTS_PATH_RE.findall(agents_text))):
             if not (root / referenced).is_file():
                 errors.append(
                     f"AGENTS.md: referenced AGENTS path does not exist: {referenced}"
                 )
+        # The root guide is where an agent looks up which gate to run.
+        for target in _make_targets(root / "Makefile"):
+            if target.startswith("verify") and not re.search(
+                rf"\bmake {re.escape(target)}(?![\w-])", agents_text
+            ):
+                errors.append(f"AGENTS.md: Make target is not documented: {target}")
     errors.extend(_tunnel_contract_errors(root))
     return sorted(errors)
 

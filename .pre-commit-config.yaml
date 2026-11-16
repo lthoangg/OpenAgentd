@@ -1,3 +1,9 @@
+# `pre-commit install` sets up both hook types. Hooks run at commit unless
+# they name another stage; the hygiene hooks name theirs because their own
+# manifest would add them to the push as well.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
 repos:
   # ---------------------------------------------------------------------------
   # General file hygiene
@@ -7,14 +13,20 @@ repos:
     hooks:
       - id: trailing-whitespace
         files: ^.*\.(py|ts|tsx|md|yaml|yml|toml|ini)$
+        stages: [pre-commit]
       - id: end-of-file-fixer
         files: ^.*\.(py|ts|tsx|md|yaml|yml|toml|ini)$
+        stages: [pre-commit]
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-toml
+        stages: [pre-commit]
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: check-added-large-files
         args: [--maxkb=500]
         exclude: ^documents/assets/
+        stages: [pre-commit]
 
   # ---------------------------------------------------------------------------
   # Frontend – lint (Oxlint) & type check (unified tsc -b)
@@ -33,3 +45,16 @@ repos:
         entry: bash -c 'cd web && bun run typecheck'
         files: ^web/src/.*\.(ts|tsx)$
         pass_filenames: false
+
+  # ---------------------------------------------------------------------------
+  # Push – the static checks CI would otherwise be the first to run
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: verify-quick
+        name: make verify-quick
+        language: system
+        entry: make verify-quick
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]

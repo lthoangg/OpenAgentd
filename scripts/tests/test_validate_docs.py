@@ -88,6 +88,19 @@ def test_validate_repository_reports_each_documentation_contract_violation(tmp_p
     )
 
 
+def test_every_verify_target_is_named_in_the_root_agents_guide(tmp_path):
+    module = _load_module()
+    tracked = _write_repo(tmp_path)
+    (tmp_path / "Makefile").write_text("test:\n\t@true\nverify: verify-web\nverify-web:\n\t@true\nverify-cloud:\n\t@true\n")
+    (tmp_path / "AGENTS.md").write_text("See `docs/AGENTS.md`.\n\n```bash\nmake verify-web  # web checks\n```\n")
+
+    # `make verify-web` does not count as naming `make verify`.
+    assert module.validate_repository(tmp_path, tracked) == [
+        "AGENTS.md: Make target is not documented: verify",
+        "AGENTS.md: Make target is not documented: verify-cloud",
+    ]
+
+
 def test_main_returns_nonzero_and_prints_deterministic_errors(
     tmp_path, monkeypatch, capsys
 ):

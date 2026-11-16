@@ -6,12 +6,15 @@ name: appv3
 # already built (the CLI integration tests need it); one Linux release build
 # keeps release-only failures (LTO, linking) from first showing up in
 # release.yml.
+# native/cloud is a path dependency, and its fake cloud is compiled into the
+# API and CLI tests.
 
 on:
   push:
     branches: [main]
     paths:
       - "appv3/**"
+      - "native/cloud/**"
       - ".github/workflows/appv3.yml"
       - "install.sh"
       - "install.ps1"
@@ -21,6 +24,7 @@ on:
     branches: [main]
     paths:
       - "appv3/**"
+      - "native/cloud/**"
       - ".github/workflows/appv3.yml"
       - "install.sh"
       - "install.ps1"

@@ -91,9 +91,10 @@ Key design rules:
 
 Use [`make verify`](Makefile) for the portable pre-merge contract, or its
 focused `verify-v3`, `verify-scripts`, `verify-web`, `verify-docs`, and
-`verify-version` targets when only one surface changed. Native targets require
-local platform dependencies. Check the nearest `AGENTS.md` before changing a
-subsystem.
+`verify-version` targets when only one surface changed. `make verify-changed`
+picks the targets from the paths you changed, including the surfaces that
+compile or read them. Native targets require local platform dependencies.
+Check the nearest `AGENTS.md` before changing a subsystem.
 
 ### Backend (v3, Rust)
 
@@ -112,7 +113,7 @@ cd web
 bun dev                                  # dev server on :5173 (proxies /api → :8000)
 bun run lint                             # oxlint (type-aware)
 bun run typecheck                        # tsc --noEmit
-bun test src/__tests__                   # unit tests
+bun test --parallel src/__tests__        # tests (always with --parallel)
 bun run build                            # production build
 ```
 
@@ -138,7 +139,9 @@ Migrations run automatically when the server starts — no manual step needed. I
 ### General
 
 - **No unnecessary abstractions.** Thin routes, logic in services/hooks.
-- Pre-commit hooks enforce formatting automatically — install them once:
+- Hooks run file hygiene, `oxlint` and `tsc` at commit, and
+  `make verify-quick` (seconds) at push, on what is committed or staged.
+  Install them once per checkout or worktree:
 
   ```bash
   pre-commit install   # install pre-commit first, e.g. `brew install pre-commit` or `pipx install pre-commit`
@@ -163,10 +166,12 @@ cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
 ### Frontend
 
 ```bash
-cd web && bun test src/__tests__         # ~130 ms, no browser needed
+cd web && bun test --parallel src/__tests__   # no browser needed
 ```
 
-Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid rendering components in unit tests.
+Tests use Bun test, Happy DOM, and Testing Library. Always pass `--parallel`:
+each file needs its own module registry. Component tests live beside store and
+utility tests under `web/src/__tests__/`, mirroring the source path.
 
 ---
 

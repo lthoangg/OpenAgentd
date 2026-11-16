@@ -35,6 +35,9 @@ worktrees are not part of the tracked instruction hierarchy.
 - `mobile/`: remote-backend-only Tauri shell; it does not bundle a backend.
 - `native/shell-core/`: Tauri-free Rust crate shared by both shells (server
   config, URL normalization, access keys, download limits).
+- `native/cloud/`: the OpenAgentd Cloud protocol crate (tunnel protocol of
+  `appv3/contract/tunnel.md`, device API client, relay), linked by `appv3/`
+  and the mobile shell.
 - `scripts/`: packaging, release, docs validation, and code-health utilities;
   `scripts/tests/` holds their pytest checks plus installer and workflow
   contracts.
@@ -118,22 +121,30 @@ Use the native subtree Makefiles for desktop/mobile packages
 
 ## Validation
 
-Choose every target covering the paths changed:
+`make verify-changed` runs every target below that covers the paths changed
+since the upstream branch (`python3 scripts/verify_changed.py --list` prints
+them without running). The targets:
 
 ```bash
+make verify-changed # verify-quick, then the targets the changed paths select
+make verify-quick   # seconds: Tauri command ACL, secret scan, docs, versions, cargo fmt, web lint + types
 make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests
 make verify-scripts  # pytest for scripts, installers, and workflow contracts (local .venv)
 make verify-web      # oxlint, app/test TypeScript (tsc -b), Bun tests
 make verify-docs     # Markdown links/frontmatter/Make references
 make verify-version  # synchronized release versions and catalogue metadata
-make verify-desktop  # locked desktop cargo check/test/clippy
-make verify-mobile   # locked mobile cargo check and clippy -D warnings
+make verify-desktop  # command ACL, locked desktop cargo check/test/clippy
+make verify-mobile   # command ACL, locked mobile cargo check and clippy -D warnings
 make verify-shell-core # shared native crate fmt/clippy/test
+make verify-cloud    # OpenAgentd Cloud protocol crate fmt/clippy/test
 make verify          # portable v3 + scripts + web + docs + version checks
 make verify-native   # shell-core + desktop + mobile; native system dependencies required
 ```
 
 Use focused checks while iterating, then run the applicable target above.
+A change is checked by every surface that compiles or reads it, not only the
+one it lives in; the path table in `scripts/verify_changed.py` is the list,
+and a test fails when a CI workflow is not triggered by a path in it.
 Always run Bun tests with `--parallel` (`bun test --cwd web --parallel` or `cd web && bun test --parallel <path>`) for per-file module isolation.
 Cross-surface API or event changes require both backend and web checks; SSE
 event types must also match `appv3/crates/agent/data/sse_events.json`. Run
@@ -143,8 +154,9 @@ reply can now render, open, or run, or no longer can) updates `app_guide` in
 the same commit. It is the only prompt text that describes the app: do not
 repeat any of it in another prompt or a tool description.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
-budget and chunk-cycle checks. Pre-commit hooks run file hygiene plus `oxlint`
-and `tsc` for `web/src`.
+budget and chunk-cycle checks. `pre-commit install` sets up two hooks: at
+commit, file hygiene plus `oxlint` and `tsc` for `web/src`; at push,
+`make verify-quick`.
 
 ## Agent workflows
 

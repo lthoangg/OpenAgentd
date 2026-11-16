@@ -35,6 +35,10 @@ generation, updater helpers, and code-health analysis.
   `build.rs` lists a command the handler does not register, or when a
   registered command has no caller in `web/src` or in the shell's own
   sources (a leftover). The Tauri workflow runs it per shell.
+- `verify_changed.py`: `make verify-changed`. Its `RULES` table maps paths to
+  the `verify-*` targets that compile or read them; add a row when a test
+  starts reading a file from another tree, or a crate gains a path dependency.
+  `tests/test_verify_changed.py` holds the CI workflows' `paths:` to the table.
 - `readme-shots/`: regenerates the README screenshots and banner from a
   throwaway instance. `run.sh up` starts an isolated backend and web UI (HOME
   and every data directory under `/tmp/oad-demo`, invented demo repos from

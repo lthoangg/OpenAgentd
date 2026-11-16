@@ -1,4 +1,4 @@
-// size-ceiling: 886 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 831 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -35,23 +35,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { usePlatform } from '@/hooks/use-platform'
 import { isMobileApp } from '@/lib/mobile-app'
 import { cn } from '@/lib/utils'
-import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
-import { useToggleTween } from '@/hooks/useToggleTween'
+import { PanelResizeHandle, ResizableAside } from '@/components/ResizableAside'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
-import { useViewportWidth } from '@/hooks/use-viewport-width'
-import { useTouchFirst } from '@/hooks/use-touch-first'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { useLayoutStore } from '@/stores/useLayoutStore'
-import {
-  SIDEBAR_DEFAULT_WIDTH,
-  SIDEBAR_MIN_WIDTH,
-  clampSidebarWidth,
-  sidebarMaxWidth,
-} from '@/lib/workbench-layout'
 import {
   SquarePen,
 } from 'lucide-react'
@@ -111,6 +99,7 @@ import { useWorkspaceTree } from './Sidebar/useWorkspaceTree'
 import { WorkspaceTree } from './Sidebar/WorkspaceTree'
 import { MobileDrawerFooter } from './Sidebar/MobileDrawerFooter'
 import { walkSidebarRows } from './Sidebar/rowKeys'
+import { useSidebarFrame } from './Sidebar/useSidebarFrame'
 
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
@@ -196,7 +185,6 @@ export function Sidebar({
   // has no inline ⋯ to fall back on). The page keeps it while a chat covers
   // it: rows that changed shape under the sliding chat would be seen doing it.
   const mobileLongPressActions = isPage || (isMobile && isTauriMobile && mobileOpen)
-  const prefersReducedMotion = useReducedMotion()
   // The header's sidebar button and ⌘B open and close the column; a drawer
   // also closes on a click outside it or Escape.
   const drawerOpen = drawer && !isMobile && !desktopCollapsed
@@ -511,50 +499,7 @@ export function Sidebar({
       }))
     : []
 
-  // Width is persisted in the layout store and clamped against the window so
-  // the chat and a side-by-side dock always keep their minimums. A drawer
-  // covers the chat, so it only has to leave the chat visible beside it.
-  const viewportWidth = useViewportWidth()
-  const touch = useTouchFirst()
-  const widthContext = { dockOpen: dockOpen && !drawer, touch }
-  const storedSidebarWidth = useLayoutStore((s) => s.sidebarWidth)
-  const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth)
-  const commitSidebarWidth = useCallback((width: number) => setSidebarWidth(width), [setSidebarWidth])
-  const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), [setSidebarWidth])
-  const sidebarResize = {
-    width: clampSidebarWidth(storedSidebarWidth, viewportWidth, widthContext),
-    min: SIDEBAR_MIN_WIDTH,
-    max: sidebarMaxWidth(viewportWidth, widthContext),
-    edge: 'right' as const,
-    onCommit: commitSidebarWidth,
-    onReset: resetSidebarWidth,
-    detent: SIDEBAR_DEFAULT_WIDTH,
-    disabled: isMobile || desktopCollapsed,
-    label: 'Resize sidebar',
-  }
-  // Desktop: showing or hiding slides the width (a CSS transition, only for
-  // the toggle); the rows keep the open width and ride the moving edge, so
-  // they slide rather than rewrap every frame.
-  const sliding = useToggleTween(desktopCollapsed, PANEL_SLIDE_MS) && !isMobile
-  const pinRows = !isMobile && (desktopCollapsed || sliding)
-  // The phone drawer slides by ``translate`` (and its scrim fades) through
-  // ``lib/drawer-motion``: an edge swipe writes it per frame without
-  // re-rendering, and a release springs on with the finger's speed. Closed
-  // sits 280px out so its shadow clears the edge.
-  useDrawerMotion('sidebar', { open: mobileOpen, enabled: isMobile && !isPage, hidden: -280, reduced: prefersReducedMotion ?? false })
-  const sidebarMotion = ({ width }: LiveWidth) => ({
-    // The page fills its layer: no width of its own to animate.
-    animate: isPage
-      ? {}
-      : isMobile
-        ? { width: 'min(272px, calc(100vw - 2rem))' }
-        : { width: desktopCollapsed ? 0 : width },
-    // Desktop sets the width as a style (no frame loop), sliding it only
-    // while a toggle runs.
-    transition: { duration: 0 },
-    instantWidth: !isMobile,
-    tweenWidth: sliding,
-  })
+  const { sidebarResize, sliding, pinRows, sidebarMotion } = useSidebarFrame({ isMobile, isPage, desktopCollapsed, drawer, dockOpen, mobileOpen })
 
   const collapseAllWorkspaces = () => {
     // Keep the active repository open so the current session stays visible.

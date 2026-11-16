@@ -78,7 +78,7 @@ cmd_up() {
     printf '# demo\n\nA repository the drive journeys change.\n' >README.md
     printf 'export const greeting = "hello"\n' >greeting.ts
     git add -A
-    git -c user.name=drive -c user.email=drive@example.invalid commit -q -m "start"
+    git -c user.name=drive -c user.email=drive@example.test commit -q -m "start"
   )
 
   log "building backend"

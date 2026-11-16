@@ -37,7 +37,6 @@ import { useHealthQuery, useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
@@ -47,7 +46,6 @@ import { previewsAvailable } from '@/api/preview'
 import { useChatPreview } from './useChatPreview'
 import { useDockCover } from './useDockCover'
 import { useToastStore } from '@/stores/useToastStore'
-import { useBtwStore } from '@/stores/useBtwStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
@@ -60,15 +58,7 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { type InputComposerHandle } from '../InputComposer'
-import { Composer } from '../composer/Composer'
-import { RunChip } from '../composer/RunChip'
-import { PlusMenu, type ComposerActions } from '../composer/PlusMenu'
-import { ContextMeter } from '../composer/ContextMeter'
 import { useRunSettings } from '../composer/useRunSettings'
-import { BtwPanel } from '../BtwPanel'
-import { PhoneStatusLine, RunBar } from '../composer/RunBar'
-import { PinnedQuestion } from '../AskUser'
-import { PinnedPlanReview } from '../PlanReview/PlanReviewCard'
 import { AppFooter } from '../AppFooter'
 import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
@@ -84,11 +74,11 @@ import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
 import { AgentChatHeader } from './AgentChatHeader'
 import { ChatFrame, type PhoneStackState } from './ChatFrame'
+import { ChatComposer } from './ChatComposer'
 import { NoWorkspace, OpeningScreen, ServerUnreachable, SessionNotFound } from './ChatPlaceholders'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
 import { MissingFolderBanner, useFolderMissing } from './MissingFolderBanner'
-import { HandledByStrip } from './HandledByStrip'
 import { takeQuietOpen } from '@/lib/quiet-open'
 import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
@@ -97,8 +87,8 @@ import { useSessionBootstrap } from './useSessionBootstrap'
 import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
-import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
-import { deliverFromComposer, pushStoppedToast, stopTurn, useReturnQueuedAfterFailure } from './heldMessages'
+import { composerHistoryPrompts } from './helpers'
+import { useReturnQueuedAfterFailure } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -343,19 +333,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
   ))
   const historyPrompts = useMemo(() => composerHistoryPrompts(leadBlocks), [leadBlocks])
-  // ↑/↓ recall in the composer shows the recalled prompt in the transcript;
-  // walking back out to an empty draft returns to the live end, as ⌥⌘↓ past
-  // the newest prompt does. Reads blocks at call time to stay stable.
-  const handleHistoryRecall = useCallback((prompt: string | null) => {
-    const transcript = useTranscriptFollowStore.getState()
-    if (prompt === null) {
-      transcript.jumpToLatest?.()
-      return
-    }
-    const { leadName, agentStreams } = useAgentStore.getState()
-    const id = newestUserBlockId((leadName ? agentStreams[leadName]?.blocks : undefined) ?? EMPTY_BLOCKS, prompt)
-    if (id) transcript.showPrompt?.(id)
-  }, [])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
@@ -513,41 +490,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   useMarkSessionRead(sessionIdState)
   useReportShownSession(sessionIdState)
 
-  // ``/btw <question>``: a side question, never sent to the chat; a bare
-  // ``/btw`` shows them again. Either shows the dock's BTW tab on desktop
-  // with a workspace, else the panel above the composer. Returns false when
-  // ``content`` is not one.
-  // The composer clears itself right after submit, so a refused draft is
-  // put back on the next task.
-  const handleBtwSubmit = useCallback((content: string, files?: File[]): boolean => {
-    const action = btwSubmit(content, files, sessionIdState)
-    const giveBack = () => setTimeout(() => {
-      inputRef.current?.setValue(content)
-      if (files?.length) inputRef.current?.setFiles(files)
-    }, 0)
-    switch (action.kind) {
-      case 'not-btw':
-        return false
-      case 'no-session':
-        pushToast({ tone: 'info', title: 'Start a conversation first', description: 'Side questions answer from what the session already holds.' })
-        giveBack()
-        break
-      case 'attachments':
-        pushToast({ tone: 'error', title: "Side questions can't include attachments", description: 'Remove the files, or send them as a normal message.' })
-        giveBack()
-        break
-      case 'reopen':
-        if (sessionIdState) handleOpenSideQuestions(sessionIdState)
-        break
-      case 'ask':
-        if (!sessionIdState) break
-        void useBtwStore.getState().ask(sessionIdState, action.question)
-        handleOpenSideQuestions(sessionIdState)
-        break
-    }
-    return true
-  }, [sessionIdState, pushToast, handleOpenSideQuestions])
-
   const {
     paletteCommands,
     quickOpenWorkspaceFiles,
@@ -616,17 +558,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // How the next message runs, for the run deck under the composer.
   const runSettings = useRunSettings(workspace)
-  const composerMode = sessionPendingInteractionMode ?? sessionInteractionMode
-  const canAskSideQuestion = Boolean(sessionIdState) && (leadHasVisibleBlocks || leadHasLiveBlocks)
-  const renderPlus = useCallback((actions: ComposerActions) => (
-    <PlusMenu
-      actions={actions}
-      workspace={workspace}
-      disabled={isSessionLoading}
-      canAskSideQuestion={canAskSideQuestion}
-      hasSnippets={snippetCommands.length > 0}
-    />
-  ), [workspace, isSessionLoading, canAskSideQuestion, snippetCommands.length])
 
   // The docked composer's tray carries the jump-to-latest chip. With no
   // composer (a subagent's session, which only the main agent directs) the
@@ -637,117 +568,52 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // centered, else docked at the bottom of the chat column. While a switch
   // looks up the next session's workspace, the composer stays (disabled)
   // instead of unmounting; sending needs `workspace` itself.
-  // Desktop with a workspace: the dock's BTW tab shows side questions, and
-  // here only the chip reopens it while that tab is not on screen. A phone
-  // shows it as the "btw" pill in the status line above the composer.
-  const btwPanel = dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
-    <BtwPanel
-      sessionId={sessionIdState || null}
-      countEnabled={leadHasVisibleBlocks}
-      chipOnly={dockViewsEnabled}
-      onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
-    />
-  )
   const composerElement = workspace || (isSessionLoading && chatOnScreen && storeWorkspace) ? (
-    <Composer
-      ref={inputRef}
+    <ChatComposer
+      composerRef={inputRef}
       placement={composerInline ? 'inline' : 'docked'}
-      onHandoffCapture={draftHandoff.capture}
-      enterFrom={draftHandoff.active ? draftHandoff.snapshot : null}
-      onSubmit={async (content, files, mentions, delivery) => {
-        if (!workspace) return
-        if (handleBtwSubmit(content, files)) return
-        if (!files || files.length === 0) {
-          const builtInCmd = parseBuiltInSlashCommand(content)
-          if (builtInCmd) {
-            handleSlashCommand(builtInCmd)
-            return
-          }
-        }
-        const expanded = await expandUserCommand(content)
-        await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
-      }}
-      onStop={() => {
-        void stopTurn(inputRef.current)
-        if (isPhone && workspace) pushStoppedToast(workspace, () => inputRef.current)
-      }}
-      onSlashCommand={handleSlashCommand}
-      onSnippetCommand={handleSnippetCommand}
-      slashCommands={slashCommands}
-      snippetCommands={snippetCommands}
-      historyPrompts={historyPrompts}
-      onHistoryRecall={handleHistoryRecall}
-      onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
-      onValueChange={handleDraftValueChange}
-      fileRefs={fileRefs}
-      onFileRefsNeeded={() => setFileRefsEnabled(true)}
-      isStreaming={isAgentWorking}
-      disabled={isSessionLoading}
-      // Desktop: Send says the server is gone instead of looking ready; the
-      // draft stays (desktop mockup 12.1). A phone keeps its send-and-restore.
-      sendBlockedReason={serverDown && !isPhone ? "Can't reach the server. Your message stays here until it is back." : null}
-      placeholder={
-        // While a turn runs the composer shows its own queue/stop hint.
-        isDraft && needsModelSetup
-          ? 'Connect a model to start'
-          : composerMode === 'plan'
-            // Says what Plan mode does before the first message does it.
-            ? 'Plan mode: the agent reads and writes a plan. It changes no files.'
-            : 'Ask anything…'
-      }
+      draftHandoff={draftHandoff}
+      workspace={workspace}
+      sessionId={sessionIdState}
+      isDraft={isDraft}
+      isSessionLoading={isSessionLoading}
+      isAgentWorking={isAgentWorking}
+      isPhone={isPhone}
+      serverDown={serverDown}
+      needsModelSetup={needsModelSetup}
       capabilities={leadCapabilities}
-      // A switch requested mid-turn is queued server-side, so the toggle
-      // shows what the user picked while the turn finishes under the old
-      // mode.
-      interactionMode={composerMode}
-      interactionModePending={sessionPendingInteractionMode !== null}
+      interactionMode={sessionInteractionMode}
+      pendingInteractionMode={sessionPendingInteractionMode}
+      isSwitchingInteractionMode={isSwitchingInteractionMode}
       onInteractionModeChange={(mode) => {
         setIsSwitchingInteractionMode(true)
         void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
           setIsSwitchingInteractionMode(false)
         })
       }}
-      // The new-session draft picks a mode locally; the first message carries it.
-      interactionModeDisabled={isSwitchingInteractionMode || (!sessionIdState && !isDraft)}
+      slashCommands={slashCommands}
+      snippetCommands={snippetCommands}
+      onSlashCommand={handleSlashCommand}
+      onSnippetCommand={handleSnippetCommand}
+      expandUserCommand={expandUserCommand}
+      historyPrompts={historyPrompts}
+      onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
+      onValueChange={handleDraftValueChange}
+      fileRefs={fileRefs}
+      onFileRefsNeeded={() => setFileRefsEnabled(true)}
       revertedCount={leadRevertedCount}
       revertedMessages={leadRevertedMessages}
       revertKeptFiles={revertKeepsFiles}
-      onRedo={() => { void handleSlashCommand('redo') }}
-      onRedoAll={() => { void handleSlashCommand('redo-all') }}
-      renderPlus={renderPlus}
-      deck={(
-        <RunChip
-          settings={runSettings}
-          disabled={isSessionLoading}
-        />
-      )}
-      deckEnd={sessionIdState ? (
-        <ContextMeter
-          input={headerTokens.input}
-          output={headerTokens.output}
-          cachedPercent={headerTokens.cachedPercent}
-          trigger={headerTokens.trigger}
-          sessionCostUsd={sessionCostUsd}
-          canSummarize={leadHasVisibleBlocks && !isAgentWorking}
-        />
-      ) : null}
-      aboveComposer={(
-        <>
-          {/* Another workspace's agent is driving this session. */}
-          <HandledByStrip sentFrom={sessionSentFrom} onOpenSession={handleOpenSession} />
-          {/* What the run waits on, pinned so it cannot scroll away. */}
-          <PinnedQuestion />
-          <PinnedPlanReview />
-          {isPhone ? (
-            // One status line: the run on the left, the "btw" pill on the right.
-            <PhoneStatusLine>
-              <RunBar />
-              {btwPanel}
-            </PhoneStatusLine>
-          ) : null}
-          {!isPhone && btwPanel}
-        </>
-      )}
+      runSettings={runSettings}
+      tokens={headerTokens}
+      sessionCostUsd={sessionCostUsd}
+      hasVisibleBlocks={leadHasVisibleBlocks}
+      hasLiveBlocks={leadHasLiveBlocks}
+      sentFrom={sessionSentFrom}
+      onOpenSession={handleOpenSession}
+      onOpenSideQuestions={handleOpenSideQuestions}
+      sideQuestionsInDock={dockViewsEnabled}
+      sideQuestionsTabShown={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw'}
     />
   ) : null
 

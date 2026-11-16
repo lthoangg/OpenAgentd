@@ -16,7 +16,8 @@ mock.module('@/hooks/use-platform', () => ({
 }))
 
 import { InputComposer } from '@/components/InputComposer'
-import type { FileRef, SlashCommand } from '@/components/InputComposer'
+import type { FileRef } from '@/components/InputComposer'
+import type { SlashCommand } from '@/components/InputComposer/commands'
 
 afterEach(cleanup)
 

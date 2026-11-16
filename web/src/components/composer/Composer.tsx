@@ -19,9 +19,8 @@ import {
   InputComposer,
   type FileRef,
   type InputComposerHandle,
-  type SlashCommand,
-  type SnippetCommand,
 } from '../InputComposer'
+import type { SlashCommand, SnippetCommand } from '../InputComposer/commands'
 import type { SendDelivery } from '../InputComposer/deliveries'
 import { JumpToLatestChip } from '../JumpToLatestChip'
 import { RevertNotice } from '../RevertNotice'

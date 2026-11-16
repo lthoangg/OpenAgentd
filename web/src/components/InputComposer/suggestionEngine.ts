@@ -17,7 +17,7 @@
  * `handleChange` for keyboard navigation and the active-mention window.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import type { SlashCommand, SnippetCommand } from '../InputComposer'
+import type { SlashCommand, SnippetCommand } from './commands'
 import type { FileRef } from './mentions'
 import {
   filterMentions,

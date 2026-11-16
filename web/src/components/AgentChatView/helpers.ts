@@ -8,7 +8,7 @@ import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { workspaceRelativePath } from '@/utils/file-refs'
-import type { SlashCommand } from '../InputComposer'
+import type { SlashCommand } from '../InputComposer/commands'
 import { patchFileStats } from '../ToolCall/diffUtils'
 
 /**

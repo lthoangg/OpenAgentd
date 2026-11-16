@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, type CSSProperties, type MutableRefObject } from 'react'
 import { File, Folder } from 'lucide-react'
-import type { SlashCommand } from '../InputComposer'
+import type { SlashCommand } from './commands'
 import type { SuggestionMenu, SuggestionRow } from './suggestionEngine'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsPhone } from '@/hooks/use-is-phone'

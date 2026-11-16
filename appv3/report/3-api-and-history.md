@@ -303,8 +303,8 @@ credential or database format changes.
   the diff text that `git-diff/view` cuts at 512 K characters. The dock now
   fetches bodies one file at a time from `git-diff/view?paths=…`, which reads
   paths literally (`--literal-pathspecs`) and keeps the `untracked` list when
-  the tracked diff is cut. Test: `api/src/routes/agent/files.rs`. v2 has only
-  the whole diff.
+  the tracked diff is cut. Test: `api/src/routes/agent/files/git.rs`. v2 has
+  only the whole diff.
 - **Three v2 routes are gone (v3 only):** `GET
   /api/agent/{session_id}/permissions`, `POST
   /api/agent/{session_id}/permissions/{request_id}/reply` and `GET`/`PUT

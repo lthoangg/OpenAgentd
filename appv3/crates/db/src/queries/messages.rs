@@ -536,13 +536,18 @@ pub async fn find_redo_target(pool: &DbPool, session: &ChatSession, boundary: &S
 }
 
 /// The `chat_sessions.revert` blob v2 writes for a boundary at `target`.
-pub fn revert_state(target: &SessionMessage, anchor: Option<&str>) -> Value {
+/// `keep_files` marks a chain of undos that never rolled files back, so
+/// redo leaves the workspace alone too.
+pub fn revert_state(target: &SessionMessage, anchor: Option<&str>, keep_files: bool) -> Value {
     let created = parse_dt(&target.created_at).map(|d| py_isoformat(&d)).unwrap_or_else(|| target.created_at.clone());
     let mut m = Map::new();
     m.insert("message_id".into(), Value::String(crate::codec::api_uuid(&target.id)));
     m.insert("created_at".into(), Value::String(created));
     if let Some(a) = anchor.filter(|a| !a.is_empty()) {
         m.insert("snapshot".into(), Value::String(a.to_string()));
+    }
+    if keep_files {
+        m.insert("keep_files".into(), Value::Bool(true));
     }
     Value::Object(m)
 }

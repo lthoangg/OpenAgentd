@@ -336,8 +336,24 @@ async fn http_api_end_to_end() {
     assert_eq!(msgs[1]["content"], "Hello from mock.");
     assert_eq!(msgs[1]["extra"]["usage"], json!({"input": 7, "output": 3}));
 
-    // undo restores the workspace snapshot and reports changed paths
     std::fs::write(ws.join("b.txt"), "later").unwrap();
+    // undo with keep_files moves only the conversation; redo-all leaves files too
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "redo", "session_id": sid, "keep_files": true}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "undo", "session_id": sid, "keep_files": "yes"}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "undo", "session_id": sid, "keep_files": true}))).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    assert_eq!(v["changed_paths"], json!({"added": [], "modified": [], "removed": []}));
+    assert_eq!(v["keep_files"], json!(true));
+    assert!(ws.join("b.txt").exists());
+    let (_, h) = c.json("GET", &format!("/api/agent/{sid}/history"), None).await;
+    assert_eq!(h["lead"]["revert"]["keep_files"], json!(true), "{}", h["lead"]["revert"]);
+    let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "redo-all", "session_id": sid}))).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    assert!(ws.join("b.txt").exists());
+
+    // undo restores the workspace snapshot and reports changed paths
     let (st, v) = c.json("POST", "/api/agent/commands", Some(json!({"command": "undo", "session_id": sid}))).await;
     assert_eq!(st, StatusCode::ACCEPTED, "{v}");
     assert_eq!(v["changed_paths"]["removed"], json!(["b.txt"]));

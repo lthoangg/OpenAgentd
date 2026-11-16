@@ -396,12 +396,30 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
             String::new()
         }
     };
+    let keep_files = match body.get("keep_files") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            errs.push(verr("bool_type", &loc(&["body", "keep_files"]), "Input should be a valid boolean", other.clone()));
+            false
+        }
+    };
+    if keep_files && !command.is_empty() && command != "undo" {
+        errs.push(verr("extra_forbidden", &loc(&["body", "keep_files"]), "keep_files applies only to 'undo'", Value::Bool(true)));
+    }
     if !errs.is_empty() {
         return Err(ApiError::validation(errs));
     }
     let agent = resolve_agent_for_existing_session(&st.pool, &session_id).await?;
     let resp =
         |cmd: &str, sid: &str, message: Value, cp: Value| json_code(202, json!({"status": "accepted", "session_id": sid, "command": cmd, "message": message, "changed_paths": cp}));
+    let shift_resp = |cmd: &str, shift: &appv3_agent::revert::BoundaryShift| {
+        let message = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
+        json_code(
+            202,
+            json!({"status": "accepted", "session_id": session_id, "command": cmd, "message": message, "changed_paths": changed_paths(shift), "keep_files": shift.keep_files}),
+        )
+    };
     match command.as_str() {
         "compact" => {
             let sid = agent.handle_compact(&session_id, None).await.map_err(session_err)?;
@@ -409,19 +427,18 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
             Ok(resp("compact", &sid, Value::Null, Value::Null))
         }
         "undo" => {
-            let shift = agent.handle_boundary_command(&session_id, "undo", "No message to undo.", appv3_agent::revert::undo_session_messages).await.map_err(session_err)?;
-            let msg = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
-            Ok(resp("undo", &session_id, msg, changed_paths(&shift)))
+            let undo = |pool, sid| appv3_agent::revert::undo_session_messages(pool, sid, keep_files);
+            let shift = agent.handle_boundary_command(&session_id, "undo", "No message to undo.", undo).await.map_err(session_err)?;
+            Ok(shift_resp("undo", &shift))
         }
         "redo" => {
             let shift = agent.handle_boundary_command(&session_id, "redo", "No undone message to redo.", appv3_agent::revert::redo_session_messages).await.map_err(session_err)?;
-            let msg = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
-            Ok(resp("redo", &session_id, msg, changed_paths(&shift)))
+            Ok(shift_resp("redo", &shift))
         }
         _ => {
             let shift =
                 agent.handle_boundary_command(&session_id, "redo", "No undone message to redo.", appv3_agent::revert::redo_all_session_messages).await.map_err(session_err)?;
-            Ok(resp("redo-all", &session_id, Value::Null, changed_paths(&shift)))
+            Ok(shift_resp("redo-all", &shift))
         }
     }
 }

@@ -46,7 +46,7 @@ command with the same name as a skill hides the skill's entry.
 
 ## Names to avoid
 
-`btw`, `compact`, `undo`, `redo`, `redo-all`, `new`, `stop` and `init` are
+`btw`, `compact`, `undo`, `undo-messages`, `redo`, `redo-all`, `new`, `stop` and `init` are
 built into the chat input, and `memory` is a built-in command; a file with one
 of these names is shadowed or shadows a built-in. Pick another name.
 

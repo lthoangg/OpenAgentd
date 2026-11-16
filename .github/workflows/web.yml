@@ -77,7 +77,7 @@ jobs:
         run: bun run typecheck
 
       - name: Type check (tests)
-        run: bun exec tsc -p tsconfig.test.json --noEmit
+        run: bun run tsc -p tsconfig.test.json --noEmit
 
       - name: Tests
         run: bun run test

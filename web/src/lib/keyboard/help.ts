@@ -63,7 +63,6 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('First and last sidebar row', { key: 'Home' }, { key: 'End' }),
         keys('Collapse and expand a sidebar workspace', { key: 'ArrowLeft' }, { key: 'ArrowRight' }),
         keys('Rename the focused item', { key: 'F2' }),
-        keys('Delete the focused item', { key: 'Delete' }, { key: 'Backspace', mod: true }),
         keys('Menu for the focused item', { key: 'F10', shift: true }),
       ],
     },

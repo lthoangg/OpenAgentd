@@ -1594,9 +1594,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   shortcut by area.
 - **Keyboard paths and focus continuity** `[v3.5.0, v3.6.0]`:
   - Row actions that only show on hover also appear on keyboard focus and keep keys:
-    F2 renames, Delete (or `⌘⌫` / `Ctrl+Backspace`) deletes, Shift+F10 or
-    the Menu key opens the row's menu. In the sidebar, Left and Right
-    collapse and expand a workspace.
+    F2 renames, Shift+F10 or the Menu key opens the row's menu. In the
+    sidebar, Left and Right collapse and expand a workspace. Since
+    `[v3.57.0]` sidebar rows take no row keys (no F2, Delete / `⌘⌫` or
+    Shift+F10), and their right-click menu shows no key hints.
   - Focus never drops to the page: after sending, Escape or a deleted row it
     returns to the composer, and a collapsed sidebar or closed drawer cannot
     take it. In the composer, Tab still switches Plan and Code; Shift+Tab or
@@ -3661,7 +3662,8 @@ agent against it.
   at rest. Session rows offer **Pin** and **More**, subagent rows **More**,
   and folders **+** and **More**; More opens the same menu as right-click
   (Pin, Edit title, Delete), so delete is no longer one click from a row.
-  Double-click and F2 still rename, and the Delete key still deletes. A long
+  Double-click still renames (F2 and the Delete key were dropped in
+  `[v3.57.0]`). A long
   subagent title now truncates in Pinned and the Status and Date views instead
   of widening the list past the sidebar.
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above

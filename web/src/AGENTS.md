@@ -38,7 +38,9 @@ This file adds source-level guidance to `web/AGENTS.md`.
 - Call hooks such as `useDeferredUnmount` before conditional returns.
 - Tab follows DOM order; there is no roving focus across areas. Hover-revealed
   row actions must also show on `focus-within` and keep a keyboard path (F2,
-  Delete, Shift+F10 via `lib/focus/item-keys.ts`, or a shortcut). Use
+  Shift+F10 via `lib/focus/item-keys.ts`, or a shortcut). Exception: sidebar
+  rows deliberately take no row keys; their actions are reached by Tab to the
+  focus-revealed buttons or by right-click. Use
   `focusQuietly` (`lib/focus/quiet.ts`) for focus a script hands back.
 
 Keep the detailed scroll, compaction, gesture, suggestion-positioning, and file

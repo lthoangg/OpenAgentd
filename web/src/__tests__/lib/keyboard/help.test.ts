@@ -83,6 +83,8 @@ describe('shortcutHelp', () => {
   it('lists the sidebar row keys', () => {
     expect(find('macos', 'Previous and next sidebar row')?.keys).toEqual(['↑', '↓'])
     expect(find('macos', 'First and last sidebar row')?.keys).toEqual(['Home', 'End'])
+    // Sidebar rows take no delete key, and nothing else does either.
+    expect(find('macos', 'Delete the focused item')).toBeUndefined()
   })
 
   it('lists the keys a terminal really has, and no ⌘K clear (⌘K opens the palette)', () => {

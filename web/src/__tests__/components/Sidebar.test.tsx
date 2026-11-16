@@ -15,8 +15,6 @@ import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { APP_EVENTS } from '@/lib/app-events'
-import type { OS } from '@/hooks/use-platform'
-import { ROW_KEYS } from '@/components/Sidebar/row-keys'
 import { TREE_INDENT_PX } from '@/components/Sidebar/tree-indent'
 import {
   addExpandedPaths,
@@ -2736,26 +2734,29 @@ describe('Sidebar workspace trust flow', () => {
       expect(document.activeElement).toBe(header)
     })
 
-    it('renames with F2, deletes with Delete and opens the row menu with Shift+F10', async () => {
+    it('ignores F2, Delete, ⌘⌫ and Shift+F10 on a session row', async () => {
       const user = userEvent.setup()
       twoSessions()
       await renderSidebarForSessions('session-1')
       row('Second').focus()
       await user.keyboard('{Shift>}{F10}{/Shift}')
-      expect(screen.getByRole('menu', { name: 'Actions for Second' })).toBeTruthy()
-      await user.keyboard('{Escape}')
-      row('Second').focus()
+      await user.keyboard('{ContextMenu}')
+      expect(screen.queryByRole('menu')).toBeNull()
       await user.keyboard('{F2}')
-      expect(screen.getByLabelText('Session title')).toBeTruthy()
-      await user.keyboard('{Escape}')
-      row('Second').focus()
+      expect(screen.queryByLabelText('Session title')).toBeNull()
       await user.keyboard('{Delete}')
-      // No dialog: the delete is held for the Undo toast's ten seconds.
-      expect(screen.queryByText('Delete this session?')).toBeNull()
-      expect(deleteSessionMutate).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'session-2', holdMs: 10000 }),
-        expect.anything(),
-      )
+      await user.keyboard('{Meta>}{Backspace}{/Meta}')
+      await user.keyboard('{Control>}{Backspace}{/Control}')
+      expect(deleteSessionMutate).not.toHaveBeenCalled()
+    })
+
+    it('ignores Shift+F10 on a workspace row', async () => {
+      const user = userEvent.setup()
+      twoSessions()
+      await renderSidebarForSessions('session-1')
+      screen.getByLabelText('Open workspace project').focus()
+      await user.keyboard('{Shift>}{F10}{/Shift}')
+      expect(screen.queryByRole('menu')).toBeNull()
     })
 
     it('moves between rows with Up/Down and jumps with Home/End', async () => {
@@ -2794,9 +2795,10 @@ describe('Sidebar workspace trust flow', () => {
       const user = userEvent.setup()
       twoSessions()
       await renderSidebarForSessions('session-1')
-      row('Second').focus()
-      await user.keyboard('{F2}')
+      fireEvent.contextMenu(row('Second'))
+      await user.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Rename' }))
       const input = screen.getByLabelText('Session title')
+      input.focus()
       await user.keyboard('{ArrowUp}')
       expect(document.activeElement).toBe(input)
     })
@@ -3324,9 +3326,9 @@ describe('Sidebar workspace trust flow', () => {
       // No Share… and no Copy link: a session is opened from the app, not passed around.
       expect(items.map((item) => item.textContent)).toEqual([
         'Open in new window',
-        'RenameF2',
+        'Rename',
         'Pin',
-        'Delete session⌘⌫',
+        'Delete session',
       ])
       fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Pin' }))
       expect(setSessionPinnedMutate).toHaveBeenCalledWith(
@@ -3336,10 +3338,10 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     describe.each([
-      { os: 'macos', delete: '⌘⌫', deleteKey: { key: 'Backspace', metaKey: true }, aria: 'Delete Meta+Backspace' },
-      { os: 'windows', delete: 'Del', deleteKey: { key: 'Delete' }, aria: 'Delete Control+Backspace' },
-      { os: 'linux', delete: 'Del', deleteKey: { key: 'Delete' }, aria: 'Delete Control+Backspace' },
-    ])('session menu shortcuts on $os', ({ os, delete: deleteLabel, deleteKey, aria }) => {
+      { os: 'macos', deleteKey: { key: 'Backspace', metaKey: true } },
+      { os: 'windows', deleteKey: { key: 'Backspace', ctrlKey: true } },
+      { os: 'linux', deleteKey: { key: 'Delete' } },
+    ])('session menu on $os', ({ os, deleteKey }) => {
       const openMenu = async () => {
         isTauri = false
         platformOs = os
@@ -3351,45 +3353,26 @@ describe('Sidebar workspace trust flow', () => {
         return { row, menu: await screen.findByRole('menu') }
       }
 
-      it('shows the key beside each action that has one, and none beside the rest', async () => {
+      it('shows no key hints beside any action', async () => {
         const { menu } = await openMenu()
 
-        const rename = within(menu).getByRole('menuitem', { name: 'Rename' })
-        expect(rename.querySelector('kbd')?.textContent).toBe('F2')
-        expect(rename.getAttribute('aria-keyshortcuts')).toBe('F2')
-        const del = within(menu).getByRole('menuitem', { name: 'Delete session' })
-        expect(del.querySelector('kbd')?.textContent).toBe(deleteLabel)
-        expect(del.getAttribute('aria-keyshortcuts')).toBe(aria)
-        // Decorative: the name stays "Rename"; the key is in aria-keyshortcuts.
-        expect(rename.querySelector('kbd')?.getAttribute('aria-hidden')).toBe('true')
-        // Pin has no key, so it shows none.
-        expect(within(menu).getByRole('menuitem', { name: 'Pin' }).querySelector('kbd')).toBeNull()
-        expect(within(menu).getByRole('menuitem', { name: 'Pin' }).hasAttribute('aria-keyshortcuts')).toBe(false)
-      })
-
-      it('reads the label from the table the key handlers are checked against', async () => {
-        await openMenu()
-        // The label is the table's, and the table's sample is a key the row's
-        // own handler accepts: the menu and the key cannot disagree.
-        for (const name of ['rename', 'delete'] as const) {
-          const key = ROW_KEYS[name]
-          expect(key.matches(key.sample(os as OS))).toBe(true)
+        for (const name of ['Rename', 'Pin', 'Delete session']) {
+          const item = within(menu).getByRole('menuitem', { name })
+          expect(item.querySelector('kbd')).toBeNull()
+          expect(item.hasAttribute('aria-keyshortcuts')).toBe(false)
         }
-        expect(ROW_KEYS.rename.label(os as OS)).toBe('F2')
-        expect(ROW_KEYS.delete.label(os as OS)).toBe(deleteLabel)
+        expect(menu.textContent).not.toContain('F2')
+        expect(menu.textContent).not.toContain('⌘⌫')
       })
 
-      it('renames on that key and deletes on that key', async () => {
+      it('neither renames nor deletes from the keyboard', async () => {
         const { row, menu } = await openMenu()
         fireEvent.keyDown(menu, { key: 'Escape' })
 
         fireEvent.keyDown(row, { key: 'F2' })
-        expect(await screen.findByRole('textbox', { name: 'Session title' })).toBeTruthy()
-        fireEvent.keyDown(screen.getByRole('textbox', { name: 'Session title' }), { key: 'Escape' })
-
-        fireEvent.keyDown(await screen.findByRole('button', { name: /^Feature/ }), deleteKey)
-        await waitFor(() => expect(deleteSessionMutate).toHaveBeenCalledTimes(1))
-        expect(screen.queryByRole('heading', { name: 'Delete this session?' })).toBeNull()
+        expect(screen.queryByRole('textbox', { name: 'Session title' })).toBeNull()
+        fireEvent.keyDown(screen.getByRole('button', { name: /^Feature/ }), deleteKey)
+        expect(deleteSessionMutate).not.toHaveBeenCalled()
       })
     })
 

@@ -13,7 +13,6 @@ import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { AnimatedTitle, useTitleWash } from '@/components/ui/animated-title'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Collapsible } from '@/components/ui/collapsible'
-import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { sessionPrefetchProps } from '@/lib/session-prefetch-row'
 import { SessionStatusMark, sessionStateWord, sessionStatus } from './SessionStatusMark'
 import { LIST_ROW_GEOMETRY, ROW_ACTION, listRowSurface, listRowText, rowActionsReveal } from '@/components/ui/list-row'
@@ -75,18 +74,12 @@ function LinkedSessionRow({
   mobileLongPressActions,
   onSelect,
   onContextActions,
-  onEdit,
-  onDelete,
 }: {
   session: SessionResponse
   isCurrent: boolean
   mobileLongPressActions: boolean
   onSelect: (session: SessionResponse, event: React.MouseEvent) => void
   onContextActions: (session: SessionResponse, at: MenuPoint) => void
-  /** F2, as the row menu's Rename shows it. */
-  onEdit: (session: SessionResponse) => void
-  /** Delete, as the row menu's Delete session… shows it. */
-  onDelete: SessionDeleteHandler
 }) {
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
   const failed = useUnreadStore((state) => state.failed.includes(session.id))
@@ -103,20 +96,6 @@ function LinkedSessionRow({
         aria-current={isCurrent ? 'page' : undefined}
         aria-label={`${title}, in ${where}${stateWord ? `, ${stateWord}` : ''}`}
         {...(isCurrent ? {} : sessionPrefetchProps(session.id, session.workspace))}
-        onKeyDown={(e) => {
-          // The keys the row's menu lists beside Rename and Delete session…
-          // (``row-keys``) do those things here too.
-          if (isRenameKey(e)) {
-            e.preventDefault()
-            onEdit(session)
-          } else if (isDeleteKey(e)) {
-            e.preventDefault()
-            onDelete(e, session)
-          } else if (isMenuKey(e) && !mobileLongPressActions) {
-            e.preventDefault()
-            onContextActions(session, menuPointFor(e.currentTarget))
-          }
-        }}
         onClick={(e) => onSelect(session, e)}
         onContextMenu={(e) => {
           if (mobileLongPressActions) return
@@ -291,18 +270,9 @@ function SessionRowView({
   const sentFromName = sentFrom ? workspaceLabel(sentFrom.workspace) : null
   const selectLinked = (target: SessionResponse, event: React.MouseEvent) => onSessionSelect(target, target.workspace ?? path, event)
 
-  // Keyboard shortcuts for the hover-revealed row actions.
+  // Right and Left expand and collapse the row's subagents.
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (isRenameKey(event)) {
-      event.preventDefault()
-      onSessionEdit(session)
-    } else if (isDeleteKey(event)) {
-      event.preventDefault()
-      onSessionDelete(event, session)
-    } else if (isMenuKey(event) && !mobileLongPressActions) {
-      event.preventDefault()
-      onSessionContextActions(session, menuPointFor(event.currentTarget))
-    } else if (hasSubagents && event.key === 'ArrowRight' && !isExpanded) {
+    if (hasSubagents && event.key === 'ArrowRight' && !isExpanded) {
       event.preventDefault()
       setExpandedOverride(true)
     } else if (hasSubagents && event.key === 'ArrowLeft' && isExpanded && !isChildActive) {
@@ -556,16 +526,6 @@ function SessionRowView({
                       data-sidebar-session=""
                       aria-current={isSubCurrent ? 'page' : undefined}
                       {...(isSubCurrent ? {} : sessionPrefetchProps(sub.session_id, session.workspace))}
-                      onKeyDown={(e) => {
-                        if (isMenuKey(e) && !mobileLongPressActions) {
-                          e.preventDefault()
-                          onSessionContextActions(subSessionPayload, menuPointFor(e.currentTarget))
-                          return
-                        }
-                        if (!isDeleteKey(e)) return
-                        e.preventDefault()
-                        onSessionDelete(e, subSessionPayload)
-                      }}
                       onClick={(e) => {
                         onSessionSelect(subSessionPayload, path, e)
                       }}
@@ -615,8 +575,6 @@ function SessionRowView({
               mobileLongPressActions={mobileLongPressActions}
               onSelect={selectLinked}
               onContextActions={onSessionContextActions}
-              onEdit={onSessionEdit}
-              onDelete={onSessionDelete}
             />
           ))}
         </div>

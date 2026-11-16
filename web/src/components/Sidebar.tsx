@@ -38,7 +38,6 @@ import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { usePlatform } from '@/hooks/use-platform'
 import { isMobileApp } from '@/lib/mobile-app'
 import { cn } from '@/lib/utils'
-import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { PANEL_SLIDE_MS, PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useToggleTween } from '@/hooks/useToggleTween'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
@@ -191,7 +190,6 @@ import { SidebarScroller } from './Sidebar/SidebarScroller'
 import { useLargeTitleCollapse } from './Sidebar/useLargeTitleCollapse'
 import { CountChip } from './Sidebar/CountChip'
 import { MenuShortcut } from './Sidebar/MenuShortcut'
-import { ROW_KEYS, type RowKeyName } from './Sidebar/row-keys'
 import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
@@ -214,8 +212,6 @@ interface SessionMenuAction {
   danger?: boolean
   /** Starts a new group of entries. */
   separatorBefore?: boolean
-  /** The row key that does the same thing (``ROW_KEYS``), shown beside the entry. */
-  rowKey?: RowKeyName
   run: () => void
 }
 
@@ -1133,7 +1129,7 @@ export function Sidebar({
       actions.push({ id: 'window', label: 'Open in new window', icon: AppWindow, run: () => openInNewWindow(session) })
     }
     if (topLevel) {
-      actions.push({ id: 'rename', label: 'Rename', icon: Pencil, rowKey: 'rename', run: () => handleSessionEdit(session) })
+      actions.push({ id: 'rename', label: 'Rename', icon: Pencil, run: () => handleSessionEdit(session) })
       actions.push({
         id: 'pin',
         label: session.pinned_at ? 'Unpin' : 'Pin',
@@ -1142,7 +1138,7 @@ export function Sidebar({
       })
     }
     // The ellipsis says a dialog follows, which only a working session gets.
-    actions.push({ id: 'delete', label: sessionWorking(session) ? 'Delete session…' : 'Delete session', icon: Trash2, danger: true, separatorBefore: actions.length > 0, rowKey: 'delete', run: () => requestSessionDelete(session) })
+    actions.push({ id: 'delete', label: sessionWorking(session) ? 'Delete session…' : 'Delete session', icon: Trash2, danger: true, separatorBefore: actions.length > 0, run: () => requestSessionDelete(session) })
     return actions
   }
 
@@ -1543,10 +1539,6 @@ export function Sidebar({
                           if (expandKey || collapseKey) {
                             event.preventDefault()
                             toggleWorkspaceExpanded(path)
-                          } else if (isMenuKey(event) && !mobileLongPressActions && !sourceIsChat) {
-                            event.preventDefault()
-                            const at = menuPointFor(event.currentTarget)
-                            setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: at.clientX, y: at.clientY })
                           }
                         }}
                         onContextMenu={(event) => {
@@ -2335,14 +2327,13 @@ export function Sidebar({
           onDismiss={() => setDesktopSessionActions(null)}
           className="min-w-44"
         >
-          {sessionMenuActions(desktopSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, rowKey, run }) => (
+          {sessionMenuActions(desktopSessionActions.session).map(({ id, label, icon: Icon, danger, separatorBefore, run }) => (
             <Fragment key={id}>
               {separatorBefore && <ContextMenuSeparator />}
               <button
                 type="button"
                 role="menuitem"
                 className={danger ? CONTEXT_MENU_ITEM_DANGER_CLASS : CONTEXT_MENU_ITEM_CLASS}
-                aria-keyshortcuts={rowKey ? ROW_KEYS[rowKey].aria(os) : undefined}
                 onClick={() => {
                   setDesktopSessionActions(null)
                   run()
@@ -2350,7 +2341,6 @@ export function Sidebar({
               >
                 <Icon size={12} aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{label}</span>
-                {rowKey && <MenuShortcut>{ROW_KEYS[rowKey].label(os)}</MenuShortcut>}
               </button>
             </Fragment>
           ))}

@@ -28,6 +28,10 @@ integration for the mobile shell.
   the notification plugin's events. The web UI routes them all in
   `web/src/lib/notification-taps.ts`; on iOS the notification plugin's own
   tap events are not used.
+  It also answers the bridge's "which computer is the app on" (`open_device`):
+  while the app is open, a push from any other account computer shows as a
+  banner (`../ios-widget/App/ForegroundPush.swift`); the plugin alone would
+  hide every push.
 - `src/keyboard_bar.rs` (iOS): hides the WebView's form accessory bar
   (`< > ✓` above the keyboard) at setup by moving WKWebView's content view to
   a subclass whose `inputAccessoryView` is nil. On iOS 26 the floating bar is

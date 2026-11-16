@@ -1,4 +1,5 @@
-// Checks the Keychain write order and the Show Previews rule on macOS.
+// Checks the Keychain write order, the Show Previews rule and the
+// foreground push rule on macOS.
 // Run by run-swift-checks.sh.
 
 import Foundation
@@ -42,6 +43,15 @@ struct SwiftChecks {
         check(hidden.route?.session == "s1" && hidden.route?.sender == "dev-mac", "previews never: the tap still opens the session")
         let noSession = PreviewPolicy.fill(title: "Done", body: "", session: "", sender: "dev-mac", setting: .always)
         check(noSession.route == nil, "a letter without a session opens the app as it is")
-        print("swift checks: 11 passed")
+
+        // While the app is open on dev-mac: a push from another computer is a banner.
+        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: "studio", openDevice: "dev-mac"), "push from another computer: banner")
+        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: "studio", openDevice: nil), "push while on no account computer: banner")
+        check(!ForegroundPush.showsBanner(remote: true, notice: nil, sender: "dev-mac", openDevice: "dev-mac"), "push from the computer on screen: the app shows its own")
+        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: nil, openDevice: "dev-mac"), "a letter the extension could not open: banner, never lost")
+        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: "", openDevice: "dev-mac"), "an empty sender counts as unknown")
+        check(!ForegroundPush.showsBanner(remote: true, notice: "approval", sender: nil, openDevice: nil), "the approval notice keeps its handling")
+        check(!ForegroundPush.showsBanner(remote: false, notice: nil, sender: nil, openDevice: nil), "the app's own notifications go to the plugin")
+        print("swift checks: 18 passed")
     }
 }

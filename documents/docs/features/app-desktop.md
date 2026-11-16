@@ -55,6 +55,14 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   twice on a device, across reloads too. On desktop, a click that opens a
   window that is still loading is no longer lost, and a notification that
   failed to show can still show from another window.
+  The phone rings only for what you have not seen `[v3.58.0]`: a computer
+  sends its Done, Needs you or Failed push a minute after the notification,
+  and only when nobody looked at that session meanwhile (open in a focused
+  window or tab, or its question answered, on any desktop, browser or
+  phone). Working at your computers keeps the phone quiet; walking away
+  with it still gets you every unseen result. While the iPhone app is open
+  on one computer, a push from another computer of the account now shows as
+  a banner instead of only after switching to that computer.
   A notification says which computer it came from `[v3.55.0]`: the title
   ends with the computer's name (`Done · web · studio-mini`), always for a
   computer of your OpenAgentd Cloud account (the app's own notification and

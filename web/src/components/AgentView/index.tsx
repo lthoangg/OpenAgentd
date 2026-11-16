@@ -27,7 +27,7 @@ import { PendingMessageQueue } from '../PendingMessageQueue'
 import { WaitingForLine } from './WaitingForLine'
 import { JumpToLatest } from '../JumpToLatestChip'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels, type TurnItem } from '@/utils/turns'
-import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
+import { liveBlockTail } from '@/utils/blocks'
 import { useUIStore } from '@/stores/useUIStore'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -53,6 +53,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useSessionSwitchHold } from './useSessionSwitchHold'
 import { BlockRenderer } from './BlockRenderer'
+import { useUnseenCount } from './useUnseenCount'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -461,40 +462,7 @@ export function AgentView({
   }, [contentRef, isEmpty, isLoadingHistory, reducedMotion, sessionId])
 
   // ── Follow state for the jump chip ─────────────────────────────────────────
-  // One chip, with the count: on the composer when it is up (the store carries
-  // the state to it), else in the transcript's own corner. Counted from the
-  // newest block when the reader scrolled away, so earlier messages loading in
-  // above never read as new.
-  const followAnchorRef = useRef<string | null>(null)
-  const unseenRef = useRef<number | null>(null)
-  const [inlineUnseen, setInlineUnseen] = useState<number | null>(null)
-  const publishUnseen = useCallback((unseen: number | null) => {
-    unseenRef.current = unseen
-    if (!jumpToLatestInComposer) {
-      setInlineUnseen(unseen)
-      return
-    }
-    if (useTranscriptFollowStore.getState().unseen !== unseen) useTranscriptFollowStore.setState({ unseen })
-  }, [jumpToLatestInComposer])
-  useEffect(() => {
-    if (!showScrollBtn) {
-      followAnchorRef.current = null
-      publishUnseen(null)
-      return
-    }
-    // Reader mode folds everything, so a count of blocks says nothing: show the
-    // bare chip. Dropping the anchor makes a switch back to detailed count
-    // afresh from that moment.
-    if (readerTranscript) {
-      followAnchorRef.current = null
-      publishUnseen(0)
-      return
-    }
-    followAnchorRef.current ??= (liveTail[liveTail.length - 1] ?? blocks[blocks.length - 1])?.id ?? ''
-    const counted = countBlocksAfter(blocks, followAnchorRef.current, liveTail)
-    // A reconcile can swap the anchor's id; keep the last count then.
-    publishUnseen(counted ?? unseenRef.current ?? 0)
-  }, [blocks, liveTail, publishUnseen, readerTranscript, showScrollBtn])
+  const inlineUnseen = useUnseenCount({ blocks, liveTail, showScrollBtn, readerTranscript, inComposer: jumpToLatestInComposer })
 
   /** Hold the view while earlier turns land above it; call the release once they have. */
   const holdView = useCallback(() => {

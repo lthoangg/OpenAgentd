@@ -107,7 +107,7 @@ describe('Tasks on a phone — a sheet with two detents', () => {
     const plan = { content: '# Ship it\n\n## Done when\n\nIt ships.', updated_at: new Date().toISOString(), revision: 1, approved_revision: 1, done_when: 'It ships.' }
     const goal: SessionGoal = {
       id: 'g1', session_id: 's1', objective: 'It ships.', status: 'active', pause_reason: null, detail: null,
-      max_turns: 50, token_budget: null, turns_used: 2, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
+      max_turns: 50, turns_used: 2, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
       created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:00:00Z', ended_at: null,
     }
     const onOpenChange = mock(() => {})

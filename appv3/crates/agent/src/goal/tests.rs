@@ -13,7 +13,6 @@ fn goal() -> SessionGoal {
         pause_reason: None,
         detail: None,
         max_turns: 3,
-        token_budget: None,
         turns_used: 0,
         tokens_used: 0,
         active_seconds: 0,
@@ -37,12 +36,11 @@ fn continues_until_the_turn_limit() {
 }
 
 #[test]
-fn pauses_at_the_token_budget_and_after_turns_without_tools() {
+fn spending_tokens_never_pauses_but_turns_without_tools_do() {
     let mut g = goal();
     g.max_turns = 50;
-    g.token_budget = Some(1_000);
-    account(&mut g, 1_200, 3, 1);
-    assert_eq!(next_step(&g), Next::Pause(reason::TOKEN_LIMIT));
+    account(&mut g, 50_000_000, 3, 1);
+    assert_eq!(next_step(&g), Next::Continue(2), "a goal has no token budget");
 
     let mut g = goal();
     g.max_turns = 50;
@@ -59,11 +57,10 @@ fn resuming_grants_a_fresh_allowance_where_a_limit_stopped_it() {
     let mut g = goal();
     g.turns_used = 3;
     g.tokens_used = 1_500;
-    g.token_budget = Some(1_000);
     g.rejected_claims = 2;
     pause(&mut g, reason::TURN_LIMIT, Some("x".into()));
     resume(&mut g, &GoalSettings { max_turns: Some(10), ..Default::default() });
-    assert_eq!((g.status.as_str(), g.max_turns, g.token_budget, g.rejected_claims), (GOAL_ACTIVE, 13, Some(2_500), 0));
+    assert_eq!((g.status.as_str(), g.max_turns, g.rejected_claims), (GOAL_ACTIVE, 13, 0));
     assert!(g.pause_reason.is_none() && g.detail.is_none());
     assert_eq!(next_step(&g), Next::Continue(4));
 }
@@ -177,9 +174,8 @@ fn reminders_carry_the_counters_the_last_check_and_the_last_turn() {
     assert!(!first.contains("Next task"), "{first}");
     g.rejected_claims = 1;
     g.detail = Some("tsc was not run".into());
-    g.token_budget = Some(9_000);
     let last = reminder_text(&g, 3, true, &PlanWork::default());
-    assert!(last.contains("token_budget=\"9000\""));
+    assert!(!last.contains("token_budget"));
     assert!(last.contains("tsc was not run"));
     assert!(last.contains("last turn the goal allows"));
     assert!(last.contains("resumed"));

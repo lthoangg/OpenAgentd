@@ -964,7 +964,7 @@ describe('handleGlobalEvent', () => {
     client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [{ data: [row], next_cursor: null, has_more: false }], pageParams: [null] })
     const goal = {
       id: 'g1', session_id: 's1', objective: 'tests pass', status: 'active', pause_reason: null, detail: null,
-      max_turns: 50, token_budget: null, turns_used: 2, tokens_used: 900, active_seconds: 30, rejected_claims: 0,
+      max_turns: 50, turns_used: 2, tokens_used: 900, active_seconds: 30, rejected_claims: 0,
       created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:01:00Z', ended_at: null,
     }
 

@@ -64,7 +64,7 @@ beforeEach(() => {
       return new Response(JSON.stringify({ status: 'answered', resumed: true }))
     }
     if (url.includes('/settings/goals')) {
-      return new Response(JSON.stringify({ max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: true, keep_going_default: false }))
+      return new Response(JSON.stringify({ max_turns: 50, default_max_turns: 50, allow_questions: true, keep_going_default: false }))
     }
     if (url.includes('/goal')) return new Response(JSON.stringify({ goal: null }))
     return new Response(JSON.stringify({ plan: PLAN }))

@@ -4,6 +4,7 @@
 //! Clustered on `(session_id, id)` with UUIDv7 ids, so a session's goals
 //! are one time-ordered range. At most one goal per session is live
 //! (`active` or `paused`); ended ones stay as the session's goal history.
+//! The `token_budget` column is no longer used: goals have no token budget.
 
 use crate::codec::{api_dt, api_uuid, db_id, json_db, new_id, now_db};
 use crate::pool::DbPool;
@@ -28,7 +29,6 @@ pub struct SessionGoal {
     pub pause_reason: Option<String>,
     pub detail: Option<String>,
     pub max_turns: i64,
-    pub token_budget: Option<i64>,
     pub turns_used: i64,
     pub tokens_used: i64,
     pub active_seconds: i64,
@@ -58,7 +58,6 @@ impl SessionGoal {
             "pause_reason": self.pause_reason,
             "detail": self.detail,
             "max_turns": self.max_turns,
-            "token_budget": self.token_budget,
             "turns_used": self.turns_used,
             "tokens_used": self.tokens_used,
             "active_seconds": self.active_seconds,
@@ -72,22 +71,21 @@ impl SessionGoal {
 
 /// Start a new active goal, clearing the session's live one (if any) in the
 /// same transaction. Returns the new goal.
-pub async fn insert_session_goal(pool: &DbPool, session_id: &str, objective: &str, max_turns: i64, token_budget: Option<i64>) -> Result<SessionGoal> {
+pub async fn insert_session_goal(pool: &DbPool, session_id: &str, objective: &str, max_turns: i64) -> Result<SessionGoal> {
     let sid = db_id(session_id);
     let now = now_db();
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let clear = format!("UPDATE session_goals SET status = ?, pause_reason = NULL, ended_at = ?, updated_at = ? WHERE session_id = ? AND {LIVE}");
     sqlx::query(sqlx::AssertSqlSafe(&*clear)).bind(GOAL_CLEARED).bind(&now).bind(&now).bind(&sid).execute(&mut *tx).await?;
     let row = sqlx::query_as::<_, SessionGoal>(
-        "INSERT INTO session_goals (session_id, id, objective, status, max_turns, token_budget, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+        "INSERT INTO session_goals (session_id, id, objective, status, max_turns, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
     )
     .bind(&sid)
     .bind(new_id())
     .bind(objective)
     .bind(GOAL_ACTIVE)
     .bind(max_turns)
-    .bind(token_budget)
     .bind(&now)
     .bind(&now)
     .fetch_one(&mut *tx)
@@ -115,7 +113,7 @@ pub async fn get_session_goal(pool: &DbPool, session_id: &str, id: &str) -> Resu
 /// stored row, or `None` when it no longer exists.
 pub async fn save_session_goal(pool: &DbPool, goal: &SessionGoal) -> Result<Option<SessionGoal>> {
     Ok(sqlx::query_as::<_, SessionGoal>(
-        "UPDATE session_goals SET status = ?, pause_reason = ?, detail = ?, max_turns = ?, token_budget = ?, turns_used = ?, \
+        "UPDATE session_goals SET status = ?, pause_reason = ?, detail = ?, max_turns = ?, turns_used = ?, \
          tokens_used = ?, active_seconds = ?, rejected_claims = ?, idle_turns = ?, updated_at = ?, ended_at = ? \
          WHERE session_id = ? AND id = ? RETURNING *",
     )
@@ -123,7 +121,6 @@ pub async fn save_session_goal(pool: &DbPool, goal: &SessionGoal) -> Result<Opti
     .bind(&goal.pause_reason)
     .bind(&goal.detail)
     .bind(goal.max_turns)
-    .bind(goal.token_budget)
     .bind(goal.turns_used)
     .bind(goal.tokens_used)
     .bind(goal.active_seconds)
@@ -240,13 +237,13 @@ mod tests {
     #[tokio::test]
     async fn a_new_goal_clears_the_live_one() {
         let (_d, pool) = pool().await;
-        let first = insert_session_goal(&pool, SID, "tests pass", 50, None).await.unwrap();
+        let first = insert_session_goal(&pool, SID, "tests pass", 50).await.unwrap();
         assert_eq!((first.status.as_str(), first.turns_used, first.max_turns), (GOAL_ACTIVE, 0, 50));
-        let second = insert_session_goal(&pool, SID, "lint clean", 10, Some(1_000)).await.unwrap();
-        insert_session_goal(&pool, OTHER, "elsewhere", 5, None).await.unwrap();
+        let second = insert_session_goal(&pool, SID, "lint clean", 10).await.unwrap();
+        insert_session_goal(&pool, OTHER, "elsewhere", 5).await.unwrap();
 
         let live = live_session_goal(&pool, SID).await.unwrap().unwrap();
-        assert_eq!((live.id.as_str(), live.token_budget), (second.id.as_str(), Some(1_000)));
+        assert_eq!((live.id.as_str(), live.max_turns), (second.id.as_str(), 10));
         let old = get_session_goal(&pool, SID, &api_uuid(&first.id)).await.unwrap().unwrap();
         assert_eq!(old.status, GOAL_CLEARED);
         assert!(old.ended_at.is_some());
@@ -256,7 +253,7 @@ mod tests {
     #[tokio::test]
     async fn save_writes_progress_and_ending_leaves_no_live_goal() {
         let (_d, pool) = pool().await;
-        let mut g = insert_session_goal(&pool, SID, "ship it", 50, None).await.unwrap();
+        let mut g = insert_session_goal(&pool, SID, "ship it", 50).await.unwrap();
         g.turns_used = 3;
         g.tokens_used = 12_345;
         g.detail = Some("evidence".into());
@@ -272,8 +269,8 @@ mod tests {
     #[tokio::test]
     async fn startup_pauses_active_goals_only() {
         let (_d, pool) = pool().await;
-        insert_session_goal(&pool, SID, "a", 50, None).await.unwrap();
-        let mut b = insert_session_goal(&pool, OTHER, "b", 50, None).await.unwrap();
+        insert_session_goal(&pool, SID, "a", 50).await.unwrap();
+        let mut b = insert_session_goal(&pool, OTHER, "b", 50).await.unwrap();
         b.status = GOAL_PAUSED.into();
         b.pause_reason = Some("user".into());
         save_session_goal(&pool, &b).await.unwrap();
@@ -291,7 +288,7 @@ mod tests {
     #[tokio::test]
     async fn only_one_live_goal_per_session() {
         let (_d, pool) = pool().await;
-        insert_session_goal(&pool, SID, "a", 50, None).await.unwrap();
+        insert_session_goal(&pool, SID, "a", 50).await.unwrap();
         let dup = sqlx::query("INSERT INTO session_goals (session_id, id, objective, status, max_turns, created_at, updated_at) VALUES (?, ?, 'b', 'paused', 5, ?, ?)")
             .bind(db_id(SID))
             .bind(new_id())

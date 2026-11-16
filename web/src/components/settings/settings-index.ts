@@ -65,7 +65,6 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'sessions', label: 'Summarize idle sessions', keywords: ['idle', 'summary', 'cache', 'idle trigger', 'percent'] },
   { section: 'sessions', label: 'Keep going after approval', keywords: ['goal', 'plan', 'approve', 'continue', 'autonomous', 'by default'] },
   { section: 'sessions', label: 'Turns per goal', keywords: ['goal', 'limit', 'max turns'] },
-  { section: 'sessions', label: 'Token budget per goal', keywords: ['goal', 'limit', 'cost', 'tokens'] },
   { section: 'sessions', label: 'Allow questions during goals', keywords: ['goal', 'ask', 'questions', 'interrupt'] },
   { section: 'sessions', label: 'Keep usage history forever', keywords: ['retention', 'delete', 'traces', 'privacy', 'keep forever'] },
   { section: 'sessions', label: 'Keep usage history for', keywords: ['retention', 'days', 'delete', 'privacy', 'traces', 'keep traces for'], anchor: 'History' },

@@ -872,6 +872,7 @@ export type GoalPauseReason =
   | 'user'
   | 'blocked'
   | 'turn_limit'
+  /** Only goals paused before goals lost their token budget. */
   | 'token_limit'
   | 'no_progress'
   | 'unverified'
@@ -889,7 +890,6 @@ export interface SessionGoal {
   /** The blocker, the last check's reason, or the error that paused it. */
   detail: string | null
   max_turns: number
-  token_budget: number | null
   turns_used: number
   /** Uncached input plus output tokens of its turns and checks. */
   tokens_used: number

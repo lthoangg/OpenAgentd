@@ -59,7 +59,7 @@ afterEach(cleanup)
 
 const GOAL: SessionGoal = {
   id: 'g1', session_id: 'session-1', objective: 'web tests pass', status: 'active', pause_reason: null, detail: null,
-  max_turns: 50, token_budget: null, turns_used: 6, tokens_used: 1200, active_seconds: 90, rejected_claims: 0,
+  max_turns: 50, turns_used: 6, tokens_used: 1200, active_seconds: 90, rejected_claims: 0,
   created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', ended_at: null,
 }
 

@@ -56,7 +56,7 @@ const markTurnResuming = mock(() => {})
 
 beforeEach(() => {
   calls = []
-  goalSettings = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: true, keep_going_default: false }
+  goalSettings = { max_turns: 50, default_max_turns: 50, allow_questions: true, keep_going_default: false }
   plan = { ...PLAN }
   clearQuestionDrafts()
   clearPlanReviewDrafts()

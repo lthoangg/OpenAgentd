@@ -75,7 +75,6 @@ pub mod reason {
     pub const USER: &str = "user";
     pub const BLOCKED: &str = "blocked";
     pub const TURN_LIMIT: &str = "turn_limit";
-    pub const TOKEN_LIMIT: &str = "token_limit";
     pub const NO_PROGRESS: &str = "no_progress";
     pub const UNVERIFIED: &str = "unverified";
     /// The completion check failed (no verdict, an error) for several claims in a row.
@@ -143,10 +142,7 @@ fn plan_work_in(dir: &std::path::Path) -> PlanWork {
 
 /// The message that starts continuation turn `turn`.
 pub fn reminder_text(goal: &SessionGoal, turn: i64, resumed: bool, work: &PlanWork) -> String {
-    let mut attrs = format!("turn=\"{turn}\" max_turns=\"{}\" tokens_used=\"{}\"", goal.max_turns, goal.tokens_used);
-    if let Some(b) = goal.token_budget {
-        attrs.push_str(&format!(" token_budget=\"{b}\""));
-    }
+    let attrs = format!("turn=\"{turn}\" max_turns=\"{}\" tokens_used=\"{}\"", goal.max_turns, goal.tokens_used);
     let mut extra = String::new();
     let mut line = |s: &str| {
         extra.push('\n');
@@ -221,9 +217,6 @@ pub fn next_step(goal: &SessionGoal) -> Next {
     if goal.turns_used >= goal.max_turns {
         return Next::Pause(reason::TURN_LIMIT);
     }
-    if goal.token_budget.is_some_and(|b| goal.tokens_used >= b) {
-        return Next::Pause(reason::TOKEN_LIMIT);
-    }
     if goal.idle_turns >= MAX_IDLE_TURNS {
         return Next::Pause(reason::NO_PROGRESS);
     }
@@ -253,13 +246,10 @@ fn end(goal: &mut SessionGoal, status: &str) {
 }
 
 /// Make a paused goal active again with a fresh allowance where a limit
-/// stopped it: another settings-sized batch of turns, another budget.
+/// stopped it: another settings-sized batch of turns.
 pub fn resume(goal: &mut SessionGoal, settings: &GoalSettings) {
     if goal.turns_used >= goal.max_turns {
         goal.max_turns = goal.turns_used + settings.max_turns();
-    }
-    if let Some(b) = goal.token_budget.filter(|b| goal.tokens_used >= *b) {
-        goal.token_budget = Some(goal.tokens_used + b);
     }
     goal.status = GOAL_ACTIVE.into();
     goal.pause_reason = None;
@@ -516,15 +506,15 @@ pub async fn continue_after_restart(pool: &DbPool, continued: &[String], not_con
 
 impl AgentSession {
     /// Store a new active goal, clearing a live one. `max_turns` defaults
-    /// from settings, and the token budget always comes from them.
+    /// from settings. A goal has no token budget.
     pub async fn start_goal(&self, session_id: &str, objective: &str, max_turns: Option<i64>) -> Result<SessionGoal, GoalError> {
         validate(objective, max_turns)?;
         let settings = rs::goal_settings();
         let mut local = self.goal_lock().lock().await;
         local.check_failures = 0;
         let max_turns = max_turns.unwrap_or_else(|| settings.max_turns());
-        let goal = db::insert_session_goal(&self.pool, session_id, objective.trim(), max_turns, settings.token_budget()).await?;
-        tracing::info!("goal_started session_id={} goal_id={} max_turns={} token_budget={:?}", session_id, goal.id, goal.max_turns, goal.token_budget);
+        let goal = db::insert_session_goal(&self.pool, session_id, objective.trim(), max_turns).await?;
+        tracing::info!("goal_started session_id={} goal_id={} max_turns={}", session_id, goal.id, goal.max_turns);
         publish(session_id, Some(&goal));
         Ok(goal)
     }

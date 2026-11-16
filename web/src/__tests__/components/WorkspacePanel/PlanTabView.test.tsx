@@ -33,7 +33,7 @@ const PLAN: SessionPlan = {
 
 const STARTED_GOAL: SessionGoal = {
   id: 'g1', session_id: 's-1', objective: 'The endpoint answers and its tests pass.', status: 'active', pause_reason: null, detail: null,
-  max_turns: 50, token_budget: null, turns_used: 0, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
+  max_turns: 50, turns_used: 0, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
   created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', ended_at: null,
 }
 
@@ -70,7 +70,7 @@ const markTurnResuming = mock(() => {})
 beforeEach(() => {
   calls = []
   putStatus = 200
-  goalSettings = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: true, keep_going_default: false }
+  goalSettings = { max_turns: 50, default_max_turns: 50, allow_questions: true, keep_going_default: false }
   markTurnResuming.mockClear()
   clearQuestionDrafts()
   clearPlanReviewDrafts()

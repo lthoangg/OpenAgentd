@@ -187,7 +187,7 @@ describe('WorkspacePanel launcher rows for things a session may not have', () =>
   })
 
   it('lists Goal once the session has a goal, and Side questions once it has one', async () => {
-    goal = { id: 'g1', session_id: 's1', objective: 'Ship it', status: 'active', pause_reason: null, detail: null, max_turns: 50, token_budget: null, turns_used: 1, tokens_used: 10, active_seconds: 5, rejected_claims: 0, created_at: '2026-11-14T00:00:00Z', updated_at: '2026-11-14T00:00:00Z', ended_at: null }
+    goal = { id: 'g1', session_id: 's1', objective: 'Ship it', status: 'active', pause_reason: null, detail: null, max_turns: 50, turns_used: 1, tokens_used: 10, active_seconds: 5, rejected_claims: 0, created_at: '2026-11-14T00:00:00Z', updated_at: '2026-11-14T00:00:00Z', ended_at: null }
     sideQuestionTotal = 2
     await renderPanel(false, { sessionId: 's1' })
     expect(launcherRow('Goal')).toBeTruthy()

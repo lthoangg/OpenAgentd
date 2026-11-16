@@ -21,7 +21,7 @@ import { useToastStore } from '@/stores/useToastStore'
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
 
-const GOALS = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: false, keep_going_default: false }
+const GOALS = { max_turns: 50, default_max_turns: 50, allow_questions: false, keep_going_default: false }
 const TELEMETRY = { retention_days: 90, default_retention_days: 90, max_retention_days: 3650 }
 
 /** Every PUT the page makes, by resource. */

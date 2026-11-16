@@ -28,7 +28,7 @@
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
@@ -44,9 +44,7 @@ import {
   workspaceFileListQueryOptions,
 } from '@/queries/workspace-files'
 import {
-  COMMIT_DIFF_STALE_MS,
   WORKSPACE_DIFF_STALE_MS,
-  commitDiffQueryOptions,
   workspaceChangesQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -61,7 +59,6 @@ import {
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { usePlatform } from '@/hooks/use-platform'
-import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
   DOCK_PANE_MIN_HEIGHT,
   DOCK_PANE_MIN_WIDTH,
@@ -77,14 +74,9 @@ import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import {
   type ChangedFileInfo,
-  type DiffFileSection,
   changedFilesFromResponse,
-  collectChangedFiles,
-  collectDiffSections,
 } from './WorkspacePanel/diff-helpers'
 
-import { GitReviewSubPanel } from './WorkspacePanel/GitReviewSubPanel'
-import { CommitHistorySubPanel } from './WorkspacePanel/CommitHistorySubPanel'
 import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
@@ -92,6 +84,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { ReviewTabView } from './WorkspacePanel/ReviewTabView'
 import { barStyle, paneStyle, usePaneLayout } from './WorkspacePanel/usePaneLayout'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
@@ -100,12 +93,6 @@ import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockA
 import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
 import { useDockTabs } from './WorkspacePanel/useDockTabs'
-import {
-  type GitSubTab,
-  GitViewToolbar,
-  gitViewPanelId,
-  gitViewTabId,
-} from './WorkspacePanel/GitViewToolbar'
 import {
   type AttachmentTabRequest,
   type TerminalRunRequest,
@@ -256,7 +243,6 @@ export function WorkspacePanel({
   // A phone is touch and narrow: its Review panel is a page over the chat. A
   // narrow mouse window (``mobile`` without touch) keeps the drawer.
   const phone = useIsPhone() && mobile
-  const gitViewIdBase = useId()
   // Preview listener behind each preview tab; file tabs of one workspace
   // share a listener, so it closes only with the last tab using it.
   const previewIdsRef = useRef(new Map<string, string>())
@@ -365,7 +351,6 @@ export function WorkspacePanel({
   const [desktopCommitActions, setDesktopCommitActions] = useState<(CommitActionTarget & { x: number; y: number }) | null>(null)
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
-  const commitsScrollRef = useRef<HTMLDivElement>(null)
   const handledFileOpenKeyRef = useRef(-1)
   // How the dock opens, closes, parks, sizes and slides (useDockFrame.ts).
   const {
@@ -439,25 +424,6 @@ export function WorkspacePanel({
   const subTab = gitState.subTab
   // Git's own queries run only while its tab shows in a pane on screen.
   const reviewShown = shownPanes.some((pane) => activeTabs[pane]?.id === REVIEW_TAB_ID)
-  // Each Git view (changes, commits) keeps its place across tab switches.
-  const rememberReviewScroll = useScrollMemory(`review:${workspace}:${subTab}`, commitsScrollRef)
-  const expandedCommitSha = gitState.expandedCommitSha
-  const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
-  const expandedCommitFiles = useMemo(() => new Set(gitState.expandedCommitFiles), [gitState.expandedCommitFiles])
-
-  // Stable setters (read the store at call time) so the memoized Git list
-  // views below are not re-rendered by a fresh callback on every dock render.
-  const setSubTab = useCallback((tab: GitSubTab) => useGitPanelStore.getState().setSubTab(workspace, tab), [workspace])
-  const setExpandedCommitSha = useCallback((updater: string | null | ((prev: string | null) => string | null)) => {
-    const store = useGitPanelStore.getState()
-    const current = (store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitSha
-    store.setExpandedCommitSha(workspace, typeof updater === 'function' ? updater(current) : updater)
-  }, [workspace])
-  const setExpandedCommitFiles = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    const store = useGitPanelStore.getState()
-    const current = new Set((store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitFiles)
-    store.setExpandedCommitFiles(workspace, Array.from(typeof updater === 'function' ? updater(current) : updater))
-  }, [workspace])
   const historyLimit = 50
   const gitHistory = useInfiniteQuery({
     queryKey: queryKeys.coding.history(workspace, historyLimit),
@@ -475,48 +441,6 @@ export function WorkspacePanel({
     if (!activeSha || commits.length === 0) return false
     return activeSha === commits[0].sha
   }, [mobileCommitActions, desktopCommitActions, commits])
-
-  const commitsAhead = workspaceStatus.data?.commits_ahead ?? null
-  const commitsBehind = workspaceStatus.data?.commits_behind ?? null
-  const upstream = workspaceStatus.data?.upstream ?? null
-
-  const commitDiff = useQuery({
-    ...commitDiffQueryOptions(workspace, expandedCommitSha ?? ''),
-    enabled: open && gitKnown && reviewShown && subTab === 'commits' && expandedCommitSha !== null,
-    staleTime: COMMIT_DIFF_STALE_MS,
-  })
-  const commitDiffText = commitDiff.data?.diff
-
-  // React Query hands back a new result object every render; the list views
-  // get memoized slices of the fields they read so ``memo`` can skip them.
-  // ``isFetching`` matters only to a failed list's Retry; reading it always
-  // would re-render the rows on every background refetch.
-  const changesRetrying = changes.isError && changes.isFetching
-  const changesView = useMemo(
-    () => ({ isLoading: changes.isLoading, isError: changes.isError, isFetching: changesRetrying, refetch: changes.refetch, data: changes.data }),
-    [changes.isLoading, changes.isError, changesRetrying, changes.refetch, changes.data],
-  )
-  const filesView = useMemo(() => ({ isLoading: files.isLoading, data: files.data }), [files.isLoading, files.data])
-  const { isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData } = gitHistory
-  const historyFetching = historyError && gitHistory.isFetching
-  const historyView = useMemo(
-    () => ({ isLoading: historyLoading, isError: historyError, isFetching: historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData }),
-    [historyLoading, historyError, historyFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetchHistory, historyData],
-  )
-  // ``isFetching`` matters only to a failed load's Retry (as for the lists above).
-  const commitDiffRetrying = commitDiff.isError && commitDiff.isFetching
-  const commitDiffView = useMemo(
-    () => ({ isLoading: commitDiff.isLoading, isError: commitDiff.isError, isFetching: commitDiffRetrying, refetch: commitDiff.refetch }),
-    [commitDiff.isLoading, commitDiff.isError, commitDiffRetrying, commitDiff.refetch],
-  )
-  const commitChangedFiles = useMemo(() => {
-    if (!commitDiffText) return []
-    return collectChangedFiles({ workspace, is_git_repo: true, diff: commitDiffText })
-  }, [commitDiffText, workspace])
-  const commitDiffSections = useMemo(() => {
-    if (!commitDiffText) return new Map<string, DiffFileSection>()
-    return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiffText })
-  }, [commitDiffText, workspace])
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   // Files, diffs and commits opened from a list or a link are previews: the
@@ -593,14 +517,6 @@ export function WorkspacePanel({
     }
   }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, noGit])
 
-  const toggleDiffExpanded = useCallback((path: string) => {
-    useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
-  }, [workspace])
-  const allExpanded = changedFiles.length > 0 && changedFiles.every((f) => expandedDiffs.has(f.path))
-  const toggleExpandAll = () => {
-    useGitPanelStore.getState().setExpandedDiffs(workspace, allExpanded ? [] : changedFiles.map((f) => f.path))
-  }
-
   // Expansions persist per workspace; forget files that are no longer
   // changed so a later edit to them does not reopen as a stale peek and the
   // stored list does not grow forever. A capped list (over 5,000 files)
@@ -651,69 +567,27 @@ export function WorkspacePanel({
     },
   })
 
+  // The Git tab: its toolbar and the Changes or Commits list (ReviewTabView.tsx).
   const reviewView = (
-    <div className="flex h-full min-h-0 flex-col">
-      {changes.data?.is_git_repo && (
-        <GitViewToolbar
-          idBase={gitViewIdBase}
-          subTab={subTab}
-          onSubTabChange={setSubTab}
-          changedCount={changedFiles.length}
-          commitsAhead={commitsAhead}
-          commitsBehind={commitsBehind}
-          upstream={upstream}
-          mobile={mobile}
-          allExpanded={changedFiles.length > 0 ? allExpanded : null}
-          onToggleExpandAll={toggleExpandAll}
-          // A phone has no pane menu to hold it.
-          onRefresh={mobile ? handleRefresh : undefined}
-        />
-      )}
-      <div
-        ref={rememberReviewScroll}
-        id={changes.data?.is_git_repo ? gitViewPanelId(gitViewIdBase) : undefined}
-        role={changes.data?.is_git_repo ? 'tabpanel' : undefined}
-        aria-labelledby={changes.data?.is_git_repo ? gitViewTabId(gitViewIdBase, subTab) : undefined}
-        // Vertical only: ``overflow: auto`` lets one over-wide row pan the
-        // whole list sideways.
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto touch-pan-y"
-      >
-        {subTab === 'changes' ? (
-          <GitReviewSubPanel
-            workspace={workspace}
-            changedFiles={changedFiles}
-            changes={changesView}
-            files={filesView}
-            selectedFilePath={selectedFilePath}
-            expandedDiffs={expandedDiffs}
-            toggleDiffExpanded={toggleDiffExpanded}
-            mobile={mobile}
-            setMobileFileActions={setMobileFileActions}
-            setDesktopFileActions={setDesktopFileActions}
-          />
-        ) : (
-          <CommitHistorySubPanel
-            workspace={workspace}
-            gitHistory={historyView}
-            commits={commits}
-            expandedCommitSha={expandedCommitSha}
-            setExpandedCommitSha={setExpandedCommitSha}
-            expandedCommitFiles={expandedCommitFiles}
-            setExpandedCommitFiles={setExpandedCommitFiles}
-            commitDiff={commitDiffView}
-            commitChangedFiles={commitChangedFiles}
-            commitDiffSections={commitDiffSections}
-            commitsScrollRef={commitsScrollRef}
-            openCommitTab={openCommitPreview}
-            mobile={mobile}
-            setMobileCommitActions={setMobileCommitActions}
-            setDesktopCommitActions={setDesktopCommitActions}
-            setMobileFileActions={setMobileFileActions}
-            setDesktopFileActions={setDesktopFileActions}
-          />
-        )}
-      </div>
-    </div>
+    <ReviewTabView
+      workspace={workspace}
+      gitState={gitState}
+      queriesEnabled={open && gitKnown && reviewShown}
+      mobile={mobile}
+      changes={changes}
+      files={files}
+      gitHistory={gitHistory}
+      commits={commits}
+      changedFiles={changedFiles}
+      status={workspaceStatus.data}
+      selectedFilePath={selectedFilePath}
+      onRefresh={handleRefresh}
+      openCommitTab={openCommitPreview}
+      setMobileFileActions={setMobileFileActions}
+      setDesktopFileActions={setDesktopFileActions}
+      setMobileCommitActions={setMobileCommitActions}
+      setDesktopCommitActions={setDesktopCommitActions}
+    />
   )
 
   // ── Panes ─────────────────────────────────────────────────────────────────

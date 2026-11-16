@@ -8,7 +8,7 @@
  * views before documents, is covered by ``dock-panes.test.ts``.)
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { gitDiffResponse } from '../git-diff-mock'
+import { gitDiffResponse } from '../../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'

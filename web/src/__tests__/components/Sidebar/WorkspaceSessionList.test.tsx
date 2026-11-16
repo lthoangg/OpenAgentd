@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WorkspaceSessionList } from '@/components/Sidebar/WorkspaceSessionList'
 import type { SessionResponse } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
-import { useFakeTimers } from '../fake-timers'
+import { useFakeTimers } from '../../fake-timers'
 
 const originalFetch = globalThis.fetch
 afterEach(() => {

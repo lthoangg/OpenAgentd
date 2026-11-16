@@ -65,7 +65,7 @@ mock.module('@/api/terminal', () => ({
 const { useTerminalStore, _resetTerminalStoreForTests } = await import('@/stores/useTerminalStore')
 // The real view: setup.ts stubs '@/components/Terminal/TerminalView' app-wide,
 // and a query string is a different module to the registry.
-const REAL_VIEW: string = '../../components/Terminal/TerminalView.tsx?real'
+const REAL_VIEW: string = '../../../components/Terminal/TerminalView.tsx?real'
 const { TerminalView } = (await import(REAL_VIEW)) as typeof import('@/components/Terminal/TerminalView')
 const { onComposerInsert } = await import('@/lib/composer-insert')
 const { TERMINAL_COMMAND_FIELD_KEY } = await import('@/components/Terminal/TerminalCommandField')

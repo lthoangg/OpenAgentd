@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 // TerminalView is stubbed app-wide in the tests (it renders store-owned xterm
 // DOM), so the wiring is checked on the source, like the viewport test.
 const source = readFileSync(
-  fileURLToPath(new URL('../../components/Terminal/TerminalView.tsx', import.meta.url)),
+  fileURLToPath(new URL('../../../components/Terminal/TerminalView.tsx', import.meta.url)),
   'utf8',
 )
 

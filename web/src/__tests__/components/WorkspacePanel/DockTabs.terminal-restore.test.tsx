@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 
-import { useFakeTimers } from '../fake-timers'
+import { useFakeTimers } from '../../fake-timers'
 
 type SessionInfo = { session_id: string; workspace: string; created_at: number; attached: boolean; busy: boolean }
 const fn = (impl: (...args: never[]) => unknown) => mock(impl as unknown as (...args: unknown[]) => unknown)

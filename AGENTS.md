@@ -218,6 +218,7 @@ the rule depends on you reading it, for the reason given.
 | CI runs a gate when a path it covers changes | `scripts/tests/test_verify_changed.py` |
 | Markdown links, `make` targets, and backticked repository paths in guides exist | `make verify-docs` |
 | A Markdown file stays under 50 KB, and its index links every part | `make verify-docs` |
+| A web test named for a source file sits at the mirrored path under `web/src/__tests__/` | `web/src/__tests__/test-layout.test.ts` |
 | A web app file stays under 800 lines and a Rust file under 1,000; a larger one does not pass the `size-ceiling` in its first line | `scripts/check_file_size.py` (`make verify-quick`) |
 | A cited design rule (`DESIGN.md → Name`) or report section (`REPORT.md §N`) exists | `make verify-docs` |
 | The colours in `DESIGN.md` equal the light theme in `web/src/styles/tokens.css` | `make verify-docs` |

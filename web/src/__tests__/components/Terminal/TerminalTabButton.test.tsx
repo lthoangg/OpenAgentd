@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { LONG_PRESS_MS } from '@/hooks/use-long-press'
-import { useFakeTimers } from '../fake-timers'
+import { useFakeTimers } from '../../fake-timers'
 import { getTerminalRuntime, useTerminalStore, _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 
 const Icon = () => null

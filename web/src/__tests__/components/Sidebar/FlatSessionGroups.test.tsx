@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { useFakeTimers } from '../fake-timers'
+import { useFakeTimers } from '../../fake-timers'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { SessionResponse } from '@/api/types'
 import { FlatSessionGroups } from '@/components/Sidebar/FlatSessionGroups'

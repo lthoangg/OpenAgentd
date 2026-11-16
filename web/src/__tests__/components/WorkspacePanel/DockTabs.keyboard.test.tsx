@@ -6,7 +6,7 @@
  * act on the tab's own pane and confirm before stopping a running shell.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { gitDiffResponse } from '../git-diff-mock'
+import { gitDiffResponse } from '../../git-diff-mock'
 import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'

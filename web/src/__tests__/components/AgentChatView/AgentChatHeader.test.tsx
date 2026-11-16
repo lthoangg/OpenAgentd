@@ -77,7 +77,7 @@ describe('AgentChatHeader', () => {
     // the Review panel read as columns from the top of the window down, as
     // in a native app, instead of starting under a full-width bar.
     const cap = (name: 'sidebar' | 'dock') => document.querySelector(`[data-header-cap="${name}"]`) as HTMLElement
-    const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
+    const css = readFileSync(fileURLToPath(new URL('../../../index.css', import.meta.url)), 'utf8')
     const rule = (selector: string) => css.match(new RegExp(`\\${selector} \\{([^}]*)\\}`))?.[1] ?? ''
 
     it('puts the sidebar toggle in a cap that does not follow the sidebar width, with no line beside it', () => {

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const source = readFileSync(
-  fileURLToPath(new URL('../../components/Terminal/TerminalView.tsx', import.meta.url)),
+  fileURLToPath(new URL('../../../components/Terminal/TerminalView.tsx', import.meta.url)),
   'utf8',
 )
 

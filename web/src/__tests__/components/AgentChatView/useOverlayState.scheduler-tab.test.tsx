@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SCHEDULER_LINK_SETTLE_MS, useOverlayState, type UseOverlayStateArgs } from '@/components/AgentChatView/useOverlayState'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { useUIStore } from '@/stores/useUIStore'
-import { useFakeTimers } from '../fake-timers'
+import { useFakeTimers } from '../../fake-timers'
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>

@@ -48,12 +48,8 @@ import { onPanelSlideBeside, settledWidthBesidePanels } from '@/components/Resiz
 import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
 import { useTouchFirst } from '@/hooks/use-touch-first'
-import { lastPreviewUrl, previewsAvailable } from '@/api/preview'
-import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
-import type { DesignFeedback } from '@/lib/design-feedback'
-import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
-import { previewTargetForFeedback } from '../Preview/preview-comments'
-import { usePreviewToolAutoOpen } from './usePreviewToolAutoOpen'
+import { previewsAvailable } from '@/api/preview'
+import { useChatPreview } from './useChatPreview'
 import { useToastStore } from '@/stores/useToastStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -497,39 +493,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     setFindOpen(false)
   }, [sessionIdState])
 
-  const handleOpenNewPreview = useCallback(() => {
-    if (!workspace) return
-    handleOpenPreview({ kind: 'url', url: lastPreviewUrl(workspace) ?? 'http://localhost:5173' })
-  }, [handleOpenPreview, workspace])
-
-  const handleSendPreviewComments = useCallback((feedback: DesignFeedback) => {
-    inputRef.current?.addDesignFeedback(feedback)
-    // A phone shows the Review panel over the chat: go back to the message
-    // box, where the comments now are.
-    if (isMobile) setWorkspacePanel(null)
-    inputRef.current?.focus()
-  }, [isMobile, setWorkspacePanel])
-
-  // A feedback chip's x sends its comments back to their Preview tab's list,
-  // opening that tab on desktop (it picks them up whenever it next mounts).
-  const handleDesignFeedbackRemoved = useCallback((feedback: DesignFeedback) => {
-    if (!workspace) return
-    useReturnedFeedbackStore.getState().give({ workspace, feedback })
-    const target = previewTargetForFeedback(feedback)
-    if (target && !isMobile && previewsAvailable()) handleOpenPreview(target, { focusOnly: true })
-  }, [handleOpenPreview, isMobile, workspace])
-
-  // The `preview` tool card's Open button, and the agent opening a page
-  // (desktop only: phones keep the chat on screen).
-  useEffect(() => {
-    const onOpen = (event: Event) => {
-      const target = (event as CustomEvent<unknown>).detail
-      if (isPreviewTarget(target)) handleOpenPreview(target)
-    }
-    window.addEventListener(OPEN_PREVIEW_EVENT, onOpen)
-    return () => window.removeEventListener(OPEN_PREVIEW_EVENT, onOpen)
-  }, [handleOpenPreview])
-  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && previewsAvailable(), onOpen: handleOpenPreview, workspace })
+  const {
+    handleOpenNewPreview,
+    handleSendPreviewComments,
+    handleDesignFeedbackRemoved,
+  } = useChatPreview({ workspace, isMobile, inputRef, setWorkspacePanel, handleOpenPreview })
 
   const {
     slashCommands,

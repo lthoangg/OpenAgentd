@@ -3863,6 +3863,16 @@ agent against it.
   - On Windows and Linux `Ctrl+Shift+C` / `Ctrl+Shift+V` copy and paste
     `[v3.42.0]`, and a terminal no longer takes focus from the composer when
     it reconnects or its state changes.
+  - **Select Text on touch** `[v3.57.0]`: on a phone or tablet a drag in the
+    terminal scrolls, so before only Select All could select. A long press
+    now opens **Select Text** first, which shows the output as plain text
+    (opened at the lines on screen, wrapped lines joined) with the system's
+    own selection, handles and magnifier; **Copy** and **Add to chat** take
+    the selection, **Done** goes back to the live terminal.
+  - **One terminal menu** `[v3.57.0]`: the long press opens the phone's
+    action sheet (Select Text, Copy, Paste, Select All, Find, Add to chat,
+    Clear), and a right-click with a mouse opens the same menu with its keys
+    instead of the webview's text-field menu.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace

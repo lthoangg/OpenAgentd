@@ -17,7 +17,8 @@ describe('TerminalView mobile viewport fitting', () => {
 describe('TerminalView long-press menu', () => {
   it('is keyed on touch, not on window size, so a wide tablet has it too', () => {
     expect(source).toContain('const touchFirst = useTouchFirst()')
-    expect(source).toContain('useLongPressSurface(isMobile || touchFirst, ')
+    expect(source).toContain('const touchMenu = isMobile || touchFirst')
+    expect(source).toContain('useLongPressSurface(touchMenu, ')
   })
 })
 

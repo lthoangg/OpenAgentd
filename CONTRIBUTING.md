@@ -89,12 +89,12 @@ Key design rules:
 
 ### Change validation policy
 
-Use [`make verify`](Makefile) for the portable pre-merge contract, or its
-focused `verify-v3`, `verify-scripts`, `verify-web`, `verify-docs`, and
-`verify-version` targets when only one surface changed. `make verify-changed`
-picks the targets from the paths you changed, including the surfaces that
-compile or read them. Native targets require local platform dependencies.
-Check the nearest `AGENTS.md` before changing a subsystem.
+Run `make verify-changed` before you open a PR. It picks the `verify-*`
+targets from the paths you changed, including the surfaces that compile or
+read them. `make verify` runs the whole portable set (`verify-v3`,
+`verify-scripts`, `verify-web`, `verify-docs`, `verify-version`). Native
+targets require local platform dependencies. Check the nearest `AGENTS.md`
+before changing a subsystem.
 
 ### Backend (v3, Rust)
 
@@ -179,8 +179,8 @@ utility tests under `web/src/__tests__/`, mirroring the source path.
 
 1. **Open an issue first** for anything non-trivial — discuss the approach before writing code.
 2. **Branch naming:** `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `refactor/<topic>`.
-3. **Before opening a PR:** run the applicable focused checks, then run `make verify`. Run `make verify-native` as well when desktop or mobile Rust code changes and the required native dependencies are available.
-4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+3. **Before opening a PR:** run `make verify-changed`. It includes the native targets when desktop or mobile Rust code changed, which need the native dependencies installed.
+4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `refactor:`, `perf:`, `test:`, `docs:`, `chore:`, `style:`, `ci:`.
 5. **PR description:** fill in the pull request template: what changed, why,
    the exact test commands you ran, risk flags, and `Fixes #<issue>`.
 6. Keep PRs focused — one logical change per PR.

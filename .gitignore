@@ -200,6 +200,8 @@ uploads/
 # builds and crate dirs from `cargo test`).
 **/.openagentd/
 .tests/
+# The local backlog of the agent that owns the code (see AGENTS.md → Ownership).
+.agents/backlog/
 
 .DS_Store
 

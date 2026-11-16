@@ -2,17 +2,8 @@
 description: Run repository verification checks covering modified files and summarize any failures.
 ---
 
-Inspect changed files via `git status --short` and `git diff --stat HEAD` to determine which verification targets apply:
+Run `python3 scripts/verify_changed.py --list` to print the gates that cover the changed paths, then `make verify-changed` to run them. The path table in `scripts/verify_changed.py` decides which gates apply; do not choose them by hand.
 
-- Backend changes (`appv3/`): run `make verify-v3`
-- Script, installer, or workflow changes (`scripts/`, `install.*`, `.github/workflows/`): run `make verify-scripts`
-- Frontend changes (`web/`): run `make verify-web`
-- Documentation changes (`documents/`, `README.md`, `*.md`): run `make verify-docs`
-- Version files (`appv3/Cargo.toml`, `web/package.json`, Tauri configs): run `make verify-version`
-- Shared native crate changes (`native/shell-core/`): run `make verify-shell-core`
-- Desktop or mobile shell changes (`desktop/src-tauri/`, `mobile/src-tauri/`): run `make verify-desktop` or `make verify-mobile`
-- Full portable checks: run `make verify`
-
-Run the applicable checks, report their status, and provide concise fix instructions if any fail.
+Report each gate's status, and give concise fix instructions for any that fail.
 
 $ARGUMENTS

@@ -5,6 +5,34 @@ OpenAgentd is a local-first coding-agent cockpit: a native Rust backend
 The canonical catalogue of shipped behavior is `documents/docs/features.md`;
 the public website is https://openagentd.dev.
 
+## Ownership
+
+The agent working in this repository owns the code: its structure, its checks,
+and its upkeep. The maintainer owns product direction and everything public.
+
+- **Proceed, then show**, when work is local and reversible. Commit your own
+  verified changes, one logical change per commit (`oad/commit`). In the files
+  a change touches, delete dead code and reshape what is in the way.
+- **Ask first** when something is public or irreversible: `git push`, any `gh`
+  command that writes (issue, PR, release, comment), a release, signing or
+  store submission, a wider auth policy or network guard, and product or UI
+  direction (through a plan).
+- **Fix or file.** Fix a mistake, friction, or debt you find in its own commit
+  when it is small and in files you are already changing. Otherwise add it to
+  the backlog. Do not leave it in chat.
+- **Encode what repeats.** When the maintainer corrects you, or a mistake
+  happens a second time, make it fail a check: first by structure (one source
+  of truth), then by a type or lint, then by a test. Write a guide line only
+  for a judgment call. Add the rule to the table under Rules and checks, and
+  remove a rule once its mistake cannot happen.
+
+The backlog is `.agents/backlog/` in the main checkout: git-ignored, one
+Markdown file per item named `<date>-<slug>.md`, with the area, what is wrong,
+the evidence, how often it was seen, and what would prove it done. From a
+worktree, the main checkout is the first line of `git worktree list`. Read the
+backlog when you start work that has no assigned task. An item becomes a
+GitHub issue only when the maintainer asks.
+
 ## Instruction scopes
 
 Apply this file repository-wide, then add the nearest nested `AGENTS.md` for
@@ -43,7 +71,8 @@ worktrees are not part of the tracked instruction hierarchy.
   contracts.
 - `documents/`: public feature catalogue and referenced assets.
 - `.agents/`: tracked repository commands, snippets, and agent skills (the
-  only project folder OpenAgentd reads); `.agents/plans/` is ignored.
+  only project folder OpenAgentd reads); `.agents/plans/` and
+  `.agents/backlog/` are ignored.
 - `.openagentd/`: ignored local runtime state (`dev/` and older plans and
   sessions); not source.
 
@@ -158,6 +187,37 @@ budget and chunk-cycle checks. `pre-commit install` sets up two hooks: at
 commit, file hygiene plus `oxlint` and `tsc` for `web/src`; at push,
 `make verify-quick`.
 
+## Rules and checks
+
+Each rule names what fails when it is broken. "Judgment" means nothing fails:
+the rule depends on you reading it, for the reason given.
+
+| Rule | Check |
+|---|---|
+| A crate depends only on lower layers | `appv3/crates/cli/tests/crate_layers.rs` |
+| No `dbg!`, `todo!`, `unimplemented!` in Rust | `[workspace.lints]` in `appv3/Cargo.toml`, clippy `-D warnings` |
+| Every published SSE event is listed in `sse_events.json` | `appv3/crates/agent/src/events.rs` (debug builds), `web/src/__tests__/api/sse-contract.test.ts` |
+| `app_guide` is the only text that describes the app | `appv3/crates/agent/tests/runtime_protocol.rs`, `web/src/__tests__/api/app-guide-contract.test.tsx` |
+| The network guard refuses foreign hosts and origins | tests in `appv3/crates/api/src/middleware.rs` |
+| Child processes do not inherit secrets | `appv3/crates/core/tests/child_env.rs` |
+| `fetch` only in `web/src/api/`; no `any`; no conditional hook; no import cycle | `bun run lint` (`web/.oxlintrc.json`) |
+| `web/src/components/ui/` imports no class or component library | `bun run lint` (`no-restricted-imports`) |
+| Design and copy rules that can be read from source | `web/src/__tests__/design-lint.test.ts`, `copy-lint.test.ts`, `web/src/__tests__/styles/` |
+| A Tauri command is registered, allowed, and called | `scripts/check_tauri_commands.py` |
+| No secret-shaped value in a tracked file | `scripts/check_no_secrets.py` |
+| Release versions agree everywhere | `make verify-version` |
+| Build jobs hold no signing secret | `scripts/tests/test_release_signing_isolation.py` |
+| CI runs a gate when a path it covers changes | `scripts/tests/test_verify_changed.py` |
+| Markdown links, `make` targets, and guide paths exist | `make verify-docs` |
+| Workspace roots go through `validate_workspace` | Judgment: a raw path still compiles (backlog: a workspace type) |
+| Secrets are compared in constant time | Judgment: no lint can tell a secret from another string |
+| Subprocesses take argument lists | Judgment: review of each new `Command` |
+| Route handlers stay thin | Judgment: a matter of degree |
+| A wire or on-disk change is recorded in `appv3/REPORT.md` | Judgment: only a person knows a change is a wire change |
+| A shipped user-visible change is in the feature catalogue | Judgment: `make verify-version` checks only the release line |
+| Bun tests run with `--parallel` | Judgment: the package scripts pass it; a bare `bun test` does not fail |
+| A UI change is checked on a narrow and a wide layout | Judgment: by hand until a scripted check exists |
+
 ## Agent workflows
 
 Repository workflows live in `.agents/skills/oad/`: `oad/testing`
@@ -167,8 +227,11 @@ telemetry), `oad/review`, `oad/commit` (including the documentation pass),
 
 ## Documentation
 
-- Update `documents/docs/features.md` for shipped user-visible behavior; use
-  the current version tag and keep entries factual.
+- Update `documents/docs/features.md` for shipped user-visible behavior. Tag an
+  entry with the release it will ship in: the next version, not the one
+  `scripts/release_version.sh` prints. Keep entries factual. This is the one
+  statement of the rule; `oad/commit` step 3 says where each other kind of
+  change is recorded.
 - Update `README.md` only when setup or the user-facing product story changes.
 - Read `SECURITY.md` for vulnerability reporting and `CONTRIBUTING.md` for PR
   policy. Keep implementation rationale near the relevant code/tests rather

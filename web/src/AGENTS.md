@@ -76,15 +76,5 @@ duplicating them in this guide. Relevant tests live under
 
 ## Checks
 
-From `web/`:
-
-```bash
-bun run lint
-bun run typecheck
-bunx tsc -p tsconfig.test.json --noEmit
-bun test --parallel
-bun run build
-```
-
-Always run `bun test` with `--parallel` (`bun test --parallel <path>`) for
-per-file module isolation, then run `make verify-web` from the repository root.
+Run the commands in `web/AGENTS.md` (Development), then `make verify-web` from
+the repository root.

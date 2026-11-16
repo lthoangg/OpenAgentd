@@ -30,6 +30,11 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 
 **Touch only what you must. Clean up only your own mess.**
 
+In a repository whose `AGENTS.md` gives the agent ownership of the code, that
+file's rule replaces the two "pre-existing dead code" lines below: fix what you
+find in the files you are changing, in its own commit, or record it where the
+repository says.
+
 When editing existing code:
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.

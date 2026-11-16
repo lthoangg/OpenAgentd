@@ -1,6 +1,6 @@
 ---
 name: oad/commit
-description: OpenAgentd commit workflow — check the staged diff, sync the feature catalogue, and write a conventional commit (Motivation / Technical Changes / Impact). Use whenever the user asks to commit.
+description: OpenAgentd commit workflow — check the staged diff, sync the feature catalogue, and write a conventional commit (Motivation / Technical Changes / Impact). Use whenever you commit a verified change or the user asks to commit.
 ---
 
 Commit only what belongs to the change, with the documentation it needs.
@@ -30,11 +30,11 @@ Pick the smallest durable record for what changed:
 
 | Change | Record |
 |---|---|
-| Shipped user-visible capability or behavior change | Version-cited entry in `documents/docs/features.md` (the canonical catalogue). Use the next release version; mark removed features *(deprecated)* for at least one release before deleting them. |
+| Shipped user-visible capability or behavior change | Version-cited entry in `documents/docs/features.md` (the canonical catalogue), tagged as root `AGENTS.md` (Documentation) says; mark removed features *(deprecated)* for at least one release before deleting them. |
 | UI change to what a reply can render, open, or run | `app_guide` in `appv3/crates/agent/data/builtin_prompts.json`, so the agent writes for it. Nowhere else: no other prompt or tool description repeats it. |
 | Product story or first-run/setup change | `README.md` |
 | Non-obvious invariant, security, or architecture rationale | A comment beside the code (why, not what) |
-| Future work, bugs, roadmap | A GitHub issue, never a repository doc |
+| Future work, bugs, debt you found | A file in the local backlog (root `AGENTS.md`, Ownership), never a repository doc. A GitHub issue only when the maintainer asks |
 | Implementation, API, config, CLI, UI detail | Nothing: source, tests, CLI help, and the UI are authoritative |
 | Repository policy or tooling | The nearest `AGENTS.md` or the matching `.agents/skills/oad/*` skill |
 
@@ -78,4 +78,5 @@ git log --oneline -1
 
 Pre-commit hooks run file hygiene, `oxlint`, and `tsc` for `web/`. If a hook fails,
 fix the cause and commit again; never bypass it with `--no-verify`.
-Report the hash and a one-line summary. Do not push unless asked.
+Report the hash and a one-line summary. Pushing needs the maintainer's
+approval (root `AGENTS.md`, Ownership).

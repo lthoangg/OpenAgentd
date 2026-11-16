@@ -19,7 +19,8 @@ bun test --parallel src/__tests__/path/to/file.test.tsx
 bun run build
 ```
 
-Always run `bun test` with `--parallel` for per-file module-registry isolation.
+Always run `bun test` with `--parallel`: `mock.module()` patches a registry
+shared by the whole process, and `--parallel` gives each file its own.
 
 `bun run build` includes the TypeScript build, Vite production bundle, and the
 chunk-cycle guard. The root `make build-web` performs a frozen install before

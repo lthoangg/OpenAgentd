@@ -38,7 +38,7 @@
 - [ ] I kept this PR focused on one logical change.
 - [ ] I updated docs where needed, including `documents/docs/features.md` for shipped behavior.
 - [ ] I added or updated tests where needed.
-- [ ] I ran `make verify`, or the focused `verify-*` targets for the surfaces I changed (see `CONTRIBUTING.md`).
+- [ ] I ran `make verify-changed` (see `CONTRIBUTING.md`).
 - [ ] I removed secrets, tokens, personal data, and unrelated generated files.
 
 Fixes #

@@ -19,10 +19,10 @@ import {
   InputComposer,
   type FileRef,
   type InputComposerHandle,
-  type SendDelivery,
   type SlashCommand,
   type SnippetCommand,
 } from '../InputComposer'
+import type { SendDelivery } from '../InputComposer/deliveries'
 import { JumpToLatestChip } from '../JumpToLatestChip'
 import { RevertNotice } from '../RevertNotice'
 import type { ComposerActions } from './PlusMenu'

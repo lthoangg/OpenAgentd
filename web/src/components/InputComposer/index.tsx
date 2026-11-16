@@ -26,7 +26,7 @@ import { mediumHapticFeedback, selectionHapticFeedback, softHapticFeedback } fro
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useLongPress } from '@/hooks/use-long-press'
 import { ActionSheet } from '@/components/ui/action-sheet'
-import { DELIVERIES } from './deliveries'
+import { DELIVERIES, deliveryForKey, type SendDelivery } from './deliveries'
 import { SessionModeToggle } from '../SessionModeToggle'
 import type { ComposerActions } from '../composer/PlusMenu'
 import { canPickNatively, pickNatively } from '@/lib/native-pick'
@@ -80,21 +80,6 @@ export interface SnippetCommand {
   label: string
   description: string
   category?: string
-}
-
-/**
- * How a message sent during a turn is delivered: ``steer`` hands it to the
- * running turn before the agent's next step, ``after-turn`` holds it until
- * the turn ends, ``interrupt`` stops the turn and sends it in its place.
- * Idle sends are always ``steer``, which simply starts a turn.
- */
-export type SendDelivery = 'steer' | 'after-turn' | 'interrupt'
-
-/** Either primary modifier stops and sends, so a Mac user reaching for Ctrl is not surprised. */
-function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean }): SendDelivery {
-  if (e.metaKey || e.ctrlKey) return 'interrupt'
-  if (e.altKey) return 'after-turn'
-  return 'steer'
 }
 
 /** The chevron half of the split Send pill. */

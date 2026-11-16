@@ -6,8 +6,7 @@ import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import type { OS } from '@/hooks/use-platform'
 import { formatChord } from '@/lib/keyboard/chord'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
-import type { SendDelivery } from '../InputComposer'
-import { DELIVERIES } from './deliveries'
+import { DELIVERIES, type SendDelivery } from './deliveries'
 
 /** The key hint (as the Keyboard Shortcuts sheet spells it) and ``aria-keyshortcuts`` value for each delivery. */
 function deliveryShortcut(delivery: SendDelivery, os: OS): { keys: string; aria: string } {

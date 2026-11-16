@@ -10,7 +10,8 @@ import { haptic, outcomeHapticFeedback } from '@/lib/haptics'
 import { pauseSessionGoal } from '@/api/client'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import type { InputComposerHandle, SendDelivery } from '../InputComposer'
+import type { InputComposerHandle } from '../InputComposer'
+import type { SendDelivery } from '../InputComposer/deliveries'
 
 /** Send with the session's current model settings, as the composer does. */
 function sendFromComposer(workspace: string, content: string, files?: File[], mentions?: string[], holdUntilTurnEnd = false) {

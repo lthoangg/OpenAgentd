@@ -1,4 +1,5 @@
 use super::*;
+use axum::response::IntoResponse;
 
 #[test]
 fn normpath_matches_python() {
@@ -325,6 +326,82 @@ async fn changed_files_work_before_the_first_commit_and_outside_git() {
 
 fn listed(root: &Path) -> Vec<String> {
     list_files(root).0.iter().map(|f| f["path"].as_str().unwrap().to_string()).collect()
+}
+
+fn ws_body(dir: &Path, extra: Value) -> Bytes {
+    let mut b = json!({"workspace": dir.to_str().unwrap()});
+    b.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+    Bytes::from(b.to_string())
+}
+
+fn head_subject(dir: &Path) -> String {
+    let o = std::process::Command::new("git").arg("-C").arg(dir).args(["log", "-1", "--format=%s"]).output().unwrap();
+    String::from_utf8_lossy(&o.stdout).trim().to_string()
+}
+
+#[tokio::test]
+async fn discard_restores_a_tracked_file_and_deletes_an_added_one() {
+    let d = repo_on_main();
+    std::fs::write(d.path().join("a.txt"), "changed\n").unwrap();
+    std::fs::write(d.path().join("new.txt"), "n").unwrap();
+    let v = body_of(git_discard(ws_body(d.path(), json!({"path": "a.txt", "status": "M"}))).await.unwrap()).await;
+    assert_eq!(v, json!({"workspace": d.path().to_str().unwrap(), "path": "a.txt", "status": "M"}));
+    assert_eq!(std::fs::read_to_string(d.path().join("a.txt")).unwrap(), "a\n");
+    body_of(git_discard(ws_body(d.path(), json!({"path": "new.txt", "status": "A"}))).await.unwrap()).await;
+    assert!(!d.path().join("new.txt").exists());
+    let status = |r: ApiResult<Response>| r.err().map(|e| e.into_response().status().as_u16());
+    assert_eq!(status(git_discard(ws_body(d.path(), json!({"path": "../x", "status": "M"}))).await), Some(400));
+    assert_eq!(status(git_discard(ws_body(d.path(), json!({"path": "", "status": "M"}))).await), Some(400));
+    assert_eq!(status(git_discard(ws_body(d.path(), json!({"path": "a.txt"}))).await), Some(422));
+    let plain = tempfile::tempdir().unwrap();
+    assert_eq!(status(git_discard(ws_body(plain.path(), json!({"path": "a.txt", "status": "M"}))).await), Some(400));
+}
+
+#[tokio::test]
+async fn commit_diff_shows_one_commit_and_rejects_a_bad_sha() {
+    let d = repo_on_main();
+    commit(d.path(), "b.txt");
+    let sha = git_stdout(d.path(), &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let v = body_of(commit_diff(ws_query(d.path(), &format!("&sha={sha}"))).await.unwrap()).await;
+    assert_eq!(v["sha"], json!(sha));
+    assert!(v["diff"].as_str().unwrap().contains("+++ b/b.txt"), "{v}");
+    let status = |r: ApiResult<Response>| r.err().map(|e| e.into_response().status().as_u16());
+    assert_eq!(status(commit_diff(ws_query(d.path(), "&sha=xyz")).await), Some(422));
+    assert_eq!(status(commit_diff(ws_query(d.path(), "&sha=abcdef0")).await), Some(404));
+    assert_eq!(status(commit_diff(ws_query(d.path(), "")).await), Some(422));
+}
+
+#[tokio::test]
+async fn undo_moves_head_back_one_commit() {
+    let d = repo_on_main();
+    commit(d.path(), "b.txt");
+    let v = body_of(git_undo(ws_body(d.path(), json!({}))).await.unwrap()).await;
+    assert_eq!(v, json!({"workspace": d.path().to_str().unwrap(), "success": true}));
+    assert_eq!(head_subject(d.path()), "init");
+    assert!(d.path().join("b.txt").exists(), "a soft reset keeps the files");
+    // The first commit is undone by deleting HEAD; then nothing is left.
+    body_of(git_undo(ws_body(d.path(), json!({}))).await.unwrap()).await;
+    let status = |r: ApiResult<Response>| r.err().map(|e| e.into_response().status().as_u16());
+    assert_eq!(status(git_undo(ws_body(d.path(), json!({}))).await), Some(400));
+    assert_eq!(status(git_undo(Bytes::from(r#"{"workspace": ""}"#)).await), Some(400));
+}
+
+#[tokio::test]
+async fn revert_adds_a_reverting_commit() {
+    let d = repo_on_main();
+    git_ok(d.path(), &["config", "user.name", "t"]);
+    git_ok(d.path(), &["config", "user.email", "t@t"]);
+    git_ok(d.path(), &["config", "commit.gpgsign", "false"]);
+    commit(d.path(), "b.txt");
+    let sha = git_stdout(d.path(), &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let v = body_of(git_revert(ws_body(d.path(), json!({"sha": sha}))).await.unwrap()).await;
+    assert_eq!(v, json!({"workspace": d.path().to_str().unwrap(), "sha": sha, "success": true}));
+    assert_eq!(head_subject(d.path()), "Revert \"b.txt\"");
+    assert!(!d.path().join("b.txt").exists());
+    let status = |r: ApiResult<Response>| r.err().map(|e| e.into_response().status().as_u16());
+    assert_eq!(status(git_revert(ws_body(d.path(), json!({"sha": "xyz"}))).await), Some(422));
+    assert_eq!(status(git_revert(ws_body(d.path(), json!({"sha": "abcdef0"}))).await), Some(400));
+    assert_eq!(status(git_revert(ws_body(d.path(), json!({}))).await), Some(422));
 }
 
 #[test]

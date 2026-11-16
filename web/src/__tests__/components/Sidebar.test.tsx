@@ -24,42 +24,42 @@ import {
   sourceWorkspacePaths,
   toggleExpandedPath,
   visibleNestedWorktrees,
-} from '@/components/Sidebar.helpers'
+} from '@/components/Sidebar/helpers'
 import {
   loadWorkspaceBrowser,
   shouldUseServerWorkspaceBrowser,
   validateTrustedWorkspace,
-} from '@/components/Sidebar.browser'
+} from '@/components/Sidebar/browser'
 import {
   applySessionDelete,
   applySessionSelection,
   getFallbackSessionAfterDelete,
-} from '@/components/Sidebar.sessions'
+} from '@/components/Sidebar/sessions'
 import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
   openWorkspaceLatest,
-} from '@/components/Sidebar.workspace'
+} from '@/components/Sidebar/workspace'
 import {
   consumeTrustedWorkspace,
   selectTrustedWorkspace,
-} from '@/components/Sidebar.trust'
+} from '@/components/Sidebar/trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
   prepareWorktreeRename,
   submitWorktreeRename,
-} from '@/components/Sidebar.worktree-dialog'
+} from '@/components/Sidebar/worktree-dialog'
 import {
   openSessionInNewWindow,
   sessionWindowErrorDescription,
   shouldOpenSessionInNewWindow,
-} from '@/components/Sidebar.window'
+} from '@/components/Sidebar/window'
 import {
   loadWorktreesForSource,
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
-} from '@/components/Sidebar.worktrees'
+} from '@/components/Sidebar/worktrees'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch

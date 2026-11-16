@@ -149,41 +149,41 @@ import {
   sessionActivityTime,
   sourceWorkspacePaths,
   toggleExpandedPath,
-} from './Sidebar.helpers'
+} from './Sidebar/helpers'
 import {
   loadWorkspaceBrowser,
   shouldUseServerWorkspaceBrowser,
   validateTrustedWorkspace,
-} from './Sidebar.browser'
+} from './Sidebar/browser'
 import {
   loadWorktreesForSource,
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
   submitWorktreeSession,
-} from './Sidebar.worktrees'
+} from './Sidebar/worktrees'
 import {
   applySessionDelete,
   applySessionSelection,
-} from './Sidebar.sessions'
+} from './Sidebar/sessions'
 import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
   restoreHiddenWorkspace,
-} from './Sidebar.workspace'
+} from './Sidebar/workspace'
 import {
   consumeTrustedWorkspace,
   selectTrustedWorkspace,
-} from './Sidebar.trust'
+} from './Sidebar/trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
   submitWorktreeRename,
-} from './Sidebar.worktree-dialog'
+} from './Sidebar/worktree-dialog'
 import {
   openSessionInNewWindow,
   sessionWindowErrorDescription,
   shouldOpenSessionInNewWindow,
-} from './Sidebar.window'
+} from './Sidebar/window'
 import { SessionSearch } from './Sidebar/SessionSearch'
 import { SessionsPageBar, SessionsPageHeader, SessionsPageToolbar } from './Sidebar/SessionsPage'
 import { SidebarPageContext } from './Sidebar/SidebarPageContext'

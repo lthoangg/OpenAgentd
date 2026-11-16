@@ -1,7 +1,7 @@
 import { apiBaseUrl } from '@/api/base-url'
 import { browseWorkspaces, validateWorkspace } from '@/api/client'
 import { getAppBackendStatus } from '@/lib/app-backend'
-import { isLocalBackendUrl } from './Sidebar/utils'
+import { isLocalBackendUrl } from './utils'
 
 export interface WorkspaceBrowserState {
   path: string

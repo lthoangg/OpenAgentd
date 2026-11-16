@@ -14,7 +14,7 @@ import { queryKeys } from '@/queries'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { applySessionSelection } from '../Sidebar.sessions'
+import { applySessionSelection } from '../Sidebar/sessions'
 import type { Command } from '../CommandPalette'
 import { buildSwitchCommands } from './paletteSwitchCommands'
 

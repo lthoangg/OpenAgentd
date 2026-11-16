@@ -58,7 +58,7 @@ mock.module('@/api/client', () => ({
   getSession: () => new Promise(() => {}),
   validateWorkspace: async () => ({}),
 }))
-mock.module('@/components/Sidebar.workspace', () => ({ latestTopLevelSession }))
+mock.module('@/components/Sidebar/workspace', () => ({ latestTopLevelSession }))
 mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => phone }))
 mock.module('@tauri-apps/api/core', () => ({ invoke }))
 mock.module('@/lib/broadcast-sync', () => ({ initBroadcastSync: () => () => {}, broadcastMessage: () => {} }))

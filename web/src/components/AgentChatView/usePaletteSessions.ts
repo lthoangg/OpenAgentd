@@ -12,8 +12,8 @@ import type { SessionResponse } from '@/api/types'
 import { useSessionSearchQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
 import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
-import { sessionActivityTime } from '../Sidebar.helpers'
-import { applySessionSelection } from '../Sidebar.sessions'
+import { sessionActivityTime } from '../Sidebar/helpers'
+import { applySessionSelection } from '../Sidebar/sessions'
 import type { PaletteSession, PaletteSessions } from '../CommandPalette'
 
 /** Same pause as the sidebar's session search: one request per typing burst. */

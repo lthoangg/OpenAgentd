@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { newSessionChoicePaths } from '@/components/Sidebar.helpers'
+import { newSessionChoicePaths } from '@/components/Sidebar/helpers'
 
 describe('newSessionChoicePaths', () => {
   it('puts Chat on top, the recent others newest nearest the thumb, and the current one last', () => {

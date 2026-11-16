@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { loadWorkspaceBrowser } from '@/components/Sidebar.browser'
+import { loadWorkspaceBrowser } from '@/components/Sidebar/browser'
 import { pathBasename } from '@/utils/workspace'
 
 export interface RelocateWorkspaceDialogProps {

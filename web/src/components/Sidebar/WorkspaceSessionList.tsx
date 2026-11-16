@@ -11,7 +11,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import type { SessionResponse } from '@/api/types'
-import { sessionActivityTime } from '../Sidebar.helpers'
+import { sessionActivityTime } from './helpers'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint, type SessionDeleteHandler } from './SessionRow'
 
 export type { MenuPoint } from './SessionRow'

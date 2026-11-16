@@ -10,7 +10,7 @@ import { MatchMarks } from '@/components/ui/match-marks'
 import { useCompactRelative } from '@/hooks/useCompactRelative'
 import { useSessionSearchQuery, useSessionsQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
-import { sessionActivityTime } from '../Sidebar.helpers'
+import { sessionActivityTime } from './helpers'
 import { CompactSessionRow } from './CompactSessionRow'
 import { sessionStatus } from './SessionStatusMark'
 

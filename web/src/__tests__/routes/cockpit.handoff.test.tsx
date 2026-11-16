@@ -31,7 +31,7 @@ mock.module('@/api/client', () => ({
   getSession: () => new Promise(() => {}),
   validateWorkspace: async () => ({}),
 }))
-mock.module('@/components/Sidebar.workspace', () => ({ latestTopLevelSession: async () => null }))
+mock.module('@/components/Sidebar/workspace', () => ({ latestTopLevelSession: async () => null }))
 mock.module('@/lib/broadcast-sync', () => ({ initBroadcastSync: () => () => {}, broadcastMessage: () => {} }))
 mock.module('@/lib/window-title', () => ({ syncDesktopWindowTitle: () => {} }))
 mock.module('@/hooks/use-needs-you-badge', () => ({ useNeedsYouBadge: () => 0, useNeedsYouCount: () => 0 }))

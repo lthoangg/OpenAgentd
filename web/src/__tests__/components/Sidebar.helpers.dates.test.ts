@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { SessionResponse } from '@/api/types'
-import { groupSessionsByDate, groupSessionsByStatus, newestFirst, orderWorkspacePaths } from '@/components/Sidebar.helpers'
+import { groupSessionsByDate, groupSessionsByStatus, newestFirst, orderWorkspacePaths } from '@/components/Sidebar/helpers'
 import type { CodingWorkspaceTreeRepository } from '@/api/types'
 
 const session = (id: string, fields: Partial<SessionResponse> = {}): SessionResponse => ({

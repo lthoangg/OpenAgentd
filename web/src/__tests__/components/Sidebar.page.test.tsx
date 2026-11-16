@@ -777,7 +777,7 @@ describe('Sidebar page mode: deleting the chat kept under Sessions', () => {
   })
 
   it('applySessionDelete keeps the screen with `stay`, and opens the fallback without it', async () => {
-    const { applySessionDelete } = await import('@/components/Sidebar.sessions')
+    const { applySessionDelete } = await import('@/components/Sidebar/sessions')
     const target = session('s-1', 'Open one') as never
     const others = [target, session('s-2', 'Other')] as never[]
     const stayNav = mock(() => {})

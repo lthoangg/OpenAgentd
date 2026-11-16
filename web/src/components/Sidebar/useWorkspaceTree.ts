@@ -18,6 +18,8 @@ const WORKSPACE_TREE_STALE_MS = 30_000
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 export const NO_GROUPS: WorkspaceGroup[] = []
 
+export type WorkspaceTreeState = ReturnType<typeof useWorkspaceTree>
+
 export function useWorkspaceTree() {
   const queryClient = useQueryClient()
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)

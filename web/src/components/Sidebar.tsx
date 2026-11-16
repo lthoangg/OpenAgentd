@@ -1,4 +1,4 @@
-// size-ceiling: 1273 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 949 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -54,22 +54,12 @@ import {
 } from '@/lib/workbench-layout'
 import {
   Activity,
-  ChevronRight,
   Command,
-  Folder,
-  FolderPlus,
-  GitBranch,
-  Loader2,
-  MessageCircle,
-  MoreHorizontal,
-  Plus,
   Settings,
   SquarePen,
-  TriangleAlert,
 } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
-import { sessionWorking } from '@/lib/active-sessions'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { listSessions } from '@/api/client'
@@ -83,27 +73,17 @@ import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
-import { Button } from '@/components/ui/button'
-import { Collapsible } from '@/components/ui/collapsible'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass, rowActionsReveal } from '@/components/ui/list-row'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/ui/empty-state'
+import { listRowClass } from '@/components/ui/list-row'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import type { SessionResponse } from '@/api/types'
-import { LongPressButton } from '@/components/ui/long-press-button'
-import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
 import { ScheduledSection } from './Sidebar/ScheduledSection'
 import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
 import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
-import { WorkspaceGroupDots, workspaceGroupsLabel } from './Sidebar/WorkspaceGroupDots'
-import { SessionStatusMark } from './Sidebar/SessionStatusMark'
-import { groupColor } from './Sidebar/groupColor'
 import {
   addExpandedPaths,
   groupSessionsByWorkspace,
@@ -125,8 +105,6 @@ import { SessionsPageBar, SessionsPageHeader, SessionsPageToolbar } from './Side
 import { SidebarPageContext } from './Sidebar/SidebarPageContext'
 import { SidebarScroller } from './Sidebar/SidebarScroller'
 import { useLargeTitleCollapse } from './Sidebar/useLargeTitleCollapse'
-import { CountChip } from './Sidebar/CountChip'
-import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 import { OpenWorkspaceDialog, useOpenWorkspaceDialog } from './Sidebar/OpenWorkspaceDialog'
 import { useWorktreeActions } from './Sidebar/useWorktreeActions'
 import { CreateWorktreeDialog, RenameWorktreeDialog } from './Sidebar/WorktreeDialogs'
@@ -134,8 +112,8 @@ import { useSessionActions } from './Sidebar/useSessionActions'
 import { SessionActionsMenu } from './Sidebar/SessionActionsMenu'
 import { WorkspaceActionsContextMenu, WorkspaceActionsSheet } from './Sidebar/WorkspaceActionsMenu'
 import { CheckoutMenu, useCheckoutFilter } from './Sidebar/CheckoutMenu'
-import { MissingBadge } from './Sidebar/MissingBadge'
-import { NO_GROUPS, useWorkspaceTree } from './Sidebar/useWorkspaceTree'
+import { useWorkspaceTree } from './Sidebar/useWorkspaceTree'
+import { WorkspaceTree } from './Sidebar/WorkspaceTree'
 
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
@@ -240,7 +218,6 @@ export function Sidebar({
   // The phone has no "Show details" switch: its rows always carry them.
   const storedShowDetails = useSidebarViewStore((s) => s.showDetails)
   const showDetails = isMobile || storedShowDetails
-  const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
 
   const workspaceSessions = useMemo(
     () => (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace),
@@ -252,22 +229,16 @@ export function Sidebar({
   const sessionActions = useSessionActions({ currentSessionId, workspaceSessions, isMobile, isPage, mobileOpen, onMobileClose })
   const { editingSessionId, sessionRowHandlers, handleSessionSelect } = sessionActions
 
+  const workspaceTreeState = useWorkspaceTree()
   const {
-    workspaceTreePending,
-    workspaceTreeFailed,
-    refetchWorkspaceTree,
-    workspaceTreeRetrying,
     workspaceTree,
     workspaceByPath,
     workspaceGroups,
-    groupsOf,
-    activeGroupFilter,
     chatWorkspace,
     isChatPath,
-    visibleWorkspaces,
     worktreeSourceByDirectory,
     refreshWorkspaceTree,
-  } = useWorkspaceTree()
+  } = workspaceTreeState
   const activeWorkspace = workspace ?? null
 
   // ``expandedWorkspaces`` is local UI state — it auto-tracks the active
@@ -525,19 +496,6 @@ export function Sidebar({
     })
   }
 
-  // Chat, then repositories in a workspace group, then the rest; each part
-  // most recently active first.
-  const sourceWorkspaces = [
-    ...(chatWorkspace ? [chatWorkspace.path] : []),
-    ...orderWorkspacePaths(
-      sourceWorkspacePaths(workspaceTree, worktreeActions.removedWorktreePaths)
-        .filter((path) => !isChatPath(path))
-        .filter((path) => !activeGroupFilter || (workspaceByPath.get(path)?.group_ids ?? []).includes(activeGroupFilter.id)),
-      workspaceByPath,
-      workspaceGroups.map((group) => group.id),
-      sessionsByWorkspace,
-    ),
-  ]
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
   // ✎'s hold menu on the Sessions screen: where a tap would start, Chat, and
   // the most recently active repositories.
@@ -837,315 +795,33 @@ export function Sidebar({
       </div>
       ) : (
       /* Workspace + sessions tree */
-      <div className="flex flex-1 flex-col pb-2">
-        {workspaceTreeFailed && workspaceTree.length === 0 && (
-          <div role="alert" data-sidebar-tree-error="">
-            <EmptyState
-              compact
-              tone="error"
-              icon={TriangleAlert}
-              title="Couldn't load workspaces."
-              className="px-3 py-1.5"
-              action={(
-                <button
-                  type="button"
-                  className={`${ROW_TEXT_ACTION} -ml-2`}
-                  disabled={workspaceTreeRetrying}
-                  onClick={() => { void refetchWorkspaceTree() }}
-                >
-                  {workspaceTreeRetrying && <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" />}
-                  {workspaceTreeRetrying ? 'Retrying…' : 'Retry'}
-                </button>
-              )}
-            />
-          </div>
-        )}
-
-        {!workspaceTreePending && !workspaceTreeFailed && visibleWorkspaces.length === 0 && (
-          <EmptyState
-            compact
-            icon={FolderPlus}
-            title="No workspaces yet"
-            body="A workspace is a folder the agent works in."
-            className="px-3 py-3"
-            action={(
-              <Button type="button" size="sm" onClick={() => { void openWorkspace.open() }}>
-                <FolderPlus size={13} aria-hidden="true" />
-                Open workspace…
-              </Button>
-            )}
-          />
-        )}
-
-        {activeGroupFilter && (
-          // The group filter, named above the list, with a one-step way back.
-          <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
-            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter) }} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">
-              Group: <span className="font-mono text-(--color-text-2)">{activeGroupFilter.name}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setGroupFilter(null)}
-              className={ROW_TEXT_ACTION}
-              aria-label="Show all workspaces"
-            >
-              Show all
-            </button>
-          </div>
-        )}
-
-        {sourceWorkspaces.map((path) => {
-          // Chat is pinned and not a repository: no worktrees, no rename, no
-          // removal — only the expand toggle and "New session" apply.
-          const sourceIsChat = isChatPath(path)
-          const sourceLabel = sourceIsChat ? (chatWorkspace?.name ?? path) : workspaceLabel(path)
-          const sourceGroups = sourceIsChat ? NO_GROUPS : groupsOf(path)
-          const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), worktreeActions.removedWorktreePaths, checkoutFilter[path])
-          const { worktrees, selectedWorktree } = checkouts
-          const allCheckoutPaths = [path, ...worktrees.map((item) => item.path)]
-          // "New session" starts where the list points: the selected checkout.
-          const sessionTarget = checkouts.selected ?? path
-          const sourceIsActive = path === activeWorkspace || path === activeWorktreeSource
-          const sourceIsExpanded = expandedWorkspaces.has(path)
-          const sourceIsPending = pendingWorkspace !== null && allCheckoutPaths.includes(pendingWorkspace)
-          const worktreeIsRemoving = worktreeActions.worktreeRemoving !== null && allCheckoutPaths.includes(worktreeActions.worktreeRemoving)
-          const sourceRunningSessions = checkouts.listPaths
-            .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
-            .filter(sessionWorking)
-            .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
-          const sourceHasRunningSession = sourceRunningSessions.length > 0
-          // Touch: the row says when a session inside waits or runs, so a
-          // folded workspace still shows it (mockup J2).
-          const sourceWaitingCount = checkouts.listPaths
-            .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
-            .filter((session) => session.needs_input === true).length
-          const sourceMissing = Boolean(workspaceByPath.get(path)?.missing)
-          const worktreeChipHint = checkouts.selected
-            ? `Showing ${selectedWorktree?.name ?? 'the workspace'} only · change worktree`
-            : `Showing the workspace and ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`
-
-          return (
-            <div key={path} className="relative" data-sidebar-workspace-group="">
-              <div className="group mx-1.5 flex h-(--spacing-list-row) items-center rounded-sm hover:bg-(--bg-key)/40">
-                {/* The chevron folds; the name opens. Keyboard users fold with
-                    ←/→ on the name, so the chevron is not a Tab stop. Its
-                    padding keeps it over the session guide below. */}
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-sidebar-workspace-toggle=""
-                  onClick={() => toggleWorkspaceExpanded(path)}
-                  className="flex h-full shrink-0 items-center rounded-sm pl-1.5 pr-1 text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:pr-[19px]"
-                  aria-expanded={sourceIsExpanded}
-                  aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} workspace ${sourceLabel}`}
-                >
-                  <ChevronRight size={12} className={`shrink-0 transition-transform duration-(--motion-fast) ${sourceIsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
-                </button>
-                <Tooltip className="h-full min-w-0 flex-1">
-                  <TooltipTrigger
-                    className="h-full min-w-0 flex-1"
-                    render={
-                      <LongPressButton
-                        enabled={mobileLongPressActions}
-                        // Chat gets the sheet too, just a narrower one: on
-                        // touch the inline "+" is hidden, so this is the only
-                        // way left to start a new chat session.
-                        onLongPress={() => setMobileWorkspaceActions({ path, sessionPath: sessionTarget, kind: sourceIsChat ? 'chat' : 'main' })}
-                        type="button"
-                        data-sidebar-workspace=""
-                        onClick={() => { void openWorkspaceLatest(path, checkouts.listPaths, sessionTarget) }}
-                        onKeyDown={(event) => {
-                          const expandKey = event.key === 'ArrowRight' && !sourceIsExpanded
-                          const collapseKey = event.key === 'ArrowLeft' && sourceIsExpanded
-                          if (expandKey || collapseKey) {
-                            event.preventDefault()
-                            toggleWorkspaceExpanded(path)
-                          }
-                        }}
-                        onContextMenu={(event) => {
-                          if (mobileLongPressActions || sourceIsChat) return
-                          event.preventDefault()
-                          setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: event.clientX, y: event.clientY })
-                        }}
-                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm pr-1.5 text-left text-xs"
-                        aria-label={`Open workspace ${sourceLabel}`}
-                        aria-description={sourceIsExpanded ? 'Expanded' : 'Collapsed'}
-                      >
-                        {sourceIsChat ? (
-                          <MessageCircle size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                        ) : (
-                          <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                        )}
-                        {/* A folder that is gone reads muted, with a ⚠ after it
-                            (its tooltip says where it was). */}
-                        <span
-                          className={cn(
-                            'truncate',
-                            sourceIsActive && 'font-medium',
-                            sourceMissing
-                              ? 'text-(--color-text-muted)'
-                              : sourceIsActive ? 'text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)',
-                          )}
-                        >
-                          {sourceLabel}
-                        </span>
-                        {sourceMissing && <MissingBadge />}
-                        <WorkspaceGroupDots groups={sourceGroups} />
-                        {mobileLongPressActions && (sourceWaitingCount > 0 || sourceHasRunningSession) && (
-                          <span data-workspace-status="" className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-meta tabular-nums text-(--color-text-muted)">
-                            <SessionStatusMark
-                              status={sourceWaitingCount > 0 ? 'needs_input' : 'running'}
-                              label={sourceWaitingCount > 0 ? `${sourceWaitingCount} waiting for you` : `${sourceRunningSessions.length} running`}
-                            />
-                            <span aria-hidden="true">{sourceWaitingCount > 0 ? sourceWaitingCount : sourceRunningSessions.length}</span>
-                          </span>
-                        )}
-                        {sourceIsPending && (
-                          <span>
-                            <Loader2 size={12} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
-                          </span>
-                        )}
-                      </LongPressButton>
-                    }
-                  />
-                  <TooltipContent>
-                    {sourceIsChat ? 'Chat workspace' : sourceMissing ? `Folder not found at ${path}` : path}
-                    {sourceGroups.length > 0 && <span className="block">{workspaceGroupsLabel(sourceGroups)}</span>}
-                  </TooltipContent>
-                </Tooltip>
-                {worktrees.length > 0 && (
-                  // Always visible and always compact (branch icon + worktree
-                  // count, the pill every row count uses), so the repository
-                  // name keeps the row; a filter shows as the chip's fill and
-                  // as a row atop the list.
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <CountChip
-                          icon={GitBranch}
-                          count={worktrees.length}
-                          active={Boolean(checkouts.selected)}
-                          mark={worktreeIsRemoving ? <Loader2 size={12} className="shrink-0 animate-spin" aria-hidden="true" /> : undefined}
-                          onClick={(event) => {
-                            const rect = event.currentTarget.getBoundingClientRect()
-                            setCheckoutMenu({ repo: path, x: rect.left, y: rect.bottom + 4 })
-                          }}
-                          aria-haspopup="menu"
-                          aria-expanded={checkoutMenu?.repo === path}
-                          aria-label={`${worktrees.length} ${worktrees.length === 1 ? 'worktree' : 'worktrees'}`}
-                          aria-description={`${sourceLabel}: ${worktreeChipHint}`}
-                        />
-                      }
-                    />
-                    <TooltipContent>{worktreeChipHint}</TooltipContent>
-                  </Tooltip>
-                )}
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        onClick={() => newSessionIn(sessionTarget)}
-                        // Like session rows, the actions take no room at rest,
-                        // so the folder name keeps the whole row.
-                        className={`ml-1 ${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('')}`}
-                        aria-label={selectedWorktree ? `New session in worktree ${selectedWorktree.name}` : `New session in ${sourceLabel}`}
-                      >
-                        <Plus size={12} aria-hidden="true" />
-                      </button>
-                    }
-                  />
-                  <TooltipContent>{selectedWorktree ? `New session in ${selectedWorktree.name}` : 'New session'}</TooltipContent>
-                </Tooltip>
-                {sourceIsChat ? (
-                  // Chat has no actions menu; hold its slot so the + lines up
-                  // with every other workspace row.
-                  !mobileLongPressActions && <span aria-hidden="true" className={`mr-1 w-6 shrink-0 pointer-coarse:w-9 ${rowActionsReveal('')}`} />
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            if (isMobile) {
-                              setMobileWorkspaceActions({ path, sessionPath: sessionTarget, kind: 'main' })
-                              return
-                            }
-                            const rect = event.currentTarget.getBoundingClientRect()
-                            setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: rect.left, y: rect.bottom + 4 })
-                          }}
-                          className={`mr-1 ${ROW_ACTION} ${mobileLongPressActions ? 'hidden' : rowActionsReveal('')}`}
-                          aria-haspopup="menu"
-                          aria-label={`Actions for ${sourceLabel}`}
-                        >
-                          <MoreHorizontal size={12} aria-hidden="true" />
-                        </button>
-                      }
-                    />
-                    <TooltipContent>Workspace actions</TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-
-              <Collapsible open={sourceIsExpanded || sourceHasRunningSession}>
-                {/* One level: every checkout's sessions hang off a single
-                    guide under the chevron (the tree's one indent, which a
-                    session's subagent rows use too), status marks under the
-                    folder. Expanding and collapsing fold the rows (height motion). */}
-                <div className="mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1" style={{ marginLeft: TREE_INDENT_PX }}>
-                  {checkouts.selected && sourceIsExpanded && (
-                    // The active filter, named where its sessions are, with
-                    // a one-step way back to every checkout.
-                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-meta text-(--color-text-subtle) pointer-coarse:h-9">
-                      <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
-                        {selectedWorktree
-                          ? <GitBranch size={12} className="text-(--accent-orange-text)" />
-                          : <Folder size={12} className="text-(--color-accent)" />}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2)">
-                        {selectedWorktree?.name ?? 'Workspace'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => selectCheckout(path, null)}
-                        className={ROW_TEXT_ACTION}
-                        aria-label={`Show all worktrees in ${sourceLabel}`}
-                      >
-                        Show all
-                      </button>
-                    </div>
-                  )}
-                  <WorkspaceSessionList
-                    path={checkouts.listPaths[0]}
-                    paths={checkouts.listPaths}
-                    // Tags only help while several checkouts share the list.
-                    checkoutNames={checkouts.selected ? undefined : checkouts.worktreeNames}
-                    currentSessionId={currentSessionId}
-                    runningSessions={sourceRunningSessions}
-                    collapsed={!sourceIsExpanded}
-                    showDetails={showDetails}
-                    draftActive={draftWorkspace !== null && checkouts.listPaths.includes(draftWorkspace)}
-                    mobileLongPressActions={mobileLongPressActions}
-                    editingSessionId={editingSessionId}
-                    {...sessionRowHandlers}
-                  />
-                </div>
-              </Collapsible>
-            </div>
-          )
-        })}
-
-        {workspaceTreePending && (
-          // First load: placeholder rows, not "No workspaces yet".
-          <div role="status" aria-label="Loading workspaces" className="space-y-2 px-3 py-2" data-sidebar-tree-loading="">
-            <Skeleton className="h-3 w-3/5" />
-            <Skeleton className="h-3 w-2/5" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        )}
-      </div>
+      <WorkspaceTree
+        tree={workspaceTreeState}
+        onOpenWorkspace={() => { void openWorkspace.open() }}
+        sessionsByWorkspace={sessionsByWorkspace}
+        removedWorktreePaths={worktreeActions.removedWorktreePaths}
+        worktreeRemoving={worktreeActions.worktreeRemoving}
+        checkoutFilter={checkoutFilter}
+        selectCheckout={selectCheckout}
+        checkoutMenuRepo={checkoutMenu?.repo}
+        setCheckoutMenu={setCheckoutMenu}
+        activeWorkspace={activeWorkspace}
+        activeWorktreeSource={activeWorktreeSource}
+        expandedWorkspaces={expandedWorkspaces}
+        toggleWorkspaceExpanded={toggleWorkspaceExpanded}
+        pendingWorkspace={pendingWorkspace}
+        openWorkspaceLatest={openWorkspaceLatest}
+        newSessionIn={newSessionIn}
+        setMobileWorkspaceActions={setMobileWorkspaceActions}
+        setDesktopWorkspaceActions={setDesktopWorkspaceActions}
+        isMobile={isMobile}
+        mobileLongPressActions={mobileLongPressActions}
+        currentSessionId={currentSessionId}
+        showDetails={showDetails}
+        draftWorkspace={draftWorkspace}
+        editingSessionId={editingSessionId}
+        sessionRowHandlers={sessionRowHandlers}
+      />
       )}
       {/* Room under the last row for the floating toolbar. */}
       {isPage && !searchOpen && <div aria-hidden="true" className="h-24 shrink-0" />}

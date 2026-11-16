@@ -407,8 +407,8 @@ export function Sidebar({
   const [searchFocusKey, setSearchFocusKey] = useState(0)
   const searchButtonRef = useRef<HTMLButtonElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
-  const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse; workspacePath: string } | null>(null)
-  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; workspacePath: string; x: number; y: number } | null>(null)
+  const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse } | null>(null)
+  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
   // Workspace action menus act on the repository (``path``); "New session"
   // starts in the checkout its list shows (``sessionPath``).
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; sessionPath: string; x: number; y: number } | null>(null)
@@ -854,15 +854,15 @@ export function Sidebar({
     onSessionEdit: handleSessionEdit,
     onSessionRename: handleSessionRename,
     onSessionRenameCancel: () => setEditingSessionId(null),
-    onSessionLongPress: (session: SessionResponse) => openMobileSessionActions(session, session.workspace ?? ''),
+    onSessionLongPress: (session: SessionResponse) => setMobileSessionActions({ session }),
     onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
       // Phones (browser too): the titled sheet, since a truncated title has
       // no tooltip on touch.
       if (isMobile) {
-        openMobileSessionActions(session, session.workspace ?? '')
+        setMobileSessionActions({ session })
         return
       }
-      setDesktopSessionActions({ session, workspacePath: session.workspace ?? '', x: event.clientX, y: event.clientY })
+      setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
     },
     onSessionPinToggle: toggleSessionPinned,
   }
@@ -887,11 +887,6 @@ export function Sidebar({
     // The ellipsis says a dialog follows, which only a working session gets.
     actions.push({ id: 'delete', label: sessionWorking(session) ? 'Delete session…' : 'Delete session', icon: Trash2, danger: true, separatorBefore: actions.length > 0, run: () => requestSessionDelete(session) })
     return actions
-  }
-
-  // The titled sheet on a phone, the iOS app included.
-  const openMobileSessionActions = (session: SessionResponse, workspacePath: string) => {
-    setMobileSessionActions({ session, workspacePath })
   }
 
   // Undo or confirm, not both (DESIGN.md): the toast's Undo covers a delete,
@@ -1455,14 +1450,6 @@ export function Sidebar({
                     mobileLongPressActions={mobileLongPressActions}
                     editingSessionId={editingSessionId}
                     {...sessionRowHandlers}
-                    onSessionLongPress={(session) => openMobileSessionActions(session, session.workspace || path)}
-                    onSessionContextActions={(session, event) => {
-                      if (isMobile) {
-                        openMobileSessionActions(session, session.workspace || path)
-                        return
-                      }
-                      setDesktopSessionActions({ session, workspacePath: session.workspace || path, x: event.clientX, y: event.clientY })
-                    }}
                   />
                 </div>
               </Collapsible>
@@ -1944,9 +1931,8 @@ export function Sidebar({
         </ContextMenu>
       )}
 
-      {/* A phone's long-press menu is a sheet from the bottom edge (Android,
-          and phone browsers); the iOS app shows the system action sheet
-          instead (openMobileSessionActions). */}
+      {/* A phone's long-press menu is a sheet from the bottom edge, the iOS
+          app included (``ActionSheet``). */}
       <ActionSheet
         open={mobileSessionActions !== null}
         onClose={() => setMobileSessionActions(null)}

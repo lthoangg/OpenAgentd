@@ -10,8 +10,13 @@ pub fn contract() -> &'static Value {
     C.get_or_init(|| serde_json::from_str(JSON).expect("builtin_prompts.json"))
 }
 
+/// The built-in text under `key`. A key the file lacks is a bug in the
+/// caller: it stops a debug build (so any test that reaches it fails), and
+/// `every_prompt_key_in_the_source_exists` finds it without running the path.
 pub fn s(key: &str) -> &'static str {
-    contract().get(key).and_then(|v| v.as_str()).unwrap_or("")
+    let text = contract().get(key).and_then(|v| v.as_str());
+    debug_assert!(text.is_some(), "appv3/crates/agent/data/builtin_prompts.json has no text under {key:?}: add it, or fix the key");
+    text.unwrap_or("")
 }
 
 pub fn coding_prompt() -> &'static str {
@@ -51,4 +56,57 @@ pub fn is_shipped_member_prompt(name: &str, body: &str) -> bool {
     let normalized = body.replace("\r\n", "\n");
     let digest: String = Sha256::digest(normalized.trim().as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
     contract()["member_prompt_history_sha256"][name].as_array().is_some_and(|known| known.iter().any(|h| h.as_str() == Some(digest.as_str())))
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    fn sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                sources(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// `s` returns "" for a key the file lacks in a release build, so a
+    /// misspelt key would send the model an empty instruction. Every key
+    /// written in the source is checked here, reached by a test or not.
+    #[test]
+    fn every_prompt_key_in_the_source_exists() {
+        let call = regex::Regex::new(r#"\bs\(((?:[^()]|\([^()]*\))*)\)"#).unwrap();
+        let literal = regex::Regex::new(r#""([a-z][a-z0-9_]*)""#).unwrap();
+        let mut files = vec![];
+        sources(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        let mut checked = 0;
+        // This file defines `s` and only describes calls to it.
+        for file in files.into_iter().filter(|f| !f.ends_with("prompts.rs")) {
+            let text = std::fs::read_to_string(&file).unwrap();
+            // `prompts::s("key")` and `prompts::s(if x { "a" } else { "b" })`.
+            for found in call.captures_iter(&text) {
+                let whole = found.get(0).unwrap();
+                if !text[..whole.start()].ends_with("prompts::") {
+                    continue;
+                }
+                for key in literal.captures_iter(&found[1]) {
+                    // A literal compared with `==` is a condition, not a key.
+                    if found[1][..key.get(0).unwrap().start()].trim_end().ends_with("==") {
+                        continue;
+                    }
+                    checked += 1;
+                    assert!(
+                        contract().get(&key[1]).is_some_and(|v| v.is_string()),
+                        "{}: builtin_prompts.json has no text under {:?}: add it to appv3/crates/agent/data/builtin_prompts.json, or fix the key",
+                        file.display(),
+                        &key[1]
+                    );
+                }
+            }
+        }
+        assert!(checked >= 25, "the scan found only {checked} keys: it no longer matches how prompts::s is called");
+    }
 }

@@ -45,6 +45,7 @@ import { useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focu
 import { previewsAvailable } from '@/api/preview'
 import { useChatPreview } from './useChatPreview'
 import { useDockCover } from './useDockCover'
+import { useSessionLinks } from './useSessionLinks'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
@@ -62,8 +63,7 @@ import { useRunSettings } from '../composer/useRunSettings'
 import { AppFooter } from '../AppFooter'
 import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
-import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
-import { OPEN_SESSION_EVENT, isOpenSessionRequest } from '@/utils/workspace-messages'
+import { workspaceLabel } from '@/utils/workspace'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type {
   AgentCapabilities as AgentCapabilitiesType,
@@ -307,27 +307,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   // Review panel's groups, status bar). Phones have no keyboard areas.
   useFocusRegions(!isMobile)
 
-  // The other end of a workspace message: the sender's session from the
-  // request's chip, the replier's session from a reply report.
-  const handleOpenSession = useCallback((targetSessionId: string, targetWorkspace: string) => {
-    if (targetWorkspace) saveLastWorkspace(targetWorkspace)
-    navigate({ to: '/$sessionId', params: { sessionId: targetSessionId } })
-  }, [navigate])
-  // From a subagent's session back to the lead's: the header button and the
-  // "Return to main agent" banner share it.
-  const handleOpenLead = useCallback(() => {
-    if (parentSessionId) navigate({ to: '/$sessionId', params: { sessionId: parentSessionId } })
-  }, [navigate, parentSessionId])
-  // The ``workspace`` tool card asks for the same switch by event,
-  // which keeps ToolCall free of the router.
-  useEffect(() => {
-    const onOpen = (event: Event) => {
-      const request = (event as CustomEvent<unknown>).detail
-      if (isOpenSessionRequest(request)) handleOpenSession(request.sessionId, request.workspace)
-    }
-    window.addEventListener(OPEN_SESSION_EVENT, onOpen)
-    return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen)
-  }, [handleOpenSession])
+  const { handleOpenSession, handleOpenLead } = useSessionLinks(parentSessionId)
 
   const leadBlocks = useAgentStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS

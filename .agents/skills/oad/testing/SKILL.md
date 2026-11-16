@@ -69,4 +69,6 @@ API or SSE changes need both backend and web checks, and event types must match
 
 - [ ] New behavior has a test in the right place; a bug fix has a test that failed first.
 - [ ] The full gate for every touched surface passes.
+- [ ] A change a user can see or do was driven on the running app at a phone
+  width and a desktop width → load `oad/drive`.
 - [ ] Ready to ship → load `oad/commit`.

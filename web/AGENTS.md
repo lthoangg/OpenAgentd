@@ -62,7 +62,8 @@ cycle.
 - Build the shared UI mobile-first. Gate platform behavior through existing
   `useIsMobile()` / `usePlatform()` hooks, account for safe areas and desktop
   chrome, and provide touch equivalents for hover/right-click behavior.
-- Manually inspect narrow and wide layouts for visual changes; this is not
+- Check a visual or interaction change at a phone width and a desktop width
+  with the `oad/drive` skill, and look at its screenshots; this is not
   covered by `make verify-web`.
 - `src/components/ui/` contains intentionally dependency-free primitives. Do
   not introduce shadcn/Base UI/CVA/clsx/tailwind-merge for those primitives;

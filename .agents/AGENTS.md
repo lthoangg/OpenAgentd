@@ -9,7 +9,8 @@ configuration.
 - `commands/*.md`: slash commands (`$ARGUMENTS` is the user's argument).
 - `snippets/**/*.md`: one-line shell snippets.
 - `skills/oad/<name>/SKILL.md`: repository workflows — `commit`, `debug`
-  (including logs and telemetry), `ios-store`, `release`, `review`, `testing`
+  (including logs and telemetry), `drive` (the running app at two widths, with
+  its feature map in `features/`), `ios-store`, `release`, `review`, `testing`
   (including test-first). `skills/guidelines/` holds general coding behavior.
 - `plans/`: OpenAgentd session plans; ignored through its own `.gitignore`.
 - `backlog/`: the owner's local backlog, one file per item; ignored by the

@@ -145,8 +145,9 @@ Use the native subtree Makefiles for desktop/mobile packages
 - Keep release versions synchronized through the repository release scripts;
   `make verify-version` checks the cross-project contract.
 - Read `DESIGN.md` before changing UI. Use its tokens and existing primitives,
-  design mobile-first, preserve touch/pointer parity, and manually inspect both
-  narrow and wide layouts for visual changes.
+  design mobile-first, and preserve touch/pointer parity. Check a UI change on
+  the running app at a phone width and a desktop width with `oad/drive`, and
+  look at the screenshots it saves.
 
 ## Validation
 
@@ -216,14 +217,15 @@ the rule depends on you reading it, for the reason given.
 | A wire or on-disk change is recorded in `appv3/REPORT.md` | Judgment: only a person knows a change is a wire change |
 | A shipped user-visible change is in the feature catalogue | Judgment: `make verify-version` checks only the release line |
 | Bun tests run with `--parallel` | Judgment: the package scripts pass it; a bare `bun test` does not fail |
-| A UI change is checked on a narrow and a wide layout | Judgment: by hand until a scripted check exists |
+| A UI change works at a phone width and a desktop width | `oad/drive` journeys (run on demand; they need a built backend, so no `make verify` target runs them) |
 
 ## Agent workflows
 
 Repository workflows live in `.agents/skills/oad/`: `oad/testing`
-(test-first and per-surface commands), `oad/debug` (including logs and
-telemetry), `oad/review`, `oad/commit` (including the documentation pass),
-`oad/release`, and `oad/ios-store` (TestFlight and App Store).
+(test-first and per-surface commands), `oad/drive` (drive the running app at a
+phone and a desktop width and keep the proof), `oad/debug` (including logs
+and telemetry), `oad/review`, `oad/commit` (including the documentation
+pass), `oad/release`, and `oad/ios-store` (TestFlight and App Store).
 
 ## Documentation
 

@@ -51,6 +51,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("install.ps1", ("verify-scripts",)),
     (".github/workflows/**", ("verify-scripts",)),
     (".agents/skills/oad/debug/scripts/**", ("verify-scripts",)),
+    (".agents/skills/oad/drive/scripts/**", ("verify-scripts",)),
     ("appv3/contract/**", ("verify-scripts",)),
     ("desktop/scripts/**", ("verify-scripts",)),
     ("desktop/src-tauri/**", ("verify-scripts",)),

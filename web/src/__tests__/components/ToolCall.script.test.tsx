@@ -3,7 +3,7 @@
  * calls (live while it runs, from the stored result after a reload), and the
  * output with any error, time-limit note and save note.
  */
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeAll, mock } from "bun:test"
 
 let stored = ""
 mock.module("@/api/client/tool-results", () => ({
@@ -19,6 +19,12 @@ import { ToolCall } from "@/components/ToolCall"
 import { clearToolResultCache } from "@/components/ToolCall/useToolResult"
 import { parseScriptLive, parseScriptResult } from "@/components/ToolCall/scriptTrace"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { prefetchSurfaces } from "@/lib/lazy-surface"
+
+// The open row's body loads lazily; load it before the tests render.
+beforeAll(async () => {
+  await prefetchSurfaces()
+})
 
 afterEach(() => {
   cleanup()

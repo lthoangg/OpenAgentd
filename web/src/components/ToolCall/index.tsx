@@ -38,7 +38,6 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
-import { ScriptView } from './ScriptView'
 import { parseScriptResult } from './scriptTrace'
 import { ImageViewChip } from './ImageViewChip'
 import { parseImageRead } from './imageRead'
@@ -61,6 +60,11 @@ import type { ToolCallState } from './types'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
 import { UPDATE_GOAL_TOOL } from '@/lib/goal'
+import { lazySurface } from '@/lib/lazy-surface'
+
+// The body of an open `script` row, which shows only once the row is opened:
+// kept out of the startup bundle and prefetched while the app is idle.
+const ScriptView = lazySurface(() => import('./ScriptView'), 'ScriptView')
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'

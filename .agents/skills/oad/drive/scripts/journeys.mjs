@@ -148,6 +148,17 @@ async function runJourney(browser, name, run, width, report) {
       readFileSync(`${DRIVE_DIR}/model.jsonl`, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)),
     /** The session the page shows, read from its address. */
     sessionId: () => new URL(page.url()).pathname.match(/[0-9a-f]{8}-[0-9a-f-]{27}/)?.[0],
+    /** Press and hold with a finger (phone only): what opens a row's action sheet. */
+    hold: async (locator, ms = 700) => {
+      const box = await locator.boundingBox()
+      if (!box) throw new Error("nothing to hold: the element is not on screen")
+      const point = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) }
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] })
+      await page.waitForTimeout(ms)
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      await cdp.detach()
+    },
     async step(stepName, fn) {
       n += 1
       const base = `${name}-${width}-${n}-${stepName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`

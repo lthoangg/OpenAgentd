@@ -82,13 +82,24 @@ const SIGNAL_KEYS = [
 
 const INTERRUPT = { label: '^C', seq: '\x03', title: 'Send Ctrl+C (interrupt)' } as const
 
-const KEY_CLASS = cn(
+const KEY_SHAPE = cn(
   'flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md px-2',
-  'bg-(--color-surface-2) text-xs font-medium text-(--color-text)',
-  'active:bg-(--bg-key) select-none',
+  'text-xs font-medium active:bg-(--bg-key) select-none',
 )
 
-const ARMED_CLASS = 'bg-(--color-fill-selected) text-(--color-text-on-selected)'
+/**
+ * A key's fill: armed (a sticky modifier, the field's switch) or plain. One
+ * or the other, never both: ``cn`` does not merge, so two fills would leave
+ * the winner to stylesheet order (an armed Ctrl used to look unarmed).
+ */
+function keyClass(armed = false): string {
+  return cn(
+    KEY_SHAPE,
+    armed ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)' : 'bg-(--color-surface-2) text-(--color-text)',
+  )
+}
+
+const KEY_CLASS = keyClass()
 
 /** Keep xterm's hidden input (or the command field) focused, so the soft keyboard stays up. */
 const preventFocusLoss = (e: React.PointerEvent) => e.preventDefault()
@@ -205,7 +216,7 @@ export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArm
         aria-label="Command line field"
         aria-pressed={lineOn}
         // Pinned: the field's switch stays in reach while the bar scrolls.
-        className={cn(KEY_CLASS, 'sticky left-0 z-10 gap-1 shadow-(--shadow-depth)', lineOn && ARMED_CLASS)}
+        className={cn(keyClass(lineOn), 'sticky left-0 z-10 gap-1 shadow-(--shadow-depth)')}
         onPointerDown={preventFocusLoss}
         onClick={() => {
           haptic('tick')
@@ -221,7 +232,7 @@ export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArm
       <button
         type="button"
         aria-pressed={ctrlArmed}
-        className={cn(KEY_CLASS, ctrlArmed && ARMED_CLASS)}
+        className={keyClass(ctrlArmed)}
         onPointerDown={preventFocusLoss}
         onClick={() => {
           haptic('tick')
@@ -233,7 +244,7 @@ export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArm
       <button
         type="button"
         aria-pressed={altArmed}
-        className={cn(KEY_CLASS, altArmed && ARMED_CLASS)}
+        className={keyClass(altArmed)}
         onPointerDown={preventFocusLoss}
         onClick={() => {
           haptic('tick')

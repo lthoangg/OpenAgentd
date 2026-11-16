@@ -85,6 +85,10 @@ describe('TerminalKeyBar', () => {
     renderBar({ ctrlArmed: true, altArmed: false, onCtrlToggle, onAltToggle })
     expect(screen.getByText('Ctrl').getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByText('Alt').getAttribute('aria-pressed')).toBe('false')
+    // One fill per key: the armed one alone, so it cannot lose to the plain one.
+    expect(screen.getByText('Ctrl').className).toContain('bg-(--color-fill-selected)')
+    expect(screen.getByText('Ctrl').className).not.toContain('bg-(--color-surface-2)')
+    expect(screen.getByText('Alt').className).toContain('bg-(--color-surface-2)')
     fireEvent.click(screen.getByText('Ctrl'))
     fireEvent.click(screen.getByText('Alt'))
     expect(onCtrlToggle).toHaveBeenCalledTimes(1)

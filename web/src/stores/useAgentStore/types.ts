@@ -410,3 +410,7 @@ export interface AgentStoreActions {
 }
 
 export type AgentStore = AgentStoreState & AgentStoreActions
+
+/** The store's immer setter and getter, as the slices and SSE handlers receive them. */
+export type StoreSet = (fn: (draft: AgentStore) => void) => void
+export type StoreGet = () => AgentStore

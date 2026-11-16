@@ -13,9 +13,8 @@
  * Split out of InputComposer.tsx (not `.tsx` itself — react-refresh forbids
  * non-component runtime exports from `.tsx` files) so the component only
  * has to wire this hook's output into `<InputComposerSuggestions>` (the render
- * half, in `suggestions.tsx`), pass the menu's keys to `handleMenuKeyDown` /
- * `handleMenuBeforeInput`, and set the active-mention window from its own
- * `handleChange`.
+ * half, in `suggestions.tsx`), pass the menu's keys to `handleMenuKeyDown`,
+ * and set the active-mention window from its own `handleChange`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { SlashCommand, SnippetCommand } from './commands'
@@ -255,15 +254,6 @@ export function useInputComposerSuggestionEngine({
     return false
   }, [menu, commitActive, dismiss])
 
-  /** A Return that arrives only as a line-break input (some touch keyboards) commits the open slash command. */
-  const handleMenuBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
-    if ((e.nativeEvent as InputEvent).inputType !== 'insertLineBreak') return
-    if (menu?.kind !== 'slash') return
-
-    e.preventDefault()
-    commitActive()
-  }
-
   const suggestionsOpen = menu !== null
   useEffect(() => {
     onSuggestionsMenuChange?.(suggestionsOpen)
@@ -281,6 +271,5 @@ export function useInputComposerSuggestionEngine({
 
     commit,
     handleMenuKeyDown,
-    handleMenuBeforeInput,
   }
 }

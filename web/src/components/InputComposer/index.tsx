@@ -236,7 +236,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     optionRefs,
     commit,
     handleMenuKeyDown,
-    handleMenuBeforeInput,
   } = useInputComposerSuggestionEngine({
     value,
     setValue,
@@ -599,7 +598,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         value={value}
         onCompositionStart={() => setIsComposing(true)}
         onCompositionEnd={() => setIsComposing(false)}
-        onBeforeInput={handleMenuBeforeInput}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         // Caret-only moves (arrow keys, Home/End) don't fire onChange but

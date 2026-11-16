@@ -16,47 +16,33 @@
  * hover: a turn shows each of those once.
  */
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { flushSync } from 'react-dom'
 import { Seal } from '@/components/brand/Logo'
 
-import { MarkdownBlock } from '@/utils/markdown'
 import { Loader2 } from 'lucide-react'
-import { Thinking } from '../Thinking'
-import { ToolCall } from '../ToolCall'
-import { lazySurface } from '@/lib/lazy-surface'
 import { TimelineScrubber } from './TimelineScrubber'
-import { CompactionDivider } from '../CompactionDivider'
 import { AssistantTurn, type AssistantTurnProps } from '../AssistantTurnFooter'
 import { PendingMessageQueue } from '../PendingMessageQueue'
 import { WaitingForLine } from './WaitingForLine'
 import { JumpToLatest } from '../JumpToLatestChip'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels, type TurnItem } from '@/utils/turns'
 import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix } from '@/utils/format'
 import { useUIStore } from '@/stores/useUIStore'
-import { Chip } from '@/components/ui/chip'
-import { ModelName } from '@/components/ui/model-name'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
-import { UserBubble, type OpenSessionHandler } from './UserBubble'
-import { GoalTurnDivider } from './GoalTurnDivider'
-import { RestartDivider } from './RestartDivider'
-import { goalTurnInfo } from '@/lib/goal'
-import { restartNoteInfo } from '@/lib/restart-note'
-import { replyFrom, sentFrom } from '@/utils/workspace-messages'
-import { fromLead, isLeadMessage } from '@/utils/lead-messages'
+import type { OpenSessionHandler } from './UserBubble'
+import { sentFrom } from '@/utils/workspace-messages'
+import { isLeadMessage } from '@/utils/lead-messages'
 import { ErrorCard } from './ErrorCard'
-import { endingProviderError, isBareExhausted, isBlankContentBlock, isProviderErrorBlock, latestActiveRetryBlockId, providerErrorDetails, switchedAccount } from './provider-status'
+import { endingProviderError, isBlankContentBlock, isProviderErrorBlock, latestActiveRetryBlockId } from './provider-status'
 import { TranscriptSkeleton } from './TranscriptSkeleton'
 import { PendingDots } from './PendingDots'
-import { RetryNotice } from './RetryNotice'
-import { QuotaWaitNotice, latestActiveQuotaWait, quotaWaitFromBlock, readStoredQuotaWait, removeStoredQuotaWait } from './QuotaWaitNotice'
+import { QuotaWaitNotice, latestActiveQuotaWait, readStoredQuotaWait, removeStoredQuotaWait } from './QuotaWaitNotice'
 import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
@@ -66,10 +52,7 @@ import { useDismissKeyboardOnTouch } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useSessionSwitchHold } from './useSessionSwitchHold'
-
-// MCP app results (and the MCP SDK they need) are rare: kept out of the
-// startup bundle and prefetched while the app is idle.
-const MCPAppResult = lazySurface(() => import('../MCPAppResult'), 'MCPAppResult')
+import { BlockRenderer } from './BlockRenderer'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -191,194 +174,6 @@ interface AgentViewProps {
    */
   marksScrollEdge?: boolean
 }
-
-/** The server's error title, with its legacy Title Case default in plain words. */
-function providerErrorTitle(title: unknown): string {
-  if (typeof title !== 'string' || !title || title === 'Provider Error') return 'Model error'
-  return title
-}
-
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, leadSessionId, onEdit, editLocked, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, activeQuotaWaitBlockId, activeRetryBlockId }: {
-  block: ContentBlock
-  isStreaming: boolean
-  sessionId?: string
-  /** The open session's parent, when it is a subagent: names the lead for its untagged messages. */
-  leadSessionId?: string
-  /** Rewind to a prompt the user wrote; ignored for agent reports. */
-  onEdit?: (blockId: string) => void
-  /** A turn is running: Edit shows, disabled, until it ends. */
-  editLocked?: boolean
-  /** The model and thinking level a prompt ran with; strings so memo holds while streaming. */
-  promptModel?: string
-  promptThinkingLevel?: string
-  /** Error actions; the caller passes them to the error a turn ended with only. */
-  onRetry?: () => void
-  onSwitchModel?: () => void
-  latestMCPAppBlockIds?: Set<string>
-  onMentionFileOpen?: (path: string) => void
-  onOpenSession?: OpenSessionHandler
-  activeQuotaWaitBlockId?: string
-  /** The one retry notice still waiting; the others have resolved and hide. */
-  activeRetryBlockId?: string
-}) {
-  switch (block.type) {
-    case 'user': {
-      const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      const goalTurn = goalTurnInfo(block)
-      if (goalTurn) return <GoalTurnDivider info={goalTurn} />
-      const restart = restartNoteInfo(block)
-      if (restart) return <RestartDivider info={restart} />
-      // The lead's message to this subagent: its prefix is the chip's job, and
-      // Edit would rewind the subagent, which the lead directs.
-      const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)
-      // Another workspace's agent sent it: rewinding it is that agent's call.
-      const sender = sentFrom(block.extra)
-      const editable = Boolean(onEdit) && !fromAgent && !lead && !sender
-      const revert = (keepFiles: boolean) => { void useAgentStore.getState().revertToMessage(block.id, { restoreDraft: false, keepFiles }) }
-      // Chat never rolls files back, so its plain Undo already keeps them.
-      const keepFilesUndo = editable && !isChatWorkspacePath(useAgentStore.getState()._workspace)
-      return <UserBubble content={lead ? lead.content : block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={editable && onEdit ? () => onEdit(block.id) : undefined} onRevert={editable ? () => revert(false) : undefined} onRevertMessages={keepFilesUndo ? () => revert(true) : undefined} editLocked={editLocked} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sender} fromLeadSessionId={lead?.sessionId} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
-    }
-    case 'thinking':
-      return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.thinkingDurationMs} />
-    case 'compaction': {
-      const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
-      const error = Boolean(block.extra?.error)
-      return (
-        <CompactionDivider
-          state={state}
-          error={error}
-          summary={block.content}
-          sessionId={sessionId}
-          isStreaming={isStreaming}
-        />
-      )
-    }
-    case 'provider_status': {
-      const status = block.extra?.status
-      const customMsg = block.extra?.message as string | undefined
-
-      if (isBareExhausted(block)) {
-        const model = typeof block.extra?.model === 'string' ? block.extra.model : undefined
-        return (
-          <RetryNotice
-            exhausted
-            model={model}
-            maxAttempts={block.extra?.max_attempts}
-            errorType={block.extra?.error_type}
-            statusCode={block.extra?.status_code}
-          />
-        )
-      }
-
-      if (isProviderErrorBlock(block)) {
-        const title = providerErrorTitle(block.extra?.title)
-        const message = customMsg || block.content
-        return (
-          <ErrorCard
-            title={title}
-            message={message}
-            details={providerErrorDetails({ title, message, extra: block.extra })}
-            code={typeof block.extra?.code === 'string' ? block.extra.code : undefined}
-            onRetry={onRetry}
-            onSwitchModel={onSwitchModel}
-          />
-        )
-      }
-
-      if (status === 'waiting_quota' || status === 'waiting_credential') {
-        if (block.id !== activeQuotaWaitBlockId) return null
-        const wait = quotaWaitFromBlock(block)
-        return wait ? <QuotaWaitNotice wait={wait} sessionId={sessionId} persist /> : null
-      }
-
-      const model = typeof block.extra?.model === 'string' ? block.extra.model : undefined
-      if (status === 'retrying') {
-        if (block.id !== activeRetryBlockId) return null
-        return (
-          <RetryNotice
-            model={model}
-            attempt={block.extra?.attempt}
-            maxAttempts={block.extra?.max_attempts}
-            delay={block.extra?.delay_seconds}
-            errorType={block.extra?.error_type}
-            statusCode={block.extra?.status_code}
-          />
-        )
-      }
-      if (status === 'switched_credential') {
-        // A key or account hit its limit; the same turn continues on the next one.
-        const { account, reason } = switchedAccount(block.extra)
-        return (
-          <div role="status" data-credential-switch className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-(--color-text-muted)">
-            <Chip tone="info">
-              {account ? <>Switched to account <span className="font-semibold">{account}</span></> : 'Switched account'}
-            </Chip>
-            <span className="min-w-0 break-words">
-              {reason ?? (model ? <><ModelName id={model} className="align-bottom" /> continues on another account.</> : 'The model continues on another account.')}
-            </span>
-          </div>
-        )
-      }
-      let message = 'Provider status updated.'
-      if (status === 'pin_released') {
-        // The locked account was removed or turned off: the session follows the provider's choice.
-        message = customMsg || "The account this session started on is gone, so it uses the provider's next available account."
-      }
-      return <p className="rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
-    }
-    case 'tool': {
-      const mcpApp = (block.extra as { mcp_app?: unknown } | undefined)?.mcp_app
-      return (
-        <div>
-          <ToolCall
-            name={block.toolName || ''}
-            args={block.toolArgs}
-            done={block.toolDone}
-            liveOutput={block.toolOutput}
-            result={block.toolResult}
-            resultBytes={block.toolResultBytes}
-            argsBytes={block.toolArgsBytes}
-            durationMs={block.durationMs}
-            startedAt={block.startedAt}
-            toolCallId={block.toolCallId}
-          />
-          {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
-            <div className="mt-2">
-              <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
-            </div>
-          ) : null}
-        </div>
-      )
-    }
-    case 'text': {
-      // Me sleep sentinel — show any preceding content normally, then append idle pill
-      const sleepPrefix = extractSleepPrefix(block.content)
-      if (sleepPrefix !== null) {
-        return (
-          <div>
-            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
-            <div className="my-3 flex items-center gap-3 text-xs text-(--color-text-muted)" role="note">
-              <span aria-hidden className="h-px flex-1 bg-(--color-border)" />
-              Agent idle
-              <span aria-hidden className="h-px flex-1 bg-(--color-border)" />
-            </div>
-          </div>
-        )
-      }
-      // An assistant message. No menu of its own: a right-click or a long
-      // press selects text and opens the system's menu (Copy, Look Up); the
-      // footer's Copy takes the whole answer.
-      return (
-        <div>
-          <MarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
-        </div>
-      )
-    }
-    default:
-      return null
-  }
-})
 
 export function AgentView({
   blocks: storeBlocks,

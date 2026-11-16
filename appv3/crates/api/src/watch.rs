@@ -37,7 +37,10 @@ pub const EVENT: &str = "workspace_files_changed";
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const MAX_BATCH_WAIT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
-const MAX_WATCHED_WORKSPACES: usize = 16;
+/// The registry is one per process, and this crate's unit tests share a
+/// process: with the product's cap, tests running side by side evicted each
+/// other's watcher while it was still starting ("the watcher never started").
+const MAX_WATCHED_WORKSPACES: usize = if cfg!(test) { 1024 } else { 16 };
 const MAX_DIRS_NATIVE: usize = 20_000;
 const MAX_DIRS_POLL: usize = 2_000;
 const MAX_PATHS_REPORTED: usize = 100;

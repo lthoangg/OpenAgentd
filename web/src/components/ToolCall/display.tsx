@@ -20,6 +20,7 @@ import { parsePatchText, patchFiles } from './diffUtils'
 import { pathBasename } from '@/utils/workspace'
 import { parsePartialJSON } from './displayText'
 import { canonicalToolName } from '@/utils/tool-names'
+import { scriptSource } from './scriptTrace'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -278,6 +279,17 @@ function previewChainLabel(parsed: Record<string, unknown>): { short: string; fu
 }
 
 function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): ToolDisplay {
+  // ── script: its description, or the saved script it runs; the open row
+  //    shows the code (ScriptView) ───
+  if (name === 'script') {
+    const title = str(parsed, 'description') ?? scriptSource(parsed)?.label ?? (parsed.list ? 'list saved scripts' : null)
+    return {
+      header: title ? <Arg>{trunc(title, 80)}</Arg> : null,
+      headerTitle: title,
+      formattedArgs: typeof parsed.code === 'string' ? parsed.code : null,
+    }
+  }
+
   // ── preview: the page it opens, the console it reads, or the page action ──
   if (name === 'preview') {
     const action = str(parsed, 'action')

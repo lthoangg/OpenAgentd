@@ -158,10 +158,44 @@ async fn repack(gitdir: &Path) {
     let gd = p(gitdir);
     let mut a: Vec<&str> = CORE_FLAGS.to_vec();
     a.extend(["--git-dir", &gd, "repack", "-a", "-d", "-q", "-l"]);
-    let o = git(&a, None, &[], None).await;
+    let mut o = git(&a, None, &[], None).await;
+    if o.code != 0 && missing_objects(&o.err()) && drop_unreadable_refs(gitdir).await > 0 {
+        o = git(&a, None, &[], None).await;
+    }
+    // The staging index (seeded from the workspace repo's) can name the same
+    // lost blobs; it is only a cache, so the next snapshot rebuilds it.
+    if o.code != 0 && missing_objects(&o.err()) && std::fs::remove_file(gitdir.join("index")).is_ok() {
+        tracing::warn!("snapshot_index_dropped gitdir={} reason=missing_objects", gd);
+        o = git(&a, None, &[], None).await;
+    }
     if o.code != 0 {
         tracing::warn!("snapshot_repack_failed gitdir={} stderr={}", gd, o.err());
     }
+}
+
+/// git's stderr when an object a ref reaches is gone.
+fn missing_objects(stderr: &str) -> bool {
+    ["bad tree object", "unable to read", "missing blob", "missing tree", "bad object"].iter().any(|m| stderr.contains(m))
+}
+
+/// Delete the snapshot refs that reach an object no longer in the repo or
+/// its alternates (a deleted workspace repo they borrowed from). Such a
+/// snapshot cannot be restored, and keeping its ref makes every repack
+/// fail. Readable snapshots are untouched. Returns how many were dropped.
+async fn drop_unreadable_refs(gitdir: &Path) -> usize {
+    let gd = p(gitdir);
+    let mut dropped = 0usize;
+    for r in list_snapshot_refs(gitdir).await.into_values() {
+        let o = git(&gd_args(&gd, &["rev-list", "--objects", "--missing=print", &r]), None, &[], None).await;
+        let broken = o.text().lines().any(|l| l.starts_with('?')) || (o.code != 0 && missing_objects(&o.err()));
+        if broken && git(&gd_args(&gd, &["update-ref", "-d", &r]), None, &[], None).await.code == 0 {
+            dropped += 1;
+        }
+    }
+    if dropped > 0 {
+        tracing::warn!("snapshot_broken_refs_dropped gitdir={} dropped={}", gd, dropped);
+    }
+    dropped
 }
 
 /// Drop `objects/info/alternates` entries whose directory is gone (the

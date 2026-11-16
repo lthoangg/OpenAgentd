@@ -162,7 +162,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     outside 1–1000, a `token_budget` below 1, or an unknown key.
 
   Tests: `agent/tests/goal_loop.rs`, `agent/tests/goal_questions.rs`, unit tests in `agent/src/goal/tests.rs`,
-  `agent/src/plan.rs`, `db/src/queries/goals.rs` and `db/tests/queries.rs`,
+  `agent/src/plan/tests.rs`, `db/src/queries/goals.rs` and `db/tests/queries.rs`,
   `agent/tests/plan_review.rs`, `goal_flow` in `api/tests/http_api.rs`.
   v2 has no equivalent.
 - **`ask_user` free text is unconditional.** The model-facing schema has no
@@ -390,7 +390,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   subagents. Failures send one interim notice and keep the request pending.
   A delivered answer replaces the target's own "Done" notification. Tests:
   `agent/tests/workspace_messages.rs`, unit tests in the two modules and
-  `history.rs`, `db/src/queries/messages.rs`, `core/src/runtime_settings.rs`,
+  `history.rs`, `db/src/queries/messages/tests.rs`, `core/src/runtime_settings.rs`,
   and `api/tests/http_api.rs`. v2 has no equivalent.
 - **Idle compaction (v3 only, opt-in):** when a lead session's turn
   completes, a timer starts (`agent/src/idle_compaction.rs`,

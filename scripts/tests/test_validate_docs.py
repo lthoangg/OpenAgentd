@@ -194,6 +194,32 @@ def test_a_citation_must_name_a_design_rule_or_a_report_section(tmp_path):
     ]
 
 
+def test_a_file_the_report_cites_for_its_tests_holds_tests(tmp_path):
+    module = _load_module()
+    markdown_files = _write_repo(tmp_path)
+    agent = tmp_path / "appv3" / "crates" / "agent"
+    (agent / "src" / "goal").mkdir(parents=True)
+    (agent / "tests").mkdir()
+    (agent / "src" / "goal.rs").write_text("pub fn start() {}\n#[cfg(test)]\nmod tests;\n")
+    (agent / "src" / "goal" / "tests.rs").write_text("#[test]\nfn starts() {}\n")
+    (agent / "tests" / "goal_loop.rs").write_text("#[tokio::test]\nasync fn loops() {}\n")
+    report = tmp_path / "appv3" / "report"
+    report.mkdir()
+    (report / "runtime.md").write_text(
+        "# Runtime\n\n- Goals (`agent/src/goal.rs`).\n  Tests: `agent/tests/goal_loop.rs`, unit tests in\n"
+        "  `agent/src/goal.rs`, `agent/src/gone.rs`. More prose about `agent/src/goal.rs`.\n"
+    )
+
+    assert module.validate_repository(tmp_path, markdown_files) == [
+        "appv3/report/runtime.md:5: agent/src/goal.rs is cited for its tests but holds none: "
+        "cite agent/src/goal/tests.rs",
+        "appv3/report/runtime.md:5: cited test file does not exist: agent/src/gone.rs",
+    ]
+
+    (report / "runtime.md").write_text("# Runtime\n\nTests: `agent/src/goal/tests.rs`.\n")
+    assert module.validate_repository(tmp_path, markdown_files) == []
+
+
 def test_an_index_must_link_every_part_in_its_folder(tmp_path):
     module = _load_module()
     tracked = _write_repo(tmp_path)

@@ -222,6 +222,7 @@ the rule depends on you reading it, for the reason given.
 | A web test named for a source file sits at the mirrored path under `web/src/__tests__/` | `web/src/__tests__/test-layout.test.ts` |
 | A web app file stays under 800 lines and a Rust file under 1,000; a larger one does not pass the `size-ceiling` in its first line | `scripts/check_file_size.py` (`make verify-quick`) |
 | A cited design rule (`DESIGN.md → Name`) or report section (`REPORT.md §N`) exists | `make verify-docs` |
+| A Rust file the backend report cites after `Tests:` exists and holds tests | `make verify-docs` |
 | The colours in `DESIGN.md` equal the light theme in `web/src/styles/tokens.css` | `make verify-docs` |
 | Workspace roots go through `validate_workspace` | Judgment: a raw path still compiles (backlog: a workspace type) |
 | Secrets are compared in constant time | Judgment: no lint can tell a secret from another string |

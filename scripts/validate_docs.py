@@ -344,8 +344,41 @@ def validate_repository(
                 errors.append(f"AGENTS.md: Make target is not documented: {target}")
     errors.extend(_tunnel_contract_errors(root))
     errors.extend(_citation_errors(root, citing_files or []))
+    errors.extend(_test_citation_errors(root))
     errors.extend(_design_token_errors(root))
     return sorted(errors)
+
+
+# `Tests: `agent/src/goal.rs`, `api/tests/http_api.rs`.` in the backend report.
+TEST_CITATION_RE = re.compile(r"\bTests?:\s(.*?)(?:\.\s|\n\n|\Z)", re.DOTALL)
+CITED_RUST_FILE_RE = re.compile(r"`([a-z_]+/(?:src|tests)/[\w/.]+\.rs)`")
+RUST_TEST_RE = re.compile(r"#\[(?:tokio::)?test\b")
+
+
+def _test_citation_errors(root: Path) -> list[str]:
+    """A Rust file the backend report cites for its tests exists and holds tests."""
+    errors: list[str] = []
+    crates = root / "appv3" / "crates"
+    for path in sorted((root / "appv3" / "report").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for sentence in TEST_CITATION_RE.finditer(text):
+            for cited in CITED_RUST_FILE_RE.finditer(sentence.group(1)):
+                name = cited.group(1)
+                source = crates / name
+                line = text.count("\n", 0, sentence.start(1) + cited.start()) + 1
+                where = f"{_relative(root, path)}:{line}"
+                if not source.is_file():
+                    errors.append(f"{where}: cited test file does not exist: {name}")
+                elif not RUST_TEST_RE.search(source.read_text(encoding="utf-8")):
+                    # Inline test modules move to `<module>/tests.rs`, or `tests.rs` beside `lib.rs`.
+                    moved = [
+                        candidate
+                        for candidate in (source.with_suffix("") / "tests.rs", source.parent / "tests.rs")
+                        if candidate.is_file()
+                    ]
+                    hint = f": cite {moved[0].relative_to(crates).as_posix()}" if moved else ""
+                    errors.append(f"{where}: {name} is cited for its tests but holds none{hint}")
+    return errors
 
 
 TUNNEL_SPEC = Path("appv3/contract/tunnel.md")

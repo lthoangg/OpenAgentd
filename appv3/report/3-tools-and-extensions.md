@@ -120,7 +120,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   client removes the pending entry and sends `notifications/cancelled`
   (never for `initialize`). Stdio writes run in a spawned task, so a
   cancelled caller cannot leave a half-written line on stdin. Tests:
-  `mcp/src/lib.rs`. v2 waits without a deadline.
+  `mcp/src/tests.rs`. v2 waits without a deadline.
 - **`read` tool `outline` removed (v3.14.0):** the `outline` argument and
   `crates/tools/src/outline.rs` are gone and `crates/tools/data/tool_definitions.json`
   no longer lists it, so a call passing `outline` fails as an unknown

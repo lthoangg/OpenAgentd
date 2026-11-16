@@ -278,7 +278,7 @@ credential or database format changes.
   reading the session tree, and the arguments endpoint walks back from the
   result to its call. `tool_output_delta` still streams while a tool
   runs, and the agent still reads full output from the database. Tests: `db/src/api.rs`,
-  `agent/src/events.rs`, `agent/src/stream_store.rs`,
+  `agent/src/events.rs`, `agent/src/stream_store/tests.rs`,
   `api/tests/http_api.rs` (`tool_result_on_demand_flow`). v2 sends every
   result.
 - **Short tool arguments in history (v3 only):** history `tool_calls` send

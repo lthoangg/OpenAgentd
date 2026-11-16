@@ -83,7 +83,7 @@ fn spans_dir() -> PathBuf {
 }
 
 /// `datetime.isoformat()` for an aware UTC datetime.
-pub fn py_iso(dt: DateTime<Utc>) -> String {
+fn py_iso(dt: DateTime<Utc>) -> String {
     if dt.timestamp_subsec_micros() == 0 {
         dt.format("%Y-%m-%dT%H:%M:%S+00:00").to_string()
     } else {

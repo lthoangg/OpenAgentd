@@ -8,7 +8,7 @@
  * over their content, in panes split right and down as often as there is
  * room (⌘\, ⌘⇧\, or a tab dragged onto a pane's edge; a terminal is a tab
  * like any other). Desktop geometry is a ratio of the shell's center
- * region (measured here from ``centerRef``) in ``side`` mode, or the whole
+ * region (measured by ``useDockFrame`` from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
  * side-by-side split; then it leaves the composer uncovered unless
  * maximized). Mobile keeps the fixed full-screen sheet with one strip.
@@ -19,7 +19,8 @@
  * over its full width and follows the edge swipe that closes it. A narrow
  * mouse window and a tablet keep the sheet under the app header.
  *
- * Tab state lives in ``useDockTabs`` (remembered per session) and Git write actions in
+ * Tab state lives in ``useDockTabs`` (remembered per session), the frame (open,
+ * close, width, motion) in ``useDockFrame``, and Git write actions in
  * ``useGitActions``; this component owns the queries and the layout.
  *
  * Once opened, the shell keeps the dock mounted: closing it (``open``
@@ -49,37 +50,21 @@ import {
   workspaceChangesQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import {
-  PANEL_SLIDE_MS,
   PanelResizeHandle,
   ResizableAside,
-  onPanelSlideBeside,
-  settledWidthBesidePanels,
-  usePanelSlideBeside,
-  type LiveWidth,
 } from '@/components/ResizableAside'
-import { useToggleTween } from '@/hooks/useToggleTween'
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
-import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
-import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import {
-  DOCK_DEFAULT_RATIO,
-  DOCK_MIN_WIDTH,
   DOCK_PANE_MIN_HEIGHT,
   DOCK_PANE_MIN_WIDTH,
-  dockMaxWidth,
-  ratioFromWidth,
-  resolveDockLayout,
-  sideDockWidth,
-  type DockLayout,
 } from '@/lib/workbench-layout'
 import { SNAP_THRESHOLD_PX, snapToDetent } from '@/lib/resize-snap'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
@@ -108,7 +93,7 @@ import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
-import { usePhonePageWidth } from './WorkspacePanel/usePhonePageWidth'
+import { useDockFrame } from './WorkspacePanel/useDockFrame'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
 import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
@@ -170,12 +155,6 @@ const REFRESHABLE_TABS: ReadonlySet<DockTab['type']> = new Set(['review', 'file'
 const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 /** Stable empty ref: with no center element the width falls back to the viewport. */
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
-/** A closed dock parks (hidden, inert) once its close tween (0.22 s) is done. */
-const PARK_AFTER_MS = 260
-/** A phone's page leaves on the drawer spring, which takes about half a second to come to rest. */
-const PHONE_PARK_AFTER_MS = 500
-/** px a narrow mouse window's drawer slides (the phone's page slides its whole width). */
-const DRAWER_TRAVEL_PX = 272
 
 /**
  * A pane's place over the panes' area (``top``: an inset from its top, the
@@ -309,7 +288,6 @@ export function WorkspacePanel({
   // A phone is touch and narrow: its Review panel is a page over the chat. A
   // narrow mouse window (``mobile`` without touch) keeps the drawer.
   const phone = useIsPhone() && mobile
-  const phonePageWidth = usePhonePageWidth(phone)
   const gitViewIdBase = useId()
   // Preview listener behind each preview tab; file tabs of one workspace
   // share a listener, so it closes only with the last tab using it.
@@ -421,107 +399,18 @@ export function WorkspacePanel({
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const commitsScrollRef = useRef<HTMLDivElement>(null)
   const handledFileOpenKeyRef = useRef(-1)
-  // Closed and done animating: hidden and inert until it opens again. Not
-  // inert at once, so the shell can still see focus inside it and return it.
-  const [parked, setParked] = useState(false)
-  useEffect(() => {
-    if (open) {
-      setParked(false)
-      return
-    }
-    const timer = window.setTimeout(() => setParked(true), phone ? PHONE_PARK_AFTER_MS : PARK_AFTER_MS)
-    return () => window.clearTimeout(timer)
-  }, [open, phone])
-  // Whether the open or close tween (mounting counts as opening on a phone)
-  // is still running. Only then, and while closed, is the body pinned to the
-  // open width; any other width change moves the body with the dock's edge.
-  // The phone sheet settles on its animation's end; desktop slides its width
-  // with a CSS transition for a fixed time (``useToggleTween``).
-  const [toggle, setToggle] = useState({ open, running: mobile })
-  if (toggle.open !== open) setToggle({ open, running: mobile })
-  const settleToggle = () => setToggle((current) => (current.running ? { ...current, running: false } : current))
-  // Mounted by the toggle: lay out one frame at 0 wide, so the width has a
-  // start to slide from (layout is flushed before the second render).
-  const [entering, setEntering] = useState(slideIn && open && !mobile)
-  useLayoutEffect(() => {
-    if (!entering) return
-    void document.body.getBoundingClientRect()
-    setEntering(false)
-  }, [entering])
-  const shownOpen = open && !entering
-  const sliding = useToggleTween(shownOpen, PANEL_SLIDE_MS) && !mobile
-
-  // ── Geometry ───────────────────────────────────────────────────────────────
-  const dockRatio = useLayoutStore((s) => s.dockRatio)
-  const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  // Maximize, restore and Escape slide the width like open and close; a
-  // drag-resize never sets this, so it stays instant.
-  const maximizeSliding = useToggleTween(dockMaximized, PANEL_SLIDE_MS) && !mobile
-  // The sidebar showing or hiding changes the center: re-measured in the
-  // commit its slide starts, the dock slides to its new ratio alongside it,
-  // on the same curve, and the chat between them moves in one motion.
-  const measuredCenter = useElementWidth(centerRef, settledWidthBesidePanels, onPanelSlideBeside)
-  const besideSliding = usePanelSlideBeside(centerRef) && !mobile
-  const center = centerWidth ?? measuredCenter
-  const touch = useTouchFirst()
-  const liveLayout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized, touch })
-  // A dock that was beside the chat closes beside it. Closing frees room the
-  // sidebar may take at once (its clamp leaves an open dock 340px), which can
-  // drop the center under the side-by-side minimum mid-slide: switching to
-  // the overlay then would pull the dock out of the row, snap the chat to
-  // full width and slide the dock over it.
-  const [openMode, setOpenMode] = useState(liveLayout.mode)
-  if (open && openMode !== liveLayout.mode) setOpenMode(liveLayout.mode)
-  const layout: DockLayout = !open && openMode === 'side' && liveLayout.mode === 'overlay' && !dockMaximized
-    ? { mode: 'side', width: sideDockWidth(center, dockRatio, { touch }) }
-    : liveLayout
-  const overlay = !mobile && layout.mode === 'overlay'
-  // The default width a drag snaps onto: where a double-click puts the edge.
-  const dockDetent = sideDockWidth(center, DOCK_DEFAULT_RATIO, { touch })
-  const dockResize = {
-    width: layout.width,
-    min: DOCK_MIN_WIDTH,
-    max: dockMaxWidth(center, { touch }),
-    edge: 'left' as const,
-    detent: dockDetent,
-    // Snapped onto the default, it is the default ratio, not a rounded one.
-    onCommit: (width: number) => useLayoutStore.getState().setDockRatio(width === dockDetent ? DOCK_DEFAULT_RATIO : ratioFromWidth(width, center)),
-    onReset: () => useLayoutStore.getState().resetDockRatio(),
-    disabled: mobile || overlay || !open,
-    label: 'Resize Review panel',
-  }
-  // Desktop sets the width as a style and slides it only while showing or
-  // hiding (never for a drag or a window resize). Closed or sliding, the
-  // body keeps its open width, clipped rather than reflowed, so it rides
-  // the moving edge.
-  // The phone sheet follows an edge swipe by ``translate`` (see
-  // ``lib/drawer-motion``): no re-render per frame, and a release springs on
-  // with the finger's speed. A narrow mouse window's drawer fades (below) as it
-  // slides 272px; a phone's page is opaque and slides its whole width, in from
-  // the right when the toggle mounts it.
-  useDrawerMotion('workspace-panel', {
-    open: shownOpen,
-    enabled: mobile,
-    hidden: phone ? phonePageWidth : DRAWER_TRAVEL_PX,
-    reduced: prefersReducedMotion ?? false,
-    slideIn: phone && slideIn,
-  })
-  const dockMotion = ({ width, isResizing }: LiveWidth) => ({
-    // A phone's page has nothing for framer to animate: the drawer driver slides it.
-    animate: phone
-      ? {}
-      : !shownOpen
-        ? (mobile ? { opacity: 0 } : { width: 0 })
-        : !mobile
-          ? { width: overlay ? layout.width : width }
-          : { opacity: 1 },
-    transition: { duration: !mobile || isResizing || prefersReducedMotion ? 0.01 : DURATIONS_S.base, ease: EASINGS.inOut },
-    pinWidth: !mobile && (!open || toggle.running || sliding || maximizeSliding) ? (overlay ? layout.width : width) : undefined,
-    instantWidth: !mobile,
-    tweenWidth: sliding || maximizeSliding || besideSliding,
-  })
-  // The toggle is meaningless while a narrow window already forces overlay.
-  const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized
+  // How the dock opens, closes, parks, sizes and slides (useDockFrame.ts).
+  const {
+    parked,
+    settleToggle,
+    shownOpen,
+    sliding,
+    dockMaximized,
+    overlay,
+    dockResize,
+    dockMotion,
+    maximizeState,
+  } = useDockFrame({ open, mobile, phone, slideIn, centerRef, centerWidth, prefersReducedMotion })
   // Covering the chat makes it inert, which drops its focus onto <body>:
   // take it on the active tab, or the launcher's first row when empty.
   useClaimStrandedFocus(open && overlay, activeTabId, () =>

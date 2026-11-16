@@ -3,7 +3,8 @@
  *
  * The single source for grouping, order, labels, icons and the one-line
  * descriptions shown in the phone section list. The content switch stays in
- * SettingsModal because each section takes genuinely different props.
+ * SettingsModal because each section takes genuinely different props; it has
+ * no default, so a section without a page is a type error there.
  */
 import {
   Brain,
@@ -29,25 +30,11 @@ import {
   type SettingsSection,
 } from '@/stores/useSettingsStore'
 
-/** Sections that own a sidebar entry (drill-down editors are not listed). */
-export type TopLevelSection = Extract<
-  SettingsSection,
-  | 'general'
-  | 'models'
-  | 'media'
-  | 'desktop'
-  | 'agents'
-  | 'skills'
-  | 'connectors'
-  | 'plugins'
-  | 'memory'
-  | 'sessions'
-  | 'workspaces'
-  | 'blocked_files'
-  | 'switch_computer'
-  | 'remote'
-  | 'about'
->
+/**
+ * Sections that own a sidebar entry: every section but the `-new` / `-edit`
+ * drill-down editors. Derived, so a new id in `SETTINGS_SECTION_IDS` is one.
+ */
+export type TopLevelSection = Exclude<SettingsSection, `${string}-new` | `${string}-edit`>
 
 type SettingsGroupId = 'basics' | 'agent' | 'work' | 'devices' | 'footer'
 
@@ -90,28 +77,37 @@ export interface SettingsSectionDef {
   desktopOnly?: boolean
 }
 
-export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
+/**
+ * One entry per top-level section, in sidebar order. `satisfies` makes a
+ * section without an entry a type error here, so adding an id to
+ * `SETTINGS_SECTION_IDS` cannot leave it out of the sidebar and search.
+ */
+const SECTION_DEFS = {
   // Basics
-  { id: 'general', label: 'General', description: 'Theme, text size and how chats show', keywords: ['appearance', 'look'], icon: SlidersHorizontal, group: 'basics' },
-  { id: 'models', label: 'Models', description: 'The accounts and API keys your models come from', keywords: ['providers', 'provider'], icon: KeyRound, group: 'basics' },
-  { id: 'media', label: 'Image and video', description: 'Image and video models and defaults', keywords: ['media'], icon: Image, group: 'basics' },
-  { id: 'desktop', label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'basics', desktopOnly: true },
+  general: { label: 'General', description: 'Theme, text size and how chats show', keywords: ['appearance', 'look'], icon: SlidersHorizontal, group: 'basics' },
+  models: { label: 'Models', description: 'The accounts and API keys your models come from', keywords: ['providers', 'provider'], icon: KeyRound, group: 'basics' },
+  media: { label: 'Image and video', description: 'Image and video models and defaults', keywords: ['media'], icon: Image, group: 'basics' },
+  desktop: { label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'basics', desktopOnly: true },
   // Agent
-  { id: 'agents', label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'agent' },
-  { id: 'skills', label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'agent' },
-  { id: 'connectors', label: 'Connectors', description: 'Outside tools and services the agent can use', keywords: ['mcp servers', 'mcp', 'model context protocol'], icon: Plug, group: 'agent' },
-  { id: 'plugins', label: 'Plugins', description: 'Skills, connectors and tools from plugins', icon: Puzzle, group: 'agent', capability: 'api.plugins' },
-  { id: 'memory', label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'agent' },
+  agents: { label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'agent' },
+  skills: { label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'agent' },
+  connectors: { label: 'Connectors', description: 'Outside tools and services the agent can use', keywords: ['mcp servers', 'mcp', 'model context protocol'], icon: Plug, group: 'agent' },
+  plugins: { label: 'Plugins', description: 'Skills, connectors and tools from plugins', icon: Puzzle, group: 'agent', capability: 'api.plugins' },
+  memory: { label: 'Memory', description: 'Shared Markdown knowledge base', icon: Brain, group: 'agent' },
   // Work
-  { id: 'sessions', label: 'Sessions', description: 'Names, summaries, goals and history', keywords: ['session titles', 'context', 'goals', 'retention'], icon: MessagesSquare, group: 'work' },
-  { id: 'workspaces', label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'work' },
-  { id: 'blocked_files', label: 'Blocked files', description: 'Files and folders agents cannot read or change', keywords: ['denied paths', 'denied', 'deny'], icon: Shield, group: 'work' },
+  sessions: { label: 'Sessions', description: 'Names, summaries, goals and history', keywords: ['session titles', 'context', 'goals', 'retention'], icon: MessagesSquare, group: 'work' },
+  workspaces: { label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'work' },
+  blocked_files: { label: 'Blocked files', description: 'Files and folders agents cannot read or change', keywords: ['denied paths', 'denied', 'deny'], icon: Shield, group: 'work' },
   // Devices
-  { id: 'switch_computer', label: 'Switch computer', description: 'Which computer this app uses, and which devices can connect', keywords: ['computers', 'server', 'connection', 'backend'], icon: Server, group: 'devices' },
-  { id: 'remote', label: 'Remote control', description: 'Optional: use this computer from your phone anywhere', keywords: ['account', 'cloud', 'sign in'], icon: UserRound, group: 'devices', capability: 'api.cloud' },
+  switch_computer: { label: 'Switch computer', description: 'Which computer this app uses, and which devices can connect', keywords: ['computers', 'server', 'connection', 'backend'], icon: Server, group: 'devices' },
+  remote: { label: 'Remote control', description: 'Optional: use this computer from your phone anywhere', keywords: ['account', 'cloud', 'sign in'], icon: UserRound, group: 'devices', capability: 'api.cloud' },
   // Footer
-  { id: 'about', label: 'About', description: 'Version, updates and community', keywords: ['about openagentd'], icon: Info, group: 'footer' },
-]
+  about: { label: 'About', description: 'Version, updates and community', keywords: ['about openagentd'], icon: Info, group: 'footer' },
+} satisfies Record<TopLevelSection, Omit<SettingsSectionDef, 'id'>>
+
+export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = (
+  Object.entries(SECTION_DEFS) as [TopLevelSection, Omit<SettingsSectionDef, 'id'>][]
+).map(([id, def]) => ({ id, ...def }))
 
 const BY_ID = new Map(SETTINGS_SECTIONS.map((s) => [s.id, s]))
 

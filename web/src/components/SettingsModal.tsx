@@ -324,9 +324,11 @@ function SectionContent({
     case 'workspaces':   return <WorkspacesSettingsPage />
     case 'sessions':     return <SessionsSettingsPage />
     case 'media':        return <MediaSettingsPage />
-    case 'about':
-    default:             return <AboutSettingsPage />
+    case 'about':        return <AboutSettingsPage />
   }
+  // No default above: a section without a case is a type error on this line.
+  section satisfies never
+  return <AboutSettingsPage />
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────

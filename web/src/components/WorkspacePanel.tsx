@@ -67,11 +67,10 @@ import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelS
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
-import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
+import { type PreviewTarget, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import {
   type ChangedFileInfo,
   changedFilesFromResponse,
@@ -84,6 +83,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { DockPreviewPages, usePreviewListeners } from './WorkspacePanel/DockPreviewPages'
 import { ReviewTabView } from './WorkspacePanel/ReviewTabView'
 import { barStyle, paneStyle, usePaneLayout } from './WorkspacePanel/usePaneLayout'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
@@ -119,7 +119,6 @@ import {
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const SchedulerDockView = lazySurface(() => import('./SchedulerPanel/SchedulerDockView'), 'SchedulerDockView')
-const PreviewTabView = lazySurface(() => import('./Preview/PreviewTabView'), 'PreviewTabView')
 const AttachmentTabView = lazySurface(() => import('./WorkspacePanel/AttachmentTabView'), 'AttachmentTabView')
 const PlanTabView = lazySurface(() => import('./WorkspacePanel/PlanTabView'), 'PlanTabView')
 const GoalTabView = lazySurface(() => import('./WorkspacePanel/GoalTabView'), 'GoalTabView')
@@ -243,23 +242,8 @@ export function WorkspacePanel({
   // A phone is touch and narrow: its Review panel is a page over the chat. A
   // narrow mouse window (``mobile`` without touch) keeps the drawer.
   const phone = useIsPhone() && mobile
-  // Preview listener behind each preview tab; file tabs of one workspace
-  // share a listener, so it closes only with the last tab using it.
-  const previewIdsRef = useRef(new Map<string, string>())
-  const handlePreviewId = useCallback((tabId: string, previewId: string) => {
-    previewIdsRef.current.set(tabId, previewId)
-  }, [])
-  const handleTabClosed = useCallback((tab: DockTab) => {
-    if (tab.type !== 'preview') return
-    const ids = previewIdsRef.current
-    const previewId = ids.get(tab.id)
-    ids.delete(tab.id)
-    if (previewId && ![...ids.values()].includes(previewId)) {
-      // The listener is going away: no hidden copy may reopen it.
-      usePreviewKeepAliveStore.getState().forgetPreviewId(previewId)
-      void closePreview(previewId).catch(() => {})
-    }
-  }, [])
+  // Each preview tab's listener, closed with the last tab using it (DockPreviewPages.tsx).
+  const { handlePreviewId, handleTabClosed } = usePreviewListeners()
   // Where you are decides: Chat and a folder without Git have no Changes
   // view. Until the workspace tree says which this is, the view is offered as
   // usual but git is not probed.
@@ -754,37 +738,6 @@ export function WorkspacePanel({
     )
   }
 
-  // Preview tabs stay mounted so the page and its comments survive tab
-  // switches and moves between panes: one layer over the panes, each page
-  // placed over its pane's body, in a fixed order (a moved iframe reloads).
-  const previewTabs = paneIds
-    .flatMap((pane) => (strips[pane] ?? [])
-      .filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
-      .map((tab) => ({ tab, pane })))
-    .sort((a, b) => (a.tab.id < b.tab.id ? -1 : a.tab.id > b.tab.id ? 1 : 0))
-
-  // A click in a page goes to its frame, so no pointer event reaches the
-  // pane: the window's blur, with the frame focused, says where focus went.
-  useEffect(() => {
-    if (mobile) return
-    let timer = 0
-    const onBlur = () => {
-      window.clearTimeout(timer)
-      // After the blur: the frame is the active element by then everywhere.
-      timer = window.setTimeout(() => {
-        const frame = document.activeElement
-        if (!(frame instanceof HTMLIFrameElement)) return
-        const pane = frame.closest('[data-dock-preview-pane]')?.getAttribute('data-dock-preview-pane')
-        if (pane) focusPane(pane)
-      }, 0)
-    }
-    window.addEventListener('blur', onBlur)
-    return () => {
-      window.removeEventListener('blur', onBlur)
-      window.clearTimeout(timer)
-    }
-  }, [mobile, focusPane])
-
   // Overlaying a narrow chat, the panel stops above the composer so the
   // message can be written beside the diff; maximized, it covers both.
   const leavesComposer = overlay && !dockMaximized
@@ -876,33 +829,20 @@ export function WorkspacePanel({
         {phoneBar}
         <div ref={panesRef} data-dock-panes="" className="relative min-h-0 flex-1">
           {paneIds.map(renderPane)}
-          {previewTabs.map(({ tab, pane }) => {
-            const box = boxes.get(pane)
-            const showing = box !== undefined && activeTabs[pane]?.id === tab.id
-            return (
-              <div
-                key={tab.id}
-                data-dock-preview={tab.id}
-                data-dock-preview-pane={pane}
-                className={cn('absolute', !showing && 'hidden')}
-                style={box ? paneStyle(box, 'var(--spacing-tab-bar)') : undefined}
-                onFocusCapture={() => focusPane(pane)}
-                onPointerDownCapture={() => focusPane(pane)}
-              >
-                <PreviewTabView
-                  workspace={workspace}
-                  tabId={tab.id}
-                  target={tab.target}
-                  navKey={tab.navKey}
-                  onPreviewId={handlePreviewId}
-                  onSendComments={onSendPreviewComments}
-                  onOpenTarget={openPreviewTarget}
-                  active={open && showing}
-                  onRequestClose={closeTab}
-                />
-              </div>
-            )
-          })}
+          <DockPreviewPages
+            workspace={workspace}
+            open={open}
+            mobile={mobile}
+            paneIds={paneIds}
+            strips={strips}
+            boxes={boxes}
+            activeTabs={activeTabs}
+            focusPane={focusPane}
+            onPreviewId={handlePreviewId}
+            onSendComments={onSendPreviewComments}
+            onOpenTarget={openPreviewTarget}
+            onRequestClose={closeTab}
+          />
           {bars.map((bar) => (
             <PaneSplitHandle
               key={`${bar.path.join('.')}:${bar.after}`}

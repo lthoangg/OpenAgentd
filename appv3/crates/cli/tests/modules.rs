@@ -1,8 +1,11 @@
 //! `GET /api/modules` and the Modules section of `agentd doctor`, against the
-//! real binary in throw-away `HOME`/XDG roots (the harness of
-//! `serve_shutdown.rs`). Nothing here touches real user data.
+//! real binary in throw-away `HOME`/XDG roots (`common::sandbox`). Nothing
+//! here touches real user data.
 #![cfg(unix)]
 
+mod common;
+
+use common::{free_port, sandbox};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -20,44 +23,6 @@ fn builtin() -> Vec<&'static str> {
 
 /// The access key of the keyed server below.
 const ACCESS_KEY: &str = "modules-test-key-0123456789";
-
-/// Point `cmd` at throw-away `HOME`/XDG roots under `root`, and drop every
-/// variable that could aim it at real data or hand it a real secret.
-fn sandbox(cmd: &mut Command, root: &Path) {
-    std::fs::create_dir_all(root.join("home")).unwrap();
-    for (k, d) in [
-        ("OPENAGENTD_DATA_DIR", "data"),
-        ("OPENAGENTD_CONFIG_DIR", "config"),
-        ("OPENAGENTD_STATE_DIR", "state"),
-        ("OPENAGENTD_CACHE_DIR", "cache"),
-        ("OPENAGENTD_WORKSPACE_DIR", "ws"),
-        ("HOME", "home"),
-    ] {
-        cmd.env(k, root.join(d));
-    }
-    cmd.env("OPENAGENTD_ENV", "production").env("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false").env("OPENAGENTD_SNAPSHOT_MAINTENANCE_ENABLED", "false").env("NO_COLOR", "1");
-    for k in [
-        "OPENAGENTD_DESKTOP_TOKEN",
-        "OPENAGENTD_ACCESS_KEY",
-        "OPENAGENTD_HANDSHAKE_FILE",
-        "DATABASE_URL",
-        "OPENAGENTD_DATABASE_URL",
-        "AGENTS_DIR",
-        "OPENAGENTD_AGENTS_DIR",
-        "SKILLS_DIR",
-        "OPENAGENTD_SKILLS_DIR",
-        "OPENAGENTD_PLUGINS_DIRS",
-        "CHAT_WORKSPACE_DIR",
-        "OPENAGENTD_CHAT_WORKSPACE_DIR",
-        "APP_ENV",
-        "RUST_LOG",
-        "LOG_LEVEL",
-        "OPENAGENTD_LOG_LEVEL",
-        "OPENAI_API_KEY",
-    ] {
-        cmd.env_remove(k);
-    }
-}
 
 /// A running `agentd server serve` in a sandbox. Stopped when dropped
 /// (SIGTERM, then SIGKILL), so a failed assertion leaves no server behind.
@@ -180,10 +145,6 @@ fn assert_all_running(out: &str) {
     let total: usize = words.get(1).and_then(|n| n.parse().ok()).unwrap_or_else(|| panic!("no count in:\n{out}"));
     assert!(total >= builtin().len(), "{out}");
     assert_eq!(words.join(" "), format!("✓ {total} of {total} modules running"), "{out}");
-}
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
 }
 
 /// A server from before `/api/modules`: answers every request with 404.

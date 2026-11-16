@@ -20,8 +20,10 @@
  * mouse window and a tablet keep the sheet under the app header.
  *
  * Tab state lives in ``useDockTabs`` (remembered per session), the frame (open,
- * close, width, motion) in ``useDockFrame``, and Git write actions in
- * ``useGitActions``; this component owns the queries and the layout.
+ * close, width, motion) in ``useDockFrame``, the shared queries in
+ * ``useDockQueries``, the panes' geometry in ``usePaneLayout``, and Git write
+ * actions in ``useGitActions``; this component puts each pane's tab strip and
+ * content together.
  *
  * Once opened, the shell keeps the dock mounted: closing it (``open``
  * false) tweens it shut and then parks it hidden and inert, so its tabs,
@@ -29,24 +31,10 @@
  * positions are all there when it reopens. Queries pause while it is closed.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  getCodingWorkspaceStatus,
-  getCodingWorkspaceGitHistory,
-} from '@/api/client'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/useToastStore'
-import { queryKeys } from '@/queries'
 import { useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useSideQuestions } from '@/queries/useSideQuestionsQuery'
-import {
-  WORKSPACE_TREE_STALE_MS,
-  workspaceFileListQueryOptions,
-} from '@/queries/workspace-files'
-import {
-  WORKSPACE_DIFF_STALE_MS,
-  workspaceChangesQueryOptions,
-} from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
@@ -63,7 +51,7 @@ import {
   DOCK_PANE_MIN_HEIGHT,
   DOCK_PANE_MIN_WIDTH,
 } from '@/lib/workbench-layout'
-import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
+import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -73,7 +61,6 @@ import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, lastPreviewUrl, previewsAvailable } from '@/api/preview'
 import {
   type ChangedFileInfo,
-  changedFilesFromResponse,
 } from './WorkspacePanel/diff-helpers'
 
 import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
@@ -83,6 +70,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { useDockQueries } from './WorkspacePanel/useDockQueries'
 import { DockPreviewPages, usePreviewListeners } from './WorkspacePanel/DockPreviewPages'
 import { ReviewTabView } from './WorkspacePanel/ReviewTabView'
 import { barStyle, paneStyle, usePaneLayout } from './WorkspacePanel/usePaneLayout'
@@ -375,50 +363,21 @@ export function WorkspacePanel({
   }, [open, launcherFocusKey, handledLauncherFocusKeyRef])
 
   // ── Server state ──────────────────────────────────────────────────────────
-  const files = useQuery({
-    ...workspaceFileListQueryOptions(workspace),
-    enabled: open,
-    staleTime: WORKSPACE_TREE_STALE_MS,
-  })
-  // The changed paths only; each file's diff body loads when it is expanded
-  // or opened in a tab (see ``workspace-git.ts``).
-  const changes = useQuery({
-    ...workspaceChangesQueryOptions(workspace),
-    enabled: open && gitKnown,
-    staleTime: WORKSPACE_DIFF_STALE_MS,
-  })
-  const queryClient = useQueryClient()
-  /** Refetch the changed paths and every diff body on screen. */
-  const refreshChanges = useCallback(() => {
-    void changes.refetch()
-    void queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
-  }, [changes, queryClient, workspace])
-  const workspaceStatus = useQuery({
-    queryKey: queryKeys.coding.status(workspace),
-    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
-    enabled: open && gitKnown,
-    staleTime: 10_000,
-  })
-  const changedFiles = useMemo(() => changedFilesFromResponse(changes.data), [changes.data])
-  // Working-tree status per changed path; ``has`` doubles as "is changed".
-  const changedPaths = useMemo(() => new Map(changedFiles.map((file) => [file.path, file.status])), [changedFiles])
-  const filesByPath = useMemo(() => new Map((files.data?.files ?? []).map((file) => [file.path, file])), [files.data?.files])
-
-  const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
-  const subTab = gitState.subTab
   // Git's own queries run only while its tab shows in a pane on screen.
   const reviewShown = shownPanes.some((pane) => activeTabs[pane]?.id === REVIEW_TAB_ID)
-  const historyLimit = 50
-  const gitHistory = useInfiniteQuery({
-    queryKey: queryKeys.coding.history(workspace, historyLimit),
-    queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, signal),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
-    enabled: open && gitKnown && reviewShown && subTab === 'commits',
-    staleTime: 10_000,
-  })
-
-  const commits = useMemo(() => gitHistory.data?.pages.flatMap((page) => page.commits) ?? [], [gitHistory.data?.pages])
+  const {
+    files,
+    changes,
+    refreshChanges,
+    workspaceStatus,
+    changedFiles,
+    changedPaths,
+    filesByPath,
+    gitState,
+    gitHistory,
+    commits,
+    handleRefresh,
+  } = useDockQueries({ workspace, open, gitKnown, noGit, reviewShown })
 
   const isLatestCommit = useMemo(() => {
     const activeSha = mobileCommitActions?.sha ?? desktopCommitActions?.sha
@@ -490,27 +449,6 @@ export function WorkspacePanel({
 
   // A phone's "+" is in the page's navigation bar, for the pane in focus.
   const phoneOpenItems = phone ? openItemsFor(focused) : []
-
-  const handleRefresh = useCallback(() => {
-    void files.refetch()
-    if (noGit) return
-    refreshChanges()
-    void workspaceStatus.refetch()
-    if (subTab === 'commits') {
-      void gitHistory.refetch()
-    }
-  }, [files, refreshChanges, workspaceStatus, gitHistory, subTab, noGit])
-
-  // Expansions persist per workspace; forget files that are no longer
-  // changed so a later edit to them does not reopen as a stale peek and the
-  // stored list does not grow forever. A capped list (over 5,000 files)
-  // cannot prove a path is gone.
-  useEffect(() => {
-    if (!changes.data?.is_git_repo || changes.data.truncated) return
-    const stored = useGitPanelStore.getState().workspaces[workspace]?.expandedDiffs ?? []
-    const kept = stored.filter((path) => changedPaths.has(path))
-    if (kept.length !== stored.length) useGitPanelStore.getState().setExpandedDiffs(workspace, kept)
-  }, [changes.data, changedPaths, workspace])
 
   useEffect(() => {
     if (handledFileOpenKeyRef.current === selectedFileOpenKey) return

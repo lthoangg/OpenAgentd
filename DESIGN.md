@@ -830,6 +830,15 @@ drawer and full-screen sheet.
   labels never fade (a strip at 50% left them at 2.1–2.3:1). A click into a preview page focuses its pane too (the window's
   blur says so; the page's events stay in its frame). Phones have one strip:
   panes join there.
+- **The terminal surface has one menu.** Right-click with a pointer and a
+  long press on touch open the same items (`terminal-menu.ts`): the context
+  menu with keys, the phone action sheet without. Touch adds **Select Text**
+  first, because xterm selects only with a mouse: it shows the output as
+  plain text for the system's own selection. The touch key bar is ordered
+  by use (Esc, Ctrl, Alt, Tab, ^C, arrows on the first screen of a 390pt
+  phone), with **Line** pinned at its start for the command field; it shows
+  on a phone, and on a tablet while the soft keyboard is up for the
+  terminal. Terminal text follows Text size.
 
 ## Elevation & Depth
 

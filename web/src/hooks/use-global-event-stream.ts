@@ -13,6 +13,7 @@ import type { SessionGoalResponse } from '@/api/types'
 import { isSessionGoal } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { markAutoTitle } from '@/lib/auto-title'
 import { forgetPrefetchedHistory } from '@/lib/session-prefetch'
@@ -388,6 +389,12 @@ async function handleEvent(
     // A server settled (ready / error / stopped); replaces polling while it starts.
     if (typeof event.name !== 'string') return false
     queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+    return true
+  }
+
+  if (type === 'preview_agent_pages') {
+    // The agent opened a page: `PreviewKeepAlive` re-reads the server's list.
+    usePreviewKeepAliveStore.getState().serverPagesChanged()
     return true
   }
 

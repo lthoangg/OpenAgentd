@@ -20,9 +20,16 @@
  * An agent `fill` focuses a field in the page, which would move the user's
  * keyboard focus into an invisible frame mid-typing; focus that lands on a
  * hidden frame goes straight back to where it was.
+ *
+ * Which pages: the ones the server lists as the agent's (`listAgentPages`,
+ * re-read on `preview_agent_pages` and every minute), so a page stays
+ * driveable while its session is not on screen, plus the ones this window
+ * saw the agent open. With several windows, only the one holding a Web Lock
+ * frames them, so one page polls a listener.
  */
 import { useEffect, useRef, useState } from 'react'
-import { openPreview, previewMode } from '@/api/preview'
+import { apiBaseUrl } from '@/api/base-url'
+import { listAgentPages, openPreview, previewMode } from '@/api/preview'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   type AgentPreview,
@@ -36,6 +43,8 @@ const EXPIRE_CHECK_MS = 30_000
 const REENSURE_MS = 60_000
 /** A tab that unmounts is often closing; give its listener's close time to drop the entry. */
 const START_DELAY_MS = 1500
+/** How often the server's agent pages are re-read (they expire there too). */
+const SERVER_PAGES_MS = 60_000
 
 const HIDDEN_FRAME_STYLE = {
   position: 'fixed',
@@ -49,6 +58,56 @@ const HIDDEN_FRAME_STYLE = {
 } as const
 
 const HIDDEN_FRAME_SELECTOR = 'iframe[data-preview-keep-alive]'
+
+/** Keeps the store's agent pages in step with the server's list while `active`. */
+function useServerAgentPages(active: boolean) {
+  const version = usePreviewKeepAliveStore((s) => s.serverPagesVersion)
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    const sync = () =>
+      void listAgentPages()
+        .then((pages) => {
+          if (!cancelled) usePreviewKeepAliveStore.getState().adoptServerPages(pages)
+        })
+        .catch(() => {})
+    sync()
+    const timer = window.setInterval(sync, SERVER_PAGES_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [active, version])
+}
+
+/**
+ * True in the one window (per server) that frames hidden pages: it holds a
+ * Web Lock until it closes, and a waiting window takes over then. Without
+ * Web Locks every window frames them, as before.
+ */
+function useKeepAliveLock(active: boolean): boolean {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  const [held, setHeld] = useState(!locks)
+  useEffect(() => {
+    if (!active || !locks) return
+    const controller = new AbortController()
+    let release: (() => void) | undefined
+    locks
+      .request(`oa-preview-keep-alive:${apiBaseUrl()}`, { signal: controller.signal }, () => {
+        setHeld(true)
+        return new Promise<void>((resolve) => {
+          release = resolve
+        })
+      })
+      .catch(() => {})
+    return () => {
+      controller.abort()
+      release?.()
+      setHeld(false)
+    }
+  }, [active, locks])
+  return held
+}
 
 /** Keeps keyboard focus out of the hidden frames: it returns to the last element the user had. */
 function useFocusGuard(active: boolean) {
@@ -135,6 +194,8 @@ export function PreviewKeepAlive() {
   const agent = usePreviewKeepAliveStore((s) => s.agent)
   const tabs = usePreviewKeepAliveStore((s) => s.tabs)
   const hasEntries = Object.keys(agent).length > 0
+  const holder = useKeepAliveLock(usable)
+  useServerAgentPages(usable && holder)
 
   useEffect(() => {
     if (!hasEntries) return
@@ -142,7 +203,7 @@ export function PreviewKeepAlive() {
     return () => window.clearInterval(timer)
   }, [hasEntries])
 
-  const hidden = usable ? Object.values(agent).filter((entry) => !isShownInTab(tabs, entry)) : []
+  const hidden = usable && holder ? Object.values(agent).filter((entry) => !isShownInTab(tabs, entry)) : []
   useFocusGuard(hidden.length > 0)
   if (hidden.length === 0) return null
   return (

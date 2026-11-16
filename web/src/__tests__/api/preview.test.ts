@@ -88,7 +88,17 @@ describe('openPreview', () => {
 
   it('treats a missing preview as already closed', async () => {
     globalThis.fetch = mock(async () => new Response(JSON.stringify({ detail: 'Preview not found.' }), { status: 404 })) as typeof fetch
-    await expect(closePreview('gone')).resolves.toBeUndefined()
+    await expect(closePreview('gone')).resolves.toBe(true)
+  })
+
+  it('keeps a listener the agent still uses when a tab asks', async () => {
+    const urls: string[] = []
+    globalThis.fetch = mock(async (input: unknown) => {
+      urls.push(String(input))
+      return new Response(JSON.stringify({ kept: true }), { status: 200 })
+    }) as typeof fetch
+    await expect(closePreview('p1', { keepAgentPage: true })).resolves.toBe(false)
+    expect(urls[0]?.endsWith('/preview/p1?keep_agent_page=1')).toBe(true)
   })
 })
 

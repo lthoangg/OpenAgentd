@@ -39,6 +39,8 @@ export interface PreviewInfo {
   path: string
   url: string
   console_errors: number
+  /** What the agent opened here and still uses, or null (see `listAgentPages`). */
+  agent_page?: PreviewTarget | null
 }
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
@@ -177,12 +179,55 @@ export async function openPreview(workspace: string, target: PreviewTarget): Pro
   return { ...info, origin: relay.origin, url: `${relay.origin}${info.path}` }
 }
 
-export async function closePreview(id: string): Promise<void> {
+/**
+ * Close a preview's listener. With `keepAgentPage` (a Preview tab closing),
+ * the server keeps a listener whose page the agent still uses, and this
+ * answers false: the page stays loaded out of sight instead.
+ */
+export async function closePreview(id: string, { keepAgentPage = false }: { keepAgentPage?: boolean } = {}): Promise<boolean> {
+  const query = keepAgentPage ? '?keep_agent_page=1' : ''
+  const res = await fetch(`${apiBaseUrl()}/preview/${encodeURIComponent(id)}${query}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 404) await parseDetailOrThrow(res, 'closePreview')
+  if (res.status === 200) {
+    const body = (await res.json().catch(() => ({}))) as { kept?: boolean }
+    if (body.kept) return false
+  }
   if (previewMode() === 'relay') {
     void import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke('preview_relay_close', { previewId: id }))
       .catch(() => {})
   }
-  const res = await fetch(`${apiBaseUrl()}/preview/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  if (!res.ok && res.status !== 404) await parseDetailOrThrow(res, 'closePreview')
+  return true
+}
+
+/** A page the agent opened and still uses, on one of the server's listeners. */
+export interface AgentPage {
+  previewId: string
+  workspace: string
+  target: PreviewTarget
+}
+
+function isPreviewTarget(v: unknown): v is PreviewTarget {
+  if (typeof v !== 'object' || v === null) return false
+  const t = v as Record<string, unknown>
+  return (t.kind === 'url' && typeof t.url === 'string') || (t.kind === 'file' && typeof t.path === 'string')
+}
+
+/**
+ * The pages the agent wants loaded, whatever session opened them: the
+ * server lists them, so a window keeps them driveable while no Preview tab
+ * shows them and the session is not on screen.
+ */
+export async function listAgentPages(): Promise<AgentPage[]> {
+  const res = await fetch(`${apiBaseUrl()}/preview`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listAgentPages')
+  const body = (await res.json()) as { previews?: unknown }
+  if (!Array.isArray(body.previews)) return []
+  const pages: AgentPage[] = []
+  for (const p of body.previews as Partial<PreviewInfo>[]) {
+    if (typeof p.id === 'string' && typeof p.workspace === 'string' && isPreviewTarget(p.agent_page)) {
+      pages.push({ previewId: p.id, workspace: p.workspace, target: p.agent_page })
+    }
+  }
+  return pages
 }

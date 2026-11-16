@@ -9,6 +9,7 @@ import type React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
+import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 import type { PreviewTabRequest } from '@/components/WorkspacePanel/dock-tabs'
 
@@ -37,6 +38,7 @@ if (happyDOM) {
   }
 }
 
+let keptByAgent = false
 let requests: { url: string; method: string; body: Record<string, unknown> | null }[] = []
 
 beforeEach(() => {
@@ -44,6 +46,8 @@ beforeEach(() => {
   _resetTerminalStoreForTests()
   useGitPanelStore.setState({ workspaces: {} })
   requests = []
+  keptByAgent = false
+  usePreviewKeepAliveStore.getState().reset()
   globalThis.fetch = mock(async (input: unknown, raw?: unknown) => {
     const url = String(input)
     const init = raw as RequestInit | undefined
@@ -55,7 +59,7 @@ beforeEach(() => {
       const path = body.path ? `/${body.path}` : new URL(body.url ?? 'http://localhost:5173').pathname
       return new Response(JSON.stringify({ id, workspace: WORKSPACE, kind: body.path ? 'file' : 'url', target: 'http://localhost:5173', port: 52011, origin: ORIGIN, path, url: `${ORIGIN}${path}`, console_errors: 0 }))
     }
-    if (url.includes('/api/preview/') && method === 'DELETE') return new Response(null, { status: 204 })
+    if (url.includes('/api/preview/') && method === 'DELETE') return keptByAgent ? new Response(JSON.stringify({ kept: true })) : new Response(null, { status: 204 })
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
     if (url.includes('/workspace/git-diff')) return gitDiffResponse(url, { workspace: WORKSPACE, is_git_repo: false, diff: '' })
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
@@ -176,7 +180,7 @@ describe('Review dock preview tabs', () => {
     await waitFor(() => expect(posts()[0]?.body).toEqual({ workspace: WORKSPACE, url: 'http://localhost:3000/app' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Preview localhost:3000' }))
-    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev'))).toBe(true))
+    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev?keep_agent_page=1'))).toBe(true))
     expect(document.querySelector('iframe')).toBeNull()
   })
 
@@ -191,7 +195,7 @@ describe('Review dock preview tabs', () => {
     await act(async () => {})
     expect(requests.some((r) => r.method === 'DELETE')).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: 'Close Preview a.html' }))
-    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/files'))).toBe(true))
+    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/files?keep_agent_page=1'))).toBe(true))
   })
 
   it('closes the tab when Cmd/Ctrl+W is pressed inside the page', async () => {
@@ -211,6 +215,19 @@ describe('Review dock preview tabs', () => {
       }))
     })
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Preview localhost:5173' })).toBeNull())
-    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev'))).toBe(true))
+    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev?keep_agent_page=1'))).toBe(true))
+  })
+
+  it('keeps the page the agent still uses when its tab closes: a hidden copy takes over', async () => {
+    keptByAgent = true
+    usePreviewKeepAliveStore.getState().registerAgent(WORKSPACE, { kind: 'url', url: 'http://localhost:5173/' })
+    await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
+    await screen.findByRole('button', { name: 'Preview localhost:5173' })
+    await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('src')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Close Preview localhost:5173' }))
+    await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev?keep_agent_page=1'))).toBe(true))
+    await act(async () => {})
+    // The server kept the listener, so the agent's entry stays for the hidden copy.
+    expect(Object.values(usePreviewKeepAliveStore.getState().agent)).toHaveLength(1)
   })
 })

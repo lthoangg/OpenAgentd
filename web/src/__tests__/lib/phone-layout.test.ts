@@ -39,10 +39,6 @@ describe('phone layout contracts', () => {
     expect(src('AgentView/UserBubble.tsx')).toMatch(/className="min-w-0 max-w-\[60%\] shrink-0 truncate font-mono[^"]*">\{source\.workspaceName\}/)
   })
 
-  it('gives team member output no scroller of its own on phones', () => {
-    expect(src('ToolResult.tsx')).toContain('data-team-member-output="" className="text-xs md:max-h-48 md:overflow-y-auto"')
-  })
-
   // The session and workspace long-press menus are bottom sheets, which
   // have no close button for a long title to run under; the title wraps.
   it('lets phone action-sheet titles wrap instead of running under a close button', () => {

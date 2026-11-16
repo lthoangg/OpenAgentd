@@ -175,6 +175,13 @@ describe('subagent rows', () => {
     expect(opened).toEqual([{ sessionId: SUB, workspace: '' }, { sessionId: SUB, workspace: '' }])
     expect(screen.getByText(/Fetched docs/)).toBeTruthy()
   })
+
+  // Phones: the transcript scrolls, so a member's output gets no scroller of its own.
+  it('gives member output no scroller of its own on phones', () => {
+    const wait = JSON.stringify({ status: 'completed', results: { 'researcher#1': { status: 'completed', output: 'Fetched docs' } } })
+    const { container } = render(<ToolResult toolName="team" result={wait} />)
+    expect(container.querySelector('[data-team-member-output]')?.className).toBe('text-xs md:max-h-48 md:overflow-y-auto')
+  })
 })
 
 describe('a retired team tool', () => {

@@ -4,10 +4,17 @@
  * toolbars readable on a narrow screen.
  */
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const src = (rel: string) => readFileSync(fileURLToPath(new URL(`../../components/${rel}`, import.meta.url)), 'utf8')
+/** The sidebar and every module of its folder, as one text. */
+const sidebarSrc = () => [
+  src('Sidebar.tsx'),
+  ...readdirSync(fileURLToPath(new URL('../../components/Sidebar', import.meta.url)))
+    .filter((file) => file.endsWith('.tsx'))
+    .map((file) => src(`Sidebar/${file}`)),
+].join('\n')
 
 describe('phone layout contracts', () => {
   it('hides the command palette key hints below md', () => {
@@ -42,7 +49,7 @@ describe('phone layout contracts', () => {
   // The session and workspace long-press menus are bottom sheets, which
   // have no close button for a long title to run under; the title wraps.
   it('lets phone action-sheet titles wrap instead of running under a close button', () => {
-    const sidebar = src('Sidebar.tsx')
+    const sidebar = sidebarSrc()
     expect(sidebar).not.toContain('<DialogHeader className="pr-8">')
     // The workspace sheet's own title, and the shared ActionSheet's.
     expect(sidebar.match(/<p className="text-sm font-medium text-\(--color-text\) \[overflow-wrap:anywhere\]">/g)?.length).toBe(1)

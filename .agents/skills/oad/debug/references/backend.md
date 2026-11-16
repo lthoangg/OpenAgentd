@@ -29,7 +29,7 @@ appv3/crates/
   mcp/ memory/ preview/ terminal/   MCP client, memory, Preview tab proxy, PTY terminals
   cli/        the `agentd` binary; `server serve` is the sidecar entry; loguru-format logging (src/logging.rs)
 appv3/crates/agent/data/sse_events.json   SSE event contract shared with web
-appv3/REPORT.md                  every deliberate wire or on-disk difference from v2
+appv3/REPORT.md                  index of every deliberate wire or on-disk difference from v2 (parts in appv3/report/)
 ```
 
 ## Failure boundaries
@@ -52,4 +52,4 @@ cargo test --manifest-path appv3/Cargo.toml -p appv3-api --test http_api   # foc
 make verify-v3                                                              # fmt, clippy -D warnings, all tests
 ```
 
-A wire or on-disk format change also needs `make verify-web` and an entry in `appv3/REPORT.md`.
+A wire or on-disk format change also needs `make verify-web` and an entry at the top of `appv3/report/changes.md`.

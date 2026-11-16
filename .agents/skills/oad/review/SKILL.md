@@ -52,7 +52,7 @@ missing pagination, large SSE payloads, React re-renders from unselected store
 reads or inline object props, work on every streamed token.
 
 **Contracts** — An SSE or wire change matches `appv3/crates/agent/data/sse_events.json`,
-updates the web client in the same change, and is recorded in `appv3/REPORT.md`.
+updates the web client in the same change, and is recorded in `appv3/report/changes.md`.
 Release versions move only through `scripts/bump_version.sh`.
 
 ## 4. Classify findings

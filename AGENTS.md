@@ -115,7 +115,8 @@ Use the native subtree Makefiles for desktop/mobile packages
   formats (JSON spacing, field order, Python-style renderings) when the web
   client changes in the same commit, but it must keep reading data that v2
   installs wrote (DB schema and rows, YAML configs and frontmatter, snapshot
-  repos). Record every wire or on-disk change in `appv3/REPORT.md`.
+  repos). Record every wire or on-disk change at the top of
+  `appv3/report/changes.md`; `appv3/REPORT.md` is the index of that log.
 - In the UI, TanStack Query owns server state and Zustand owns client/stream
   state. Keep backend wire handling in `web/src/api/`, queries in
   `web/src/queries/`, and route registration in `web/src/router.ts`.

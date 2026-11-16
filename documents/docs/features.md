@@ -2449,8 +2449,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     Simple folds each turn's work into one row (the Reader transcript) and:
     - the model chip names the model only (thinking level and account are
       in the picker);
-    - the context ring appears once the context is 70% full, reading
-      "78% full";
+    - the context ring appeared once the context was 70% full; from
+      `[v3.57.0]` it shows from the first message with a bare
+      percentage, as in Full;
     - the status bar shows no estimated spend, and does not fetch it;
     - a retry reads as a sentence: "The model is busy. Trying again in 8
       seconds (2 of 5)." or, for a dropped connection, "The connection

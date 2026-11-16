@@ -36,7 +36,6 @@ import { goalHeaderState } from '@/lib/work'
 import { useHealthQuery } from '@/queries'
 import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useReportShownSession } from '@/lib/island-setting'
@@ -46,6 +45,7 @@ import { useChatPreview } from './useChatPreview'
 import { useDockCover } from './useDockCover'
 import { useSessionLinks } from './useSessionLinks'
 import { useLeadModel } from './useLeadModel'
+import { useChatSessionState } from './useChatSessionState'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
@@ -63,7 +63,7 @@ import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { workspaceLabel } from '@/utils/workspace'
 import { workspaceRelativePath } from '@/utils/file-refs'
-import type { ContentBlock, MessageAttachment } from '@/api/types'
+import type { ContentBlock } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
 import { AgentChatHeader } from './AgentChatHeader'
@@ -84,9 +84,7 @@ import { useCommandPalette } from './useCommandPalette'
 import { composerHistoryPrompts } from './helpers'
 import { useReturnQueuedAfterFailure } from './heldMessages'
 
-type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
-const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 
 interface AgentChatViewProps {
   sessionId?: string
@@ -140,45 +138,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
 
-  const storeState = useAgentStore(
-    useShallow((s) => {
-      const leadStream = s.leadName ? s.agentStreams[s.leadName] : undefined
-      return {
-        connectStream: s.connectStream,
-        loadAgentStatus: s.loadAgentStatus,
-        loadSession: s.loadSession,
-        catchUpLiveTurn: s.catchUpLiveTurn,
-        beginResolvedSession: s.beginResolvedSession,
-        consumeResolvedSessionReady: s.consumeResolvedSessionReady,
-        setupRequired: s.setupRequired,
-        dismissSetupRequired: s.dismissSetupRequired,
-
-        isAgentWorking: s.isAgentWorking,
-        sessionId: s.sessionId,
-        parentSessionId: s.parentSessionId,
-        leadName: s.leadName,
-        sessionTitle: s.sessionTitle,
-        sessionSentFrom: s.sessionSentFrom,
-        sessionInteractionMode: s.sessionInteractionMode,
-        sessionPendingInteractionMode: s.sessionPendingInteractionMode,
-        sessionModel: s.sessionModel,
-        sessionFastMode: s.sessionFastMode,
-
-        leadRevertedCount: leadStream?.revertedCount ?? 0,
-        leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
-        revertKeepsFiles: s.revertKeepsFiles,
-        leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
-        leadHasLiveBlocks: (leadStream?.currentBlocks.length ?? 0) > 0,
-
-        leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
-        leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
-        leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
-        leadCachedPercent: leadStream?.usage.cachedPercent,
-        // The lead's and its subagents' spend so far.
-        sessionCostUsd: Object.values(s.agentStreams).reduce((total, stream) => total + (stream.usage?.estimatedCostUsd ?? 0), 0),
-      }
-    })
-  )
+  const storeState = useChatSessionState()
 
   const {
     connectStream,

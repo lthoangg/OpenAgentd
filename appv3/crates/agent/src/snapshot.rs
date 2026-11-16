@@ -804,13 +804,10 @@ fn maintenance_enabled() -> bool {
 
 /// `(ordered_keep, protected)` snapshot hashes for a session (db-form id).
 pub async fn collect_keep_snapshots(pool: &appv3_db::DbPool, db_sid: &str) -> anyhow::Result<(Vec<String>, Vec<String>)> {
-    let rows = sqlx::query_as::<_, appv3_db::SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? ORDER BY seq ASC, id ASC").bind(db_sid).fetch_all(pool).await?;
     let mut ordered: Vec<String> = Vec::new();
-    for r in &rows {
-        if let Some(s) = r.snapshot() {
-            if !ordered.contains(&s) {
-                ordered.push(s);
-            }
+    for s in appv3_db::snapshot_marks(pool, db_sid).await? {
+        if !ordered.contains(&s) {
+            ordered.push(s);
         }
     }
     let anchor = appv3_db::get_session(pool, db_sid).await?.and_then(|s| s.redo_anchor());

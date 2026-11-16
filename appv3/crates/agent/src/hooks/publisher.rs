@@ -136,6 +136,10 @@ impl StreamPublisherHook {
 
 #[async_trait]
 impl Hook for StreamPublisherHook {
+    /// A script's nested calls show in its own row, not as rows of their own.
+    fn wraps_nested_calls(&self) -> bool {
+        false
+    }
     async fn before_agent(&self, _ctx: &RunContext, _state: &mut AgentState) {
         *self.turn_started.lock().unwrap() = Some(Instant::now());
     }

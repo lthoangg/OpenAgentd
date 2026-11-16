@@ -358,13 +358,18 @@ pub fn agents_dir() -> std::path::PathBuf {
 }
 
 /// Tools given to a member agent: the ones its file lists that a member
-/// may have (`tool_registry::member_tool`).
+/// may have (`tool_registry::member_tool`), then the ones every agent gets.
 fn build_member_tools(allowed: &[String]) -> Vec<ToolRef> {
     let mut out: Vec<ToolRef> = vec![];
     let mut seen = HashSet::new();
     for n in allowed {
         let Some(t) = crate::tool_registry::member_tool(n) else { continue };
         if seen.insert(n.clone()) {
+            out.push(t);
+        }
+    }
+    for t in crate::tool_registry::member_always_tools() {
+        if seen.insert(t.name().to_string()) {
             out.push(t);
         }
     }

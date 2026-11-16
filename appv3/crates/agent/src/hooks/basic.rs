@@ -254,6 +254,10 @@ pub fn thousands(n: usize) -> String {
 
 #[async_trait]
 impl Hook for ToolResultOffloadHook {
+    /// A script needs a nested call's whole result, not a file pointer.
+    fn wraps_nested_calls(&self) -> bool {
+        false
+    }
     async fn after_tool(&self, ctx: &RunContext, meta: &SharedMeta, tc: &ToolCall, _scope: &mut ToolCallScope, result: &mut String) {
         let chars = result.chars().count();
         let name = tc.function.name.as_str();

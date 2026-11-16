@@ -4,6 +4,14 @@ use super::*;
 use crate::events::ProviderStatus;
 
 #[test]
+fn every_member_gets_script_beside_its_listed_tools() {
+    let names: Vec<String> = build_member_tools(&["read".into(), "grep".into()]).iter().map(|t| t.name().to_string()).collect();
+    assert_eq!(names, ["read", "grep", "script"]);
+    let names: Vec<String> = build_member_tools(&[]).iter().map(|t| t.name().to_string()).collect();
+    assert_eq!(names, ["script"]);
+}
+
+#[test]
 fn handles_and_pruning() {
     assert_eq!(parse_instance_handle("explorer#3"), Some(("explorer".into(), 3)));
     assert_eq!(parse_instance_handle("explorer"), None);

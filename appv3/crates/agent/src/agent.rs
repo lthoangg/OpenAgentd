@@ -23,6 +23,7 @@ const CANCELLED_OUTPUT_MAX_BYTES: usize = 16_384;
 pub const ASK_USER: &str = "ask_user";
 pub const ASK_LEAD: &str = "ask_lead";
 pub const PLAN: &str = crate::tools::plan::PLAN_TOOL;
+pub const SCRIPT: &str = crate::tools::script::SCRIPT_TOOL;
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
 pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call plan with submit: true after they answer.";
 pub const SUBMIT_MERGED: &str = "Merged into your later plan submission in this response.";
@@ -367,6 +368,12 @@ impl Agent {
                     _ if unattended && call.function.name == ASK_USER => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
                     _ if unattended && opens_confirm(&call) => Ok((unattended_refusal(&call.function.name, unattended_reason.as_deref()), (None, None))),
                     Some(m) if !tool_allowed_in_mode(&m, &call.function.name) => Ok((format!("Error: Tool '{}' is unavailable in Plan mode.", call.function.name), (None, None))),
+                    _ if call.function.name == SCRIPT => {
+                        // The script's nested calls come back through this loop.
+                        let runner = self.nested_runner(ctx, meta, hooks, tools, &tctx, &call.id);
+                        let out = crate::tools::script::NESTED.scope(runner, appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments)).await?;
+                        Ok::<_, Suspension>((out.text, (out.parts, out.mcp_app)))
+                    }
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
                         Ok::<_, Suspension>((out.text, (out.parts, out.mcp_app)))
@@ -397,6 +404,48 @@ impl Agent {
             h.after_tool(ctx, meta, tc, &mut scope, &mut text).await;
         }
         Ok(ToolRunResult { text, parts, mcp_app, duration_ms: scope.duration_ms })
+    }
+
+    /// Runs the nested calls of `script` call `parent_id` like direct calls
+    /// (Plan mode, unattended refusals, plugin hooks, OTEL spans), with the
+    /// hooks that suit a nested call: no transcript rows, no offloading.
+    fn nested_runner(&self, ctx: &RunContext, meta: &SharedMeta, hooks: &[HookRef], tools: &ToolSet, base: &ToolContext, parent_id: &str) -> appv3_jsplugin::script::HostCallFn {
+        struct Env {
+            agent: Agent,
+            ctx: RunContext,
+            meta: SharedMeta,
+            hooks: Vec<HookRef>,
+            tools: ToolSet,
+            base: ToolContext,
+            sem: tokio::sync::Semaphore,
+            parent: String,
+            seq: std::sync::atomic::AtomicUsize,
+        }
+        let mut base = base.clone();
+        base.output = None;
+        let env = Arc::new(Env {
+            agent: self.clone(),
+            ctx: ctx.clone(),
+            meta: meta.clone(),
+            hooks: hooks.iter().filter(|h| h.wraps_nested_calls()).cloned().collect(),
+            tools: tools.clone(),
+            base,
+            sem: tokio::sync::Semaphore::new(crate::tools::script::MAX_CONCURRENT_NESTED),
+            parent: parent_id.to_string(),
+            seq: Default::default(),
+        });
+        Arc::new(move |name: String, args: Value| -> appv3_jsplugin::script::HostFuture {
+            let env = env.clone();
+            Box::pin(async move {
+                let n = env.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                let tc = ToolCall::new(format!("{}.{n}", env.parent), name, args.to_string());
+                match env.agent.run_tool(&env.ctx, &env.meta, &env.hooks, &env.tools, &env.base, &tc, &env.sem, None).await {
+                    Ok(r) if crate::hooks::lsp::is_failed_result(&r.text) => Err(r.text.trim_start().strip_prefix("Error:").unwrap_or(&r.text).trim().to_string()),
+                    Ok(r) => Ok(r.text),
+                    Err(_) => Err("the call paused for an answer, which a script cannot give".to_string()),
+                }
+            })
+        })
     }
 
     /// `Agent.run` for one turn.

@@ -24,8 +24,29 @@ MCP.
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Session goal | `update_goal` (lead agent; claims the goal of a plan approved with Keep going complete or blocked) `[v3.32.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
+| Scripted tool calls | `script` (every agent, lead and member) `[v3.57.0]` |
 | Utility | `skill` |
 
+- **`script` — chain tool calls in one step** `[v3.57.0]` — the agent can write a
+  short JavaScript or TypeScript snippet that calls its other tools as
+  `await tools.grep({...})`, with loops, filters and `Promise.all`, and gets
+  back only what the snippet logs or returns. A task that took ten calls and
+  ten model round trips, such as grepping several folders and counting the
+  hits, takes one, and large intermediate results such as MCP JSON never
+  reach the context. The snippet runs in a fresh, sandboxed QuickJS runtime
+  with no network, file or process access of its own: each nested call goes
+  through the same Plan-mode, denied-path and plugin-hook checks as a direct
+  call, and a script cannot ask you questions, submit a plan, delegate, or
+  start another script. A script stops after 270 s, which keeps the next
+  model call on a warm prompt cache, and still returns what it logged.
+  Scripts are reusable: `save_as` keeps one that ran without error in the
+  project's `.agents/scripts/` folder (or in your personal scripts folder
+  outside a project), `list` shows the saved ones with their `@description`
+  and `@arg` lines, and the agent runs one again by `name` or by `path`
+  (any workspace `.ts` or `.js` file) with new `args`; a file script may
+  import helpers from its own folder. The tool row shows the code, a live
+  list of the nested calls (time and size, errors in red), and the result,
+  and looks the same after a reload.
 - **`preview` — show a page, read its console, and use it** `[v3.3.0]` — the agent
   opens a running local dev server or a workspace HTML file in your Preview
   tab (it comes forward on desktop, and the tool card has **Open preview**).

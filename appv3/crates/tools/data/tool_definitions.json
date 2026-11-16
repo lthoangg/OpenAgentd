@@ -895,5 +895,46 @@
         ]
       }
     }
+  },
+  "script": {
+    "type": "function",
+    "function": {
+      "name": "script",
+      "description": "Run JavaScript or TypeScript that calls your other tools, so many calls take one step and only what the script logs or returns comes back. Prefer it whenever you would make 3 or more calls only to combine their results (count, filter, compare, build a table) or to feed one call's result into the next; use the tools directly for one or two calls or when you need to read the full results yourself. In the script, `await tools.<name>(args)` takes the same arguments as that tool and resolves to its text result, a string (split it into lines yourself; JSON.parse an MCP result); a failure throws a ToolError with `.tool` and `.message`, which try/catch can handle. Promise.all runs calls in parallel. Top-level await and return work; console.log and the returned value are the output, so log only what you need. Example: `const dirs = (await tools.glob({ pattern: \"crates/*/Cargo.toml\" })).split(\"\\n\").filter(Boolean).map(p => p.replace(\"/Cargo.toml\", \"\")); const hits = await Promise.all(dirs.map(directory => tools.grep({ pattern: \"TODO\", directory }))); return dirs.map((d, i) => [d, hits[i].split(\"\\n\").filter(l => l.includes(\"TODO\")).length]);` Use grep to search many files in one call rather than reading each file. Globals are tools, console, sleep(ms) and args: no fetch, file system or process access outside tools. A script cannot call script, ask_user, plan, update_goal or team. It may make at most 200 tool calls, and it stops after 270 s, which keeps the prompt cache warm: leave long waits and builds to shell with background=true. Reuse: save_as stores a script that ran without error in .agents/scripts/ (or your personal scripts folder outside a project); list shows saved scripts; run one again with name or path plus args. A saved script may start with `// @description ...` and `// @arg name ...` lines.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The script to run. Give exactly one of code, path, name or list."
+          },
+          "path": {
+            "type": "string",
+            "description": "A workspace .ts or .js file to run, such as .agents/scripts/count-todos.ts. It may import files from its own folder."
+          },
+          "name": {
+            "type": "string",
+            "description": "A saved script's name, from list: the project's .agents/scripts/ first, then your personal scripts folder."
+          },
+          "list": {
+            "type": "boolean",
+            "description": "List the saved scripts with their descriptions and arguments."
+          },
+          "args": {
+            "type": "object",
+            "description": "The `args` object the script reads, for a script run by path or name."
+          },
+          "description": {
+            "type": "string",
+            "description": "A few words on what the script does, shown as its title and saved as @description."
+          },
+          "save_as": {
+            "type": "string",
+            "description": "[code] Save the script under this name (lowercase letters, digits and '-') if it runs without error."
+          }
+        },
+        "required": []
+      }
+    }
   }
 }

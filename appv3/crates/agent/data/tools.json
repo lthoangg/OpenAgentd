@@ -1,7 +1,7 @@
 {
   "about": "The built-in tools by name, and the names they had before. tool_registry.rs is the source: a test there holds this file to it, and web/src/__tests__/api/tools-contract.test.ts holds the web client to this file.",
   "tools": [
-    "skill", "todo", "schedule",
+    "skill", "todo", "schedule", "script",
     "read", "grep", "glob", "patch", "shell", "web_search", "web_fetch",
     "generate_image", "generate_video",
     "mcp",

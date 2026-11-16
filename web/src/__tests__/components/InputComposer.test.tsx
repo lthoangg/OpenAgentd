@@ -6,8 +6,8 @@ import { InputComposer } from "@/components/InputComposer"
 import type { InputComposerHandle } from "@/components/InputComposer"
 import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
 import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer/files"
+import { buildHistoryEntries } from "@/components/InputComposer/history"
 import {
-  buildHistoryEntries,
   filterMentions,
   filterSlashCommands,
   filterSnippetCommands,

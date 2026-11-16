@@ -17,7 +17,7 @@ import { useInputComposerAttachments } from './attachments'
 import { useKeepKeyboard } from './keepKeyboard'
 import { cn } from '@/lib/utils'
 import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
-import { buildHistoryEntries } from './menus'
+import { usePromptHistory } from './history'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { selectionHapticFeedback } from '@/lib/haptics'
@@ -189,8 +189,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     handleDrop,
     handleFileSelect,
   } = useInputComposerAttachments({ capabilities })
-  const [localHistory, setLocalHistory] = useState<string[]>([])
-  const [historyIndex, setHistoryIndex] = useState(-1)
   const [mentions, setMentions] = useState<string[]>([])
   // Design feedback chips. Written into the message on send; text set from
   // outside (restores, history) has its blocks turned back into chips.
@@ -228,11 +226,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useIsMobile()
 
-  const history = useMemo(
-    () => buildHistoryEntries(localHistory, historyPrompts),
-    [localHistory, historyPrompts],
-  )
-
   // Height-to-content resizing. See autosize.ts.
   const {
     resize,
@@ -266,6 +259,20 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onSlashCommand,
     setMentions,
     onSuggestionsMenuChange,
+  })
+
+  // ↑/↓ recall of sent prompts (history.ts).
+  const { setHistoryIndex, handleHistoryKeyDown, rememberPrompt } = usePromptHistory({
+    historyPrompts,
+    value,
+    designFeedback,
+    setValue,
+    setDesignFeedback,
+    setMentionRange,
+    setSnippetRange,
+    resize,
+    textareaRef,
+    onHistoryRecall,
   })
 
   // Refresh the active mention window from the current caret position. Called
@@ -309,45 +316,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     })
   }, [value, mentionRanges, mentions, setMentionRange, setSnippetRange])
 
-  const navigateHistory = useCallback((dir: 'up' | 'down') => {
-    if (history.length === 0) return false
-    const direction = dir === 'up' ? 1 : -1
-    // Attached design feedback counts as a draft: ↑ must not replace it.
-    const canEnterHistory = dir === 'up' && value.length === 0 && designFeedback.length === 0 && historyIndex === -1
-    const inHistory = historyIndex >= 0
-
-    if (canEnterHistory || inHistory) {
-      const nextIndex = canEnterHistory ? 0 : historyIndex + direction
-      if (nextIndex < 0) {
-        setHistoryIndex(-1)
-        setValue('')
-        setDesignFeedback([])
-        setMentionRange(null)
-        setSnippetRange(null)
-        requestAnimationFrame(resize)
-        onHistoryRecall?.(null)
-        return true
-      }
-      if (nextIndex >= history.length) return true
-      const next = history[nextIndex]
-      // A recalled prompt's design feedback comes back as chips.
-      const recalled = splitDesignFeedback(next)
-      setHistoryIndex(nextIndex)
-      setValue(recalled.text)
-      setDesignFeedback(recalled.blocks)
-      setMentionRange(null)
-      setSnippetRange(null)
-      requestAnimationFrame(() => {
-        const el = textareaRef.current
-        el?.setSelectionRange(recalled.text.length, recalled.text.length)
-        resize()
-      })
-      onHistoryRecall?.(next)
-      return true
-    }
-    return false
-  }, [history, value, designFeedback.length, historyIndex, resize, setMentionRange, setSnippetRange, onHistoryRecall])
-
   // Shared bookkeeping for every programmatic draft mutation: leave history
   // navigation and close any open picker — a value replacement invalidates
   // the pickers' ``start``/``end`` indices, which refer to the old text.
@@ -355,7 +323,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     setHistoryIndex(-1)
     setMentionRange(null)
     setSnippetRange(null)
-  }, [setMentionRange, setSnippetRange])
+  }, [setHistoryIndex, setMentionRange, setSnippetRange])
 
   useImperativeHandle(ref, () => ({
     focus: (options) => {
@@ -475,9 +443,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       allMentions.length > 0 ? allMentions : undefined,
       delivery,
     )
-    setLocalHistory((prev) =>
-      prev[0] === message ? prev : [message, ...prev].slice(0, 100),
-    )
+    rememberPrompt(message)
     setValue('')
     setFiles([])
     setMentions([])
@@ -488,7 +454,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     // Reset the visible height synchronously — see ``resetHeightNow`` for
     // why this can't wait for the next animation frame.
     resetHeightNow()
-  }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
+  }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, rememberPrompt, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -527,18 +493,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     })
     return true
   }, [mentionRanges, resize, value])
-
-  const handleHistoryKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false
-      const handled = navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down')
-      if (handled) {
-        e.preventDefault()
-        return true
-      }
-    }
-    return false
-  }, [history.length, navigateHistory])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
@@ -696,7 +650,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         el?.setSelectionRange(text.length, text.length)
       })
     },
-  }), [addAllowedFiles, fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setMentionRange, setSnippetRange])
+  }), [addAllowedFiles, fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setHistoryIndex, setMentionRange, setSnippetRange])
 
   const plusEl = renderPlus ? renderPlus(composerActions) : (
     <button

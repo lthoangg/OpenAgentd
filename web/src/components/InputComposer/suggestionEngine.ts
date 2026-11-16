@@ -26,7 +26,7 @@ import {
   filterSnippetCommands,
 } from './menus'
 
-type SuggestionRange = { start: number; end: number; query: string } | null
+export type SuggestionRange = { start: number; end: number; query: string } | null
 
 /**
  * The currently open picker menu. ``rows`` is what gets rendered (for slash

@@ -1,21 +1,6 @@
 import { rankFileRefs, type FileRef } from './mentions'
 import type { SlashCommand, SnippetCommand } from './commands'
 
-export function buildHistoryEntries(
-  localHistory: string[],
-  historyPrompts: string[],
-): string[] {
-  const seen = new Set<string>()
-  const entries: string[] = []
-  for (const prompt of [...localHistory, ...historyPrompts]) {
-    const trimmed = prompt.trim()
-    if (!trimmed || seen.has(trimmed)) continue
-    seen.add(trimmed)
-    entries.push(trimmed)
-  }
-  return entries
-}
-
 export function filterSlashCommands(
   slashCommands: SlashCommand[],
   slashFilter: string | null,

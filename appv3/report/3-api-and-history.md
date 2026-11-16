@@ -221,7 +221,7 @@ credential or database format changes.
   `sse_stream_close` logs events, writes, pings, bytes, path and whether
   the peer is remote; `stream_deltas` logs pieces received and frames sent
   per turn; `history_page_served` (info) and `history_page_breakdown` log
-  what each history page weighed. Tests: `agent/src/stream_store.rs`,
+  what each history page weighed. Tests: `agent/src/stream_store/tests.rs`,
   `api/src/sse.rs`, `api/src/middleware.rs`. v2 sends one frame per chunk.
 - **History leaves out provider replay state (v3 only):** a message's
   `extra` goes out without `raw_content_blocks`, `reasoning_signature` and

@@ -161,7 +161,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     removes `token_budget` with `null`, and returns 422 for a `max_turns`
     outside 1–1000, a `token_budget` below 1, or an unknown key.
 
-  Tests: `agent/tests/goal_loop.rs`, `agent/tests/goal_questions.rs`, unit tests in `agent/src/goal.rs`,
+  Tests: `agent/tests/goal_loop.rs`, `agent/tests/goal_questions.rs`, unit tests in `agent/src/goal/tests.rs`,
   `agent/src/plan.rs`, `db/src/queries/goals.rs` and `db/tests/queries.rs`,
   `agent/tests/plan_review.rs`, `goal_flow` in `api/tests/http_api.rs`.
   v2 has no equivalent.
@@ -451,7 +451,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   field holding the transport's own text (status line, URL, the provider's
   message). `agent_status` carries the same `details` in its metadata. v2
   and earlier v3 sent the transport text as the message under "Agent
-  Execution Error" (`agent_execution_failed`). Tests: `agent/src/streaming.rs`.
+  Execution Error" (`agent_execution_failed`). Tests: `agent/src/streaming/tests.rs`.
 - **Lead messages to a member carry `extra.from_lead` (v3 only):** the
   rows the lead sends a subagent (the spawn task `[Task from Lead]: …`, and a
   follow-up `[Lead]: …` whether the member was idle or mid-turn, so queued)

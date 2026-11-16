@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useFakeTimers } from '../fake-timers'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setApiBaseUrl } from '@/api/base-url'
 import { queryKeys } from '@/queries'
 import { loadLastWorkspace, loadWorkspaceEntries, saveLastWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -59,296 +58,28 @@ import {
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
 } from '@/components/Sidebar/worktrees'
-
-const navigate = mock(() => {})
-const originalFetch = globalThis.fetch
-const browseResponse = {
-  path: '/repo/project',
-  parent: '/repo',
-  directories: [],
-}
-const dialogOpen = mock(async () => '/repo/project')
-const invokeMock = mock(async () => undefined)
-let isTauri = true
-let platformOs = 'macos'
-let isMobile = false
-let validateError: Error | null = null
-let appBackendStatus: { base_url: string; sidecar_running: boolean; external: boolean; supports_bundled: boolean; servers: unknown[] } | null = {
-  base_url: 'http://127.0.0.1:4082',
-  sidecar_running: true,
-  external: false,
-  supports_bundled: true,
-  servers: [],
-}
-const deleteSessionMutate = mock(() => {})
-const updateSessionTitleMutate = mock(() => {})
-type TestSession = {
-  id: string
-  title: string | null
-  agent_name: string | null
-  created_at: string | null
-  updated_at: string | null
-  mode?: string
-  workspace?: string | null
-  running?: boolean
-  needs_input?: boolean
-  pinned_at?: string | null
-  parent_session_id?: string | null
-  subagents?: TestSession[]
-  sent_from?: { session_id: string; workspace: string; title?: string | null } | null
-  linked_sessions?: TestSession[]
-}
-
-let sessionsData: TestSession[] = []
-let workspaceSessionsData: TestSession[] = []
-let activeSessionsData: TestSession[] = []
-let searchResultsData: TestSession[] = []
-let pinnedSessionsData: TestSession[] = []
-let allSessionsData: TestSession[] = []
-let allSessionsQueryArgs: string[] = []
-const setSessionPinnedMutate = mock(() => {})
-let searchQueries: string[] = []
-let workspaceHasNextPage = false
-let workspaceIsFetchingNextPage = false
-/** What each repository list asked for: one path, or several checkouts. */
-let workspaceQueryArgs: Array<string | readonly string[]> = []
-const fetchWorkspaceNextPage = mock(() => {})
-let chatWorkspaceEntry: { path: string; name: string } | null = null
-/** Paths the backend has hidden: ``PATCH …/visibility`` adds, a resolve removes. */
-let hiddenWorkspacePaths = new Set<string>()
-/** Worktrees the backend lists under each repository. */
-let worktreesByRepo: Record<string, Array<{ path: string; name: string; managed: boolean }>> = {}
-/** Workspace groups the backend knows, and each repository's tags. */
-let workspaceGroupsData: Array<{ id: string; name: string; brief: string | null }> = []
-let groupIdsByRepo: Record<string, string[]> = {}
-let setGroupsRequests: Array<{ workspace: string; group_ids: string[] }> = []
-/** Workspaces the tree reports as plain folders (not in a Git working tree). */
-let plainFolders = new Set<string>()
-const workspaceTreeResponse = () => ({
-  repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string)))
-    .map((path) => ({
-      path,
-      name: path.split('/').pop() || path,
-      worktrees: (worktreesByRepo[path] ?? []).filter((item) => !hiddenWorkspacePaths.has(item.path)),
-      group_ids: groupIdsByRepo[path] ?? [],
-      git: !plainFolders.has(path),
-    }))
-    // Like the backend, a hidden repository still contains its visible worktrees.
-    .filter((repo) => !hiddenWorkspacePaths.has(repo.path) || repo.worktrees.length > 0),
-  chat: chatWorkspaceEntry,
-  groups: workspaceGroupsData,
-})
-
-class IntersectionObserverStub {
-  private callback: IntersectionObserverCallback
-
-  constructor(callback: IntersectionObserverCallback) {
-    this.callback = callback
-  }
-
-  observe(target: Element) {
-    this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
-  }
-
-  disconnect() {}
-}
-
-globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver
-
-/**
- * A repository's worktree chip: a branch icon and the count, named "3 worktrees",
- * which opens the checkout menu. The filter it applies is in its description.
- */
-const WORKTREE_CHIP = { name: /^\d+ worktrees?$/ }
-const worktreeChip = () => screen.getByRole('button', WORKTREE_CHIP)
-
-mock.module('@tanstack/react-router', () => ({
-  useNavigate: () => navigate,
-}))
-
-mock.module('@/hooks/use-platform', () => ({
-  usePlatform: () => ({ isTauri, os: platformOs, isMacOverlay: isTauri && platformOs === 'macos' }),
-  getPlatform: () => ({ isTauri, os: platformOs, isMacOverlay: isTauri && platformOs === 'macos' }),
-}))
-
-mock.module('@/hooks/use-mobile', () => ({
-  useIsMobile: () => isMobile,
-}))
-
-mock.module('framer-motion', () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useReducedMotion: () => false,
-  // The phone's session-actions bottom sheet drags to close.
-  useDragControls: () => ({ start: () => {} }),
-  motion: {
-    aside: ({ children, animate, initial, exit, transition, ...props }: React.ComponentProps<'aside'> & { animate?: unknown; initial?: unknown; exit?: unknown; transition?: unknown }) => {
-      void initial
-      void exit
-      return <aside data-animate={JSON.stringify(animate)} data-transition={JSON.stringify(transition)} {...props}>{children}</aside>
-    },
-    div: ({ children, initial, animate, exit, transition, drag, dragConstraints, dragElastic, dragControls, dragListener, onDragEnd, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown; drag?: unknown; dragConstraints?: unknown; dragElastic?: unknown; dragControls?: unknown; dragListener?: unknown; onDragEnd?: unknown }) => {
-      void initial
-      void animate
-      void exit
-      void transition
-      void drag
-      void dragConstraints
-      void dragElastic
-      void dragControls
-      void dragListener
-      void onDragEnd
-      return <div {...props}>{children}</div>
-    },
-  },
-}))
-
-mock.module('@tauri-apps/plugin-dialog', () => ({
-  open: dialogOpen,
-}))
-
-mock.module('@tauri-apps/api/core', () => ({
-  invoke: invokeMock,
-}))
-
-mock.module('@/lib/app-backend', () => ({
-  getAppBackendStatus: mock(async () => appBackendStatus),
-}))
-
-const Icon = () => null
-mock.module('lucide-react', () => ({
-  SlidersHorizontal: Icon, Activity: Icon,
-  AlertCircle: Icon, AlertTriangle: Icon, CheckCircle2: Icon, Info: Icon,
-  AppWindow: Icon,
-  ArrowLeft: Icon,
-  ArrowUpRight: Icon,
-  Bot: Icon,
-  Check: Icon,
-  ChevronDown: Icon,
-  ChevronLeft: Icon,
-  ChevronRight: Icon,
-  ChevronsDownUp: Icon,
-  Clock: Icon,
-  Command: Icon,
-  CornerLeftUp: Icon,
-  Copy: Icon,
-  Download: Icon,
-  ExternalLink: Icon, WrapText: Icon,
-  FileText: Icon,
-  CircleHelp: Icon,
-  Folder: Icon,
-  FolderPlus: Icon,
-  FolderSearch: Icon,
-  GitBranch: Icon,
-  GitCompare: Icon,
-  Globe: Icon,
-  HelpCircle: Icon,
-  Home: Icon,
-  Link: Icon,
-  ListFilter: Icon,
-  Loader2: Icon,
-  MessageCircle: Icon,
-  Monitor: Icon,
-  Moon: Icon,
-  MoreHorizontal: Icon,
-  Pin: Icon,
-  PinOff: Icon,
-  Plus: Icon,
-  Search: Icon,
-  Share: Icon,
-  SquarePen: Icon,
-  Sun: Icon,
-  Settings: Icon,
-  Settings2: Icon,
-  Pencil: Icon,
-  Target: Icon,
-  Trash2: Icon,
-  TriangleAlert: Icon,
-  X: Icon,
-}))
-
-mock.module('@/components/ThemeToggle', () => ({
-  ThemeToggle: () => <button aria-label="Theme: System. Switch to Light." />,
-}))
-
-mock.module('@/components/HealthDot', () => ({
-  HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
-    <button type="button" aria-label={labeled ? 'Connected. Change computer' : 'backend-name. Connected. Change computer'}>{labeled ? 'backend-name' : null}</button>
-  ),
-}))
-
-mock.module('@/components/ui/button', () => ({
-  Button: ({ children, variant, ...props }: React.ComponentProps<'button'> & { variant?: string }) => {
-    void variant
-    return <button {...props}>{children}</button>
-  },
-  buttonVariants: () => '',
-}))
-
-mock.module('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => (open ? <div>{children}</div> : null),
-  // Records what the sidebar asks of the real primitives: whether the built-in
-  // × is on, and any class a footer or header overrides its layout with.
-  DialogContent: ({ children, showCloseButton = true }: { children: React.ReactNode; showCloseButton?: boolean }) => (
-    <div data-dialog-content="" data-show-close={String(showCloseButton)}>{children}</div>
-  ),
-  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children, className }: { children: React.ReactNode; className?: string }) => <div data-slot="dialog-footer" data-class={className ?? ''}>{children}</div>,
-  DialogHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => <div data-slot="dialog-header" data-class={className ?? ''}>{children}</div>,
-  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-}))
-
-mock.module('@/queries/useSessionsQuery', () => ({
-  queryKeys: {
-    team: {
-      sessions: {
-        infinite: () => ['session', 'sessions', 'infinite'],
-        workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace],
-      },
-    },
-  },
-  useSessionsQuery: () => ({
-    data: { pages: [{ data: sessionsData }] },
-    isFetching: false,
-    refetch: mock(() => {}),
-  }),
-  useWorkspaceSessionsQuery: (workspace: string | readonly string[]) => {
-    workspaceQueryArgs.push(workspace)
-    return {
-      data: { pages: [{ data: workspaceSessionsData }] },
-      isLoading: false,
-      hasNextPage: workspaceHasNextPage,
-      isFetchingNextPage: workspaceIsFetchingNextPage,
-      fetchNextPage: fetchWorkspaceNextPage,
-    }
-  },
-  useActiveSessionsQuery: () => ({
-    data: { pages: [{ data: activeSessionsData }] },
-  }),
-  usePinnedSessionsQuery: () => ({
-    data: { pages: [{ data: pinnedSessionsData }] },
-  }),
-  useAllSessionsQuery: () => {
-    allSessionsQueryArgs.push('called')
-    return {
-      data: { pages: [{ data: allSessionsData }] },
-      isLoading: false,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mock(() => {}),
-    }
-  },
-  useSetSessionPinnedMutation: () => ({ mutate: setSessionPinnedMutate }),
-  useSessionSearchQuery: (query: string) => {
-    searchQueries.push(query)
-    return { data: query ? { pages: [{ data: searchResultsData, has_more: false }] } : undefined, isFetching: false }
-  },
-  useDeleteSessionMutation: () => ({ mutate: deleteSessionMutate }),
-  useUpdateSessionTitleMutation: () => ({
-    mutate: updateSessionTitleMutate,
-    isPending: false,
-    isError: false,
-  }),
-}))
+import {
+  WORKTREE_CHIP,
+  browseResponse,
+  cleanupSidebarHarness,
+  deleteSessionMutate,
+  dialogOpen,
+  fetchWorkspaceNextPage,
+  fx,
+  invokeMock,
+  navigate,
+  originalFetch,
+  renderSidebar,
+  renderSidebarForSessions,
+  renderSidebarWithProps,
+  resetSidebarHarness,
+  setSessionPinnedMutate,
+  settleWorkspaceTree,
+  updateSessionTitleMutate,
+  workspaceTreeResponse,
+  worktreeChip,
+  type TestSession,
+} from './Sidebar/harness'
 
 describe('Sidebar helpers', () => {
   it('exports workspace browser helpers used by the component', async () => {
@@ -366,18 +97,18 @@ describe('Sidebar helpers', () => {
     expect(await loadWorkspaceBrowser()).toEqual(browseResponse)
     expect(await validateTrustedWorkspace('/repo/project')).toBe('/repo/project')
 
-    isTauri = false
-    expect(await shouldUseServerWorkspaceBrowser(isTauri, false)).toBe(true)
+    fx.isTauri = false
+    expect(await shouldUseServerWorkspaceBrowser(fx.isTauri, false)).toBe(true)
 
-    isTauri = true
-    appBackendStatus = {
+    fx.isTauri = true
+    fx.appBackendStatus = {
       base_url: 'https://remote.example.com',
       sidecar_running: false,
       external: true,
       supports_bundled: false,
       servers: [],
     }
-    expect(await shouldUseServerWorkspaceBrowser(isTauri, false)).toBe(true)
+    expect(await shouldUseServerWorkspaceBrowser(fx.isTauri, false)).toBe(true)
 
     globalThis.fetch = originalFetch
   })
@@ -723,169 +454,11 @@ describe('Sidebar helpers', () => {
 })
 
 describe('Sidebar workspace trust flow', () => {
-  beforeEach(() => {
-    localStorage.clear()
-    useUnreadStore.setState({ ids: [] })
-    sessionsData = []
-    workspaceSessionsData = []
-    activeSessionsData = []
-    searchResultsData = []
-    pinnedSessionsData = []
-    allSessionsData = []
-    allSessionsQueryArgs = []
-    setSessionPinnedMutate.mockClear()
-    searchQueries = []
-    chatWorkspaceEntry = null
-    hiddenWorkspacePaths = new Set()
-    worktreesByRepo = {}
-    workspaceGroupsData = []
-    groupIdsByRepo = {}
-    plainFolders = new Set()
-    setGroupsRequests = []
-    useSidebarViewStore.setState({ groupFilter: null })
-    workspaceHasNextPage = false
-    workspaceIsFetchingNextPage = false
-    workspaceQueryArgs = []
-    isTauri = true
-    platformOs = 'macos'
-    isMobile = false
-    setApiBaseUrl('')
-    appBackendStatus = {
-      base_url: 'http://127.0.0.1:4082',
-      sidecar_running: true,
-      external: false,
-      supports_bundled: true,
-      servers: [],
-    }
-    useAgentStore.setState({ isAgentWorking: false, sessionId: null })
-    navigate.mockClear()
-    invokeMock.mockClear()
-    dialogOpen.mockReset()
-    dialogOpen.mockImplementation(async () => '/repo/project')
-    deleteSessionMutate.mockClear()
-    updateSessionTitleMutate.mockClear()
-    fetchWorkspaceNextPage.mockClear()
-    validateError = null
-    globalThis.fetch = mock(async (input: unknown, init: unknown) => {
-      const url = String(input)
-      if (url.includes('/api/agent/workspace/browse')) {
-        return new Response(JSON.stringify(browseResponse))
-      }
-      if (url.endsWith('/api/agent/workspace/visibility')) {
-        const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as { workspace: string; hidden: boolean }
-        if (body.hidden) hiddenWorkspacePaths.add(body.workspace)
-        else hiddenWorkspacePaths.delete(body.workspace)
-        return new Response(JSON.stringify(body))
-      }
-      if (url.includes('/api/agent/workspace/validate')) {
-        if (validateError) {
-          return new Response(JSON.stringify({ detail: validateError.message }), { status: 422 })
-        }
-        return new Response(JSON.stringify({ workspace: '/repo/project' }))
-      }
-      if (url.includes('/api/agent/workspace/worktrees')) {
-        return new Response(JSON.stringify([]))
-      }
-      if (url.endsWith('/api/agent/workspace/groups/members')) {
-        const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as { workspace: string; group_ids: string[] }
-        setGroupsRequests.push(body)
-        groupIdsByRepo[body.workspace] = body.group_ids
-        return new Response(JSON.stringify(body))
-      }
-      if (url.endsWith('/api/agent/workspace/groups')) {
-        const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as { name: string; brief: string | null }
-        const group = { id: `g-${body.name}`, name: body.name, brief: body.brief }
-        workspaceGroupsData = [...workspaceGroupsData, group]
-        return new Response(JSON.stringify({ ...group, members: [] }))
-      }
-      if (url.includes('/api/agent/workspace/tree')) {
-        return new Response(JSON.stringify(workspaceTreeResponse()))
-      }
-      if (url.endsWith('/api/agent/sessions/resolve')) {
-        // Resolving a session in a workspace un-hides it.
-        hiddenWorkspacePaths.delete('/repo/project')
-        return new Response(JSON.stringify({
-          id: 'resolved-session',
-          title: null,
-          agent_name: null,
-          mode: 'coding',
-          workspace: '/repo/project',
-          created_at: null,
-          updated_at: null,
-          created: true,
-        }))
-      }
-      return new Response(null, { status: 404 })
-    }) as typeof fetch
-  })
-
-  afterEach(() => {
-    cleanup()
-    globalThis.fetch = originalFetch
-  })
-
-  /**
-   * Let the first workspace-tree fetch land. Query observers hear about it on
-   * a timer, so a single microtask is not enough.
-   */
-  async function settleWorkspaceTree(queryClient: QueryClient) {
-    const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
-    for (let i = 0; i < 20 && queryClient.getQueryState(queryKeys.coding.tree())?.status !== 'success'; i += 1) {
-      await act(tick)
-    }
-    await act(tick)
-  }
-
-  async function renderSidebar() {
-    const { Sidebar } = await import('@/components/Sidebar')
-    const queryClient = new QueryClient()
-    let view: ReturnType<typeof render> | undefined
-    await act(async () => {
-      view = render(
-        <QueryClientProvider client={queryClient}>
-          <Sidebar openWorkspaceDialogKey={1} />
-        </QueryClientProvider>,
-      )
-      await Promise.resolve()
-    })
-    await settleWorkspaceTree(queryClient)
-    return view
-  }
-
-  async function renderSidebarForSessions(currentSessionId?: string) {
-    const { Sidebar } = await import('@/components/Sidebar')
-    const queryClient = new QueryClient()
-    let view: ReturnType<typeof render> | undefined
-    await act(async () => {
-      view = render(
-        <QueryClientProvider client={queryClient}>
-          <Sidebar currentSessionId={currentSessionId} workspace="/repo/project" />
-        </QueryClientProvider>,
-      )
-      await Promise.resolve()
-    })
-    await settleWorkspaceTree(queryClient)
-    return view
-  }
-
-  async function renderSidebarWithProps(props: React.ComponentProps<typeof import('@/components/Sidebar').Sidebar>) {
-    const { Sidebar } = await import('@/components/Sidebar')
-    const queryClient = new QueryClient()
-    let view: ReturnType<typeof render> | undefined
-    await act(async () => {
-      view = render(
-        <QueryClientProvider client={queryClient}>
-          <Sidebar {...props} />
-        </QueryClientProvider>,
-      )
-      await Promise.resolve()
-    })
-    await settleWorkspaceTree(queryClient)
-    return view!
-  }
+  beforeEach(resetSidebarHarness)
+  afterEach(cleanupSidebarHarness)
 
   it('renders labelled Settings and Usage in the mobile sidebar footer, but no search bar', async () => {
-    isMobile = true
+    fx.isMobile = true
     const onMobileClose = mock(() => {})
 
     await renderSidebarWithProps({ mobileOpen: true, onMobileClose })
@@ -896,7 +469,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('names the connected server in the mobile sidebar footer', async () => {
-    isMobile = true
+    fx.isMobile = true
 
     await renderSidebarWithProps({ mobileOpen: true })
 
@@ -904,7 +477,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('has no help button that opens the command palette under another name', async () => {
-    isMobile = true
+    fx.isMobile = true
 
     await renderSidebarWithProps({ mobileOpen: true })
 
@@ -912,7 +485,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('does not render a search bar on desktop', async () => {
-    isMobile = false
+    fx.isMobile = false
 
     await renderSidebarWithProps({})
 
@@ -990,7 +563,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('says nothing when the folder was already in the sidebar', async () => {
     useToastStore.setState({ toasts: [] })
-    sessionsData = [{ id: 'session-1', title: 'Old', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' }]
+    fx.sessionsData = [{ id: 'session-1', title: 'Old', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' }]
     const user = userEvent.setup()
     await renderSidebar()
     await user.click(screen.getByRole('button', { name: 'Allow and open' }))
@@ -1000,7 +573,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('uses the native desktop folder picker on Linux desktop too', async () => {
-    platformOs = 'linux'
+    fx.platformOs = 'linux'
 
     await renderSidebar()
 
@@ -1103,7 +676,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('keeps the mobile drawer visible after a desktop-collapsed coding sidebar crosses the breakpoint', async () => {
-    isMobile = true
+    fx.isMobile = true
 
     const view = await renderSidebarWithProps({
       desktopCollapsed: true,
@@ -1123,7 +696,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('renders a backdrop when the mobile coding sidebar is open', async () => {
-    isMobile = true
+    fx.isMobile = true
 
     const view = await renderSidebarWithProps({ mobileOpen: true })
     const backdrop = view.container.querySelector('[aria-hidden="true"]')
@@ -1132,7 +705,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('shows the drawer backdrop on a landscape phone wider than md', async () => {
-    isMobile = true
+    fx.isMobile = true
 
     const view = await renderSidebarWithProps({ mobileOpen: true })
     const backdrop = view.container.querySelector('.bg-\\(--color-overlay\\)')
@@ -1141,7 +714,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('keeps the mobile drawer content clear of a left cutout in landscape', async () => {
-    isMobile = true
+    fx.isMobile = true
 
     const view = await renderSidebarWithProps({ mobileOpen: false })
     const drawer = view.container.querySelector('aside')
@@ -1179,7 +752,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('shows validation errors without showing the trust confirmation', async () => {
-    validateError = new Error('Workspace does not exist')
+    fx.validateError = new Error('Workspace does not exist')
 
     await renderSidebar()
 
@@ -1191,7 +764,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('keeps the server-local browser fallback outside desktop', async () => {
     const user = userEvent.setup()
-    isTauri = false
+    fx.isTauri = false
 
     await renderSidebar()
 
@@ -1207,7 +780,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('uses the server-local browser when the desktop app is connected to a remote backend', async () => {
     const user = userEvent.setup()
-    appBackendStatus = {
+    fx.appBackendStatus = {
       base_url: 'http://192.168.1.20:4082',
       sidecar_running: false,
       external: true,
@@ -1228,7 +801,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('opens a coding session in a new desktop window on macOS Command+click', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Selected session',
@@ -1239,7 +812,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions()
 
@@ -1255,7 +828,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('shows a running indicator on every running coding session', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-2',
         title: 'Background running session',
@@ -1267,7 +840,7 @@ describe('Sidebar workspace trust flow', () => {
         running: true,
       },
     ]
-    workspaceSessionsData = [
+    fx.workspaceSessionsData = [
       {
         id: 'session-1',
         title: 'Selected idle session',
@@ -1296,9 +869,8 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByText('Background running session')).toBeTruthy()
   })
 
-
   it('keeps running sessions visible when a workspace is collapsed', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-2',
         title: 'Background running session',
@@ -1310,7 +882,7 @@ describe('Sidebar workspace trust flow', () => {
         running: true,
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions(undefined)
     await userEvent.setup().click(screen.getByLabelText('Collapse workspace project'))
@@ -1321,7 +893,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('folds a workspace shut with the height motion, its rows staying until the fold ends', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Idle session',
@@ -1332,7 +904,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions(undefined)
     const timers = useFakeTimers()
@@ -1354,7 +926,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('hides a main repository from the sidebar without deleting it', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Main session',
@@ -1365,7 +937,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' }]))
 
     await renderSidebarForSessions('session-1')
@@ -1387,10 +959,10 @@ describe('Sidebar workspace trust flow', () => {
 
   it('says a workspace was hidden and how to bring it back, with Undo that shows it again', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       { id: 'session-1', title: 'Main session', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     useToastStore.setState({ toasts: [] })
 
     await renderSidebarForSessions('session-1')
@@ -1426,8 +998,8 @@ describe('Sidebar workspace trust flow', () => {
     }
 
     it('drops the repository row once the backend has hidden it', async () => {
-      sessionsData = [session('session-1', '/repo/project'), session('session-2', '/repo/other')]
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = [session('session-1', '/repo/project'), session('session-2', '/repo/other')]
+      fx.workspaceSessionsData = fx.sessionsData
       // The tree was fetched moments ago, so a cached copy is still fresh.
       await renderSidebarWithProps({ currentSessionId: 'session-2', workspace: '/repo/other' })
       await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
@@ -1435,13 +1007,13 @@ describe('Sidebar workspace trust flow', () => {
       await removeFromSidebar('project')
 
       await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
-      expect(hiddenWorkspacePaths.has('/repo/project')).toBe(true)
+      expect(fx.hiddenWorkspacePaths.has('/repo/project')).toBe(true)
       expect(screen.getByLabelText('Actions for other')).toBeTruthy()
     })
 
     it('forgets the removed workspace before leaving it, so the empty route cannot reopen it', async () => {
-      sessionsData = [session('session-1', '/repo/project')]
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = [session('session-1', '/repo/project')]
+      fx.workspaceSessionsData = fx.sessionsData
       saveLastWorkspace('/repo/project')
       // The empty route restores the last workspace the moment it renders.
       let lastWorkspaceAtNavigation: string | null | undefined
@@ -1457,9 +1029,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('hides the repository worktrees too, which would otherwise keep it listed', async () => {
-      sessionsData = [session('session-1', '/repo/project'), session('session-2', '/repo/other')]
-      workspaceSessionsData = sessionsData
-      worktreesByRepo = { '/repo/project': [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }
+      fx.sessionsData = [session('session-1', '/repo/project'), session('session-2', '/repo/other')]
+      fx.workspaceSessionsData = fx.sessionsData
+      fx.worktreesByRepo = { '/repo/project': [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }
       await renderSidebarWithProps({ currentSessionId: 'session-2', workspace: '/repo/other' })
       await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
 
@@ -1467,14 +1039,14 @@ describe('Sidebar workspace trust flow', () => {
 
       await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
       expect(screen.queryByRole('button', WORKTREE_CHIP)).toBeNull()
-      expect([...hiddenWorkspacePaths].sort()).toEqual(['/data/worktrees/project/task-a', '/repo/project'])
+      expect([...fx.hiddenWorkspacePaths].sort()).toEqual(['/data/worktrees/project/task-a', '/repo/project'])
     })
 
     it('lists a hidden workspace again once reopening it has un-hidden it', async () => {
       const user = userEvent.setup()
-      sessionsData = [session('session-1', '/repo/project')]
-      workspaceSessionsData = sessionsData
-      hiddenWorkspacePaths = new Set(['/repo/project'])
+      fx.sessionsData = [session('session-1', '/repo/project')]
+      fx.workspaceSessionsData = fx.sessionsData
+      fx.hiddenWorkspacePaths = new Set(['/repo/project'])
 
       await renderSidebar()
       expect(screen.queryByLabelText('Actions for project')).toBeNull()
@@ -1486,9 +1058,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('follows workspace-tree refreshes made outside the sidebar', async () => {
-      sessionsData = [session('session-1', '/repo/project')]
-      workspaceSessionsData = sessionsData
-      hiddenWorkspacePaths = new Set(['/repo/project'])
+      fx.sessionsData = [session('session-1', '/repo/project')]
+      fx.workspaceSessionsData = fx.sessionsData
+      fx.hiddenWorkspacePaths = new Set(['/repo/project'])
       const { Sidebar } = await import('@/components/Sidebar')
       const queryClient = new QueryClient()
       await act(async () => {
@@ -1503,7 +1075,7 @@ describe('Sidebar workspace trust flow', () => {
       expect(screen.queryByLabelText('Actions for project')).toBeNull()
 
       // The command palette's workspace switch refreshes the shared query.
-      hiddenWorkspacePaths.delete('/repo/project')
+      fx.hiddenWorkspacePaths.delete('/repo/project')
       await act(async () => {
         await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() })
       })
@@ -1514,7 +1086,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('opens a draft from the workspace menu without creating a session', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: null,
@@ -1525,7 +1097,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     useAgentStore.setState({
       sessionId: 'session-1',
       isAgentWorking: false,
@@ -1555,7 +1127,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('does not show a running indicator for idle coding sessions', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Idle session',
@@ -1566,7 +1138,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
 
@@ -1579,7 +1151,7 @@ describe('Sidebar workspace trust flow', () => {
    * the whole point is that it is busy waiting for *this* user.
    */
   it('badges a session that is waiting for the user to answer a question', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Waiting session',
@@ -1592,7 +1164,7 @@ describe('Sidebar workspace trust flow', () => {
         needs_input: true,
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions(undefined)
 
@@ -1621,7 +1193,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('searches session titles across workspaces in place of the tree', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Current session',
@@ -1632,8 +1204,8 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
-    searchResultsData = [
+    fx.workspaceSessionsData = fx.sessionsData
+    fx.searchResultsData = [
       {
         id: 'm1',
         title: 'Migration plan',
@@ -1663,7 +1235,7 @@ describe('Sidebar workspace trust flow', () => {
     await waitFor(() => expect(results.textContent).toContain('Migration plan'))
     expect(results.textContent).toContain('other')
     expect(results.textContent).not.toContain('Unrelated')
-    expect(searchQueries).toContain('MIGR')
+    expect(fx.searchQueries).toContain('MIGR')
     expect(screen.queryByLabelText('Collapse workspace project')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: /Migration plan/ }))
@@ -1780,11 +1352,11 @@ describe('Sidebar workspace trust flow', () => {
 
   describe('getting around', () => {
     const twoWorkspaces = () => {
-      sessionsData = [
+      fx.sessionsData = [
         { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
         { id: 'session-2', title: 'Other work', agent_name: 'lead', created_at: '2026-05-12T00:00:00Z', updated_at: '2026-05-12T00:00:00Z', mode: 'coding', workspace: '/repo/other' },
       ]
-      workspaceSessionsData = sessionsData
+      fx.workspaceSessionsData = fx.sessionsData
     }
 
     it('starts a new session from the New session row the way ⌘N does', async () => {
@@ -1826,7 +1398,7 @@ describe('Sidebar workspace trust flow', () => {
 
     it('opens a draft from a workspace name when the workspace has no sessions', async () => {
       twoWorkspaces()
-      worktreesByRepo = {}
+      fx.worktreesByRepo = {}
       // Only the tree knows /repo/empty; no list has a session there.
       const baseFetch = globalThis.fetch
       globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
@@ -1923,7 +1495,7 @@ describe('Sidebar workspace trust flow', () => {
         }
         return baseFetch(input as RequestInfo, init as RequestInit | undefined)
       }) as typeof fetch
-      pinnedSessionsData = [{ id: 'pinned-1', title: 'Pinned review', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', pinned_at: '2026-05-14T00:00:00Z' }]
+      fx.pinnedSessionsData = [{ id: 'pinned-1', title: 'Pinned review', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', pinned_at: '2026-05-14T00:00:00Z' }]
       const view = await renderSidebarForSessions('session-1')
 
       const scroller = view!.container.querySelector('[data-sidebar-scroller]') as HTMLElement
@@ -1960,7 +1532,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('lists sessions that need you from every workspace above the workspaces', async () => {
     const user = userEvent.setup()
-    activeSessionsData = [
+    fx.activeSessionsData = [
       {
         id: 'ask-1',
         title: 'Pick a migration plan',
@@ -2012,7 +1584,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('marks a session that finished while you were elsewhere as unread', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Current session',
@@ -2032,7 +1604,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     useUnreadStore.setState({ ids: ['session-2'] })
 
     await renderSidebarForSessions('session-1')
@@ -2042,7 +1614,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('shows a waiting or running state instead of the unread mark', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Waiting session',
@@ -2065,7 +1637,7 @@ describe('Sidebar workspace trust flow', () => {
         running: true,
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     useUnreadStore.setState({ ids: ['session-1', 'session-2'] })
 
     await renderSidebarForSessions(undefined)
@@ -2077,7 +1649,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('loads more sessions from an explicit "Show more" row instead of a nested scroller', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'First page session',
@@ -2088,8 +1660,8 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
-    workspaceHasNextPage = true
+    fx.workspaceSessionsData = fx.sessionsData
+    fx.workspaceHasNextPage = true
 
     await renderSidebarForSessions('session-1')
 
@@ -2100,7 +1672,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('lists worktree sessions in the source repository, tagged with the worktree', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Worktree session',
@@ -2111,7 +1683,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/data/worktrees/project/task-a',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/tree')) {
@@ -2149,13 +1721,13 @@ describe('Sidebar workspace trust flow', () => {
     // a session's subagent rows are inset by.
     expect(row).toBeTruthy()
     expect((row!.closest('.border-l') as HTMLElement).style.marginLeft).toBe(`${TREE_INDENT_PX}px`)
-    expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
+    expect(fx.workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
   it('files subfolders and outside worktrees under the repository and marks missing folders', async () => {
     const user = userEvent.setup()
-    sessionsData = []
-    workspaceSessionsData = sessionsData
+    fx.sessionsData = []
+    fx.workspaceSessionsData = fx.sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/tree')) {
@@ -2238,8 +1810,8 @@ describe('Sidebar workspace trust flow', () => {
 
     it('offers Locate folder… only on a missing workspace', async () => {
       const user = userEvent.setup()
-      sessionsData = []
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = []
+      fx.workspaceSessionsData = fx.sessionsData
       serve(false, [])
       await renderSidebarWithProps({ workspace: '/repo/agentd' })
       await user.click(await waitFor(() => screen.getByLabelText('Actions for agentd')))
@@ -2248,9 +1820,9 @@ describe('Sidebar workspace trust flow', () => {
 
     it('picks the new folder, shows what moves (and the merge), then moves it', async () => {
       const user = userEvent.setup()
-      isTauri = false
-      sessionsData = []
-      workspaceSessionsData = sessionsData
+      fx.isTauri = false
+      fx.sessionsData = []
+      fx.workspaceSessionsData = fx.sessionsData
       const calls: Array<{ url: string; body: unknown }> = []
       serve(true, calls)
       localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/agentd', createdAt: '2026-05-01T00:00:00Z' }]))
@@ -2289,7 +1861,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('filters a repository to one worktree and starts sessions there', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Worktree session',
@@ -2300,7 +1872,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/data/worktrees/project/task-a',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     let resolveCalled = false
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
@@ -2350,7 +1922,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(worktreeChip().getAttribute('aria-description')).toBe('project: Showing task-a only · change worktree')
     // A filter inks the pill.
     expect(worktreeChip().className.split(' ')).toContain('text-(--color-text)')
-    expect(workspaceQueryArgs.at(-1)).toBe('/data/worktrees/project/task-a')
+    expect(fx.workspaceQueryArgs.at(-1)).toBe('/data/worktrees/project/task-a')
     // One checkout listed: the tag would only repeat the chip.
     expect(document.querySelector('[data-checkout-tag]')).toBeNull()
     const newSession = screen.getByLabelText('New session in worktree task-a')
@@ -2371,12 +1943,12 @@ describe('Sidebar workspace trust flow', () => {
     // The list names its filter and clears it in one step.
     await user.click(screen.getByRole('button', { name: 'Show all worktrees in project' }))
     expect(worktreeChip().getAttribute('aria-description')).toBe('project: Showing the workspace and 1 worktree')
-    expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
+    expect(fx.workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
   it('renames a worktree sidebar title', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Worktree session',
@@ -2387,7 +1959,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/data/worktrees/project/task-a',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     let renameBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
@@ -2430,7 +2002,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('removes deleted managed worktrees without promoting stale inverse relationships', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Worktree session',
@@ -2441,7 +2013,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/data/worktrees/project/task-a',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/tree')) {
@@ -2477,7 +2049,7 @@ describe('Sidebar workspace trust flow', () => {
 
     await waitFor(() => expect(screen.queryByRole('button', WORKTREE_CHIP)).toBeNull())
     // Without worktrees the filter chip goes, and the list is the repository alone.
-    expect(workspaceQueryArgs.at(-1)).toBe('/repo/project')
+    expect(fx.workspaceQueryArgs.at(-1)).toBe('/repo/project')
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
     expect(screen.queryByLabelText('Collapse workspace task-a')).toBeNull()
     expect(screen.queryByLabelText('Expand workspace task-a')).toBeNull()
@@ -2487,8 +2059,8 @@ describe('Sidebar workspace trust flow', () => {
     /** Open the Delete worktree dialog for task-a, whose dry run answers `preview`. */
     async function openDeleteDialog(preview: Record<string, unknown>) {
       const user = userEvent.setup()
-      sessionsData = []
-      workspaceSessionsData = []
+      fx.sessionsData = []
+      fx.workspaceSessionsData = []
       const deletes: Array<Record<string, unknown>> = []
       globalThis.fetch = mock(async (input: unknown, init: unknown) => {
         const url = String(input)
@@ -2543,7 +2115,7 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('keeps the source repository visible when the active session is a worktree', async () => {
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Worktree session',
@@ -2554,7 +2126,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/data/worktrees/project/task-a',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/tree')) {
@@ -2577,13 +2149,13 @@ describe('Sidebar workspace trust flow', () => {
     await waitFor(() => expect(screen.getByText('Worktree session')).toBeTruthy())
     expect(worktreeChip()).toBeTruthy()
     expect(screen.getByLabelText('Collapse workspace project')).toBeTruthy()
-    expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
+    expect(fx.workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
     expect(screen.getAllByText('Worktree session').length).toBeGreaterThan(0)
   })
 
   it('shows every checkout again when the current session is filtered out', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'main-1',
         title: 'Main session',
@@ -2593,7 +2165,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/tree')) {
@@ -2629,7 +2201,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('renames a session in place from its row', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Old title',
@@ -2640,7 +2212,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('More actions for Old title'))
@@ -2659,7 +2231,7 @@ describe('Sidebar workspace trust flow', () => {
 
   describe('keyboard', () => {
     const twoSessions = () => {
-      sessionsData = ['First', 'Second'].map((title, i) => ({
+      fx.sessionsData = ['First', 'Second'].map((title, i) => ({
         id: `session-${i + 1}`,
         title,
         agent_name: 'lead',
@@ -2668,7 +2240,7 @@ describe('Sidebar workspace trust flow', () => {
         mode: 'coding',
         workspace: '/repo/project',
       }))
-      workspaceSessionsData = sessionsData
+      fx.workspaceSessionsData = fx.sessionsData
     }
     const frame = () => act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
     const row = (title: string) =>
@@ -2780,7 +2352,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('trims title edits before submitting', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Old title',
@@ -2791,7 +2363,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
     await user.dblClick(screen.getByText('Old title'))
@@ -2807,7 +2379,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('does not submit empty or cancelled title edits', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Old title',
@@ -2818,7 +2390,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('More actions for Old title'))
@@ -2838,7 +2410,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('selects another coding session after deleting the current one', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Delete me',
@@ -2858,7 +2430,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('More actions for Delete me'))
@@ -2878,10 +2450,10 @@ describe('Sidebar workspace trust flow', () => {
 
   it('offers Undo after a delete, which cancels it and reopens the session', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     useToastStore.setState({ toasts: [] })
 
     await renderSidebarForSessions('session-1')
@@ -2901,10 +2473,10 @@ describe('Sidebar workspace trust flow', () => {
 
   it('deletes an idle session at once: no dialog, a toast with Undo that stays ten seconds', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
     useToastStore.setState({ toasts: [] })
 
     await renderSidebarForSessions('session-1')
@@ -2924,10 +2496,10 @@ describe('Sidebar workspace trust flow', () => {
 
   it('asks before deleting a session whose agent is still working, since Undo does not restart it', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       { id: 'session-1', title: 'Delete me', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project', running: true },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('More actions for Delete me'))
@@ -2950,7 +2522,7 @@ describe('Sidebar workspace trust flow', () => {
     const writeText = mock(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 
-    sessionsData = [
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Feature session',
@@ -2961,7 +2533,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
 
@@ -2975,13 +2547,13 @@ describe('Sidebar workspace trust flow', () => {
 
   it('marks grouped repositories and narrows the tree to one group', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
       { id: 'session-2', title: 'Other', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/other' },
     ]
-    workspaceSessionsData = sessionsData
-    workspaceGroupsData = [{ id: 'g-acme', name: 'acme', brief: 'project = app' }]
-    groupIdsByRepo = { '/repo/project': ['g-acme'] }
+    fx.workspaceSessionsData = fx.sessionsData
+    fx.workspaceGroupsData = [{ id: 'g-acme', name: 'acme', brief: 'project = app' }]
+    fx.groupIdsByRepo = { '/repo/project': ['g-acme'] }
 
     await renderSidebarForSessions('session-1')
 
@@ -2999,15 +2571,15 @@ describe('Sidebar workspace trust flow', () => {
 
   it('toggles a repository\'s groups from its actions menu and links to group settings', async () => {
     const user = userEvent.setup()
-    sessionsData = [
+    fx.sessionsData = [
       { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
     ]
-    workspaceSessionsData = sessionsData
-    workspaceGroupsData = [
+    fx.workspaceSessionsData = fx.sessionsData
+    fx.workspaceGroupsData = [
       { id: 'g-acme', name: 'acme', brief: null },
       { id: 'g-shared', name: 'shared', brief: null },
     ]
-    groupIdsByRepo = { '/repo/project': ['g-acme'] }
+    fx.groupIdsByRepo = { '/repo/project': ['g-acme'] }
     const realOpenSettings = useSettingsStore.getState().openSettings
     const openSettings = mock(() => {})
     useSettingsStore.setState({ openSettings })
@@ -3021,10 +2593,10 @@ describe('Sidebar workspace trust flow', () => {
 
     // A toggle saves at once and keeps the menu open for the next one.
     await user.click(toggle('shared'))
-    await waitFor(() => expect(setGroupsRequests).toEqual([{ workspace: '/repo/project', group_ids: ['g-acme', 'g-shared'] }]))
+    await waitFor(() => expect(fx.setGroupsRequests).toEqual([{ workspace: '/repo/project', group_ids: ['g-acme', 'g-shared'] }]))
     await waitFor(() => expect(toggle('shared').getAttribute('aria-checked')).toBe('true'))
     await user.click(toggle('acme'))
-    await waitFor(() => expect(setGroupsRequests.at(-1)).toEqual({ workspace: '/repo/project', group_ids: ['g-shared'] }))
+    await waitFor(() => expect(fx.setGroupsRequests.at(-1)).toEqual({ workspace: '/repo/project', group_ids: ['g-shared'] }))
 
     await user.click(screen.getByRole('menuitem', { name: 'Manage groups…' }))
     expect(openSettings).toHaveBeenCalledWith('workspaces')
@@ -3033,8 +2605,8 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('pins the chat workspace and keeps repository actions off it', async () => {
-    chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
-    sessionsData = [
+    fx.chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
+    fx.sessionsData = [
       {
         id: 'chat-1',
         title: 'Trip planning',
@@ -3044,7 +2616,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/home/user',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('chat-1')
 
@@ -3062,10 +2634,10 @@ describe('Sidebar workspace trust flow', () => {
     // On a touch build the inline "+" is hidden, so the pinned Chat row is the
     // only affordance left — long-pressing it has to surface "New session"
     // rather than bailing out the way repository-only actions do.
-    isMobile = true
-    platformOs = 'ios'
-    chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
-    sessionsData = [
+    fx.isMobile = true
+    fx.platformOs = 'ios'
+    fx.chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
+    fx.sessionsData = [
       {
         id: 'chat-1',
         title: 'Trip planning',
@@ -3075,7 +2647,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/home/user',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarWithProps({
       currentSessionId: 'chat-1',
@@ -3114,8 +2686,8 @@ describe('Sidebar workspace trust flow', () => {
   })
 
   it('keeps repository rows and their action menu unchanged', async () => {
-    chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
-    sessionsData = [
+    fx.chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
+    fx.sessionsData = [
       {
         id: 'session-1',
         title: 'Feature session',
@@ -3126,7 +2698,7 @@ describe('Sidebar workspace trust flow', () => {
         workspace: '/repo/project',
       },
     ]
-    workspaceSessionsData = sessionsData
+    fx.workspaceSessionsData = fx.sessionsData
 
     await renderSidebarForSessions('session-1')
 
@@ -3152,37 +2724,37 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('has New session only atop the sidebar in Project mode, and keeps Collapse all in View options', async () => {
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
       await renderSidebarForSessions('session-1')
 
       // One entry per place: the row atop the sidebar, not the section header.
       expect(screen.getAllByRole('button', { name: 'New session' }).map((el) => el.hasAttribute('data-sidebar-new-session'))).toEqual([true])
       fireEvent.click(screen.getByRole('button', { name: 'View options' }))
       expect(screen.getByRole('menuitem', { name: 'Collapse all workspaces' })).toBeTruthy()
-      expect(allSessionsQueryArgs).toEqual([])
+      expect(fx.allSessionsQueryArgs).toEqual([])
     })
 
     it('switches to a flat list in Status mode', async () => {
       const { useSidebarViewStore } = await import('@/stores/useSidebarViewStore')
       useSidebarViewStore.setState({ groupBy: 'status' })
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
-      allSessionsData = [projectSession('session-2', 'Flat row')]
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
+      fx.allSessionsData = [projectSession('session-2', 'Flat row')]
 
       await renderSidebarForSessions('session-1')
 
       expect(screen.getByText('Flat row')).toBeTruthy()
-      expect(allSessionsQueryArgs.length).toBeGreaterThan(0)
+      expect(fx.allSessionsQueryArgs.length).toBeGreaterThan(0)
       // The tree's controls belong to Project mode.
       expect(screen.queryByRole('menuitem', { name: 'Collapse all workspaces' })).toBeNull()
     })
 
     it('shows icon-only Settings, Usage and theme, plus the named server, in the mobile drawer footer', async () => {
-      isMobile = true
-      platformOs = 'ios'
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.platformOs = 'ios'
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 
@@ -3195,9 +2767,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('opens the command palette from the mobile drawer footer, closing the drawer first', async () => {
-      isMobile = true
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
       const calls: string[] = []
 
       await renderSidebarWithProps({
@@ -3215,9 +2787,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('opens the titled action sheet from a session row More button in a phone browser', async () => {
-      isMobile = true
-      sessionsData = [projectSession('session-1', 'A session title far too long for a phone row')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.sessionsData = [projectSession('session-1', 'A session title far too long for a phone row')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 
@@ -3235,11 +2807,11 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it("opens a session's actions as a bottom sheet in the Android app", async () => {
-      isMobile = true
-      isTauri = true
-      platformOs = 'android'
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.isTauri = true
+      fx.platformOs = 'android'
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
       fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
@@ -3253,11 +2825,11 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it("opens a session's actions as the app's own bottom sheet in the iPhone app too", async () => {
-      isMobile = true
-      isTauri = true
-      platformOs = 'ios'
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.isTauri = true
+      fx.platformOs = 'ios'
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
       fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
@@ -3271,9 +2843,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('lists pinned sessions above the tree and unpins from the row menu', async () => {
-      pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3288,10 +2860,10 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('lists the session actions in one order and pins from the context menu', async () => {
-      isTauri = true
-      platformOs = 'macos'
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isTauri = true
+      fx.platformOs = 'macos'
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3317,10 +2889,10 @@ describe('Sidebar workspace trust flow', () => {
       { os: 'linux', deleteKey: { key: 'Delete' } },
     ])('session menu on $os', ({ os, deleteKey }) => {
       const openMenu = async () => {
-        isTauri = false
-        platformOs = os
-        sessionsData = [projectSession('session-1', 'Feature')]
-        workspaceSessionsData = sessionsData
+        fx.isTauri = false
+        fx.platformOs = os
+        fx.sessionsData = [projectSession('session-1', 'Feature')]
+        fx.workspaceSessionsData = fx.sessionsData
         await renderSidebarForSessions('session-1')
         const row = screen.getByRole('button', { name: /^Feature/ })
         fireEvent.contextMenu(row)
@@ -3351,9 +2923,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('shows no key hints in the phone sheet, which has no keyboard to press them on', async () => {
-      isMobile = true
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
       fireEvent.click(screen.getByRole('button', { name: 'More actions for Feature' }))
@@ -3364,12 +2936,12 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('lists only what the workspace can do: no worktree for a folder without Git, no Groups block before a group exists', async () => {
-      sessionsData = [
+      fx.sessionsData = [
         projectSession('session-1', 'Notes', { workspace: '/docs/notes' }),
         projectSession('session-2', 'Feature'),
       ]
-      workspaceSessionsData = sessionsData
-      plainFolders = new Set(['/docs/notes'])
+      fx.workspaceSessionsData = fx.sessionsData
+      fx.plainFolders = new Set(['/docs/notes'])
 
       await renderSidebarForSessions('session-1')
       const rows = (menu: HTMLElement) => Array.from(menu.children).map((el) => (el.getAttribute('role') === 'separator' ? '|' : el.textContent?.replace(/⌘N$/, '')))
@@ -3386,9 +2958,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('shows the Groups block in a workspace menu once a group exists', async () => {
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
-      workspaceGroupsData = [{ id: 'g-web', name: 'web', brief: null }]
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
+      fx.workspaceGroupsData = [{ id: 'g-web', name: 'web', brief: null }]
 
       await renderSidebarForSessions('session-1')
 
@@ -3400,13 +2972,13 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it("shows ⌘N beside New session only in the menu of the workspace on screen, and sets its groups apart", async () => {
-      isTauri = false
-      platformOs = 'macos'
-      sessionsData = [
+      fx.isTauri = false
+      fx.platformOs = 'macos'
+      fx.sessionsData = [
         projectSession('session-1', 'Feature'),
         projectSession('session-2', 'Elsewhere', { workspace: '/repo/other' }),
       ]
-      workspaceSessionsData = sessionsData
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3432,9 +3004,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('has no new-window entry outside the app', async () => {
-      isTauri = false
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isTauri = false
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3444,8 +3016,8 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('pins from the row action left of More', async () => {
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3461,8 +3033,8 @@ describe('Sidebar workspace trust flow', () => {
 
     it('offers Delete but not Rename for a subagent', async () => {
       const child = projectSession('child-1', 'explorer#1: Map the repo', { agent_name: 'explorer#1', parent_session_id: 'session-1' })
-      sessionsData = [projectSession('session-1', 'Feature', { subagents: [child] })]
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = [projectSession('session-1', 'Feature', { subagents: [child] })]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3476,8 +3048,8 @@ describe('Sidebar workspace trust flow', () => {
     it('lists a session another workspace ran under its sender, and its mark opens the sender', async () => {
       const from = { session_id: 'session-1', workspace: '/repo/project', title: 'Orders API' }
       const infra = projectSession('infra-1', 'Orders table', { workspace: '/repo/infra', running: true, sent_from: from })
-      sessionsData = [projectSession('session-1', 'Orders API', { linked_sessions: [infra] }), infra]
-      workspaceSessionsData = sessionsData
+      fx.sessionsData = [projectSession('session-1', 'Orders API', { linked_sessions: [infra] }), infra]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3492,9 +3064,9 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('unpins a pinned session from its row action', async () => {
-      pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarForSessions('session-1')
 
@@ -3506,10 +3078,10 @@ describe('Sidebar workspace trust flow', () => {
     })
 
     it('keeps pinning behind long-press on mobile', async () => {
-      isMobile = true
-      platformOs = 'ios'
-      sessionsData = [projectSession('session-1', 'Feature')]
-      workspaceSessionsData = sessionsData
+      fx.isMobile = true
+      fx.platformOs = 'ios'
+      fx.sessionsData = [projectSession('session-1', 'Feature')]
+      fx.workspaceSessionsData = fx.sessionsData
 
       await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
 

@@ -731,6 +731,15 @@ impl SummarizationHook {
                 m.meta_mut().pinned = true;
             }
         }
+        // Every turn still sent was answered before this summary existed, so
+        // its signed thinking is bound to a conversation the model no longer
+        // sees (Anthropic rejects it). History loading does the same for the
+        // saved rows (`history::get_messages_for_llm`).
+        for m in state.messages.iter_mut() {
+            if let ChatMessage::Assistant(a) = m {
+                a.drop_signed_thinking();
+            }
+        }
         let mut meta = MessageMeta { kind: "summary".into(), ..Default::default() };
         let mut e = Map::new();
         if let Some(u) = &usage {
@@ -957,6 +966,36 @@ mod tests {
         state.meta_set("force_summarization", json!(true));
         assert!(hook(0).summarise(&ctx(), &mut state, "sys").await, "compaction did not run");
         assert_eq!(forced_of(&state), Some(json!(true)));
+    }
+
+    /// Anthropic binds a signed thinking block to the conversation before
+    /// it. Our summary replaces that conversation, so a kept turn sent with
+    /// its old thinking fails with "bound to a different conversation".
+    #[tokio::test]
+    async fn kept_turns_lose_their_signed_thinking_after_a_summary() {
+        let thought = |text: &str| {
+            let mut a = appv3_providers::AssistantMessage {
+                content: Some(text.into()),
+                reasoning_content: Some("why".into()),
+                reasoning_signature: Some("sig".into()),
+                raw_content_blocks: Some(vec![json!({"type": "thinking", "thinking": "why", "signature": "sig"}), json!({"type": "text", "text": text})]),
+                ..Default::default()
+            };
+            let mut extra = Map::new();
+            extra.insert("reasoning_signature".into(), json!("sig"));
+            a.meta.extra = Some(extra);
+            ChatMessage::Assistant(a)
+        };
+        let history = vec![ChatMessage::user("one"), thought("first reply"), ChatMessage::user("two"), thought("second reply")];
+
+        let state = compact(1, history).await;
+
+        let (_, kept) = find(&state, "second reply");
+        let ChatMessage::Assistant(a) = kept else { panic!("not an assistant message") };
+        assert_eq!(a.reasoning_signature, None);
+        assert_eq!(a.raw_content_blocks.as_deref(), Some(&[json!({"type": "text", "text": "second reply"})][..]));
+        assert_eq!(a.reasoning_content.as_deref(), Some("why"), "the readable reasoning stays");
+        assert!(a.meta.extra.as_ref().is_none_or(|e| !e.contains_key("reasoning_signature")));
     }
 
     #[tokio::test]

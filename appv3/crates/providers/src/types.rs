@@ -146,6 +146,25 @@ pub struct AssistantMessage {
 }
 
 impl AssistantMessage {
+    /// Forget the signed thinking (Anthropic `thinking` / `redacted_thinking`
+    /// blocks), keeping the readable reasoning and every other block. A
+    /// signature is bound to the conversation before it; once that prefix
+    /// changes (our own summary replaced it) the API rejects the block.
+    pub fn drop_signed_thinking(&mut self) {
+        self.reasoning_signature = None;
+        self.redacted_thinking_blocks = None;
+        if let Some(raw) = &mut self.raw_content_blocks {
+            raw.retain(|b| !matches!(b.get("type").and_then(Value::as_str), Some("thinking" | "redacted_thinking")));
+        }
+        if let Some(extra) = &mut self.meta.extra {
+            extra.shift_remove("reasoning_signature");
+            extra.shift_remove("redacted_thinking_blocks");
+            if let Some(Value::Array(raw)) = extra.get_mut("raw_content_blocks") {
+                raw.retain(|b| !matches!(b.get("type").and_then(Value::as_str), Some("thinking" | "redacted_thinking")));
+            }
+        }
+    }
+
     /// Keeps `reasoning_items` and `meta.extra["reasoning_items"]` in sync.
     pub fn sync_reasoning_extra(&mut self) {
         if let Some(items) = &self.reasoning_items {

@@ -4092,6 +4092,13 @@ agnostic by design.
   cached reads as a separate metric. Cache-write tokens are billed at the
   registry's `cache_write` rate — 1.25x input on Claude models — instead of the
    plain input rate `[v1.132.0]`.
+- **Claude turns survive a summary** `[v3.57.0]` — newer Claude models
+  (Opus 5.5, Fable 5.2, …) only accept a thinking block in the conversation
+  that produced it, so the first request after a summary failed with
+  "bound to a different conversation". Turns kept after a summary are now
+  sent without their old thinking (their text and tool calls stay), and
+  requests to Anthropic's API let it drop any other thinking block whose
+  conversation changed instead of failing the turn.
 - **Budget-based thinking metadata synthesis** `[v1.83.0]` — models whose
   registry metadata exposes raw `budget_tokens` reasoning support but no named
   effort levels now surface standard `none/low/medium/high` thinking choices in

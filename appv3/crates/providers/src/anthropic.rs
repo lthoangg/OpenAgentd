@@ -13,6 +13,9 @@ use std::time::Duration;
 
 pub const ANTHROPIC_API_BASE: &str = "https://api.anthropic.com";
 pub const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+/// Beta that allows `thinking.block_binding` (what the API does with a
+/// thinking block bound to another conversation prefix).
+pub const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
 const DEFAULT_MAX_OUTPUT_TOKENS: i64 = 32000;
 
 fn parse_args(s: &str) -> Value {
@@ -458,6 +461,16 @@ impl AnthropicProvider {
             }
         }
         apply_thinking(&self.model, kw, &mut p);
+        // A thinking block sent back is checked against the conversation
+        // that produced it. When that prefix changed (an edited system
+        // prompt or tool list), let the API drop the block instead of failing
+        // the turn with "bound to a different conversation". Only Anthropic's
+        // own API is known to take the setting; proxies may reject it.
+        if self.base_url.contains("api.anthropic.com") {
+            if let Some(t) = p.get_mut("thinking").and_then(Value::as_object_mut).filter(|t| t.get("type") == Some(&json!("adaptive"))) {
+                t.insert("block_binding".into(), json!({"prefix_mismatch_behavior": "drop_block"}));
+            }
+        }
         Value::Object(p)
     }
 
@@ -473,8 +486,18 @@ impl AnthropicProvider {
     fn request(&self, url: &str, body: &Value) -> reqwest::RequestBuilder {
         // Headers before `json()`, which would otherwise add a second Content-Type.
         let mut r = self.client.post(url);
+        let binding = body.pointer("/thinking/block_binding").is_some();
+        let mut beta_sent = false;
         for (k, v) in self.headers.read().unwrap().iter() {
-            r = r.header(k, v);
+            if binding && k.eq_ignore_ascii_case("anthropic-beta") {
+                beta_sent = true;
+                r = r.header(k, if v.split(',').any(|b| b.trim() == THINKING_BINDING_BETA) { v.clone() } else { format!("{v},{THINKING_BINDING_BETA}") });
+            } else {
+                r = r.header(k, v);
+            }
+        }
+        if binding && !beta_sent {
+            r = r.header("anthropic-beta", THINKING_BINDING_BETA);
         }
         r.json(body)
     }
@@ -721,6 +744,41 @@ mod tests {
         let mut text = json!({"type": "text"});
         append_block_text(&mut text, "text", "hi");
         assert_eq!(text["text"], "hi");
+    }
+
+    /// Thinking blocks are bound to the conversation before them; one whose
+    /// prefix changed (a system prompt or tool edit, a summary) fails the
+    /// whole request unless the API may drop it.
+    #[test]
+    fn adaptive_thinking_lets_the_api_drop_a_block_bound_elsewhere() {
+        let kw: Kwargs = [("thinking_level".to_string(), json!("high"))].into_iter().collect();
+        let p = AnthropicProvider::new("k", "claude-opus-5-5", ANTHROPIC_API_BASE, Kwargs::new()).unwrap();
+        let body = p.payload(&[ChatMessage::user("hi")], None, &kw);
+        assert_eq!(body["thinking"]["block_binding"], json!({"prefix_mismatch_behavior": "drop_block"}));
+        let req = p.request("http://127.0.0.1:9/v1/messages", &body).build().unwrap();
+        assert_eq!(req.headers().get("anthropic-beta").unwrap(), THINKING_BINDING_BETA);
+
+        // A proxy (OpenCode, a custom base URL) is not sent the beta setting.
+        let proxy = AnthropicProvider::new("k", "claude-opus-5-5", "http://127.0.0.1:9", Kwargs::new()).unwrap();
+        assert!(proxy.payload(&[ChatMessage::user("hi")], None, &kw)["thinking"].get("block_binding").is_none());
+
+        // Budget thinking on an older model takes no binding setting.
+        let old = AnthropicProvider::new("k", "claude-sonnet-4-5", ANTHROPIC_API_BASE, Kwargs::new()).unwrap();
+        let body = old.payload(&[ChatMessage::user("hi")], None, &kw);
+        assert!(body["thinking"].get("block_binding").is_none());
+        assert!(old.request("http://127.0.0.1:9/v1/messages", &body).build().unwrap().headers().get("anthropic-beta").is_none());
+    }
+
+    /// The OAuth plugin sends its own betas; the binding beta joins them.
+    #[test]
+    fn binding_beta_joins_the_betas_a_plugin_already_sends() {
+        let kw: Kwargs = [("thinking_level".to_string(), json!("high"))].into_iter().collect();
+        let extra = [("anthropic-beta".to_string(), "oauth-2025-04-20,interleaved-thinking-2025-05-14".to_string())];
+        let p = AnthropicProvider::with_options("k", "claude-fable-5-2", ANTHROPIC_API_BASE, Kwargs::new(), &extra, false, true, None).unwrap();
+        let body = p.payload(&[ChatMessage::user("hi")], None, &kw);
+        let req = p.request("http://127.0.0.1:9/v1/messages", &body).build().unwrap();
+        let betas: Vec<_> = req.headers().get_all("anthropic-beta").iter().map(|v| v.to_str().unwrap().to_string()).collect();
+        assert_eq!(betas, [format!("oauth-2025-04-20,interleaved-thinking-2025-05-14,{THINKING_BINDING_BETA}")]);
     }
 
     #[test]

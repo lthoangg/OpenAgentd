@@ -16,6 +16,7 @@ import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './files'
 import { useInputComposerAttachments } from './attachments'
 import { DeliveryMenu } from './deliveryMenu'
+import { useKeepKeyboard } from './keepKeyboard'
 import { cn } from '@/lib/utils'
 import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
 import { buildHistoryEntries } from './menus'
@@ -696,30 +697,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
-  // Phone: tapping Send, Steer, Stop or the mode toggle must not move focus
-  // out of the textarea, or iOS drops the keyboard mid-conversation. Holding
-  // the press's default keeps focus where it is; ``refocusAfterTap`` catches
-  // a WebView that blurs anyway, still inside the tap so the keyboard stays.
-  const hadFocusOnPressRef = useRef(false)
-  const keepKeyboard: {
-    onPointerDown?: (e: React.PointerEvent) => void
-    onMouseDown?: (e: React.MouseEvent) => void
-  } = isMobile
-    ? {
-        onPointerDown: (e: React.PointerEvent) => {
-          hadFocusOnPressRef.current = document.activeElement === textareaRef.current
-          if (hadFocusOnPressRef.current) e.preventDefault()
-        },
-        onMouseDown: (e: React.MouseEvent) => {
-          if (hadFocusOnPressRef.current) e.preventDefault()
-        },
-      }
-    : {}
-  const refocusAfterTap = () => {
-    if (!isMobile || !hadFocusOnPressRef.current) return
-    hadFocusOnPressRef.current = false
-    if (document.activeElement !== textareaRef.current) textareaRef.current?.focus({ preventScroll: true })
-  }
+  // Send, Stop and the mode toggle keep a phone's keyboard up (keepKeyboard.ts).
+  const { keepKeyboard, refocusAfterTap } = useKeepKeyboard(textareaRef, isMobile)
 
   // What the "+" menu may do to the draft.
   const composerActions = useMemo<ComposerActions>(() => ({

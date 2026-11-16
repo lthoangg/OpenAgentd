@@ -867,10 +867,7 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 7, "default_max_turns": 50, "allow_questions": true, "keep_going_default": true})));
     // Omitted fields keep their values; null restores the default.
     let (_, v) = c.json("PUT", uri, Some(json!({"max_turns": null, "allow_questions": false}))).await;
-    assert_eq!(
-        (v["max_turns"].clone(), v["allow_questions"].clone(), v["keep_going_default"].clone()),
-        (json!(50), json!(false), json!(true))
-    );
+    assert_eq!((v["max_turns"].clone(), v["allow_questions"].clone(), v["keep_going_default"].clone()), (json!(50), json!(false), json!(true)));
 
     // A Plan-mode session with a plan under review.
     let ws = root.join("goal-ws");
@@ -1041,8 +1038,18 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
     let (st, list) = c.json("GET", &format!("/api/preview?workspace={}", urlencode(&ws)), None).await;
     assert_eq!(st, StatusCode::OK);
     assert!(list["previews"].as_array().unwrap().iter().any(|x| x["id"] == p["id"]), "{list}");
+    assert!(list["previews"].as_array().unwrap().iter().all(|x| x["agent_page"].is_null()), "the user opened it, not the agent: {list}");
+    // What the agent opened is listed, so any app window can keep it loaded.
+    appv3_preview::global().get(p["id"].as_str().unwrap()).unwrap().agent_opened(json!({"kind": "file", "path": "designs/landing.html"}));
+    let (_, list) = c.json("GET", "/api/preview", None).await;
+    let mine = list["previews"].as_array().unwrap().iter().find(|x| x["id"] == p["id"]).cloned().unwrap();
+    assert_eq!(mine["agent_page"], json!({"kind": "file", "path": "designs/landing.html"}));
 
     let id = p["id"].as_str().unwrap();
+    // The user closes the Preview tab while the agent uses the page: it stays.
+    let (st, kept) = c.json("DELETE", &format!("/api/preview/{id}?keep_agent_page=1"), None).await;
+    assert_eq!((st, kept), (StatusCode::OK, json!({"kept": true})));
+    assert!(appv3_preview::global().get(id).is_some());
     let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;

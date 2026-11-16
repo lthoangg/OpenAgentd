@@ -21,6 +21,8 @@ export const GLOBAL_EVENT_TYPES = [
   'mcp_status_changed',
   'lsp_install_required',
   'session_goal',
+  // The agent opened a preview page: a window keeps it loaded (`PreviewKeepAlive`).
+  'preview_agent_pages',
   // Starts every stream: where it resumes from (see `globalEventStream`).
   'stream_resume',
   // Session streams carried on this feed; the stream hub consumes them.

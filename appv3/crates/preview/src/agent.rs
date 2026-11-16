@@ -57,7 +57,9 @@ pub enum AgentError {
 impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AgentError::NotConnected => f.write_str("No page is connected for this preview yet. Call preview with action 'open' again to load it, then retry."),
+            AgentError::NotConnected => f.write_str(
+                "No page is connected for this preview. It loads in an OpenAgentd window (the Preview tab, or a hidden copy while the tab is closed). Retry in a moment; if it keeps failing, check that the page loads (preview action 'logs').",
+            ),
             AgentError::NotPickedUp => f.write_str("The page did not pick up the command. It may be closed or still loading; try again or call preview with action 'open'."),
             AgentError::NoAnswer => f.write_str("The page did not answer, probably because it navigated or reloaded. Call preview with action 'snapshot' to see the current page."),
             AgentError::Page(m) => f.write_str(m),

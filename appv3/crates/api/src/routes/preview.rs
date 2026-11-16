@@ -42,7 +42,8 @@ struct OpenRequest {
 }
 
 fn preview_json(info: &PreviewInfo, path: &str) -> Value {
-    let errors = appv3_preview::global().get(&info.id).map(|e| e.console_error_count()).unwrap_or(0);
+    let entry = appv3_preview::global().get(&info.id);
+    let errors = entry.as_ref().map(|e| e.console_error_count()).unwrap_or(0);
     json!({
         "id": info.id,
         "workspace": info.workspace,
@@ -53,6 +54,9 @@ fn preview_json(info: &PreviewInfo, path: &str) -> Value {
         "path": path,
         "url": format!("{}{}", info.origin, path),
         "console_errors": errors,
+        // What the agent opened here and still uses (`PreviewTarget`), or
+        // null: an app window keeps it loaded while no Preview tab shows it.
+        "agent_page": entry.and_then(|e| e.agent_page()),
     })
 }
 
@@ -90,7 +94,14 @@ async fn list_previews(q: Qs) -> ApiResult<Response> {
     Ok(json(json!({ "previews": previews })))
 }
 
-async fn close_preview(AxPath(id): AxPath<String>) -> ApiResult<Response> {
+/// `?keep_agent_page=1` (a Preview tab closing): a listener whose page the
+/// agent still uses stays open, and the answer says so (`{"kept": true}`),
+/// so the app keeps the page loaded out of sight instead.
+async fn close_preview(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response> {
+    let keep = q.get("keep_agent_page").is_some_and(|v| v == "1" || v == "true");
+    if keep && appv3_preview::global().get(&id).is_some_and(|e| e.agent_page().is_some()) {
+        return Ok(json(json!({ "kept": true })));
+    }
     if appv3_preview::global().close(&id) {
         Ok(no_content())
     } else {

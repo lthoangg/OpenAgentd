@@ -66,6 +66,9 @@ static PENDING_NOTIFICATIONS: AtomicUsize = AtomicUsize::new(0);
 
 /// Reserve a slot for a notification that waits on user interaction.
 /// Returns false once `MAX_PENDING_NOTIFICATIONS` are already parked.
+// `try_update`, the new name of `fetch_update`, needs Rust 1.95, above this
+// crate's rust-version.
+#[allow(deprecated)]
 fn claim_notification_slot() -> bool {
     PENDING_NOTIFICATIONS
         .fetch_update(

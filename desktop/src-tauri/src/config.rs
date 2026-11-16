@@ -210,12 +210,14 @@ pub fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> 
 
 /// The notch island's settings (`desktop-island.json`). A missing or
 /// unreadable file, or a missing key, takes the default.
+#[cfg(any(target_os = "macos", test))]
 fn island_settings_from(bytes: Option<&[u8]>) -> crate::island::IslandSettings {
     bytes
         .and_then(|b| serde_json::from_slice(b).ok())
         .unwrap_or_default()
 }
 
+#[cfg(target_os = "macos")]
 pub fn load_island_settings(app: &AppHandle) -> crate::island::IslandSettings {
     let bytes = app_config_file(app, "desktop-island.json")
         .ok()

@@ -1,4 +1,3 @@
-// size-ceiling: 809 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -48,9 +47,7 @@ import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { listSessions } from '@/api/client'
-import { renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
-import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
-import type { WorkspaceRelocateResponse } from '@/api/types'
+import { workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
 import { softHapticFeedback } from '@/lib/haptics'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
@@ -77,7 +74,6 @@ import {
   sourceWorkspacePaths,
   toggleExpandedPath,
 } from './Sidebar/helpers'
-import { pickWorkspaceDirectory, shouldUseServerWorkspaceBrowser } from './Sidebar/browser'
 import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
@@ -101,6 +97,7 @@ import { MobileDrawerFooter } from './Sidebar/MobileDrawerFooter'
 import { walkSidebarRows } from './Sidebar/rowKeys'
 import { useSidebarFrame } from './Sidebar/useSidebarFrame'
 import { useSessionSearchOpen } from './Sidebar/useSessionSearchOpen'
+import { LocateFolderDialog, useLocateFolder } from './Sidebar/LocateFolder'
 
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
@@ -255,9 +252,6 @@ export function Sidebar({
   // starts in the checkout its list shows (``sessionPath``).
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; sessionPath: string; x: number; y: number } | null>(null)
   const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; sessionPath: string; kind: 'main' | 'chat' } | null>(null)
-  // "Locate folder…" for a workspace whose folder is gone. ``native`` picks
-  // with the OS dialog (the desktop app on its own server).
-  const [relocateTarget, setRelocateTarget] = useState<{ path: string; native: boolean } | null>(null)
   const [checkoutMenu, setCheckoutMenu] = useState<{ repo: string; x: number; y: number } | null>(null)
 
   // Pull to refresh on the Sessions page: every session list (the tree's,
@@ -282,26 +276,7 @@ export function Sidebar({
       return next
     }),
   })
-  const openRelocate = useCallback(async (path: string) => {
-    let native = false
-    try {
-      native = !(await shouldUseServerWorkspaceBrowser(isTauri, isTauriMobile))
-    } catch {
-      native = false
-    }
-    setRelocateTarget({ path, native })
-    // Stable `useState` setters are listed for the React Compiler, which
-    // otherwise skips optimizing the whole component.
-  }, [isTauri, isTauriMobile, setRelocateTarget])
-  const handleRelocated = useCallback((result: WorkspaceRelocateResponse) => {
-    setRelocateTarget(null)
-    renameSavedWorkspace(result.from, result.workspace)
-    for (const moved of result.moved_worktrees) renameSavedWorkspace(moved.from, moved.to)
-    void refreshSessionList()
-    pushToast(result.warnings.length > 0
-      ? { tone: 'error', title: `Moved to ${workspaceLabel(result.workspace)}, but git needs a hand`, description: result.warnings.join('\n') }
-      : { tone: 'info', title: `Moved to ${workspaceLabel(result.workspace)}` })
-  }, [pushToast, refreshSessionList, setRelocateTarget])
+  const locateFolder = useLocateFolder({ isTauri, isTauriMobile, refreshSessionList })
   // Scheduled on the page toolbar: the caller's way, else the way the
   // drawer's Scheduled section opens it.
   const openScheduler = onOpenScheduler ?? (() => {
@@ -503,7 +478,7 @@ export function Sidebar({
   const workspaceMenuActions = {
     workspaceByPath,
     newSessionIn,
-    openRelocate,
+    openRelocate: locateFolder.openRelocate,
     openWorktreeDialog: worktreeActions.openWorktreeDialog,
     hideWorkspaceFromSidebar,
   }
@@ -762,13 +737,7 @@ export function Sidebar({
 
       <CreateWorktreeDialog worktrees={worktreeActions} error={error} />
 
-      <RelocateWorkspaceDialog
-        from={relocateTarget?.path ?? null}
-        name={relocateTarget ? workspaceByPath.get(relocateTarget.path)?.name : undefined}
-        pickFolder={relocateTarget?.native ? pickWorkspaceDirectory : null}
-        onClose={() => setRelocateTarget(null)}
-        onRelocated={handleRelocated}
-      />
+      <LocateFolderDialog locateFolder={locateFolder} workspaceByPath={workspaceByPath} />
 
       <WorkspaceActionsContextMenu
         desktopWorkspaceActions={desktopWorkspaceActions}

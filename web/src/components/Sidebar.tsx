@@ -1,4 +1,4 @@
-// size-ceiling: 831 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 809 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -31,7 +31,7 @@
  * at once. Switching the active workspace auto-expands it.
  */
 import { failureToast } from '@/lib/failure-toast'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -100,6 +100,7 @@ import { WorkspaceTree } from './Sidebar/WorkspaceTree'
 import { MobileDrawerFooter } from './Sidebar/MobileDrawerFooter'
 import { walkSidebarRows } from './Sidebar/rowKeys'
 import { useSidebarFrame } from './Sidebar/useSidebarFrame'
+import { useSessionSearchOpen } from './Sidebar/useSessionSearchOpen'
 
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
@@ -249,9 +250,7 @@ export function Sidebar({
     setError,
     onOpen: (path) => { void openFolderDraft(path) },
   })
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchFocusKey, setSearchFocusKey] = useState(0)
-  const searchButtonRef = useRef<HTMLButtonElement>(null)
+  const { searchOpen, setSearchOpen, searchFocusKey, searchButtonRef, openSessionSearch, closeSessionSearch } = useSessionSearchOpen(searchSessionsKey)
   // Workspace action menus act on the repository (``path``); "New session"
   // starts in the checkout its list shows (``sessionPath``).
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; sessionPath: string; x: number; y: number } | null>(null)
@@ -314,27 +313,6 @@ export function Sidebar({
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
 
-  const openSessionSearch = () => {
-    setSearchOpen(true)
-    setSearchFocusKey((key) => key + 1)
-  }
-  useEffect(() => {
-    if (searchSessionsKey === 0) return
-    setSearchOpen(true)
-    setSearchFocusKey((key) => key + 1)
-  }, [searchSessionsKey])
-  // The header with the Search button moves from above the results back
-  // into the scroller, so focus returns to it once it has re-rendered.
-  const refocusSearchButton = useRef(false)
-  const closeSessionSearch = () => {
-    refocusSearchButton.current = true
-    setSearchOpen(false)
-  }
-  useEffect(() => {
-    if (searchOpen || !refocusSearchButton.current) return
-    refocusSearchButton.current = false
-    searchButtonRef.current?.focus()
-  }, [searchOpen])
   // The large title hands over to the top bar's small one as it scrolls away.
   const { barRef, titleRef, onScroll: onListScroll } = useLargeTitleCollapse(isPage && searchOpen)
   // Session rows read this to swipe; only while Sessions is the screen on top.

@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/{session_id}/question", get(get_question))
         .route("/{session_id}/question/{question_id}/answer", post(answer))
+        .route("/{session_id}/seen", post(seen))
         .route("/sessions/{session_id}/todos", get(todos))
         .route("/sessions/{session_id}/plan", get(get_plan).put(put_plan).delete(delete_plan))
 }
@@ -28,6 +29,14 @@ async fn get_question(State(st): State<AppState>, AxPath(raw): AxPath<String>) -
     let sid = path_uuid("session_id", &raw)?;
     let q = db::get_pending_question(&st.pool, &sid).await?;
     Ok(json(json!({"question": q.map(|q| db::api::pending_question_response(&q))})))
+}
+
+/// A client shows the session in a focused window: its notification was
+/// seen, so the phone is not told (`cloud::letters`). Memory only, no row.
+async fn seen(AxPath(raw): AxPath<String>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    crate::cloud::letters::mark_seen(&sid);
+    Ok(json(json!({"status": "ok"})))
 }
 
 async fn open_question(pool: &DbPool, sid: &str, qid: &str) -> ApiResult<db::PendingQuestion> {
@@ -159,6 +168,8 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
     let b = body_value(&body)?;
     let answers = parse_answers(&b)?;
     let row = open_question(&st.pool, &sid, &qid).await?;
+    // Answered on some screen: its "Needs you" letter need not reach the phone.
+    crate::cloud::letters::mark_seen(&sid);
     if row.kind().as_deref() == Some(plan::PLAN_REVIEW_KIND) {
         let keep_going = parse_keep_going(&b)?;
         return answer_plan_review(&st.pool, &sid, &qid, &row, &answers, keep_going).await;
@@ -385,5 +396,15 @@ mod tests {
         assert!(check(&[vec!["Z".into()]]).is_ok());
         assert!(check(&[vec!["A".into(), "B".into(), "Z".into()]]).is_ok());
         assert_eq!(check(&[vec!["A".into(), "B".into(), "Y".into(), "Z".into()]]).unwrap_err().detail, json!("Question 0 accepts at most 3 answers."));
+    }
+
+    #[tokio::test]
+    async fn a_session_reported_seen_keeps_its_letter_off_the_phone() {
+        let sid = "0192f5a0-b1c2-7d3e-8f40-a1b2c3d4e5f7"; // gitleaks:allow (a session id)
+        let raised = tokio::time::Instant::now();
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        assert!(seen(AxPath(sid.to_string())).await.is_ok());
+        assert!(!crate::cloud::letters::unseen(crate::cloud::letters::seen_at(sid), raised));
+        assert!(seen(AxPath("not-a-session".to_string())).await.is_err(), "422 for an id that is not a UUID");
     }
 }

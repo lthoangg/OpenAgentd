@@ -16,8 +16,17 @@
 //! keep the order per session: a newer letter for a session replaces an
 //! older one still waiting, which could otherwise land after it and replace
 //! it on the phone (the cloud keeps one per `collapse` key).
+//!
+//! The screen first, the phone if unseen: every client open on this server
+//! shows a notification at once, and its letter waits [`UNSEEN_GRACE`]
+//! ([`Holding`]). A client that shows the session in a focused window, or
+//! an answer to its question, reports it seen ([`mark_seen`]); a letter
+//! whose session was seen after it was raised is dropped, so the phone does
+//! not ring for what the person already read at a desk. Nothing here leaves
+//! this server: the cloud learns no more than before.
 
-use std::sync::{Arc, RwLock};
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::Duration;
 
 use openagentd_cloud::api::{ApiError, Cloud};
@@ -33,6 +42,96 @@ const RETRY_FIRST_DELAY: Duration = Duration::from_secs(5);
 const RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
 /// Letters waiting at most; the oldest goes first.
 const OUTBOX_MAX: usize = 64;
+/// How long a letter waits for its notification to be seen on a screen
+/// before it goes to the phone.
+pub const UNSEEN_GRACE: Duration = Duration::from_secs(60);
+
+/// When each session was last seen on a screen, in the API's (hyphenated)
+/// id form. Only the last [`UNSEEN_GRACE`] matters, so older entries go.
+static SEEN: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
+
+fn session_key(session: &str) -> String {
+    uuid::Uuid::parse_str(session).map_or_else(|_| session.to_string(), |u| u.hyphenated().to_string())
+}
+
+/// The person saw `session` now: on screen in a focused window, opened, or
+/// its question answered, on any client of this server.
+pub fn mark_seen(session: &str) {
+    let now = Instant::now();
+    let Ok(mut seen) = SEEN.lock() else { return };
+    seen.retain(|_, at| now.duration_since(*at) <= UNSEEN_GRACE);
+    seen.insert(session_key(session), now);
+}
+
+/// When `session` was last seen, within the last [`UNSEEN_GRACE`].
+pub(crate) fn seen_at(session: &str) -> Option<Instant> {
+    SEEN.lock().ok()?.get(&session_key(session)).copied()
+}
+
+/// Whether a letter raised at `raised_at` still goes to the phone: nobody
+/// saw its session since. A letter with no session cannot be seen.
+pub fn unseen(seen_at: Option<Instant>, raised_at: Instant) -> bool {
+    seen_at.is_none_or(|at| at < raised_at)
+}
+
+struct Held {
+    letter: Letter,
+    session: Option<String>,
+    raised_at: Instant,
+}
+
+/// Letters waiting [`UNSEEN_GRACE`] for their notification to be seen.
+#[derive(Default)]
+pub struct Holding {
+    held: Vec<Held>,
+}
+
+impl Holding {
+    /// Holds `letter`, raised at `now`. A newer letter for the same phone
+    /// and session replaces the one held, and waits from its own start.
+    pub fn hold(&mut self, letter: Letter, session: Option<String>, now: Instant) {
+        if letter.collapse.is_some() {
+            self.held.retain(|h| !(h.letter.to == letter.to && h.letter.collapse == letter.collapse));
+        }
+        self.held.push(Held { letter, session, raised_at: now });
+        if self.held.len() > OUTBOX_MAX {
+            self.held.remove(0);
+        }
+    }
+
+    pub fn next_due(&self) -> Option<Instant> {
+        self.held.iter().map(|h| h.raised_at + UNSEEN_GRACE).min()
+    }
+
+    /// The letters whose wait ended at `now` and whose session nobody saw
+    /// (`seen_at`), oldest first. Seen ones are dropped.
+    pub fn take_due(&mut self, now: Instant, seen_at: impl Fn(&str) -> Option<Instant>) -> Vec<Letter> {
+        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.held).into_iter().partition(|h| h.raised_at + UNSEEN_GRACE <= now);
+        self.held = later;
+        let mut out = vec![];
+        for h in due {
+            if unseen(h.session.as_deref().and_then(&seen_at), h.raised_at) {
+                out.push(h.letter);
+            } else {
+                tracing::info!("cloud_letter_dropped reason=seen");
+            }
+        }
+        out
+    }
+
+    /// Every letter held, for a host that stops: better early than lost.
+    pub fn drain(&mut self) -> Vec<Letter> {
+        std::mem::take(&mut self.held).into_iter().map(|h| h.letter).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.held.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.held.is_empty()
+    }
+}
 
 /// The kind of a `desktop_notification` payload, or `None` to skip it.
 /// A turn that failed, or a goal that is blocked, is `Failed`; the payload's
@@ -210,16 +309,28 @@ async fn deliver(cloud: &Cloud, outbox: &mut Outbox, letter: Letter, first_try: 
 pub async fn run(cloud: Arc<Cloud>, roster: Arc<RwLock<Roster>>) {
     let mut tap = appv3_agent::broadcaster::broadcaster().tap("desktop_notification");
     let mut outbox = Outbox::default();
+    let mut holding = Holding::default();
     loop {
-        let wake = outbox.next_due();
+        let wake = [outbox.next_due(), holding.next_due()].into_iter().flatten().min();
         let payload = tokio::select! {
             payload = tap.recv() => match payload {
                 Some(p) => p,
-                None => return,
+                None => {
+                    for letter in holding.drain() {
+                        outbox.supersede(&letter);
+                        deliver(&cloud, &mut outbox, letter, Instant::now(), None).await;
+                    }
+                    return;
+                }
             },
             _ = async { tokio::time::sleep_until(wake.unwrap_or_else(Instant::now)).await }, if wake.is_some() => {
-                for (letter, first_try, delay) in outbox.take_due(Instant::now()) {
+                let now = Instant::now();
+                for (letter, first_try, delay) in outbox.take_due(now) {
                     deliver(&cloud, &mut outbox, letter, first_try, Some(delay)).await;
+                }
+                for letter in holding.take_due(now, seen_at) {
+                    outbox.supersede(&letter);
+                    deliver(&cloud, &mut outbox, letter, Instant::now(), None).await;
                 }
                 continue;
             }
@@ -244,8 +355,7 @@ pub async fn run(cloud: Arc<Cloud>, roster: Arc<RwLock<Roster>>) {
             };
             let collapse = text.session.as_deref().map(|s| collapse_key(&me, s));
             let letter = Letter { to: id, kind, sealed, collapse };
-            outbox.supersede(&letter);
-            deliver(&cloud, &mut outbox, letter, Instant::now(), None).await;
+            holding.hold(letter, text.session.clone(), Instant::now());
         }
     }
 }
@@ -385,5 +495,63 @@ mod tests {
         outbox.supersede(&letter("phone", "s1", 4));
         let left: Vec<u8> = outbox.take_due(start + RETRY_WINDOW).into_iter().map(|(l, _, _)| l.sealed[0]).collect();
         assert_eq!(left, [2, 3]);
+    }
+
+    fn sealed(letters: Vec<Letter>) -> Vec<u8> {
+        letters.into_iter().map(|l| l.sealed[0]).collect()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_letter_waits_a_minute_then_goes_unless_its_session_was_seen() {
+        let mut holding = Holding::default();
+        let start = Instant::now();
+        holding.hold(letter("phone", "c1", 1), Some("s1".into()), start);
+        holding.hold(letter("phone", "c2", 2), Some("s2".into()), start);
+        holding.hold(letter("phone", "c3", 3), None, start);
+        assert_eq!(holding.next_due(), Some(start + UNSEEN_GRACE));
+        // Nothing goes before the minute is over.
+        assert!(holding.take_due(start + UNSEEN_GRACE - Duration::from_secs(1), |_| None).is_empty());
+        assert_eq!(holding.len(), 3);
+        // s1 was seen during the wait; s2 only before it was raised; c3 has no session.
+        let seen = |s: &str| match s {
+            "s1" => Some(start + Duration::from_secs(20)),
+            "s2" => Some(start - Duration::from_secs(5)),
+            _ => None,
+        };
+        assert_eq!(sealed(holding.take_due(start + UNSEEN_GRACE, seen)), [2, 3]);
+        assert!(holding.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_newer_letter_for_the_session_replaces_the_held_one_and_waits_anew() {
+        let mut holding = Holding::default();
+        let start = Instant::now();
+        holding.hold(letter("phone", "c1", 1), Some("s1".into()), start);
+        holding.hold(letter("tablet", "c1", 2), Some("s1".into()), start);
+        let later = start + Duration::from_secs(30);
+        holding.hold(letter("phone", "c1", 3), Some("s1".into()), later);
+        assert_eq!(sealed(holding.take_due(start + UNSEEN_GRACE, |_| None)), [2]);
+        assert_eq!(holding.next_due(), Some(later + UNSEEN_GRACE));
+        assert_eq!(sealed(holding.take_due(later + UNSEEN_GRACE, |_| None)), [3]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stopping_host_sends_what_it_holds() {
+        let mut holding = Holding::default();
+        holding.hold(letter("phone", "c1", 1), Some("s1".into()), Instant::now());
+        assert_eq!(sealed(holding.drain()), [1]);
+        assert!(holding.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn seen_is_kept_per_session_in_either_id_form() {
+        let raised = Instant::now();
+        tokio::time::advance(Duration::from_secs(1)).await;
+        mark_seen("0192f5a0b1c27d3e8f40a1b2c3d4e5f6");
+        let at = seen_at("0192f5a0-b1c2-7d3e-8f40-a1b2c3d4e5f6");
+        assert!(at.is_some(), "the stored (hex) form and the API form are one session");
+        assert!(!unseen(at, raised));
+        assert!(unseen(None, raised));
+        assert!(unseen(seen_at("0192f5a0-0000-7d3e-8f40-a1b2c3d4e5f6"), raised));
     }
 }

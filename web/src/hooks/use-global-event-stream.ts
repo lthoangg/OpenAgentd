@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { sharedGlobalEventStream } from '@/api/stream-hub'
 import { onApiBaseUrlChange } from '@/api/base-url'
+import { pageHasAttention, reportSessionSeen } from '@/api/client/session-seen'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { haptic } from '@/lib/haptics'
@@ -448,6 +449,9 @@ async function handleEvent(
       const store = useAgentStore.getState()
       if (questionId && store.sessionId === sessionId) store.expectQuestion(questionId)
     }
+    // Raised about the session the person is looking at: it is seen, so the
+    // server keeps it off the phone (`cloud/letters.rs`).
+    if (sessionId && useAgentStore.getState().sessionId === sessionId && pageHasAttention()) reportSessionSeen(sessionId)
     if (replayed) {
       // Decided once the replay ends (see flushReplayQuestions).
       if (kind === 'input_needed' && sessionId) replayQuestions.push({ id, sessionId, title: event.title, body: event.body })

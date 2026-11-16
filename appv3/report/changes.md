@@ -2,6 +2,19 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## Phone pushes wait for an unseen notification (v3.58.0)
+
+`POST /api/agent/{session_id}/seen` (new; body ignored; `{"status": "ok"}`,
+422 for an id that is not a UUID) tells the server a client shows the
+session in a focused window. Answering a question counts as seen too. The
+server keeps the time in memory only, nothing on disk.
+
+A letter for the account's phones (`cloud/letters.rs`) is no longer sent at
+once: it waits 60 s and is dropped when its session was seen after it was
+raised. A letter with no session always goes. Held letters go out at once
+when the host's cloud task ends normally. The cloud API and the sealed
+letter format are unchanged.
+
 ## `script` tool (v3.57.0)
 
 Every agent, lead and member, is offered a new built-in tool, `script`

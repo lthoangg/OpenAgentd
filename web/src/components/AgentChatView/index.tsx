@@ -30,6 +30,7 @@ import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHa
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
+import { useReportSessionSeen } from '@/hooks/use-report-session-seen'
 import { useReportShownSession } from '@/lib/island-setting'
 import { useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { previewsAvailable } from '@/api/preview'
@@ -380,6 +381,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   useReturnQueuedAfterFailure({ sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
+  useReportSessionSeen(sessionIdState)
   useReportShownSession(sessionIdState)
 
   const {

@@ -126,14 +126,18 @@ pub async fn require_git_repo(ws: &Path) -> GitResult<()> {
     Ok(())
 }
 
-pub fn slugify(v: &str) -> String {
+/// The name of a worktree's folder and of its branch (`oad/<name>`): lower
+/// case, every other run of characters one `-`, at most 80. Not
+/// `appv3_core::slug::slugify`, which keeps `.` and `_` and folds accents
+/// for scheduled-task ids; git branch names are held to the stricter rule.
+pub fn worktree_name(v: &str) -> String {
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"[^a-z0-9]+").unwrap());
     let slug = RE.replace_all(&v.trim().to_lowercase(), "-").trim_matches('-').to_string();
     slug.chars().take(80).collect::<String>().trim_matches('-').to_string()
 }
 
 fn validate_name(v: Option<&str>) -> GitResult<String> {
-    let mut name = slugify(v.unwrap_or(""));
+    let mut name = worktree_name(v.unwrap_or(""));
     if name.is_empty() {
         name = "session".into();
     }

@@ -619,6 +619,17 @@ mod tests {
         assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level, None);
     }
 
+    /// `script` needs no `tools:` entry: every lead gets it, whatever it lists.
+    #[test]
+    fn every_lead_gets_script_without_listing_it() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("writer.md");
+        let factory: ProviderFactory = Arc::new(|_, _| Ok(Arc::new(appv3_providers::mock::MockProvider::new(vec![])) as Arc<dyn LlmProvider>));
+        std::fs::write(&p, "---\nname: writer\nmodel: openai:gpt-5\ntools: [read]\n---\n\nHi\n").unwrap();
+        let agent = rebuild_agent_from_disk(&p, &factory).unwrap();
+        assert!(agent.tools.get("script").is_some(), "{:?}", agent.tools.names());
+    }
+
     /// An agent file written before the renames lists the former names. They
     /// are ignored, not pruned: the file is the user's, and the tools they
     /// named are given to every lead under their new names anyway.

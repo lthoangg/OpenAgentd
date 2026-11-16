@@ -130,6 +130,12 @@ pub trait Hook: Send + Sync {
     async fn before_tool(&self, _ctx: &RunContext, _meta: &SharedMeta, _tc: &ToolCall, _scope: &mut ToolCallScope) -> Result<(), String> {
         Ok(())
     }
+    /// Whether `before_tool` / `after_tool` also wrap the calls a `script`
+    /// makes. A hook that draws transcript rows or reshapes results for the
+    /// model says no: the script reads those results, the model does not.
+    fn wraps_nested_calls(&self) -> bool {
+        true
+    }
     /// Post-execution half of `wrap_tool_call` (runs innermost-first).
     async fn after_tool(&self, _ctx: &RunContext, _meta: &SharedMeta, _tc: &ToolCall, _scope: &mut ToolCallScope, _result: &mut String) {}
     /// A call still running when the user stopped the turn was dropped;

@@ -102,6 +102,30 @@ fn sigterm_with_an_open_event_stream_exits_promptly_after_shutdown_hooks() {
 }
 
 #[test]
+fn sigterm_right_after_the_handshake_still_runs_the_shutdown_hooks() {
+    // The handshake tells the desktop app the server is up, so the app may
+    // quit it from that moment on. The handler has to be installed by then:
+    // a SIGTERM with no handler kills the process with nothing shut down.
+    let root = tempfile::tempdir().unwrap();
+    let (mut child, _stdout, _port) = spawn_server(root.path(), None);
+
+    let started = Instant::now();
+    nix::sys::signal::kill(nix::unistd::Pid::from_raw(child.id() as i32), nix::sys::signal::Signal::SIGTERM).unwrap();
+    let status = loop {
+        if let Some(st) = child.try_wait().unwrap() {
+            break st;
+        }
+        assert!(started.elapsed() < Duration::from_secs(20), "server never exited");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let mut stderr = String::new();
+    child.stderr.take().unwrap().read_to_string(&mut stderr).unwrap();
+
+    assert!(status.success(), "{status:?}\n{stderr}");
+    assert!(stderr.contains("server_shutdown"), "shutdown hooks did not run:\n{stderr}");
+}
+
+#[test]
 fn the_desktop_token_still_guards_the_api_after_leaving_the_environment() {
     let root = tempfile::tempdir().unwrap();
     let (mut child, _stdout, port) = spawn_server(root.path(), Some("desk-tok"));

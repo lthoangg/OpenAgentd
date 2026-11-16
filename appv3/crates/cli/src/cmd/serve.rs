@@ -65,19 +65,28 @@ fn emit_handshake(port: u16, token: Option<&str>, handshake_file: Option<&str>) 
     }
 }
 
-async fn shutdown_signal() {
-    let parent = parent_gone().notified();
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut term = signal(SignalKind::terminate()).expect("sigterm handler");
+/// Resolves on SIGTERM, Ctrl-C, or the parent's exit. The handlers are
+/// installed by the call, not by the first poll: axum polls the shutdown
+/// future from a task it spawns, and a signal arriving before that task
+/// first runs would kill the process with nothing shut down.
+#[cfg(unix)]
+fn shutdown_signal() -> impl std::future::Future<Output = ()> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = signal(SignalKind::terminate()).expect("sigterm handler");
+    let mut interrupt = signal(SignalKind::interrupt()).expect("sigint handler");
+    async move {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
+            _ = interrupt.recv() => {}
             _ = term.recv() => {}
-            _ = parent => {}
+            _ = parent_gone().notified() => {}
         }
     }
-    #[cfg(not(unix))]
+}
+
+/// Resolves on Ctrl-C or the parent's exit.
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    let parent = parent_gone().notified();
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {}
         _ = parent => {}
@@ -161,6 +170,8 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         if token.is_some() {
             appv3_api::network_access::install(app.clone(), policy, port);
         }
+        // Before the handshake: whoever reads it may signal straight away.
+        let shutdown = shutdown_signal();
         if handshake {
             emit_handshake(port, token.as_deref(), handshake_file.as_deref());
         }
@@ -169,7 +180,7 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         // bounds requests that are still running.
         let (tx, mut rx) = tokio::sync::watch::channel(false);
         let server = axum::serve(NoDelayTcpListener(listener), app.into_make_service_with_connect_info::<ConnInfo>()).with_graceful_shutdown(async move {
-            shutdown_signal().await;
+            shutdown.await;
             tracing::info!("server_shutdown_requested");
             appv3_api::network_access::shutdown().await;
             appv3_api::startup::close_event_streams();

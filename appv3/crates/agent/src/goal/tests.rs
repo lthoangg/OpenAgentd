@@ -1,5 +1,8 @@
+use super::check::*;
 use super::*;
+use crate::hooks::otel::WORKSPACE_ATTR;
 use appv3_core::otel::StatusCode;
+use appv3_providers::ChatMessage;
 
 fn goal() -> SessionGoal {
     SessionGoal {

@@ -37,7 +37,8 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   with Keep going starts a durable objective, the plan's Done when, that a
   top-level session keeps taking turns toward until a completion check
   confirms it, the agent reports a blocker, or a limit pauses it
-  (`agent/src/goal.rs`, `agent/src/tools/goal.rs`). There is no `/goal`
+  (`agent/src/goal.rs`, the completion check in `agent/src/goal/check.rs`,
+  `agent/src/tools/goal.rs`). There is no `/goal`
   command and no goal field on `POST /api/agent/chat`. Formats:
   - *Table:* revision **00000028** adds `session_goals`, `WITHOUT ROWID` and
     clustered on `(session_id, id)` with uuid7 ids: `objective` (≤ 4,000

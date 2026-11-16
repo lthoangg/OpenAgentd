@@ -100,7 +100,7 @@ describe('coarse-pointer touch targets', () => {
   })
 
   it('sizes Send to 36px on touch, a phone included, as the split Steer half beside its chevron', () => {
-    const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer.tsx', import.meta.url)), 'utf8')
+    const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer/index.tsx', import.meta.url)), 'utf8')
     expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9'/)
     expect(composer).toMatch(/DELIVERY_TRIGGER_CLASS =[\s\S]*?pointer-coarse:h-9 \[/)
     expect(composer).not.toMatch(/phone:(size|h)-11/)

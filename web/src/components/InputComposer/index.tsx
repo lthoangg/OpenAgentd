@@ -1,24 +1,24 @@
 // size-ceiling: 1156 — one component: move the InputComposer.*.ts siblings into a folder, then its handlers into them
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo, type ReactNode } from 'react'
 import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
-import { FilePreviewStrip } from './FilePreviewStrip'
+import { FilePreviewStrip } from '../FilePreviewStrip'
 import { Collapsible } from '@/components/ui/collapsible'
 import { useHasSwapped } from '@/components/ui/swap'
-import { DesignFeedbackStrip } from './DesignFeedbackViews'
-import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer/mentions'
-import { COMPOSER_TEXT_CLASS, MentionOverlay } from './InputComposer/overlay'
-import { findActiveSnippet } from './InputComposer/helpers'
-import { InputComposerSuggestions } from './InputComposer/suggestions'
-import { useInputComposerSuggestionEngine } from './InputComposer/suggestionEngine'
-import { composerMaxHeight, useComposerScrollThumb, useTextareaAutosize } from './InputComposer/autosize'
+import { DesignFeedbackStrip } from '../DesignFeedbackViews'
+import { findActiveMention, getExplicitMentionRanges, type FileRef } from './mentions'
+import { COMPOSER_TEXT_CLASS, MentionOverlay } from './overlay'
+import { findActiveSnippet } from './helpers'
+import { InputComposerSuggestions } from './suggestions'
+import { useInputComposerSuggestionEngine } from './suggestionEngine'
+import { composerMaxHeight, useComposerScrollThumb, useTextareaAutosize } from './autosize'
 import type { AppShortcutName } from '@/lib/app-shortcuts'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
-import { buildAcceptString } from './InputComposer/files'
-import { useInputComposerAttachments } from './InputComposer/attachments'
-import { DeliveryMenu } from './InputComposer/deliveryMenu'
+import { buildAcceptString } from './files'
+import { useInputComposerAttachments } from './attachments'
+import { DeliveryMenu } from './deliveryMenu'
 import { cn } from '@/lib/utils'
 import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
-import { buildHistoryEntries } from './InputComposer/menus'
+import { buildHistoryEntries } from './menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { focusQuietly } from '@/lib/focus/quiet'
@@ -26,16 +26,16 @@ import { mediumHapticFeedback, selectionHapticFeedback, softHapticFeedback } fro
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useLongPress } from '@/hooks/use-long-press'
 import { ActionSheet } from '@/components/ui/action-sheet'
-import { DELIVERIES } from './InputComposer/deliveries'
-import { SessionModeToggle } from './SessionModeToggle'
-import type { ComposerActions } from './composer/PlusMenu'
+import { DELIVERIES } from './deliveries'
+import { SessionModeToggle } from '../SessionModeToggle'
+import type { ComposerActions } from '../composer/PlusMenu'
 import { canPickNatively, pickNatively } from '@/lib/native-pick'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
-// './InputComposer/mentions' directly to keep this file free of non-component
+// './mentions' directly to keep this file free of non-component
 // runtime exports — react-refresh requirement.)
-export type { FileRef } from './InputComposer/mentions'
+export type { FileRef } from './mentions'
 
 // ── Slash commands ──────────────────────────────────────────────────────────
 
@@ -305,7 +305,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     [localHistory, historyPrompts],
   )
 
-  // Height-to-content resizing. See InputComposer/autosize.ts.
+  // Height-to-content resizing. See autosize.ts.
   const {
     resize,
     scheduleResize,
@@ -1037,7 +1037,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           COMPOSER_TEXT_CLASS,
           isComposing ? 'text-(--color-text)' : 'text-transparent',
         )}
-        // Cap matches the ``resize()`` ceiling in InputComposer/autosize.ts so the
+        // Cap matches the ``resize()`` ceiling in autosize.ts so the
         // JS-driven height and the CSS limit stay in lockstep.
         style={{ maxHeight: composerMaxHeight() }}
         // Spellcheck disabled: the squiggle is painted by the browser under

@@ -101,7 +101,7 @@ describe('phone controls', () => {
   })
 
   it('keeps Send a 36px circle on a phone, its touch area grown to 44px', () => {
-    const composer = read('../../components/InputComposer.tsx')
+    const composer = read('../../components/InputComposer/index.tsx')
     expect(composer).toMatch(/const sendSlotClass =\s*'relative touch-hit [^']*pointer-coarse:size-9'/)
     expect(composer).not.toMatch(/const sendSlotClass =\s*'[^']*phone:size-11/)
   })

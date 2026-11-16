@@ -42,7 +42,7 @@ import { ErrorCard } from './ErrorCard'
 import { endingProviderError, isBlankContentBlock, isProviderErrorBlock, latestActiveRetryBlockId } from './provider-status'
 import { TranscriptSkeleton } from './TranscriptSkeleton'
 import { PendingDots } from './PendingDots'
-import { QuotaWaitNotice, latestActiveQuotaWait, readStoredQuotaWait, removeStoredQuotaWait } from './QuotaWaitNotice'
+import { QuotaWaitNotice, useQuotaWait } from './QuotaWaitNotice'
 import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
@@ -334,27 +334,15 @@ export function AgentView({
     () => new Set(latestMCPAppKey ? latestMCPAppKey.split('\n') : []),
     [latestMCPAppKey],
   )
-  const activeQuotaWait = useMemo(
-    () => latestActiveQuotaWait(blocks, liveTail),
-    [blocks, liveTail],
-  )
-  const activeQuotaWaitBlockId = isTurnOpen ? activeQuotaWait?.blockId : undefined
+  const {
+    activeBlockId: activeQuotaWaitBlockId,
+    restored: restoredQuotaWait,
+    visible: visibleQuotaWait,
+  } = useQuotaWait({ blocks, liveTail, isTurnOpen, sessionId, held: hold !== null })
   const activeRetryBlockId = useMemo(
     () => (isTurnOpen ? latestActiveRetryBlockId(blocks, liveTail) : undefined),
     [blocks, isTurnOpen, liveTail],
   )
-  const liveQuotaWait = isTurnOpen ? activeQuotaWait?.wait ?? null : null
-  const storedQuotaWait = useMemo(() => readStoredQuotaWait(sessionId), [sessionId])
-  const canRestoreStoredQuotaWait = isTurnOpen && !liveQuotaWait && totalLen === 0
-
-  const restoredQuotaWait = canRestoreStoredQuotaWait ? storedQuotaWait : null
-  const visibleQuotaWait = liveQuotaWait ?? restoredQuotaWait
-
-  useEffect(() => {
-    // A held transcript is not the session's live state: keep its record.
-    if (!sessionId || hold) return
-    if (!visibleQuotaWait) removeStoredQuotaWait(sessionId)
-  }, [hold, sessionId, visibleQuotaWait])
 
   // One renderer for every turn, so a finished turn's memo holds while the
   // live one streams. Inline in the turns' ``.map`` it was a new closure per

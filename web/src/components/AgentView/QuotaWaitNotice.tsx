@@ -3,7 +3,7 @@
  * its ``provider_status`` block), the one still live, the record that keeps
  * its card up across a reload, and the card itself with its countdown.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ContentBlock } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
@@ -29,7 +29,7 @@ function quotaWaitStorageKey(sessionId: string): string {
   return `${QUOTA_WAIT_STORAGE_PREFIX}${encodeURIComponent(sessionId)}`
 }
 
-export function readStoredQuotaWait(sessionId: string | undefined): QuotaWait | null {
+function readStoredQuotaWait(sessionId: string | undefined): QuotaWait | null {
   if (!sessionId || typeof window === 'undefined') return null
 
   try {
@@ -67,7 +67,7 @@ function saveQuotaWait(sessionId: string | undefined, wait: QuotaWait): void {
   }
 }
 
-export function removeStoredQuotaWait(sessionId: string | undefined): void {
+function removeStoredQuotaWait(sessionId: string | undefined): void {
   if (!sessionId || typeof window === 'undefined') return
   try {
     window.localStorage.removeItem(quotaWaitStorageKey(sessionId))
@@ -96,7 +96,7 @@ export function quotaWaitFromBlock(block: ContentBlock): QuotaWait | null {
   }
 }
 
-export function latestActiveQuotaWait(
+function latestActiveQuotaWait(
   finalizedBlocks: ContentBlock[],
   liveBlocks: ContentBlock[],
 ): { blockId: string; wait: QuotaWait } | null {
@@ -109,6 +109,40 @@ export function latestActiveQuotaWait(
     }
   }
   return null
+}
+
+/**
+ * The quota wait the transcript shows: the live one while the turn is open,
+ * else, after a reload that has loaded nothing yet, the one stored for the
+ * session. A record no wait shows any more is dropped.
+ */
+export function useQuotaWait({ blocks, liveTail, isTurnOpen, sessionId, held }: {
+  blocks: ContentBlock[]
+  liveTail: ContentBlock[]
+  isTurnOpen: boolean
+  sessionId: string | undefined
+  /** A switch holds another session's transcript on screen. */
+  held: boolean
+}) {
+  const activeQuotaWait = useMemo(
+    () => latestActiveQuotaWait(blocks, liveTail),
+    [blocks, liveTail],
+  )
+  const activeBlockId = isTurnOpen ? activeQuotaWait?.blockId : undefined
+  const liveQuotaWait = isTurnOpen ? activeQuotaWait?.wait ?? null : null
+  const storedQuotaWait = useMemo(() => readStoredQuotaWait(sessionId), [sessionId])
+  const canRestoreStoredQuotaWait = isTurnOpen && !liveQuotaWait && blocks.length + liveTail.length === 0
+
+  const restored = canRestoreStoredQuotaWait ? storedQuotaWait : null
+  const visible = liveQuotaWait ?? restored
+
+  useEffect(() => {
+    // A held transcript is not the session's live state: keep its record.
+    if (!sessionId || held) return
+    if (!visible) removeStoredQuotaWait(sessionId)
+  }, [held, sessionId, visible])
+
+  return { activeBlockId, restored, visible }
 }
 
 /** Time left until a quota resets, for "resumes in …": ``2h 05m``. */

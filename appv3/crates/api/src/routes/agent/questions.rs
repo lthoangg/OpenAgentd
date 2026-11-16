@@ -36,6 +36,7 @@ async fn get_question(State(st): State<AppState>, AxPath(raw): AxPath<String>) -
 async fn seen(AxPath(raw): AxPath<String>) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &raw)?;
     crate::cloud::letters::mark_seen(&sid);
+    tracing::info!("session_seen session_id={}", sid);
     Ok(json(json!({"status": "ok"})))
 }
 

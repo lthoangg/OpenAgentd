@@ -315,6 +315,8 @@ fn head_subject(dir: &Path) -> String {
 #[tokio::test]
 async fn discard_restores_a_tracked_file_and_deletes_an_added_one() {
     let d = repo_on_main();
+    // Windows runners default to core.autocrlf=true, which would check a.txt out as CRLF.
+    git_ok(d.path(), &["config", "core.autocrlf", "false"]);
     std::fs::write(d.path().join("a.txt"), "changed\n").unwrap();
     std::fs::write(d.path().join("new.txt"), "n").unwrap();
     let v = body_of(git_discard(ws_body(d.path(), json!({"path": "a.txt", "status": "M"}))).await.unwrap()).await;

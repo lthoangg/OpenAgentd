@@ -159,10 +159,12 @@ return counts;
 "#;
     let run = turn("chain", &ws, "code", &[("s1", "script", &script(code))]).await;
     let text = run.result("s1");
+    // glob and read show the platform's separator.
+    let a = format!("src{}a.txt", std::path::MAIN_SEPARATOR);
     assert!(text.starts_with("calls (3, "), "{text}");
     assert!(text.contains("→ glob src/*.txt · "), "{text}");
-    assert!(text.contains("→ read src/a.txt · "), "{text}");
-    assert!(text.contains("output:\n2 files\n[\n  [\n    \"src/a.txt\",\n    2\n  ],"), "{text}");
+    assert!(text.contains(&format!("→ read {a} · ")), "{text}");
+    assert!(text.contains(&format!("output:\n2 files\n[\n  [\n    {},\n    2\n  ],", json!(a))), "{text}");
     assert!(!text.contains("error:"), "{text}");
     // Only the script call reached the transcript, and a reload reads the same text.
     let rows = appv3_db::llm_window_rows(&run.pool, &run.sid, false).await.unwrap();

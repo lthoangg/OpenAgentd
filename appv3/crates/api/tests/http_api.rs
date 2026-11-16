@@ -1909,7 +1909,7 @@ async fn workspace_picker_and_resolve_flow(c: &Client, pool: &appv3_db::DbPool, 
     let (st, v) = c.json("GET", &format!("/api/agent/workspace/browse?path={}", enc(&raw)), None).await;
     assert_eq!(st, StatusCode::OK, "{v}");
     let parent = std::path::Path::new(&canon).parent().unwrap().display().to_string();
-    let dir = |n: &str| json!({"name": n, "path": format!("{canon}/{n}")});
+    let dir = |n: &str| json!({"name": n, "path": std::path::Path::new(&canon).join(n).display().to_string()});
     assert_eq!(v, json!({"path": canon, "parent": parent, "directories": [dir("alpha"), dir("Beta")]}));
     let (st, v) = c.json("GET", &format!("/api/agent/workspace/browse?path={}", enc(&format!("{raw}/file.txt"))), None).await;
     assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");

@@ -108,7 +108,8 @@ fn remote_login_help_works_under_both_names() {
     for name in ["remote", "cloud"] {
         let o = sb.run(&[name, "login", "--help"]);
         assert_eq!(code(&o), 0, "agentd {name} login --help: {}", stderr(&o));
-        assert!(stdout(&o).contains("Usage: agentd remote login"), "{}", stdout(&o));
+        let usage = format!("Usage: agentd{} remote login", std::env::consts::EXE_SUFFIX);
+        assert!(stdout(&o).contains(&usage), "{}", stdout(&o));
     }
 }
 

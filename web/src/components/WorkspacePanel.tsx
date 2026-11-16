@@ -28,7 +28,7 @@
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
@@ -66,7 +66,6 @@ import {
   DOCK_PANE_MIN_HEIGHT,
   DOCK_PANE_MIN_WIDTH,
 } from '@/lib/workbench-layout'
-import { SNAP_THRESHOLD_PX, snapToDetent } from '@/lib/resize-snap'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -76,7 +75,6 @@ import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQu
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { type PreviewTarget, closePreview, lastPreviewUrl, previewsAvailable } from '@/api/preview'
-import { DURATIONS_S, EASINGS, cssEasing } from '@/lib/motion'
 import {
   type ChangedFileInfo,
   type DiffFileSection,
@@ -94,6 +92,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockOpenSheet } from './WorkspacePanel/DockOpenMenu'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { barStyle, paneStyle, usePaneLayout } from './WorkspacePanel/usePaneLayout'
 import { PaneSplitHandle } from './WorkspacePanel/PaneSplitHandle'
 import { lazySurface } from '@/lib/lazy-surface'
 import { DockLauncher, dockOpenItems } from './WorkspacePanel/DockLauncher'
@@ -128,14 +127,7 @@ import {
 } from './WorkspacePanel/dock-tabs'
 import {
   type Axis,
-  type PaneBox,
   type PaneId,
-  type PaneLayout,
-  type SplitBar,
-  isPaneLeaf,
-  layoutBoxes,
-  paneOrder,
-  sizesWithBarAt,
 } from './WorkspacePanel/dock-panes'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
@@ -155,30 +147,6 @@ const REFRESHABLE_TABS: ReadonlySet<DockTab['type']> = new Set(['review', 'file'
 const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 /** Stable empty ref: with no center element the width falls back to the viewport. */
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
-
-/**
- * A pane's place over the panes' area (``top``: an inset from its top, the
- * tab strip for a preview page). The hairline before a pane belongs to the
- * bar there, so the pane starts 1px in.
- */
-function paneStyle(box: PaneBox, top = '0px'): React.CSSProperties {
-  const x = box.left > 0 ? 1 : 0
-  const y = box.top > 0 ? 1 : 0
-  return {
-    left: `calc(${box.left * 100}% + ${x}px)`,
-    top: `calc(${box.top * 100}% + ${y}px + ${top})`,
-    width: `calc(${box.width * 100}% - ${x}px)`,
-    height: `calc(${box.height * 100}% - ${y}px - ${top})`,
-  }
-}
-
-/** A bar's 7px hit area, centred on the line between two panes. */
-function barStyle(bar: SplitBar): React.CSSProperties {
-  const { box, at } = bar
-  return bar.axis === 'row'
-    ? { left: `calc(${(box.left + at * box.width) * 100}% - 3px)`, top: `${box.top * 100}%`, height: `${box.height * 100}%` }
-    : { top: `calc(${(box.top + at * box.height) * 100}% - 3px)`, left: `${box.left * 100}%`, width: `${box.width * 100}%` }
-}
 
 export function WorkspacePanel({
   workspace,
@@ -749,94 +717,19 @@ export function WorkspacePanel({
   )
 
   // ── Panes ─────────────────────────────────────────────────────────────────
-  // Maximize (⌘⇧D) grows the whole panel: every pane stays on screen.
-  const onScreen = useMemo(() => new Set(shownPanes), [shownPanes])
-  const many = onScreen.size > 1
-  // A bar being dragged: its split's sizes until the drop.
-  const [liveSizes, setLiveSizes] = useState<{ key: string; sizes: number[] } | null>(null)
-  const { panes: boxes, bars } = useMemo(
-    () => layoutBoxes(panes.layout, onScreen, (key) => (liveSizes?.key === key ? liveSizes.sizes : undefined)),
-    [panes.layout, onScreen, liveSizes],
-  )
-  // Panes in the order they were made, so a split never moves one in the
-  // DOM (a moved iframe reloads); F6 follows the layout (``data-focus-order``).
-  const paneIds = useMemo(() => Object.keys(panes.panes).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))), [panes.panes])
-  const layoutIndex = useMemo(() => new Map(paneOrder(panes.layout).map((id, index) => [id, index])), [panes.layout])
-  // A split's new pane fades in at ``base`` (opacity only: pane sizes are
-  // never animated). The panes already there at mount, and a phone, do not.
-  const knownPanes = useRef<Set<string> | null>(null)
-  useLayoutEffect(() => {
-    const known = knownPanes.current
-    knownPanes.current = new Set(paneIds)
-    if (!known || mobile || prefersReducedMotion) return
-    for (const id of paneIds) {
-      if (known.has(id)) continue
-      const node = panesRef.current?.querySelector<HTMLElement>(`[data-dock-pane="${id}"]`)
-      if (node && typeof node.animate === 'function') {
-        node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATIONS_S.base * 1000, easing: cssEasing(EASINGS.out) })
-      }
-    }
-  }, [paneIds, mobile, prefersReducedMotion])
-  // The panel-wide Maximize sits on the top-right pane, as in an editor.
-  const cornerPane = useMemo(() => {
-    let best: PaneId | null = null
-    let right = -1
-    for (const [pane, box] of boxes) {
-      if (box.top === 0 && box.left + box.width > right + 1e-9) {
-        best = pane
-        right = box.left + box.width
-      }
-    }
-    return best
-  }, [boxes])
-
-  const splitAt = (path: readonly number[]): Extract<PaneLayout, { axis: Axis }> | null => {
-    let node: PaneLayout = panes.layout
-    for (const index of path) {
-      if (isPaneLeaf(node)) return null
-      node = node.children[index]
-    }
-    return isPaneLeaf(node) ? null : node
-  }
-  /** A bar's split on screen, in px, and the least share a pane keeps there. */
-  const barExtent = (bar: SplitBar) => {
-    const rect = panesRef.current?.getBoundingClientRect()
-    if (!rect) return null
-    const row = bar.axis === 'row'
-    const start = row ? rect.left + bar.box.left * rect.width : rect.top + bar.box.top * rect.height
-    const size = row ? bar.box.width * rect.width : bar.box.height * rect.height
-    return size > 0 ? { start, size, min: (row ? DOCK_PANE_MIN_WIDTH : DOCK_PANE_MIN_HEIGHT) / size } : null
-  }
-  /** Moves a bar to a pointer position; answers whether it snapped onto the even split. */
-  const dragBar = (bar: SplitBar, clientX: number, clientY: number, done: boolean): boolean => {
-    const node = splitAt(bar.path)
-    const extent = barExtent(bar)
-    if (!node || !extent) return false
-    const pointer = ((bar.axis === 'row' ? clientX : clientY) - extent.start) / extent.size
-    // ``evenOut`` gives each shown pane an equal share: the bar's detent.
-    const even = (bar.shown.indexOf(bar.before) + 1) / bar.shown.length
-    const { value: at, snapped } = snapToDetent(pointer, even, SNAP_THRESHOLD_PX / extent.size)
-    const sizes = sizesWithBarAt(node.sizes, bar, at, extent.min)
-    if (!done) {
-      setLiveSizes({ key: bar.path.join('.'), sizes })
-      return snapped
-    }
-    setLiveSizes(null)
-    resizeSplit(bar.path, sizes)
-    return snapped
-  }
-  const stepBar = (bar: SplitBar, px: number) => {
-    const node = splitAt(bar.path)
-    const extent = barExtent(bar)
-    if (node && extent) resizeSplit(bar.path, sizesWithBarAt(node.sizes, bar, bar.at + px / extent.size, extent.min))
-  }
-  /** Double-click or Enter: the panes of that split share its room evenly. */
-  const evenOut = (bar: SplitBar) => {
-    const node = splitAt(bar.path)
-    if (!node) return
-    const share = bar.shown.reduce((total, index) => total + node.sizes[index], 0) / bar.shown.length
-    resizeSplit(bar.path, node.sizes.map((size, index) => (bar.shown.includes(index) ? share : size)))
-  }
+  // Where each pane sits and how the bars between them resize (usePaneLayout.ts).
+  const {
+    boxes,
+    bars,
+    many,
+    paneIds,
+    layoutIndex,
+    cornerPane,
+    barValueNow,
+    dragBar,
+    stepBar,
+    evenOut,
+  } = usePaneLayout({ panes, shownPanes, panesRef, resizeSplit, mobile, prefersReducedMotion })
 
   /** Reveal in Git: the Changes list with this file's diff open. */
   const revealInGit = useCallback((path: string) => {
@@ -1136,21 +1029,17 @@ export function WorkspacePanel({
               </div>
             )
           })}
-          {bars.map((bar) => {
-            const sizes = (liveSizes?.key === bar.path.join('.') ? liveSizes.sizes : splitAt(bar.path)?.sizes) ?? []
-            const pair = (sizes[bar.before] ?? 0) + (sizes[bar.after] ?? 0)
-            return (
-              <PaneSplitHandle
-                key={`${bar.path.join('.')}:${bar.after}`}
-                axis={bar.axis}
-                style={barStyle(bar)}
-                valueNow={pair > 0 ? Math.round(((sizes[bar.before] ?? 0) / pair) * 100) : 50}
-                onDrag={(x, y, done) => dragBar(bar, x, y, done)}
-                onStep={(px) => stepBar(bar, px)}
-                onReset={() => evenOut(bar)}
-              />
-            )
-          })}
+          {bars.map((bar) => (
+            <PaneSplitHandle
+              key={`${bar.path.join('.')}:${bar.after}`}
+              axis={bar.axis}
+              style={barStyle(bar)}
+              valueNow={barValueNow(bar)}
+              onDrag={(x, y, done) => dragBar(bar, x, y, done)}
+              onStep={(px) => stepBar(bar, px)}
+              onReset={() => evenOut(bar)}
+            />
+          ))}
         </div>
         <CloseTerminalDialog
           open={confirmCloseOpen}

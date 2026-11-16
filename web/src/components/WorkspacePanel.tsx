@@ -41,7 +41,6 @@ import {
   PanelResizeHandle,
   ResizableAside,
 } from '@/components/ResizableAside'
-import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { focusQuietly } from '@/lib/focus/quiet'
 import { usePlatform } from '@/hooks/use-platform'
 import {
@@ -67,6 +66,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { PhoneReviewBar } from './WorkspacePanel/PhoneReviewBar'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { useDockOpenFocus } from './WorkspacePanel/useDockOpenFocus'
 import { useDockQueries } from './WorkspacePanel/useDockQueries'
 import { DockPreviewPages, usePreviewListeners } from './WorkspacePanel/DockPreviewPages'
 import { ReviewTabView } from './WorkspacePanel/ReviewTabView'
@@ -331,31 +331,16 @@ export function WorkspacePanel({
     dockMotion,
     maximizeState,
   } = useDockFrame({ open, mobile, phone, slideIn, centerRef, centerWidth, prefersReducedMotion })
-  // Covering the chat makes it inert, which drops its focus onto <body>:
-  // take it on the active tab, or the launcher's first row when empty.
-  useClaimStrandedFocus(open && overlay, activeTabId, () =>
-    tabButtonRefs.current.get(activeTabId) ?? document.querySelector<HTMLElement>('[data-dock-launcher] button'))
-  // Opened by the user with nothing in it, the launcher is the choice to
-  // make: its first row takes focus, so ↓ and Return pick. Not when the
-  // panel comes back open with the window, nor when it opens on a tab.
-  const localHandledLauncherFocusKeyRef = useRef(0)
-  const handledLauncherFocusKeyRef = parentHandledLauncherFocusKeyRef ?? localHandledLauncherFocusKeyRef
-  const tabCountRef = useRef(visibleTabs.length)
-  tabCountRef.current = visibleTabs.length
-  useEffect(() => {
-    if (!open || !launcherFocusKey || handledLauncherFocusKeyRef.current === launcherFocusKey) return
-    let frame = requestAnimationFrame(() => {
-      // A second frame: a view request's tab lands in the render after this one.
-      frame = requestAnimationFrame(() => {
-        // Marked here, not before: a cancelled run (Strict Mode) must not use it up.
-        handledLauncherFocusKeyRef.current = launcherFocusKey
-        if (tabCountRef.current > 0) return
-        const row = document.querySelector<HTMLElement>('[data-dock-launcher] button')
-        if (row && !row.closest('[inert]')) row.focus()
-      })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [open, launcherFocusKey, handledLauncherFocusKeyRef])
+  // Where focus lands as the dock covers the chat or opens empty (useDockOpenFocus.ts).
+  useDockOpenFocus({
+    open,
+    overlay,
+    activeTabId,
+    tabButtonRefs,
+    tabCount: visibleTabs.length,
+    launcherFocusKey,
+    handledLauncherFocusKeyRef: parentHandledLauncherFocusKeyRef,
+  })
 
   // ── Server state ──────────────────────────────────────────────────────────
   // Git's own queries run only while its tab shows in a pane on screen.

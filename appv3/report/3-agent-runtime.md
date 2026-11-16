@@ -393,7 +393,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   and `api/tests/http_api.rs`. v2 has no equivalent.
 - **Idle compaction (v3 only, opt-in):** when a lead session's turn
   completes, a timer starts (`agent/src/idle_compaction.rs`,
-  `agent/src/session.rs`). If the session is still idle 270 s later, which is
+  `agent/src/session/idle.rs`). If the session is still idle 270 s later, which is
   just under the 5-minute prompt-cache TTL some providers use, and its last
   prompt reached `idle_compaction_percent`% of the effective compaction
   trigger, it runs the same forced compaction as `/compact`. Any new turn

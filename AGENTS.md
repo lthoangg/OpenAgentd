@@ -78,8 +78,9 @@ worktrees are not part of the tracked instruction hierarchy.
 
 ## Setup and development
 
-Prerequisites: Bun (CI uses 1.4.0), stable Rust/cargo, `python3` (maintainer
-scripts only), and `lsof` + `nc` for `make dev`. Native shells also need
+Prerequisites: Bun (CI uses 1.4.0), stable Rust/cargo, `cargo-nextest` (for
+`make verify-v3`), `python3` (maintainer scripts only), and `lsof` + `nc` for
+`make dev`. Native shells also need
 `cargo tauri` (tauri-cli 2) and the platform's Tauri system dependencies.
 
 From the repository root:
@@ -161,7 +162,7 @@ them without running). The targets:
 ```bash
 make verify-changed # verify-quick, then the targets the changed paths select
 make verify-quick   # seconds: Tauri command ACL, secret scan, docs, versions, cargo fmt, web lint + types
-make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests
+make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests (cargo nextest)
 make verify-scripts  # pytest for scripts, installers, and workflow contracts (local .venv)
 make verify-web      # oxlint, app/test TypeScript (tsc -b), Bun tests
 make verify-docs     # Markdown links/frontmatter/Make references

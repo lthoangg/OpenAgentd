@@ -2,7 +2,7 @@ name: appv3
 
 # OpenAgentd v3 (native Rust backend): lint, test and smoke-test the binary
 # on every desktop OS, so platform-specific code paths stay compiled and
-# exercised. The smoke and installer checks run the debug binary `cargo test`
+# exercised. The smoke and installer checks run the debug binary the tests
 # already built (the CLI integration tests need it); one Linux release build
 # keeps release-only failures (LTO, linking) from first showing up in
 # release.yml.
@@ -74,8 +74,15 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: nextest
+
+      # One process per test, tests of every binary in parallel: the same
+      # runner `make verify-v3` uses.
       - name: Cargo test
-        run: cargo test --locked --workspace --no-fail-fast
+        run: cargo nextest run --locked --workspace --no-fail-fast
 
       - name: Build release binary
         if: runner.os == 'Linux'

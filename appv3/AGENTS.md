@@ -94,6 +94,12 @@ From the repository root:
 make verify-v3   # cargo fmt --check, clippy -D warnings, all tests
 ```
 
+The tests run under `cargo nextest` (install it once: `cargo install
+cargo-nextest --locked`), here and in CI: every test in its own process, and
+the tests of all binaries in parallel. A test may therefore set process-wide
+state, but it must not need another test to have run, and it shares the
+machine with every other test while it runs.
+
 Every crate opts into `[workspace.lints]` in `Cargo.toml` (`dbg!`, `todo!`,
 `unimplemented!` are denied); a new crate adds `[lints] workspace = true`.
 

@@ -20,7 +20,7 @@ implementation, fix the root cause, then run the surface's full suite.
 
 | Surface | Focused | Full gate |
 |---|---|---|
-| Backend `appv3/` | `cargo test --manifest-path appv3/Cargo.toml -p <crate> [name_filter]` | `make verify-v3` (fmt check, clippy `-D warnings`, all tests) |
+| Backend `appv3/` | `cargo test --manifest-path appv3/Cargo.toml -p <crate> [name_filter]` | `make verify-v3` (fmt check, clippy `-D warnings`, all tests under `cargo nextest`) |
 | Web `web/` | `cd web && bun test --parallel src/__tests__/<path>.test.tsx` | `make verify-web` (oxlint, `tsc -b` incl. tests, full suite) |
 | Shared native crate | `cd native/shell-core && cargo test <filter>` | `make verify-shell-core` |
 | Desktop shell | see `references/native.md` | `make verify-desktop` |

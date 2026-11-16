@@ -30,7 +30,8 @@ build-v3: ## Build optimized OpenAgentd v3 release binary
 verify-v3: ## Check and test all appv3 Rust crates
 	cargo fmt --all --check --manifest-path appv3/Cargo.toml
 	cargo clippy --manifest-path appv3/Cargo.toml --all-targets -- -D warnings
-	cargo test --manifest-path appv3/Cargo.toml --all-targets
+	@cargo nextest --version >/dev/null 2>&1 || { echo "error: cargo-nextest not found; install it with 'cargo install cargo-nextest --locked' or 'brew install cargo-nextest'"; exit 1; }
+	cargo nextest run --manifest-path appv3/Cargo.toml --all-targets
 
 kill-dev-ports: ## Stop processes listening on this checkout's dev ports (PORT, WEB_PORT)
 	@command -v lsof >/dev/null 2>&1 || { echo "error: 'lsof' not found"; exit 1; }

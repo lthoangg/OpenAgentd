@@ -345,7 +345,7 @@ fn waits_behind_turn(busy: bool, awaiting_question: bool, hold_until_turn_end: b
     busy && (!awaiting_question || hold_until_turn_end)
 }
 
-pub fn session_err(e: SessionError) -> ApiError {
+fn session_err(e: SessionError) -> ApiError {
     match e {
         SessionError::Precondition { message, status } => ApiError::new(status, message),
         other => ApiError::internal(other),
@@ -362,10 +362,6 @@ async fn cancel_queued(State(st): State<AppState>, AxPath((sid, mid)): AxPath<(S
 }
 
 // ── POST /commands ──────────────────────────────────────────────────────────
-
-fn changed_paths(s: &appv3_agent::revert::BoundaryShift) -> Value {
-    json!({"added": s.added, "modified": s.modified, "removed": s.removed})
-}
 
 async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
     let body = body_value(&raw)?;
@@ -416,9 +412,10 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
         |cmd: &str, sid: &str, message: Value, cp: Value| json_code(202, json!({"status": "accepted", "session_id": sid, "command": cmd, "message": message, "changed_paths": cp}));
     let shift_resp = |cmd: &str, shift: &appv3_agent::revert::BoundaryShift| {
         let message = shift.target.as_ref().map(message_response).unwrap_or(Value::Null);
+        let changed_paths = json!({"added": shift.added, "modified": shift.modified, "removed": shift.removed});
         json_code(
             202,
-            json!({"status": "accepted", "session_id": session_id, "command": cmd, "message": message, "changed_paths": changed_paths(shift), "keep_files": shift.keep_files}),
+            json!({"status": "accepted", "session_id": session_id, "command": cmd, "message": message, "changed_paths": changed_paths, "keep_files": shift.keep_files}),
         )
     };
     match command.as_str() {
@@ -525,17 +522,13 @@ async fn agent_stream(State(st): State<AppState>, AxPath(session_id): AxPath<Str
 
 // ── GET /agents ─────────────────────────────────────────────────────────────
 
-fn custom_threshold() -> Option<i64> {
-    appv3_core::runtime_settings::load_runtime_settings().ok().and_then(|c| c.summarization.prompt_token_threshold)
-}
-
 fn tool_desc(def: &Value) -> (String, String) {
     let f = def.get("function").unwrap_or(def);
     (f.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(), f.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string())
 }
 
 /// Serialise an agent for the `/api/agent` listing.
-pub fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, custom: Option<i64>) -> Value {
+fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, custom: Option<i64>) -> Value {
     let ws_path = workspace.filter(|w| !w.is_empty()).map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let ctx = appv3_tools::ToolContext {
         session_id: None,
@@ -620,7 +613,8 @@ async fn get_agent_registry(q: Qs) -> ApiResult<Response> {
     let Some(agent) = agent else { return Err(ApiError::not_found("No agent configured")) };
     agent.refresh_config_if_idle();
     let ws = agent.workspace();
-    let info = serialize_agent(&agent.agent(), Some(&ws), custom_threshold());
+    let custom_threshold = appv3_core::runtime_settings::load_runtime_settings().ok().and_then(|c| c.summarization.prompt_token_threshold);
+    let info = serialize_agent(&agent.agent(), Some(&ws), custom_threshold);
     Ok(json(json!({
         "agents": [info],
         "mode": settings().workspace_mode(Some(Path::new(&ws))),
@@ -1175,7 +1169,7 @@ async fn save_run_settings(
 }
 
 /// `chat_service.delete_session`.
-pub async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> {
+async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> {
     if db::get_session(pool, session_id).await?.is_none() {
         return Ok(false);
     }

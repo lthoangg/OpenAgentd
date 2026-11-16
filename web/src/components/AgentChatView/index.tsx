@@ -33,8 +33,7 @@ import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useS
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { goalHeaderState } from '@/lib/work'
-import { useHealthQuery, useProvidersQuery } from '@/queries'
-import { modelReadiness } from '@/lib/model-readiness'
+import { useHealthQuery } from '@/queries'
 import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -46,10 +45,9 @@ import { previewsAvailable } from '@/api/preview'
 import { useChatPreview } from './useChatPreview'
 import { useDockCover } from './useDockCover'
 import { useSessionLinks } from './useSessionLinks'
+import { useLeadModel } from './useLeadModel'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useAgentsQuery } from '@/queries/useAgentsQuery'
-import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -65,11 +63,7 @@ import { ViewErrorBoundary } from '../ViewErrorBoundary'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { workspaceLabel } from '@/utils/workspace'
 import { workspaceRelativePath } from '@/utils/file-refs'
-import type {
-  AgentCapabilities as AgentCapabilitiesType,
-  ContentBlock,
-  MessageAttachment,
-} from '@/api/types'
+import type { ContentBlock, MessageAttachment } from '@/api/types'
 import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
 import { AgentChatHeader } from './AgentChatHeader'
@@ -341,36 +335,20 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const goalSession = useGoalSessionState(sessionIdState, goal)
   const headerGoalState = useMemo(() => goalHeaderState(goal, goalSession, todosData?.todos ?? []), [goal, goalSession, todosData])
   const goalControls = useGoalControls(sessionIdState)
-  const providersQ = useProvidersQuery()
 
-  // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = workspace
   const hasWorkspace = Boolean(workspace)
   const folderMissing = useFolderMissing(sessionId ? workspace : null)
   const isSessionLoading = sessionLoading
-  const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasWorkspace)
-  const leadAgent = agentRegistryData?.agents?.[0]
-  const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
-  // Can a message run? A real model whose provider is connected. Unknown
-  // while either list loads, so no setup prompt flashes on a working setup.
-  const modelReady = modelReadiness(
-    providersQ.data?.providers,
-    agentRegistryData ? (sessionModel || leadAgent?.model || null) : undefined,
-  )
-  const needsModelSetup = modelReady.status === 'needs-model' || modelReady.status === 'needs-provider'
-
-  // When the session overrides the agent's model (e.g. user switches from
-  // model A to model B mid-session), the trigger threshold must reflect the
-  // *active* model, not the agent config model.  Look up the session model in
-  // the registry; fall back to the lead agent's pre-computed value.
-  const { data: registryData } = useRegistryQuery()
-  const summaryTriggerTokens = useMemo(() => {
-    if (sessionModel) {
-      const entry = registryData?.models?.find((m) => m.id === sessionModel)
-      if (entry?.summary_trigger_tokens) return entry.summary_trigger_tokens
-    }
-    return leadAgent?.summary_trigger_tokens
-  }, [sessionModel, registryData, leadAgent])
+  const {
+    providersData,
+    agentRegistryLoading,
+    leadAgent,
+    leadCapabilities,
+    modelReady,
+    needsModelSetup,
+    summaryTriggerTokens,
+  } = useLeadModel(workspace, sessionModel)
   // Workspace file/folder list for the InputComposer's @-mention picker.
   // Fetched lazily once a workspace is attached.
   const { refs: fileRefs } = useFileRefsQuery({
@@ -738,11 +716,11 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             isChat={isChatWorkspace}
             chatWorkspace={chatWorkspace}
             composer={composerInline ? composerElement : null}
-            setup={(modelReady.status === 'needs-model' || modelReady.status === 'needs-provider') && providersQ.data ? (
+            setup={(modelReady.status === 'needs-model' || modelReady.status === 'needs-provider') && providersData ? (
               <ModelSetupCard
                 key={modelReady.status === 'needs-provider' ? modelReady.provider.id : 'needs-model'}
                 readiness={modelReady}
-                providers={providersQ.data.providers}
+                providers={providersData.providers}
                 onOpenProviders={() => openSettings('models')}
               />
             ) : null}

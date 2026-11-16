@@ -88,7 +88,7 @@ credential or database format changes.
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,
-    `api/src/routes/agent/chat.rs`). Member rows and the session-wide
+    `api/src/routes/agent/chat/history.rs`). Member rows and the session-wide
     `estimated_cost_usd` / `completion_tokens` totals come only on the
     newest page and on `since` deltas. Older (`before`) pages return
     `members: []` and omit the lead's totals. v2 paged each member with

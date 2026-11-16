@@ -945,6 +945,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   left`). A limit that was hit is red and one at 90% or more is orange, and
   the tooltip gives reset times and other models' own limits. The wait and
   error cards no longer offer **Use Auto for this session**.
+  Since `[v3.57.0]` an account picked while a turn runs serves its next model
+  call, not only the next turn, and picking an account that is cooling down
+  tries it again at once (if it is still limited, the turn moves on as
+  above).
 - **Review panel panes, as in an editor** `[v3.40.0]`:
   - There is no bottom dock: the sidebar sits left (`⌘B`/`Ctrl+B`) and the
     Review panel right (`⌘D`/`Ctrl+D`), full window height. The header keeps

@@ -1142,6 +1142,10 @@ async fn save_run_settings(
         if !appv3_providers::pool::pin_usable(&owner, id) {
             return Err(ApiError::unprocessable("That account or key is turned off, or the provider's key comes from the server's environment."));
         }
+        // Picking an account is the user forcing it: one cooling after a
+        // 429 is tried on the next request instead of being skipped for
+        // hours. If it fails again it cools down again and the turn moves on.
+        appv3_core::credentials::clear_cooldown(&owner, id);
     } else if credential.is_none() && model.is_some() {
         let pinned_provider = row.credential_id.as_deref().and_then(appv3_providers::pool::credential_provider);
         if pinned_provider.is_some() && pinned_provider != provider_of(&effective_model) {

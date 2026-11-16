@@ -778,6 +778,13 @@ async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path:
     assert_eq!(pinned[work_index], 1, "{v}");
     assert_eq!(pinned.iter().sum::<i64>(), 1, "{v}");
 
+    // Picking an account cooling after a 429 is the user forcing it: the
+    // next request tries it instead of silently staying on another one.
+    appv3_core::credentials::set_cooldown("openrouter", work, appv3_core::credentials::now_s() + 3600.0, "quota");
+    let (st, v) = c.json("PATCH", &uri, Some(json!({"credential_id": work}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(appv3_core::credentials::cooldown("openrouter", work), None, "a picked account is tried again");
+
     // Thinking level and model are stored the same way.
     let (st, v) = c.json("PATCH", &uri, Some(json!({"thinking_level": "high"}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");

@@ -1,4 +1,3 @@
-// size-ceiling: 1156 — one component: move the InputComposer.*.ts siblings into a folder, then its handlers into them
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, type ReactNode } from 'react'
 import { Paperclip } from 'lucide-react'
 import { FilePreviewStrip } from '../FilePreviewStrip'

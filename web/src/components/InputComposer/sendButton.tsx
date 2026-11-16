@@ -4,6 +4,9 @@
  * to send (deliveries.ts); a phone keeps one pill and offers them on a long
  * press instead.
  */
+// Not compiled, as when this code was part of InputComposer, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useState, useRef } from 'react'
 import { ArrowUp, Loader2, Square } from 'lucide-react'
 import { useHasSwapped } from '@/components/ui/swap'

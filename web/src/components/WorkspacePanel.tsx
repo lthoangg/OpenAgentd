@@ -29,6 +29,9 @@
  * the last active tab, preview pages and their unsent comments, and scroll
  * positions are all there when it reopens. Queries pause while it is closed.
  */
+// Not compiled: the React Compiler skipped WorkspacePanel (a ref written in
+// render) before its split; compiling it is a change of its own to verify.
+'use no memo'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/useToastStore'

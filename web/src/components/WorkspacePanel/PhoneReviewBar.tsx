@@ -3,6 +3,9 @@
  * a view or tool in the focused pane, as the tab strip's "+" does on other
  * layouts, with the action sheet it opens.
  */
+// Not compiled, as when this code was part of WorkspacePanel, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { PhoneNavBar } from '@/components/phone/PhoneNavBar'

@@ -6,6 +6,9 @@
  * diff, each list's scroll place, and the memoized slices of the query
  * results the memoized lists take.
  */
+// Not compiled, as when this code was part of WorkspacePanel, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useCallback, useId, useMemo, useRef } from 'react'
 import { useQuery, type InfiniteData, type UseInfiniteQueryResult, type UseQueryResult } from '@tanstack/react-query'
 import type {

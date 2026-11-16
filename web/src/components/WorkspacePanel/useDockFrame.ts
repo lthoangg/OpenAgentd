@@ -10,6 +10,9 @@
  * follow an edge swipe through the drawer driver instead. A closed dock
  * parks, hidden and inert, once its close tween is done.
  */
+// Not compiled, as when this code was part of WorkspacePanel, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { useElementWidth } from '@/hooks/use-element-width'

@@ -5,6 +5,9 @@
  * ``/btw ``). The last two focus the message box inside the tap, so iOS
  * raises its keyboard.
  */
+// Not compiled, as when this code was part of InputComposer, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useMemo, type Dispatch, type SetStateAction } from 'react'
 import type { ComposerActions } from '../composer/PlusMenu'
 import type { DesignFeedback } from '@/lib/design-feedback'

@@ -5,6 +5,9 @@
  * Backspace or Delete next to it removes it whole. A mention whose token is
  * typed over or deleted is dropped.
  */
+// Not compiled, as when this code was part of InputComposer, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { getExplicitMentionRanges } from './mentions'
 

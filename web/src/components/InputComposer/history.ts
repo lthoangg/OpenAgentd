@@ -4,6 +4,9 @@
  * empty draft. Prompts sent here come first, then the parent's (loaded chat
  * history), trimmed and deduplicated.
  */
+// Not compiled, as when this code was part of InputComposer, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
 import type { SuggestionRange } from './suggestionEngine'

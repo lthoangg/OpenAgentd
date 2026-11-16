@@ -6,6 +6,9 @@
  * menus, the history only while the Git tab is on screen on Commits. Each
  * file's diff body loads in the view that shows it.
  */
+// Not compiled, as when this code was part of WorkspacePanel, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getCodingWorkspaceGitHistory, getCodingWorkspaceStatus } from '@/api/client'

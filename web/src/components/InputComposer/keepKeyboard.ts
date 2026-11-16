@@ -1,3 +1,6 @@
+// Not compiled, as when this code was part of InputComposer, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useRef } from 'react'
 
 /** Press handlers for a control that must not take focus from the message box. */

@@ -4,6 +4,9 @@
  * of the panes' area); a bar drag shows its split's sizes live and commits
  * them on the drop, snapping onto the even split; a new pane fades in.
  */
+// Not compiled, as when this code was part of WorkspacePanel, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DOCK_PANE_MIN_HEIGHT, DOCK_PANE_MIN_WIDTH } from '@/lib/workbench-layout'
 import { SNAP_THRESHOLD_PX, snapToDetent } from '@/lib/resize-snap'

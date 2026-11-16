@@ -1,3 +1,6 @@
+// Not compiled: the React Compiler skipped InputComposer (a ref read in
+// render) before its split; compiling it is a change of its own to verify.
+'use no memo'
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, type ReactNode } from 'react'
 import { Paperclip } from 'lucide-react'
 import { FilePreviewStrip } from '../FilePreviewStrip'

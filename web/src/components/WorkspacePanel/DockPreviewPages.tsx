@@ -5,6 +5,9 @@
  * order (a moved iframe reloads). A preview listener can serve several tabs
  * (file previews of one workspace), so it closes with the last one.
  */
+// Not compiled, as when this code was part of WorkspacePanel, which the React
+// Compiler skipped; compiling it is a change of its own to verify.
+'use no memo'
 import { useCallback, useEffect, useRef } from 'react'
 import { closePreview, type PreviewTarget } from '@/api/preview'
 import type { DesignFeedback } from '@/lib/design-feedback'

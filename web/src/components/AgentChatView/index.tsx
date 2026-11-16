@@ -21,7 +21,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { ActiveAgentView } from './ActiveAgentView'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
@@ -61,15 +60,13 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { FolderCode, FileUp, WifiOff } from 'lucide-react'
+import { FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useFocusRegions } from '@/hooks/use-focus-regions'
 import { usePlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, dispatchAppShortcut, shortcutLabel } from '@/lib/app-shortcuts'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { Composer } from '../composer/Composer'
 import { RunChip } from '../composer/RunChip'
@@ -95,6 +92,7 @@ import { ConnectionBanner } from '@/components/ConnectionBanner'
 import { TranscriptFind } from '@/components/TranscriptFind'
 import { AgentChatHeader } from './AgentChatHeader'
 import { ChatFrame, type PhoneStackState } from './ChatFrame'
+import { NoWorkspace, OpeningScreen, ServerUnreachable, SessionNotFound } from './ChatPlaceholders'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
 import { MissingFolderBanner, useFolderMissing } from './MissingFolderBanner'
@@ -136,7 +134,6 @@ interface AgentChatViewProps {
 
 export function AgentChatView({ sessionId, workspace = null, sessionLoading = false, sessionNotFound = false, phoneStack }: AgentChatViewProps) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   // Opened while the server is down, nothing loaded, so no workspace is known:
   // say so instead of asking for a workspace.
   const serverDown = useHealthQuery().isError
@@ -144,7 +141,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
   const isPhone = useIsPhone()
-  const { isMacOverlay, os } = usePlatform()
+  const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
   // Chat sessions run on the same screen as project workspaces but the root is
@@ -943,73 +940,23 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <MissingFolderBanner workspace={workspace} onOpenFolder={handleOpenWorkspaceDialog} />
         )}
         {sessionNotFound && !workspace ? (
-          <EmptyState
-            icon={FolderCode}
-            title="Session not found"
-            body="It may have been deleted, or the link is wrong."
-            action={
-              // A phone's way back is the Sessions list it came from. Desktop
-              // can also look for the session it meant (desktop mockup 12.5).
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button type="button" onClick={() => navigate({ to: isPhone ? '/sessions' : '/', replace: true })}>
-                  {isPhone ? 'Back to Sessions' : 'New session'}
-                </Button>
-                {!isMobile && (
-                  <Button type="button" variant="subtle" onClick={() => dispatchAppShortcut(APP_SHORTCUTS.switchWorkspace, os)}>
-                    Find a session <span className="text-(--color-text-muted)">{shortcutLabel(APP_SHORTCUTS.switchWorkspace, os)}</span>
-                  </Button>
-                )}
-              </div>
-            }
-          />
+          <SessionNotFound />
         ) : isSessionLoading && !chatOnScreen ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
-            <div>
-              <h2 className="text-base font-semibold text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
-              </h2>
-              <p className="mt-1 text-xs text-(--color-text-muted)">
-                {isChatWorkspace
-                  ? 'Loading this conversation.'
-                  : 'Loading the saved workspace for this session.'}
-              </p>
-            </div>
-          </div>
+          <OpeningScreen
+            title={isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
+            body={isChatWorkspace
+              ? 'Loading this conversation.'
+              : 'Loading the saved workspace for this session.'}
+          />
         ) : workspace && agentRegistryLoading && !chatOnScreen ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
-            <div>
-              <h2 className="text-base font-semibold text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
-              </h2>
-              <p className="mt-1 text-xs text-(--color-text-muted)">
-                {isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
-              </p>
-            </div>
-          </div>
+          <OpeningScreen
+            title={isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
+            body={isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
+          />
         ) : !effectiveWorkspace && !isSessionLoading && serverDown ? (
-          <EmptyState
-            icon={WifiOff}
-            title="Can't reach the server"
-            body="This session opens once the server answers again."
-            action={
-              <Button type="button" onClick={() => void queryClient.invalidateQueries()}>
-                Retry
-              </Button>
-            }
-          />
+          <ServerUnreachable />
         ) : !effectiveWorkspace && !isSessionLoading ? (
-          <EmptyState
-            icon={FolderCode}
-            title="No workspace attached"
-            body="Open a workspace, a folder on this computer, to start a session."
-            action={
-              <Button type="button" onClick={handleOpenWorkspaceDialog}>
-                Open workspace…
-              </Button>
-            }
-          />
+          <NoWorkspace onOpenFolder={handleOpenWorkspaceDialog} />
         ) : isDraft && workspace ? (
           <NewSessionScreen
             workspace={workspace}

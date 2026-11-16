@@ -1,4 +1,4 @@
-// size-ceiling: 2208 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 1973 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -88,7 +88,7 @@ import {
 } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
-import { getCodingWorkspaceTree, listSessions, listWorktrees, removeWorktree, setCodingWorkspaceVisibility } from '@/api/client'
+import { getCodingWorkspaceTree, listSessions, setCodingWorkspaceVisibility } from '@/api/client'
 import { WORKSPACES_KEY, renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
 import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
 import type { WorkspaceRelocateResponse } from '@/api/types'
@@ -117,21 +117,12 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo, WorktreeRemoveResponse } from '@/api/types'
+import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
 import { ScheduledSection } from './Sidebar/ScheduledSection'
 import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
-import { WorktreeFields } from './Sidebar/WorktreeFields'
 import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
@@ -152,12 +143,6 @@ import {
 } from './Sidebar/helpers'
 import { pickWorkspaceDirectory, shouldUseServerWorkspaceBrowser } from './Sidebar/browser'
 import {
-  loadWorktreesForSource,
-  recoverCreatedWorktreeAfterTransientError,
-  removeManagedWorktree,
-  submitWorktreeSession,
-} from './Sidebar/worktrees'
-import {
   applySessionDelete,
   applySessionSelection,
 } from './Sidebar/sessions'
@@ -166,11 +151,6 @@ import {
   openWorkspaceDraft,
   restoreHiddenWorkspace,
 } from './Sidebar/workspace'
-import {
-  beginWorktreeTitleEdit,
-  buildOpenWorktreeDialogState,
-  submitWorktreeRename,
-} from './Sidebar/worktree-dialog'
 import {
   openSessionInNewWindow,
   sessionWindowErrorDescription,
@@ -185,6 +165,8 @@ import { CountChip } from './Sidebar/CountChip'
 import { MenuShortcut } from './Sidebar/MenuShortcut'
 import { TREE_INDENT_PX } from './Sidebar/tree-indent'
 import { OpenWorkspaceDialog, useOpenWorkspaceDialog } from './Sidebar/OpenWorkspaceDialog'
+import { useWorktreeActions } from './Sidebar/useWorktreeActions'
+import { CreateWorktreeDialog, RenameWorktreeDialog } from './Sidebar/WorktreeDialogs'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
@@ -424,10 +406,6 @@ export function Sidebar({
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchFocusKey, setSearchFocusKey] = useState(0)
   const searchButtonRef = useRef<HTMLButtonElement>(null)
-  const [worktreeEditTarget, setWorktreeEditTarget] = useState<WorktreeInfo | null>(null)
-  const [worktreeEditTitle, setWorktreeEditTitle] = useState('')
-  const [worktreeEditLoading, setWorktreeEditLoading] = useState(false)
-  const worktreeEditInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse; workspacePath: string } | null>(null)
   const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; workspacePath: string; x: number; y: number } | null>(null)
@@ -442,31 +420,6 @@ export function Sidebar({
   // worktree's). Absent means every checkout.
   const [checkoutFilter, setCheckoutFilter] = useState<Record<string, string>>({})
   const [checkoutMenu, setCheckoutMenu] = useState<{ repo: string; x: number; y: number } | null>(null)
-  const [worktreeTarget, setWorktreeTarget] = useState<string | null>(null)
-  const [worktreeName, setWorktreeName] = useState('')
-  const [worktreeBranch, setWorktreeBranch] = useState('')
-  const [worktreeLoading, setWorktreeLoading] = useState(false)
-  const [worktreeRemoving, setWorktreeRemoving] = useState<string | null>(null)
-  const [removedWorktreePaths, setRemovedWorktreePaths] = useState<Set<string>>(() => new Set())
-  // Managed-worktree pending removal — null when no confirmation is open.
-  // Removing a managed worktree deletes it from disk (git worktree remove),
-  // which can drop uncommitted work, so it must be confirmed (error
-  // prevention) like session-delete and workspace-removal already are.
-  const [removeWorktreeTarget, setRemoveWorktreeTargetState] = useState<WorktreeInfo | null>(null)
-  // What the removal does to the worktree's branch (a dry run), for the dialog.
-  const [removeWorktreePreview, setRemoveWorktreePreview] = useState<WorktreeRemoveResponse | null>(null)
-  const removeWorktreeAsked = useRef<string | null>(null)
-  const setRemoveWorktreeTarget = (item: WorktreeInfo | null) => {
-    setRemoveWorktreeTargetState(item)
-    setRemoveWorktreePreview(null)
-    removeWorktreeAsked.current = item?.directory ?? null
-    const source = item?.managed ? worktreeSourceByDirectory.get(item.directory) ?? worktreeTarget : null
-    if (!item || !source) return
-    // The dialog stands without the answer; it only loses the branch line.
-    removeWorktree(source, item.directory, { dryRun: true })
-      .then((preview) => { if (removeWorktreeAsked.current === item.directory) setRemoveWorktreePreview(preview) })
-      .catch(() => {})
-  }
 
   // Every caller has just changed the tree on the server, so a cached copy
   // is never good enough. Invalidating also restarts a fetch already in
@@ -485,6 +438,18 @@ export function Sidebar({
     ]),
     [queryClient, refreshWorkspaceTree],
   )
+  const worktreeActions = useWorktreeActions({
+    worktreeSourceByDirectory,
+    refreshWorkspaceTree,
+    onMobileClose,
+    setError,
+    onRemoved: (directory) => setExpandedWorkspaces((current) => {
+      if (!current.has(directory)) return current
+      const next = new Set(current)
+      next.delete(directory)
+      return next
+    }),
+  })
   const openRelocate = useCallback(async (path: string) => {
     let native = false
     try {
@@ -528,10 +493,6 @@ export function Sidebar({
   useEffect(() => {
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
-
-  useEffect(() => {
-    if (worktreeEditTarget) worktreeEditInputRef.current?.focus()
-  }, [worktreeEditTarget])
 
   const openSessionSearch = () => {
     setSearchOpen(true)
@@ -706,95 +667,12 @@ export function Sidebar({
     })
   }
 
-  const loadWorktreesForTarget = useCallback((path: string) => loadWorktreesForSource(path, listWorktrees), [])
-
-  const openWorktreeDialog = (path: string) => {
-    const nextState = buildOpenWorktreeDialogState(path)
-    setWorktreeTarget(nextState.target)
-    setWorktreeName(nextState.name)
-    setWorktreeBranch(nextState.branch)
-    setWorktreeRemoving(nextState.removing)
-    setError(nextState.error)
-  }
-
-  const handleRemoveWorktree = async (item: WorktreeInfo) => {
-    if (!item.managed) return
-    const directory = item.directory
-    setWorktreeRemoving(directory)
-    setError(null)
-    try {
-      const result = await removeManagedWorktree(item, {
-        worktreeTarget,
-        worktreeSourceByDirectory,
-        loadWorktreesForSource: loadWorktreesForTarget,
-        refreshWorkspaceTree,
-      })
-      if (!result) return
-      setRemovedWorktreePaths((current) => new Set(current).add(result.removedDirectory))
-      setExpandedWorkspaces((current) => {
-        if (!current.has(result.removedDirectory)) return current
-        const next = new Set(current)
-        next.delete(result.removedDirectory)
-        return next
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't remove worktree")
-    } finally {
-      setWorktreeRemoving(null)
-    }
-  }
-
-  // Commit the removal from the confirmation dialog.
-  const confirmRemoveWorktree = () => {
-    const target = removeWorktreeTarget
-    setRemoveWorktreeTarget(null)
-    if (target) void handleRemoveWorktree(target)
-  }
-
-  const submitWorktree = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!worktreeTarget) return
-    setWorktreeLoading(true)
-    setError(null)
-    try {
-      await submitWorktreeSession({
-        worktreeTarget,
-        worktreeName,
-        worktreeBranch,
-        queryClient,
-        refreshWorkspaceTree,
-        navigate,
-        onMobileClose,
-        loadWorktreesForSource: loadWorktreesForTarget,
-      })
-      setWorktreeTarget(null)
-    } catch (err) {
-      const recovered = await recoverCreatedWorktreeAfterTransientError({
-        error: err,
-        worktreeTarget,
-        worktreeName,
-        loadWorktreesForSource: loadWorktreesForTarget,
-        refreshWorkspaceTree,
-        navigate: ({ to }) => navigate({ to }),
-        onMobileClose,
-      })
-      if (recovered) {
-        setWorktreeTarget(null)
-        setError(null)
-        return
-      }
-      setError(err instanceof Error ? err.message : "Couldn't create worktree")
-    } finally {
-      setWorktreeLoading(false)
-    }
-  }
-
   // Chat, then repositories in a workspace group, then the rest; each part
   // most recently active first.
   const sourceWorkspaces = [
     ...(chatWorkspace ? [chatWorkspace.path] : []),
     ...orderWorkspacePaths(
-      sourceWorkspacePaths(workspaceTree, removedWorktreePaths)
+      sourceWorkspacePaths(workspaceTree, worktreeActions.removedWorktreePaths)
         .filter((path) => !isChatPath(path))
         .filter((path) => !activeGroupFilter || (workspaceByPath.get(path)?.group_ids ?? []).includes(activeGroupFilter.id)),
       workspaceByPath,
@@ -810,7 +688,7 @@ export function Sidebar({
         workspace ?? chatWorkspace?.path ?? null,
         chatWorkspace?.path ?? null,
         orderWorkspacePaths(
-          sourceWorkspacePaths(workspaceTree, removedWorktreePaths).filter((path) => !isChatPath(path)),
+          sourceWorkspacePaths(workspaceTree, worktreeActions.removedWorktreePaths).filter((path) => !isChatPath(path)),
           workspaceByPath,
           [],
           sessionsByWorkspace,
@@ -902,7 +780,7 @@ export function Sidebar({
     })
   }
   const checkoutMenuRepository = checkoutMenu
-    ? repositoryCheckouts(checkoutMenu.repo, workspaceByPath.get(checkoutMenu.repo), removedWorktreePaths, checkoutFilter[checkoutMenu.repo])
+    ? repositoryCheckouts(checkoutMenu.repo, workspaceByPath.get(checkoutMenu.repo), worktreeActions.removedWorktreePaths, checkoutFilter[checkoutMenu.repo])
     : null
   const checkoutMenuSelection = checkoutMenuRepository?.selectedWorktree
   const checkoutMenuWorktree: WorktreeInfo | null = checkoutMenuSelection
@@ -965,31 +843,6 @@ export function Sidebar({
       { id: session.id, title },
       { onError: () => pushToast({ tone: 'error', title: "Couldn't rename session" }) },
     )
-  }
-
-  const handleWorktreeEdit = (item: WorktreeInfo) => {
-    const nextState = beginWorktreeTitleEdit(item)
-    setWorktreeEditTarget(nextState.target)
-    setWorktreeEditTitle(nextState.title)
-  }
-
-  const submitWorktreeTitle = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setWorktreeEditLoading(true)
-    setError(null)
-    try {
-      const renamed = await submitWorktreeRename({
-        target: worktreeEditTarget,
-        title: worktreeEditTitle,
-        refreshWorkspaceTree,
-      })
-      if (!renamed) return
-      setWorktreeEditTarget(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't rename worktree")
-    } finally {
-      setWorktreeEditLoading(false)
-    }
   }
 
   const workspaceDisplayName = (path: string) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))
@@ -1373,7 +1226,7 @@ export function Sidebar({
           const sourceIsChat = isChatPath(path)
           const sourceLabel = sourceIsChat ? (chatWorkspace?.name ?? path) : workspaceLabel(path)
           const sourceGroups = sourceIsChat ? NO_GROUPS : groupsOf(path)
-          const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), removedWorktreePaths, checkoutFilter[path])
+          const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), worktreeActions.removedWorktreePaths, checkoutFilter[path])
           const { worktrees, selectedWorktree } = checkouts
           const allCheckoutPaths = [path, ...worktrees.map((item) => item.path)]
           // "New session" starts where the list points: the selected checkout.
@@ -1381,7 +1234,7 @@ export function Sidebar({
           const sourceIsActive = path === activeWorkspace || path === activeWorktreeSource
           const sourceIsExpanded = expandedWorkspaces.has(path)
           const sourceIsPending = pendingWorkspace !== null && allCheckoutPaths.includes(pendingWorkspace)
-          const worktreeIsRemoving = worktreeRemoving !== null && allCheckoutPaths.includes(worktreeRemoving)
+          const worktreeIsRemoving = worktreeActions.worktreeRemoving !== null && allCheckoutPaths.includes(worktreeActions.worktreeRemoving)
           const sourceRunningSessions = checkouts.listPaths
             .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
             .filter(sessionWorking)
@@ -1763,7 +1616,7 @@ export function Sidebar({
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
-                    if (action) openWorktreeDialog(action.path)
+                    if (action) worktreeActions.openWorktreeDialog(action.path)
                   }}
                 >
                   <GitBranch size={16} aria-hidden="true" />
@@ -1795,53 +1648,7 @@ export function Sidebar({
         </div>
       </BottomSheet>
 
-      <Dialog
-        open={worktreeTarget !== null}
-        onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
-      >
-        <DialogContent size="lg">
-          <form onSubmit={submitWorktree} className="space-y-3">
-            <DialogHeader>
-              <DialogTitle>Create worktree</DialogTitle>
-              <DialogDescription>
-                Isolated copy of {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2.5">
-              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
-                <div className="mb-0.5 flex items-center gap-1.5 label-caps text-(--color-text-subtle)">
-                  <Folder size={12} aria-hidden="true" />
-                  Source workspace
-                </div>
-                {worktreeTarget ? (
-                  <Tooltip className="min-w-0">
-                    <TooltipTrigger
-                      className="min-w-0"
-                      render={<p className="truncate font-mono text-meta text-(--color-text-muted)">{worktreeTarget}</p>}
-                    />
-                    <TooltipContent>{worktreeTarget}</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <p className="truncate font-mono text-meta text-(--color-text-muted)" />
-                )}
-              </div>
-              <WorktreeFields
-                name={worktreeName}
-                branch={worktreeBranch}
-                onNameChange={setWorktreeName}
-                onBranchChange={setWorktreeBranch}
-              />
-              {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={worktreeLoading}>
-                {worktreeLoading ? 'Creating…' : 'Create and open'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CreateWorktreeDialog worktrees={worktreeActions} error={error} />
 
       <RelocateWorkspaceDialog
         from={relocateTarget?.path ?? null}
@@ -1916,7 +1723,7 @@ export function Sidebar({
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
-                openWorktreeDialog(action.path)
+                worktreeActions.openWorktreeDialog(action.path)
               }}
             >
               <GitBranch size={12} aria-hidden="true" />
@@ -1983,13 +1790,13 @@ export function Sidebar({
             <button
               type="button"
               className={ACTION_SHEET_ROW_CLASS}
-              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); openWorktreeDialog(repo) }}
+              onClick={() => { const repo = checkoutMenu.repo; setCheckoutMenu(null); worktreeActions.openWorktreeDialog(repo) }}
             >
               <Plus size={16} aria-hidden="true" />
               Create worktree…
             </button>
             {checkoutMenuWorktree && (
-              <button type="button" className={ACTION_SHEET_ROW_CLASS} onClick={() => { setCheckoutMenu(null); handleWorktreeEdit(checkoutMenuWorktree) }}>
+              <button type="button" className={ACTION_SHEET_ROW_CLASS} onClick={() => { setCheckoutMenu(null); worktreeActions.handleWorktreeEdit(checkoutMenuWorktree) }}>
                 <Pencil size={16} aria-hidden="true" />
                 {`Rename ${checkoutMenuWorktree.name}…`}
               </button>
@@ -1998,8 +1805,8 @@ export function Sidebar({
               <button
                 type="button"
                 className={cn(ACTION_SHEET_ROW_CLASS, 'text-(--color-error)')}
-                disabled={worktreeRemoving === checkoutMenuWorktree.directory}
-                onClick={() => { setCheckoutMenu(null); setRemoveWorktreeTarget(checkoutMenuWorktree) }}
+                disabled={worktreeActions.worktreeRemoving === checkoutMenuWorktree.directory}
+                onClick={() => { setCheckoutMenu(null); worktreeActions.setRemoveWorktreeTarget(checkoutMenuWorktree) }}
               >
                 <Trash2 size={16} aria-hidden="true" />
                 {`Delete worktree ${checkoutMenuWorktree.name}…`}
@@ -2054,7 +1861,7 @@ export function Sidebar({
             onClick={() => {
               const repo = checkoutMenu.repo
               setCheckoutMenu(null)
-              openWorktreeDialog(repo)
+              worktreeActions.openWorktreeDialog(repo)
             }}
           >
             <Plus size={12} aria-hidden="true" />
@@ -2069,7 +1876,7 @@ export function Sidebar({
               className={CONTEXT_MENU_ITEM_CLASS}
               onClick={() => {
                 setCheckoutMenu(null)
-                handleWorktreeEdit(checkoutMenuWorktree)
+                worktreeActions.handleWorktreeEdit(checkoutMenuWorktree)
               }}
             >
               <Pencil size={12} aria-hidden="true" />
@@ -2081,10 +1888,10 @@ export function Sidebar({
               type="button"
               role="menuitem"
               className={CONTEXT_MENU_ITEM_DANGER_CLASS}
-              disabled={worktreeRemoving === checkoutMenuWorktree.directory}
+              disabled={worktreeActions.worktreeRemoving === checkoutMenuWorktree.directory}
               onClick={() => {
                 setCheckoutMenu(null)
-                setRemoveWorktreeTarget(checkoutMenuWorktree)
+                worktreeActions.setRemoveWorktreeTarget(checkoutMenuWorktree)
               }}
             >
               <Trash2 size={12} aria-hidden="true" />
@@ -2148,58 +1955,16 @@ export function Sidebar({
         items={mobileSessionActions ? sessionMenuActions(mobileSessionActions.session) : []}
       />
 
-      <Dialog
-        open={worktreeEditTarget !== null}
-        onOpenChange={(open) => { if (!open) setWorktreeEditTarget(null) }}
-      >
-        <DialogContent size="xs" padding="compact">
-          <form onSubmit={submitWorktreeTitle} className="space-y-3">
-            <DialogHeader>
-              <DialogTitle>Rename worktree</DialogTitle>
-              {worktreeEditTarget?.directory ? (
-                <Tooltip className="min-w-0">
-                  <TooltipTrigger
-                    className="min-w-0"
-                    render={<DialogDescription className="max-w-full truncate text-xs leading-4">{workspaceLabel(worktreeEditTarget.directory)}</DialogDescription>}
-                  />
-                  <TooltipContent>{worktreeEditTarget.directory}</TooltipContent>
-                </Tooltip>
-              ) : (
-                <DialogDescription className="max-w-full truncate text-xs leading-4">Rename this sidebar item.</DialogDescription>
-              )}
-            </DialogHeader>
-            <div>
-              <input
-                ref={worktreeEditInputRef}
-                value={worktreeEditTitle}
-                onChange={(e) => setWorktreeEditTitle(e.target.value)}
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-xs text-(--color-text) outline-none transition-colors focus:outline-none focus:border-(--color-text-subtle) md:min-h-8 max-md:pointer-coarse:text-base"
-                aria-label="Worktree title"
-                maxLength={255}
-              />
-              {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="default" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
-                {worktreeEditLoading ? 'Saving…' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <RenameWorktreeDialog worktrees={worktreeActions} error={error} />
 
       <SidebarConfirmDialogs
         deleteTarget={deleteTarget}
         setDeleteTarget={setDeleteTarget}
         onConfirmSessionDelete={confirmSessionDelete}
-        removeWorktreeTarget={removeWorktreeTarget}
-        removeWorktreePreview={removeWorktreePreview}
-        setRemoveWorktreeTarget={setRemoveWorktreeTarget}
-        onConfirmRemoveWorktree={confirmRemoveWorktree}
+        removeWorktreeTarget={worktreeActions.removeWorktreeTarget}
+        removeWorktreePreview={worktreeActions.removeWorktreePreview}
+        setRemoveWorktreeTarget={worktreeActions.setRemoveWorktreeTarget}
+        onConfirmRemoveWorktree={worktreeActions.confirmRemoveWorktree}
       />
     </ResizableAside>
     </SidebarPageContext.Provider>

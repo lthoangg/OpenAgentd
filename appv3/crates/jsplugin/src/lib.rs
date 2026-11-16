@@ -18,6 +18,7 @@ mod host;
 mod re;
 mod runtime;
 mod sandbox;
+pub mod script;
 pub mod transpile;
 
 pub use host::{parse_iso_ts, parse_qs, register_native, url_query, which, Callback, CallbackFn, NativeFn};

@@ -556,7 +556,7 @@ async fn init(path: &Path, label: &str, policy: Option<Policy>, last_tick: Rc<Ce
     Ok((rt, ctx, describe))
 }
 
-fn normalize(p: &Path) -> PathBuf {
+pub(crate) fn normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {
@@ -599,7 +599,7 @@ impl Resolver for PluginResolver {
     }
 }
 
-struct PluginLoader;
+pub(crate) struct PluginLoader;
 
 impl Loader for PluginLoader {
     fn load<'js>(&mut self, ctx: &Ctx<'js>, name: &str, _attrs: Option<ImportAttributes<'js>>) -> rquickjs::Result<Module<'js, rquickjs::module::Declared>> {

@@ -50,7 +50,6 @@ interface UseInputComposerSuggestionEngineOptions {
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
   onSlashCommand?: (id: string) => void
   setMentions: Dispatch<SetStateAction<string[]>>
-  minimized: boolean
   onSuggestionsMenuChange?: (open: boolean) => void
 }
 
@@ -76,7 +75,6 @@ export function useInputComposerSuggestionEngine({
   onSnippetCommand,
   onSlashCommand,
   setMentions,
-  minimized,
   onSuggestionsMenuChange,
 }: UseInputComposerSuggestionEngineOptions) {
   const [menuIndex, setMenuIndex] = useState(0)
@@ -227,7 +225,7 @@ export function useInputComposerSuggestionEngine({
     else setMentionRange(null)
   }, [menu, setValue])
 
-  const suggestionsOpen = !minimized && menu !== null
+  const suggestionsOpen = menu !== null
   useEffect(() => {
     onSuggestionsMenuChange?.(suggestionsOpen)
   }, [suggestionsOpen, onSuggestionsMenuChange])
@@ -245,7 +243,5 @@ export function useInputComposerSuggestionEngine({
     commit,
     commitActive,
     dismiss,
-
-    suggestionsOpen,
   }
 }

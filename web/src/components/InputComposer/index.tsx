@@ -265,7 +265,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onSnippetCommand,
     onSlashCommand,
     setMentions,
-    minimized: false,
     onSuggestionsMenuChange,
   })
 
@@ -925,7 +924,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         {!filesBelow && feedbackChips}
 
         <InputComposerSuggestions
-          minimized={false}
           menu={menu}
           activeIndex={activeIndex}
           optionRefs={optionRefs}

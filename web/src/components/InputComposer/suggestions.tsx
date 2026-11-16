@@ -20,14 +20,12 @@ const MENU_KEY_CLASS = 'rounded-xs border border-(--color-border) bg-(--bg-key) 
  * single open listbox.
  */
 export function InputComposerSuggestions({
-  minimized,
   menu,
   activeIndex,
   optionRefs,
   onSelect,
   suggestionsBelow,
 }: {
-  minimized: boolean
   menu: SuggestionMenu | null
   activeIndex: number
   optionRefs: MutableRefObject<(HTMLButtonElement | null)[]>
@@ -203,7 +201,7 @@ export function InputComposerSuggestions({
     }
   }, [menuOpen, updatePosition, isMobile])
 
-  if (minimized || !menu) return null
+  if (!menu) return null
 
   const slashDisplayParts = (cmd: SlashCommand) => {
     const displayName = cmd.displayName ?? cmd.id

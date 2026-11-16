@@ -70,7 +70,7 @@ Lead with correctness and security, then architecture, then the rest.
 ## 5. Check the verification story
 
 - Which gates ran: `make verify-v3`, `make verify-web`, `make verify-docs`, native targets (`oad/testing`)?
-- UI changes: driven at a phone width and a desktop width with `oad/drive` (which journeys, and the evidence folder), and read against `DESIGN.md`?
+- UI changes: driven at a phone width and a desktop width with `oad/drive` (which journeys, and the evidence folder), and read against the chapter of `design/` that `DESIGN.md` names?
 - User-visible change: entry in its area file under `documents/docs/features/`?
 
 ## 6. Output

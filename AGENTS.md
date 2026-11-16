@@ -144,10 +144,12 @@ Use the native subtree Makefiles for desktop/mobile packages
   rerun the owning build.
 - Keep release versions synchronized through the repository release scripts;
   `make verify-version` checks the cross-project contract.
-- Read `DESIGN.md` before changing UI. Use its tokens and existing primitives,
-  design mobile-first, and preserve touch/pointer parity. Check a UI change on
-  the running app at a phone width and a desktop width with `oad/drive`, and
-  look at the screenshots it saves.
+- Before changing UI, read `DESIGN.md` (the tokens and a map), then the
+  chapter under `design/` that the map names for what you change, not every
+  chapter. Use its tokens and existing primitives, design mobile-first, and
+  preserve touch/pointer parity. Check a UI change on the running app at a
+  phone width and a desktop width with `oad/drive`, and look at the
+  screenshots it saves.
 
 ## Validation
 

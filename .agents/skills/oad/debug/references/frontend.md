@@ -66,7 +66,7 @@ web/src/
 | Mentions and file refs | `InputComposer.mentions.ts`, `UserBubble.tsx`, `utils/file-refs.ts`, `useOverlayState.ts` |
 | Keyboard and focus | `lib/keyboard/`, `hooks/use-dock-focus.ts`, `lib/desktop-shell.ts` |
 | Primitive bug | `components/ui/*.tsx`: portal positioning, `useDeferredUnmount` called before early returns |
-| CSS / layout | Tailwind classes, `index.css` tokens, dark-mode variants, `DESIGN.md` |
+| CSS / layout | Tailwind classes, `index.css` tokens, dark-mode variants, `DESIGN.md` and its `design/` chapters |
 
 ## Platform differences
 

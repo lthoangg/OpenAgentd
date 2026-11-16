@@ -223,21 +223,6 @@ function isSameBlock(live: ContentBlock, persisted: ContentBlock): boolean {
   return live.content === persisted.content
 }
 
-/**
- * Drop the leading live blocks a *still-running* turn's snapshot already
- * covers.
- *
- * While the turn runs, the snapshot holds only the model iterations the server
- * has already persisted — the in-flight tail is not there yet, so the
- * positional drop used for finished turns would erase live content and blank
- * out mid-stream text. Align on content within the active turn: in `stream.blocks`,
- * the active turn begins with the last user message. If the active turn's
- * persisted rows match a prefix of `currentBlocks`, that prefix is already
- * rendered in `blocks` and should be dropped from `currentBlocks`.
- *
- * `limit` bounds the scan to blocks that existed when the fetch started —
- * anything appended since postdates the snapshot and can never be covered.
- */
 /** Live-only or lossy block types that may lack a persisted counterpart:
  *  provider notices never persist, and reasoning is often summarized,
  *  redacted, or dropped entirely by the provider. */
@@ -264,6 +249,21 @@ function snapshotCoverableCount(
     : liveCountAtFetch
 }
 
+/**
+ * Drop the leading live blocks a *still-running* turn's snapshot already
+ * covers.
+ *
+ * While the turn runs, the snapshot holds only the model iterations the server
+ * has already persisted — the in-flight tail is not there yet, so the
+ * positional drop used for finished turns would erase live content and blank
+ * out mid-stream text. Align on content within the active turn: in `stream.blocks`,
+ * the active turn begins with the last user message. If the active turn's
+ * persisted rows match a prefix of `currentBlocks`, that prefix is already
+ * rendered in `blocks` and should be dropped from `currentBlocks`.
+ *
+ * `limit` bounds the scan to blocks that existed when the fetch started —
+ * anything appended since postdates the snapshot and can never be covered.
+ */
 function dropSnapshotAlignedPrefix(stream: AgentStream, limit: number) {
   if (stream.currentBlocks.length === 0 || stream.blocks.length === 0 || limit <= 0) return
 
@@ -407,6 +407,71 @@ function hasUnsyncedCompaction(stream: AgentStream): boolean {
   return false
 }
 
+/**
+ * Replace a stream's confirmed rows with a history page's, applying the
+ * revert boundary. Provider errors only this client saw (they never persist)
+ * are kept. ``keepLive``: the live blocks hold newer content and stay, so
+ * their blob URLs must too.
+ */
+function installPage(
+  stream: AgentStream,
+  messages: MessageResponse[],
+  keepLive: boolean,
+  revertTime: number | null,
+  boundary: { boundaryId?: string; boundaryContent?: string | null },
+) {
+  const localErrors = [...stream.blocks, ...stream.currentBlocks].filter(
+    (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
+  )
+  if (!keepLive) revokeBlobUrlsFromBlocks(stream.currentBlocks)
+  const orphans: Record<string, OrphanToolResult> = {}
+  stream.blocks = parseAgentBlocks(messages, orphans)
+  // Results whose calls sit in older, not-yet-loaded pages — parked for
+  // loadOlderMessages to attach when the owning card scrolls in.
+  stream._orphanToolResults = orphans
+  if (localErrors.length > 0) {
+    const existingIds = new Set(stream.blocks.map((b) => b.id))
+    const toKeep = localErrors.filter((b) => !existingIds.has(b.id))
+    stream.blocks = [...stream.blocks, ...toKeep]
+  }
+  stream._revertedSuffix = []
+  applyRevertBoundary(stream, revertTime, boundary)
+}
+
+/**
+ * Restore a stream's usage from a history page and the server's totals.
+ *
+ * The server sums the WHOLE session (every page, compaction summaries
+ * included), while the visible page only carries the newest
+ * `_HISTORY_PAGE_SIZE` rows — a client-side sum over it undercounts longer
+ * sessions. Prefer the authoritative total, but never regress below the live
+ * SSE value (an in-flight turn may hold events the server has not persisted
+ * yet). promptTokens/cachedTokens stay page-derived: they describe the
+ * *latest* call, which is always in the newest page. A stream with newer live
+ * content keeps its own latest-call figures.
+ */
+function restoreUsage(
+  stream: AgentStream,
+  visibleMessages: MessageResponse[],
+  totals: { estimated_cost_usd?: number | null; completion_tokens?: number | null },
+  keepLive: boolean,
+) {
+  const pageUsage = sumUsageFromMessages(visibleMessages)
+  const prevEstimatedCost = stream.usage?.estimatedCostUsd ?? 0
+  const prevCompletionTokens = stream.usage?.completionTokens ?? 0
+  const costUsd = typeof totals.estimated_cost_usd === 'number'
+    ? totals.estimated_cost_usd
+    : (pageUsage.estimatedCostUsd ?? 0)
+  const completionTotal = typeof totals.completion_tokens === 'number'
+    ? totals.completion_tokens
+    : pageUsage.completionTokens
+  if (!keepLive) stream.usage = pageUsage
+  else stream.usage.promptTokens = stream.usage.promptTokens || pageUsage.promptTokens
+  stream.usage.completionTokens = Math.max(prevCompletionTokens, completionTotal)
+  stream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, costUsd) * 1e8) / 1e8
+  stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
+}
+
 /** Every row a since-delta carries: the lead's, then each member's. */
 function deltaRows(delta: SessionHistoryResponse): MessageResponse[] {
   return [...delta.lead.messages, ...delta.members.flatMap((member: { messages: MessageResponse[] }) => member.messages)]
@@ -449,7 +514,7 @@ function toolResultsOf(rows: MessageResponse[]): Record<string, OrphanToolResult
   return results
 }
 
-export function resetSessionState(
+function resetSessionState(
   state: AgentStore,
   options: {
     sessionId: string | null
@@ -658,6 +723,7 @@ async function loadSessionImpl(
       const leadRevertTime = revertBoundaryTime(history.lead)
       const boundaryId = history.lead.revert?.message_id
       const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
+      const boundary = { boundaryId, boundaryContent: boundaryMsg?.content }
 
       // The client's `isAgentWorking` lags the server: after a /stop the
       // backend keeps unwinding for seconds before its trailing `done` clears
@@ -731,25 +797,7 @@ async function loadSessionImpl(
           draft.agentStreams[leadName] = createDefaultAgentStream()
         }
         const leadStream = draft.agentStreams[leadName]
-        const leadLocalErrors = [...leadStream.blocks, ...leadStream.currentBlocks].filter(
-          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
-        )
-        if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
-        const leadOrphans: Record<string, OrphanToolResult> = {}
-        leadStream.blocks = parseAgentBlocks(history.lead.messages, leadOrphans)
-        // Results whose calls sit in older, not-yet-loaded pages — parked for
-        // loadOlderMessages to attach when the owning card scrolls in.
-        leadStream._orphanToolResults = leadOrphans
-        if (leadLocalErrors.length > 0) {
-          const existingIds = new Set(leadStream.blocks.map((b) => b.id))
-          const toKeep = leadLocalErrors.filter((b) => !existingIds.has(b.id))
-          leadStream.blocks = [...leadStream.blocks, ...toKeep]
-        }
-        leadStream._revertedSuffix = []
-        applyRevertBoundary(leadStream, leadRevertTime, {
-          boundaryId,
-          boundaryContent: boundaryMsg?.content,
-        })
+        installPage(leadStream, history.lead.messages, leadHadNewerActivity, leadRevertTime, boundary)
         if (leadHadNewerActivity) {
           // A running turn keeps its live tail (the in-flight part is not in
           // the snapshot yet), so strip whatever the snapshot already covers
@@ -797,35 +845,7 @@ async function loadSessionImpl(
         // ended (`idle`) or parked on another question (`waiting_input`) stops
         // matching on its own — which is what keeps the dots from stranding
         // when a reconnecting client missed the whole resumed turn.
-        const leadVisibleMsgs = messagesBeforeRevert(history.lead)
-        const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
-        const prevEstimatedCost = leadStream.usage?.estimatedCostUsd ?? 0
-        const prevCompletionTokens = leadStream.usage?.completionTokens ?? 0
-        // The server sums the WHOLE session (every page, compaction summaries
-        // included), while the visible page only carries the newest
-        // `_HISTORY_PAGE_SIZE` rows — a client-side sum over it undercounts
-        // longer sessions. Prefer the authoritative total, but never regress
-        // below the live SSE value (an in-flight turn may hold events the
-        // server has not persisted yet). promptTokens/cachedTokens stay
-        // page-derived: they describe the *latest* call, which is always in
-        // the newest page.
-        const leadCostUsd = typeof history.lead.estimated_cost_usd === 'number'
-          ? history.lead.estimated_cost_usd
-          : (leadUsage.estimatedCostUsd ?? 0)
-        const leadCompletionTotal = typeof history.lead.completion_tokens === 'number'
-          ? history.lead.completion_tokens
-          : leadUsage.completionTokens
-        if (!leadHadNewerActivity) {
-          leadStream.usage = leadUsage
-          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadCompletionTotal)
-          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadCostUsd) * 1e8) / 1e8
-          leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
-        } else {
-          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadCompletionTotal)
-          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadCostUsd) * 1e8) / 1e8
-          leadStream.usage.promptTokens = leadStream.usage.promptTokens || leadUsage.promptTokens
-          leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
-        }
+        restoreUsage(leadStream, messagesBeforeRevert(history.lead), history.lead, leadHadNewerActivity)
       }
 
       const confirmedUser = history.lead.messages.filter(
@@ -857,23 +877,7 @@ async function loadSessionImpl(
         }
         const memberStream = draft.agentStreams[member.name]
         const memberHadNewerActivity = hasLiveContent(memberStream, draft.isAgentWorking, fetchStartedAt)
-        const memberLocalErrors = [...memberStream.blocks, ...memberStream.currentBlocks].filter(
-          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
-        )
-        if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
-        const memberOrphans: Record<string, OrphanToolResult> = {}
-        memberStream.blocks = parseAgentBlocks(member.messages, memberOrphans)
-        memberStream._orphanToolResults = memberOrphans
-        if (memberLocalErrors.length > 0) {
-          const existingIds = new Set(memberStream.blocks.map((b) => b.id))
-          const toKeep = memberLocalErrors.filter((b) => !existingIds.has(b.id))
-          memberStream.blocks = [...memberStream.blocks, ...toKeep]
-        }
-        memberStream._revertedSuffix = []
-        applyRevertBoundary(memberStream, leadRevertTime, {
-          boundaryId,
-          boundaryContent: boundaryMsg?.content,
-        })
+        installPage(memberStream, member.messages, memberHadNewerActivity, leadRevertTime, boundary)
         if (memberHadNewerActivity && turnStillRunning) {
           dropSnapshotAlignedPrefix(
             memberStream,
@@ -899,34 +903,14 @@ async function loadSessionImpl(
           memberStream._turnStartedAt = member.running === true ? Date.now() : null
         }
         keepLiveIds(memberStream, shownBefore.get(member.name))
-        const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
-        const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
-        const prevMemberEstimatedCost = memberStream.usage?.estimatedCostUsd ?? 0
-        const prevMemberCompletionTokens = memberStream.usage?.completionTokens ?? 0
-        const memberCostUsd = typeof member.estimated_cost_usd === 'number'
-          ? member.estimated_cost_usd
-          : (memberUsage.estimatedCostUsd ?? 0)
-        const memberCompletionTotal = typeof member.completion_tokens === 'number'
-          ? member.completion_tokens
-          : memberUsage.completionTokens
-        if (!memberHadNewerActivity) {
-          memberStream.usage = memberUsage
-          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberCompletionTotal)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberCostUsd) * 1e8) / 1e8
-          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
-        } else {
-          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberCompletionTotal)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberCostUsd) * 1e8) / 1e8
-          memberStream.usage.promptTokens = memberStream.usage.promptTokens || memberUsage.promptTokens
-          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
-        }
+        restoreUsage(memberStream, messagesBeforeTime(member.messages, leadRevertTime), member, memberHadNewerActivity)
       })
 
       draft.hasMore = history.has_more
       draft.nextCursor = history.next_cursor
       draft.pinnedPrompt = history.latest_prompt ? parseAgentBlocks([history.latest_prompt])[0] ?? null : null
       draft.isLoadingHistory = false
-      draft._leadRevertTime = revertBoundaryTime(history.lead)
+      draft._leadRevertTime = leadRevertTime
       draft.revertKeepsFiles = history.lead.revert?.keep_files === true
       // Everything in this response is server-confirmed, so nothing is
       // pending reconciliation and the watermark advances to its newest row.

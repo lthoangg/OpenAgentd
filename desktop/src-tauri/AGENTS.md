@@ -82,6 +82,11 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   single-choice question with a few short options (`quick_choices`); the
   island and the pet never answer: a click opens the session. A 409/404 on the
   answer means it is no longer open: treated as answered elsewhere.
+  `report_seen` posts `POST /api/agent/{id}/seen`: opening or dismissing a
+  notification in the island or the pet (Later on a question too) reports
+  its session seen to its own server (`island::seen_by_shell`), so the
+  server drops the phone push it holds. App windows report their own
+  sessions; a 404 (a server before v3.58.0) is fine.
 - `src/pet.rs`: the desktop pet (`web/pet.html`, macOS and Windows): a
   transparent always-on-top window that is only a full-width lane of a
   display's work area, as tall as the pet's scene needs (the whole area

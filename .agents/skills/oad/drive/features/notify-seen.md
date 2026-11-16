@@ -9,6 +9,10 @@ client reported the session seen (`appv3/crates/api/src/cloud/letters.rs`).
 - Opening a session, or bringing its window back into focus, reports it seen.
 - A Done or Needs you notification about the session on screen reports it
   seen at once, even moments after the session opened.
+- Desktop only: opening or dismissing a notification in the pet or the
+  notch island (Later on a question too) reports it seen from the shell
+  (`desktop/src-tauri/src/answers.rs`, `report_seen`); a browser drive
+  cannot show it, the desktop log says `seen: session=… reported`.
 
 ## How to get to it (user POV)
 

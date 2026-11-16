@@ -1303,8 +1303,11 @@ fn open_notification(app: &AppHandle, notification_id: &str) {
     };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        match crate::island::open_session(&app, route.server, &route.session_id, crate::island::OpenIn::Existing, true).await {
-            Ok(()) => crate::island::mark_session_read(&app, &route.session_id, None),
+        match crate::island::open_session(&app, route.server.clone(), &route.session_id, crate::island::OpenIn::Existing, true).await {
+            Ok(()) => {
+                crate::island::mark_session_read(&app, &route.session_id, None);
+                crate::island::seen_by_shell(&app, route.server, &route.session_id);
+            }
             Err(e) => log::warn!("pet: could not open session: {e:#}"),
         }
     });
@@ -1333,6 +1336,21 @@ fn dismissed_sessions(routes: &VecDeque<Route>, notification_ids: &[String]) -> 
     sessions
 }
 
+/// The sessions the dismissed bubbles are about, once each, with their
+/// server: each was seen, so its server keeps it off the phone. A question
+/// put off with "Later" counts too: it was read, only not answered yet.
+fn seen_sessions(routes: &VecDeque<Route>, notification_ids: &[String]) -> Vec<(String, ServerId)> {
+    let mut sessions: Vec<(String, ServerId)> = Vec::new();
+    for id in notification_ids.iter().take(MAX_ROUTES) {
+        if let Some(route) = routes.iter().find(|r| &r.notification_id == id) {
+            if !sessions.iter().any(|(s, server)| id_key(s) == id_key(&route.session_id) && *server == route.server) {
+                sessions.push((route.session_id.clone(), route.server.clone()));
+            }
+        }
+    }
+    sessions
+}
+
 /// The user dismissed bubbles (×, or Clear Notifications): their sessions
 /// are read everywhere, as a dismiss on the island is.
 #[tauri::command]
@@ -1341,9 +1359,15 @@ pub fn pet_dismiss(app: AppHandle, window: WebviewWindow, notification_ids: Vec<
         return;
     }
     // Never hold the pet's lock while the island takes its own.
-    let sessions = dismissed_sessions(&shared().lock().unwrap().routes, &notification_ids);
+    let (sessions, seen) = {
+        let s = shared().lock().unwrap();
+        (dismissed_sessions(&s.routes, &notification_ids), seen_sessions(&s.routes, &notification_ids))
+    };
     for session_id in sessions {
         crate::island::mark_session_read(&app, &session_id, None);
+    }
+    for (session_id, server) in seen {
+        crate::island::seen_by_shell(&app, server, &session_id);
     }
 }
 
@@ -2514,6 +2538,26 @@ mod tests {
         let routes: VecDeque<Route> = [route("q1", "aa", "input_needed"), route("d1", "bb", "assistant_done")].into_iter().collect();
         let ids = ["q1".to_string(), "d1".to_string()];
         assert_eq!(dismissed_sessions(&routes, &ids), ["bb"]);
+    }
+
+    // A dismissed bubble, a question put off with "Later" too, was seen:
+    // its server is told once per session so the phone stays quiet.
+    #[test]
+    fn dismissed_bubbles_are_reported_seen_to_their_own_server() {
+        let other = ServerId::External("http://studio:4082".into());
+        let route = |n: &str, s: &str, server: &ServerId, kind: &str| Route { notification_id: n.into(), session_id: s.into(), server: server.clone(), kind: kind.into() };
+        let routes: VecDeque<Route> = [
+            route("q1", "aa", &ServerId::Bundled, "input_needed"),
+            route("d1", "AA", &ServerId::Bundled, "assistant_done"),
+            route("d2", "bb", &other, "assistant_done"),
+        ]
+        .into_iter()
+        .collect();
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(seen_sessions(&routes, &ids(&["q1", "d1", "d2", "unknown"])), [("aa".to_string(), ServerId::Bundled), ("bb".to_string(), other)]);
+        assert!(seen_sessions(&routes, &ids(&["reminder-without-session"])).is_empty());
+        let many: Vec<String> = (0..MAX_ROUTES + 5).map(|_| "q1".to_string()).collect();
+        assert_eq!(seen_sessions(&routes, &many).len(), 1);
     }
 
     #[test]

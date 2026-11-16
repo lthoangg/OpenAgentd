@@ -19,7 +19,7 @@ import {
   nextTarget,
   petPose,
   reactionFor,
-  readOnDismiss,
+  reportOnDismiss,
   shownQuestion,
   sitPause,
   startX,
@@ -378,8 +378,10 @@ describe('bubbleReducer', () => {
     expect(bubbleReducer(state, { type: 'readSession', key: 'zz' })).toBe(state)
   })
 
-  it('reads the sessions of dismissed finished and failed turns, not questions', () => {
-    expect(readOnDismiss([bubble('a', 'done'), bubble('q', 'input'), bubble('r', 'failed'), bubble('x', 'failed', null)])).toEqual(['a', 'r'])
+  // The shell reads the turns and reports every session seen, a question put
+  // off with "Later" too; it never reads a question away.
+  it('tells the shell about every dismissed bubble with a session, questions included', () => {
+    expect(reportOnDismiss([bubble('a', 'done'), bubble('q', 'input'), bubble('r', 'failed'), bubble('x', 'failed', null)])).toEqual(['a', 'q', 'r'])
   })
 })
 

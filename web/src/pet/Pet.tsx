@@ -53,7 +53,7 @@ import {
   liftsAllowed,
   neededFrame,
   originMoves,
-  readOnDismiss,
+  reportOnDismiss,
   ledges,
   nextTarget,
   petPose,
@@ -116,9 +116,9 @@ const SAMPLE_KEEP_MS = 200
 
 type MenuAction = { action: 'dismiss'; id: string } | { action: 'clear' }
 
-/** Dismissed finished and failed turns: their sessions are read everywhere. */
+/** Dismissed bubbles: the shell reads their sessions and reports them seen. */
 function reportDismissed(items: PetBubble[]): void {
-  const notificationIds = readOnDismiss(items)
+  const notificationIds = reportOnDismiss(items)
   if (notificationIds.length > 0) void invoke(DISMISS_COMMAND, { notificationIds }).catch(() => {})
 }
 type PointerAt = { x: number; y: number } | null

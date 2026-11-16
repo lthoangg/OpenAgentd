@@ -59,7 +59,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   sends its Done, Needs you or Failed push a minute after the notification,
   and only when nobody looked at that session meanwhile (open in a focused
   window or tab, or its question answered, on any desktop, browser or
-  phone). Working at your computers keeps the phone quiet; walking away
+  phone). Opening or dismissing a notification in the pet or the notch
+  (Later on a question too) counts as looking at it. Working at your
+  computers keeps the phone quiet; walking away
   with it still gets you every unseen result. While the iPhone app is open
   on one computer, a push from another computer of the account now shows as
   a banner instead of only after switching to that computer.

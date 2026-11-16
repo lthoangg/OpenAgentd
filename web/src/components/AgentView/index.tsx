@@ -55,7 +55,7 @@ import { restartNoteInfo } from '@/lib/restart-note'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
 import { fromLead, isLeadMessage } from '@/utils/lead-messages'
 import { CopyDetailsButton, ErrorCard } from './ErrorCard'
-import { providerErrorDetails, switchedAccount, waitAccount } from './provider-status'
+import { endingProviderError, isBareExhausted, isBlankContentBlock, isProviderErrorBlock, latestActiveRetryBlockId, providerErrorDetails, switchedAccount, waitAccount } from './provider-status'
 import { TranscriptSkeleton } from './TranscriptSkeleton'
 import { PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './prompt-nav'
 import { isTypedPromptBlock } from '@/stores/useAgentStore/helpers'
@@ -141,42 +141,6 @@ function pinnedPromptShows(prompt: ContentBlock, revertTime: number | null): boo
 /** The run picker, on its model list: how a failed turn gets another model. */
 function openModelPicker(): void {
   useUIStore.getState().openRunPicker('model')
-}
-
-/**
- * The server's "retries ran out" mark: the model and the budget, but no
- * message. The error the turn ends with follows it and is the card; this is
- * the one line under the retries saying they stopped.
- */
-function isBareExhausted(block: ContentBlock): boolean {
-  return block.type === 'provider_status' && block.extra?.status === 'exhausted' &&
-    !block.content && !(typeof block.extra?.message === 'string' && block.extra.message)
-}
-
-function isProviderErrorBlock(block: ContentBlock): boolean {
-  if (block.type !== 'provider_status') return false
-  if (isBareExhausted(block)) return false
-  const status = block.extra?.status
-  return status === 'error' || status === 'exhausted' || block.extra?.category === 'provider'
-}
-
-/** The provider error a turn ended on, if it ended on one. */
-function endingProviderError(blocks: ContentBlock[]): ContentBlock | undefined {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (isBlankContentBlock(blocks[i])) continue
-    return isProviderErrorBlock(blocks[i]) ? blocks[i] : undefined
-  }
-  return undefined
-}
-
-/** True for a `thinking`/`text` block that has streamed in only whitespace
- *  so far (e.g. a provider's blank reasoning-section separator, or the
- *  very first chunk before real content arrives). Such a block renders no
- *  visible output, so it must not count as "content has started" when
- *  deciding whether to keep showing the pending dots — otherwise the user
- *  is left staring at a blank chat area with no dots and no content. */
-function isBlankContentBlock(block: ContentBlock): boolean {
-  return (block.type === 'thinking' || block.type === 'text') && block.content.trim().length === 0
 }
 
 interface QuotaWait {
@@ -275,22 +239,6 @@ function latestActiveQuotaWait(
     }
   }
   return null
-}
-
-/**
- * The retry notice still waiting on its call: the last thing the turn said.
- * Anything after it (the answer starting, an error card) means the retry is
- * over, so the notice goes.
- */
-function latestActiveRetryBlockId(finalizedBlocks: ContentBlock[], liveBlocks: ContentBlock[]): string | undefined {
-  for (const part of [liveBlocks, finalizedBlocks]) {
-    for (let index = part.length - 1; index >= 0; index -= 1) {
-      const block = part[index]
-      if (isBlankContentBlock(block)) continue
-      return block.type === 'provider_status' && block.extra?.status === 'retrying' ? block.id : undefined
-    }
-  }
-  return undefined
 }
 
 /** Time left until a quota resets, for "resumes in …": ``2h 05m``. */

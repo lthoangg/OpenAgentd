@@ -1,4 +1,4 @@
-// size-ceiling: 2419 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 2415 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -202,8 +202,6 @@ const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
-/** A row of a phone's long-press sheet: a menu row at the touch height (``--phone-control``). */
-const SHEET_ROW_CLASS = ACTION_SHEET_ROW_CLASS
 
 /** One entry of a session's menu (⋯, right-click, the phone's sheet). */
 interface SessionMenuAction {
@@ -330,11 +328,10 @@ export function Sidebar({
   mobileOpen = false,
   onMobileClose,
   onOpenPalette,
-  page = false,
+  page: isPage = false,
   onOpenScheduler,
   onOpenServers,
 }: SidebarProps) {
-  const isPage = page
   // The page is a phone layout whatever the window says: sheets for row
   // actions, no desktop resize. Only the drawer's own motion (scrim, slide,
   // inert) is left out of it, below.
@@ -877,13 +874,12 @@ export function Sidebar({
     }
   }
 
-  const deletedWorktreeSet = removedWorktreePaths
   // Chat, then repositories in a workspace group, then the rest; each part
   // most recently active first.
   const sourceWorkspaces = [
     ...(chatWorkspace ? [chatWorkspace.path] : []),
     ...orderWorkspacePaths(
-      sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
+      sourceWorkspacePaths(workspaceTree, removedWorktreePaths)
         .filter((path) => !isChatPath(path))
         .filter((path) => !activeGroupFilter || (workspaceByPath.get(path)?.group_ids ?? []).includes(activeGroupFilter.id)),
       workspaceByPath,
@@ -899,7 +895,7 @@ export function Sidebar({
         workspace ?? chatWorkspace?.path ?? null,
         chatWorkspace?.path ?? null,
         orderWorkspacePaths(
-          sourceWorkspacePaths(workspaceTree, deletedWorktreeSet).filter((path) => !isChatPath(path)),
+          sourceWorkspacePaths(workspaceTree, removedWorktreePaths).filter((path) => !isChatPath(path)),
           workspaceByPath,
           [],
           sessionsByWorkspace,
@@ -991,7 +987,7 @@ export function Sidebar({
     })
   }
   const checkoutMenuRepository = checkoutMenu
-    ? repositoryCheckouts(checkoutMenu.repo, workspaceByPath.get(checkoutMenu.repo), deletedWorktreeSet, checkoutFilter[checkoutMenu.repo])
+    ? repositoryCheckouts(checkoutMenu.repo, workspaceByPath.get(checkoutMenu.repo), removedWorktreePaths, checkoutFilter[checkoutMenu.repo])
     : null
   const checkoutMenuSelection = checkoutMenuRepository?.selectedWorktree
   const checkoutMenuWorktree: WorktreeInfo | null = checkoutMenuSelection
@@ -1480,7 +1476,7 @@ export function Sidebar({
           const sourceIsChat = isChatPath(path)
           const sourceLabel = sourceIsChat ? (chatWorkspace?.name ?? path) : workspaceLabel(path)
           const sourceGroups = sourceIsChat ? NO_GROUPS : groupsOf(path)
-          const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), deletedWorktreeSet, checkoutFilter[path])
+          const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), removedWorktreePaths, checkoutFilter[path])
           const { worktrees, selectedWorktree } = checkouts
           const allCheckoutPaths = [path, ...worktrees.map((item) => item.path)]
           // "New session" starts where the list points: the selected checkout.
@@ -1924,7 +1920,7 @@ export function Sidebar({
         <div className="flex flex-col px-2 pb-3">
             <button
               type="button"
-              className={SHEET_ROW_CLASS}
+              className={ACTION_SHEET_ROW_CLASS}
               onClick={() => {
                 const action = mobileWorkspaceActions
                 setMobileWorkspaceActions(null)
@@ -1939,7 +1935,7 @@ export function Sidebar({
             {mobileWorkspaceActions?.kind !== 'chat' && (
               <button
                 type="button"
-                className={SHEET_ROW_CLASS}
+                className={ACTION_SHEET_ROW_CLASS}
                 onClick={() => {
                   const action = mobileWorkspaceActions
                   setMobileWorkspaceActions(null)
@@ -1956,7 +1952,7 @@ export function Sidebar({
                   <button
                     type="button"
                     data-sidebar-locate=""
-                    className={SHEET_ROW_CLASS}
+                    className={ACTION_SHEET_ROW_CLASS}
                     onClick={() => {
                       const action = mobileWorkspaceActions
                       setMobileWorkspaceActions(null)
@@ -1970,7 +1966,7 @@ export function Sidebar({
                 {workspaceByPath.get(mobileWorkspaceActions.path)?.git !== false && (
                 <button
                   type="button"
-                  className={SHEET_ROW_CLASS}
+                  className={ACTION_SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
@@ -1991,7 +1987,7 @@ export function Sidebar({
                 />
                 <button
                   type="button"
-                  className={SHEET_ROW_CLASS}
+                  className={ACTION_SHEET_ROW_CLASS}
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)

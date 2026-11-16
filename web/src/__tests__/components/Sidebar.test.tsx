@@ -38,7 +38,6 @@ import {
 import {
   confirmWorkspaceRemoval,
   openWorkspaceDraft,
-  openWorkspaceLatest,
 } from '@/components/Sidebar/workspace'
 import {
   consumeTrustedWorkspace,
@@ -578,31 +577,6 @@ describe('Sidebar helpers', () => {
   })
 
   it('exports workspace helpers used by the component', async () => {
-    const selectionNavigate = mock(() => {})
-    // A workspace with sessions opens its latest one.
-    await openWorkspaceLatest({
-      path: '/repo/project',
-      navigate: selectionNavigate,
-      listSessionsFn: async () => ({
-        data: [{ id: 'latest-session', title: null, agent_name: null, workspace: '/repo/project', created_at: null, updated_at: null }],
-        next_cursor: null,
-        has_more: false,
-      }),
-    })
-    expect(selectionNavigate).toHaveBeenCalledWith({
-      to: '/$sessionId',
-      params: { sessionId: 'latest-session' },
-    })
-
-    // One without sessions opens a draft; nothing is created.
-    const draftNavigate = mock((..._args: unknown[]) => {})
-    await openWorkspaceLatest({
-      path: '/repo/empty',
-      navigate: draftNavigate,
-      listSessionsFn: async () => ({ data: [], next_cursor: null, has_more: false }),
-    })
-    expect(draftNavigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false })
-
     // Open workspace on a folder the sidebar does not list registers it first.
     const setVisibility = mock(async (..._args: unknown[]) => ({ workspace: '/repo/new', hidden: false, updated: 0 }))
     let refreshCount = 0

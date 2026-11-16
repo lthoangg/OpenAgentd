@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { SessionResponse } from '@/api/types'
 import { listSessions, setCodingWorkspaceVisibility } from '@/api/client'
 import { queryKeys } from '@/queries'
-import { removeWorkspace, sameWorkspacePath, saveLastWorkspace } from '@/utils/workspace'
+import { removeWorkspace, sameWorkspacePath } from '@/utils/workspace'
 import { startNewSession, type NewSessionNavigate } from '@/lib/new-session'
 
 /**
@@ -39,30 +39,6 @@ export async function latestTopLevelSession(
 ): Promise<SessionResponse | null> {
   const page = await listSessionsFn(null, 1, { workspace })
   return page.data.find((session) => !session.parent_session_id && sameWorkspacePath(session.workspace, workspace)) ?? null
-}
-
-/**
- * Switch to a workspace: its latest session, or a new-session draft when it
- * has none yet (nothing is created until the first message).
- */
-export async function openWorkspaceLatest(options: {
-  path: string
-  currentSessionId?: string | null
-  currentWorkspace?: string | null
-  navigate: (args: { to: '/$sessionId'; params: { sessionId: string } } | { to: '/'; search: { workspace: string }; replace?: boolean }) => unknown
-  listSessionsFn?: typeof listSessions
-}): Promise<void> {
-  const latest = await latestTopLevelSession(options.path, options.listSessionsFn)
-  if (!latest) {
-    startNewSession({
-      navigate: options.navigate,
-      workspace: options.path,
-      current: { sessionId: options.currentSessionId, workspace: options.currentWorkspace },
-    })
-    return
-  }
-  saveLastWorkspace(options.path)
-  options.navigate({ to: '/$sessionId', params: { sessionId: latest.id } })
 }
 
 /**

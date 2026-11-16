@@ -104,6 +104,20 @@ mock.module("@/components/Terminal/xterm-instance", () => ({
 // mount the inspector in a real iframe, so turn it back on.
 GlobalRegistrator.register({ url: "http://localhost:5173/", settings: { enableIframePageLoading: true } });
 
+// A failed `expect(node).toBe(other)` prints both values. Printed as plain
+// objects, a Happy DOM node drags in its document and window: one failure
+// took 4 s and built a 650 MB message, and inside `waitFor` every poll that
+// missed paid that again (a 30 ms wait for focus ran 28 s in CI and failed).
+// Nodes print as their opening tag instead.
+Object.defineProperty(Node.prototype, Symbol.for("nodejs.util.inspect.custom"), {
+  configurable: true,
+  value(this: Node) {
+    if (!(this instanceof Element)) return this.nodeName;
+    const attributes = Array.from(this.attributes, (attribute) => ` ${attribute.name}="${attribute.value}"`).join("");
+    return `<${this.localName}${attributes}>`.slice(0, 300);
+  },
+});
+
 // The suite runs as an install that exists and shows Full detail, where every
 // thinking trace and tool row is on screen. A new install starts in Simple;
 // the tests of that clear this key and rehydrate useDisplayPrefsStore.

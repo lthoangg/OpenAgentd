@@ -7,9 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import * as pacer from '@tanstack/react-pacer'
 
 const navigate = mock((_args: unknown) => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
+// The 200 ms pause before a title search is not under test here, and in the
+// parallel run a real timer can lag past the second a `findBy` waits: the
+// search starts at once. The palette's other debounce stays as it is.
+mock.module('@tanstack/react-pacer', () => ({ ...pacer, useDebouncedValue: (value: unknown) => [value] }))
 
 import { setApiBaseUrl } from '@/api/base-url'
 import type { SessionResponse } from '@/api/types'

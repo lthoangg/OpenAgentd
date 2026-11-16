@@ -1,3 +1,4 @@
+// size-ceiling: 1303 — one component: split the dock's state from the tab strip and the panes
 /**
  * WorkspacePanel — the review dock.
  *

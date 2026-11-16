@@ -1,3 +1,4 @@
+// size-ceiling: 1227 — move the inline tests (444 lines) to a sibling file
 //! MCP client integration (config, manager, tools).
 //! HTTP servers with an `oauth` block run the MCP SDK OAuth flow
 //! (`oauth.rs`), sharing `{CACHE_DIR}/mcp-oauth/<name>.json` with v2.

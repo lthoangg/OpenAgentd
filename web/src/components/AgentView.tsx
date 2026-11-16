@@ -1,3 +1,4 @@
+// size-ceiling: 1586 — move the wait and retry notices and BlockRenderer into AgentView/
 /**
  * AgentView — single-agent full-width view (viewMode === 'agent').
  *

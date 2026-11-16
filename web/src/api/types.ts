@@ -1,3 +1,4 @@
+// size-ceiling: 999 — types only: group them by resource, as api/client/ is
 // API Response Types
 export interface AgentToolInfo {
   name: string

@@ -1,3 +1,4 @@
+// size-ceiling: 1472 — split the schedule tool from TaskScheduler
 //! Scheduled task engine plus the `schedule` tool.
 
 pub mod cron;

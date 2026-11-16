@@ -1,3 +1,4 @@
+// size-ceiling: 1120 — one handler per event, in files by family of events
 import {
   appendStreamedInto,
   initToolInto,

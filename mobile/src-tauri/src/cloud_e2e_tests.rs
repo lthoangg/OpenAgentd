@@ -1,3 +1,4 @@
+// size-ceiling: 1144 — a test module: split it by journey
 //! The phone's account story end to end, through the commands the web UI
 //! calls, against the in-process fake cloud of
 //! `native/cloud/tests/fake_cloud` and a stand-in computer:

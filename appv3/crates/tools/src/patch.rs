@@ -1,3 +1,4 @@
+// size-ceiling: 1019 — move the inline tests (251 lines) to a sibling file
 //! The `patch` tool.
 
 use crate::args::Args;

@@ -33,3 +33,7 @@ jobs:
 
       - name: Validate repository documentation
         run: make verify-docs
+
+      # The same script `make verify-quick` runs before a push.
+      - name: Check source file sizes
+        run: python3 scripts/check_file_size.py

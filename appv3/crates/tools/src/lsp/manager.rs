@@ -1,3 +1,4 @@
+// size-ceiling: 1271 — one type, LspManager: split server lifecycle from request routing
 //! LSP server manager.
 
 use super::client::{path_as_uri, py_list_repr, Event, LspClient};

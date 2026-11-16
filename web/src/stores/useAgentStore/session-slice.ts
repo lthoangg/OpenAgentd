@@ -1,3 +1,4 @@
+// size-ceiling: 1563 — 23 actions: group them by what they act on
 import { failureSentence } from '@/lib/failure-toast'
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode, updateSessionRunSettings } from '@/api/client'

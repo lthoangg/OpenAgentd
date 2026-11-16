@@ -1,3 +1,4 @@
+// size-ceiling: 2861 — stays whole: a line-by-line port of PyYAML's loader, kept in its order so the two can be compared
 //! `yaml.safe_load(text)` — a line-by-line port of PyYAML 6.0.3's pure-Python
 //! `SafeLoader` (Reader, Scanner, Parser, Composer, Resolver, SafeConstructor).
 //!

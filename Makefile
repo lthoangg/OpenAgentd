@@ -57,9 +57,10 @@ verify: verify-v3 verify-scripts verify-web verify-docs verify-version ## Run th
 # Static checks only, so the pre-push hook can afford to run it every time.
 # The command ACL is here because a missing entry compiles, passes every
 # cargo check, and fails at runtime.
-verify-quick: verify-docs verify-version ## Fast static checks (seconds): command ACL, secrets, docs, versions, cargo fmt, web lint + types; the pre-push hook runs it
+verify-quick: verify-docs verify-version ## Fast static checks (seconds): command ACL, secrets, file sizes, docs, versions, cargo fmt, web lint + types; the pre-push hook runs it
 	python3 scripts/check_tauri_commands.py
 	python3 scripts/check_no_secrets.py
+	python3 scripts/check_file_size.py
 	cargo fmt --all --check --manifest-path appv3/Cargo.toml
 	cd native/shell-core && cargo fmt --check
 	cd native/cloud && cargo fmt --check

@@ -1,3 +1,4 @@
+// size-ceiling: 984 — split the toolbar from the frame and its messages
 /**
  * PreviewTabView — the review dock's built-in web preview.
  *

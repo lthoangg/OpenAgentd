@@ -1,3 +1,4 @@
+// size-ceiling: 1045 — 39 commands: group them by feature into modules
 use anyhow::{anyhow, Result};
 use openagentd_shell_core::{resolve_download_bytes, safe_download_filename, DownloadSource};
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,4 @@
+// size-ceiling: 1442 — split Sprite and the bubble from Pet
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'

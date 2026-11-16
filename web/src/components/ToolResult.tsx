@@ -1,3 +1,4 @@
+// size-ceiling: 1164 — one file per tool's result
 /**
  * Rich tool result renderers.
  *

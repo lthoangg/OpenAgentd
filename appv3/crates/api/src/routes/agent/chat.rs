@@ -1,3 +1,4 @@
+// size-ceiling: 1661 — split send, attach and steer
 //! Chat, commands, SSE stream, agent
 //! listing, workspace pickers, session CRUD and history.
 

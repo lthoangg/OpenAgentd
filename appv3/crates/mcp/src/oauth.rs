@@ -1,3 +1,4 @@
+// size-ceiling: 1362 — holds discovery, token storage and the loopback listener: give one its own module
 //! MCP OAuth, plus the subset of the
 //! `mcp` SDK (2.2) `OAuthClientProvider` auth flow it drives: PRM / AS
 //! metadata discovery, dynamic client registration, PKCE authorization-code

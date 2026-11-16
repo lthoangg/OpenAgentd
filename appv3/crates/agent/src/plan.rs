@@ -1,3 +1,4 @@
+// size-ceiling: 1017 — holds PlanDoc and the review state: give one its own module; move the inline tests out first
 //! The session plan: a Markdown document the lead writes with the `plan`
 //! tool and the user reviews (and may edit) in the Plan panel.
 //!

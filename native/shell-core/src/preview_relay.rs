@@ -1,3 +1,4 @@
+// size-ceiling: 1136 — move the inline tests (517 lines) to a sibling file
 //! Loopback relay for the built-in web preview of a remote server.
 //!
 //! A preview listener binds the *server's* `127.0.0.1`, which a phone or

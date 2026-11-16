@@ -1,3 +1,4 @@
+// size-ceiling: 1312 — one module per flow
 //! What a device does to join an account and stay in it (spec section 4),
 //! as steps a UI can drive: each step is one `async fn`, and dropping its
 //! future cancels it.

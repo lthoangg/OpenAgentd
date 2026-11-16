@@ -1,3 +1,4 @@
+// size-ceiling: 1720 — split state transitions from the message queue
 //! Single-agent session runtime — port of `app/agent/session.py`.
 
 mod control;

@@ -1,3 +1,4 @@
+// size-ceiling: 1678 — split the Chat Completions handler from the Responses handler
 //! OpenAI Chat Completions + Responses, plus the thin compatible variants
 //! (deepseek, zai, xai, ollama, router9,
 //! chat-completions-only gateways).

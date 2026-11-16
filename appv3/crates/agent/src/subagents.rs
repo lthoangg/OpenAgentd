@@ -1,3 +1,4 @@
+// size-ceiling: 1750 — split lifecycle, messaging and reconcile; move the inline tests out first
 //! Subagent coordination (the paths reachable from `team`, session callbacks and the API).
 
 use crate::agent::Agent;

@@ -1,3 +1,4 @@
+// size-ceiling: 1677 — move the inline tests (825 lines) to a sibling file
 //! One LLM call with retry + assembly, including the `stream_with_retry` loop.
 
 use crate::errors::AgentError;

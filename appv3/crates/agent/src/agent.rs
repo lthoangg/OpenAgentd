@@ -1,3 +1,4 @@
+// size-ceiling: 1103 — split the turn loop from tool-call execution and its progress events
 //! The agent loop, including tool dispatch and the tool-executor plan-mode gate.
 
 use crate::checkpointer::Checkpointer;

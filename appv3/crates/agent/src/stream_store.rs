@@ -1,3 +1,4 @@
+// size-ceiling: 1191 — move the inline tests (398 lines) to a sibling file
 //! In-memory SSE stream store.
 //!
 //! Per-session turn blob for reconnect replay plus live subscriber fan-out.

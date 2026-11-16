@@ -1,3 +1,4 @@
+// size-ceiling: 1103 — split restore from capture
 //! Out-of-tree Git-based workspace snapshots for session undo/redo.
 //!
 //! The on-disk layout (`{STATE_DIR}/snapshot/<sid>`, refs under

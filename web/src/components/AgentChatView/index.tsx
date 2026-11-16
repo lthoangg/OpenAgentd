@@ -1,3 +1,4 @@
+// size-ceiling: 1315 — ChatFrame, AgentChatView and ActiveAgentView: one file each
 /**
  * AgentChatView — top-level layout for the agent chat route.
  *

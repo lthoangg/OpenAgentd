@@ -1,3 +1,4 @@
+// size-ceiling: 1759 — split tree, read and git; move the inline tests out first
 //! Uploads/media serving, workspace file
 //! listings, and the git panels.
 

@@ -1,3 +1,4 @@
+// size-ceiling: 1082 — move ComputersList, ServerForm and ServerRow into files of their own
 /**
  * AppBackendPanel — choose which computer's OpenAgentd this app talks to.
  *

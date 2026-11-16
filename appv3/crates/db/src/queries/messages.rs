@@ -1,3 +1,4 @@
+// size-ceiling: 1116 — split writes from the reads that build the model's window
 //! `session_messages` queries. Ordering is always `(seq, id)`.
 
 use crate::codec::{db_id, json_col, json_db, new_id, now_db, parse_dt, py_isoformat};

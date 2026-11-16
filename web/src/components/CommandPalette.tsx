@@ -1,3 +1,4 @@
+// size-ceiling: 876 — move QuickOpen and the row components out
 /**
  * CommandPalette — the app's one search overlay: ⌘K / Ctrl+K searches
  * commands, sessions and files together; ⌘P / Ctrl+P opens the same overlay

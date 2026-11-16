@@ -1,3 +1,4 @@
+// size-ceiling: 2796 — move the test module, which is most of the file, to a sibling file
 //! The phone's optional account for Remote control: sign-in, the account's
 //! first roster (genesis) with its recovery code, approving computers with
 //! the 6-digit code behind Face ID, the device list, and the relay bridge

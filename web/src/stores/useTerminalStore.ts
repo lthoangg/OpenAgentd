@@ -1,3 +1,4 @@
+// size-ceiling: 961 — split the sessions' lifecycle from what is persisted
 /**
  * useTerminalStore — app-wide terminal session registry.
  *

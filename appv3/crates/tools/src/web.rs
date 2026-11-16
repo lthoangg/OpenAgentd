@@ -1,3 +1,4 @@
+// size-ceiling: 1192 — split web_fetch from web_search
 //! The `web_fetch` / `web_search` tools.
 //!
 //! HTML → Markdown follows v2's conversion: main-content extraction

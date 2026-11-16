@@ -1,3 +1,4 @@
+// size-ceiling: 1480 — move the inline tests (644 lines) to a sibling file
 //! `SummarizationHook` — context-window summarization.
 
 use super::{AgentState, Hook, ModelRequest, RunContext};

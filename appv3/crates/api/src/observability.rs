@@ -1,3 +1,4 @@
+// size-ceiling: 1924 — split aggregation from the routes; move the inline tests out first
 //! Aggregates the OTEL span
 //! JSONL files (`{STATE_DIR}/otel/spans/YYYY-MM-DD-HH.jsonl`) into the
 //! observability page payloads.

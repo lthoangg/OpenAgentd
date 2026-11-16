@@ -1,3 +1,4 @@
+// size-ceiling: 1025 — 48 functions of one state machine: split them by what they decide
 /**
  * The desktop pet's data, as the desktop shell sends it
  * (desktop/src-tauri/src/pet.rs), and the pure decisions about what it does:

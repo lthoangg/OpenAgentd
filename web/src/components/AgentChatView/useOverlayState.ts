@@ -1,3 +1,4 @@
+// size-ceiling: 827 — one hook: split it by family of overlays
 /**
  * useOverlayState — mobile/desktop panel & drawer state for AgentChatView.
  *

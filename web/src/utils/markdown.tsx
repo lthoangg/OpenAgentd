@@ -1,3 +1,4 @@
+// size-ceiling: 951 — 18 components: move the element renderers into utils/markdown/
 /**
  * Shared markdown rendering utilities.
  *

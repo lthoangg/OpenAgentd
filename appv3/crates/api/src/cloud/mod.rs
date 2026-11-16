@@ -1,3 +1,4 @@
+// size-ceiling: 1267 — split the request handler from connection start and stop
 //! OpenAgentd Cloud accounts on a host (the desktop sidecar or a CLI
 //! server): sign-in, the presence socket, relay sessions into this server,
 //! and links out to the account's other computers ([`controller`]).

@@ -1,3 +1,4 @@
+// size-ceiling: 1267 — holds the join, the send rules and the keepalive: give one its own module
 //! Relay sessions (the API's "Relay"; spec section 5): the host's presence
 //! socket, one data socket per session, the Noise IK handshake on it, flow
 //! control acks and pause/resume, and a yamux session inside.

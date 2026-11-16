@@ -40,16 +40,12 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
-import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useReportShownSession } from '@/lib/island-setting'
-import { useElementWidthSelect } from '@/hooks/use-element-width'
-import { onPanelSlideBeside, settledWidthBesidePanels } from '@/components/ResizableAside'
-import { useReturnFocusFromDock, useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
-import { dockOverlaysChat } from '@/lib/workbench-layout'
-import { useTouchFirst } from '@/hooks/use-touch-first'
+import { useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { previewsAvailable } from '@/api/preview'
 import { useChatPreview } from './useChatPreview'
+import { useDockCover } from './useDockCover'
 import { useToastStore } from '@/stores/useToastStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -107,11 +103,6 @@ import { deliverFromComposer, pushStoppedToast, stopTurn, useReturnQueuedAfterFa
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
-
-const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
-/** Stable selector: the shell only needs to know when the split stops fitting. */
-const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
-const isCenterTooNarrowForTouch = (width: number) => dockOverlaysChat(width, false, { touch: true })
 
 interface AgentChatViewProps {
   sessionId?: string
@@ -593,45 +584,14 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     setWorkspacePanel,
   })
 
-  // Review dock geometry: a ratio of the center region (chat + dock), with a
-  // maximized / narrow-window overlay that covers the chat instead of
-  // squeezing it. The chat stays mounted underneath so its scroll position
-  // and live stream survive a maximize round-trip. The dock measures the
-  // center itself; the shell subscribes to one bit so a sidebar tween or a
-  // window drag does not re-render this whole tree every frame.
-  const centerRef = useRef<HTMLDivElement>(null)
-  const touchFirst = useTouchFirst()
-  const centerTooNarrow = useElementWidthSelect(
+  const {
     centerRef,
-    touchFirst ? isCenterTooNarrowForTouch : isCenterTooNarrow,
-    settledWidthBesidePanels,
-    // Decided in the commit a sidebar slide starts, as the dock's mode is.
-    onPanelSlideBeside,
-  )
-  const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  // After its first open the dock stays mounted, closed or not, so its tabs
-  // and their live content (preview pages, unsent comments) survive a close.
-  const dockOpen = workspacePanel !== null
-  const [dockKept, setDockKept] = useState(dockOpen)
-  if (dockOpen && !dockKept) setDockKept(true)
-  // Closed when this view mounted: the dock's first mount is the show
-  // toggle (or the agent opening a view), so it slides in like a later open.
-  const [dockSlidesIn] = useState(!dockOpen)
-  // Over a narrow chat the dock covers the transcript but stops above the
-  // composer, so a message can be written beside the diff; maximized, it
-  // covers both. Whatever it covers stays mounted, inert.
-  const dockOverChat = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
-  const chatCoveredByDock = dockOverChat && dockMaximized
-  const transcriptCoveredByDock = dockOverChat && !dockMaximized
-  // The dock claims focus while it covers the chat; give it back when it
-  // closes or uncovers the chat so it is never left on <body>.
-  useReturnFocusFromDock({
-    open: workspacePanel !== null,
-    covered: chatCoveredByDock,
-    enabled: !isMobile,
-    isInDock: isInReviewDock,
-    onReturn: returnFocusToComposer,
-  })
+    dockOpen,
+    dockKept,
+    dockSlidesIn,
+    chatCoveredByDock,
+    transcriptCoveredByDock,
+  } = useDockCover({ workspace, workspacePanel, isMobile, returnFocusToComposer })
   // A desktop app always has a focused control: never leave focus on
   // <body>, and start in the composer once a session is on screen (with a
   // mouse or trackpad; a touch tablet waits for a tap, see useStartInComposer).

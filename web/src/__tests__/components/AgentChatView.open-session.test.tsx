@@ -1,0 +1,173 @@
+/**
+ * A ``workspace`` tool card asks the chat, by event, to open the other end
+ * of a workspace message: the chat remembers that workspace as the last one
+ * and navigates to the session. A request of another shape is ignored.
+ */
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { act, cleanup, render } from '@testing-library/react'
+import { forwardRef, useImperativeHandle } from 'react'
+import type React from 'react'
+import { AgentChatView } from '@/components/AgentChatView'
+import { OPEN_SESSION_EVENT } from '@/utils/workspace-messages'
+
+
+const navigations: unknown[] = []
+const savedWorkspaces: string[] = []
+mock.module('@tanstack/react-router', () => ({
+  useNavigate: () => (to: unknown) => { navigations.push(to); return Promise.resolve() },
+}))
+mock.module('@tanstack/react-query', () => ({
+  QueryClient: class {},
+  useQueryClient: () => ({}),
+  useQuery: () => ({ data: undefined, isLoading: false }),
+  useInfiniteQuery: () => ({ data: undefined, isLoading: false }),
+  QueryClientProvider: ({ children }: { children: unknown }) => children,
+}))
+mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
+mock.module('@/queries/useSessionPlanQuery', () => ({
+  useSessionPlanQuery: () => ({ data: { plan: null } }),
+  useClearSessionPlanMutation: () => ({ mutate: () => {} }),
+}))
+mock.module('@/queries/useSessionGoalQuery', () => ({
+  useSessionGoalQuery: () => ({ data: undefined }),
+  useGoalActionMutation: () => ({ mutate: () => {} }),
+  useGoalControls: () => undefined,
+}))
+mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
+mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
+mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
+mock.module('@/queries/useAgentsQuery', () => ({
+  useAgentsQuery: () => ({ data: { agents: [{ name: 'code', capabilities: undefined }] }, isLoading: false }),
+}))
+mock.module('@/queries/useFileRefsQuery', () => ({ useFileRefsQuery: () => ({ refs: [] }) }))
+mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
+mock.module('@/hooks/use-platform', () => ({ usePlatform: () => ({ isMacOverlay: false, os: 'linux' }) }))
+mock.module('@/hooks/use-tauri-drag', () => ({ useTauriDrag: () => ({}) }))
+mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () => {} }))
+mock.module('@/stores/useUIStore', () => ({
+  useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
+    schedulerOpen: false,
+    runPickerOpen: false,
+    toggleScheduler: () => {},
+    toggleRunPicker: () => {},
+    closeScheduler: () => {},
+    closeRunPicker: () => {},
+  }),
+}))
+// Selector-aware on purpose: components read this store as
+// ``useToastStore((s) => s.push)``, so a mock that ignores the selector hands
+// back the state object where a function is expected.
+mock.module('@/stores/useToastStore', () => ({
+  useToastStore: (selector: (s: { push: () => void }) => unknown) => selector({ push: () => {} }),
+}))
+mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () => {}, prependWorkspaceSession: () => {} }))
+mock.module('@/api/client', () => ({
+  listCodingWorkspaceFiles: async () => [],
+  getCodingWorkspaceTree: async () => ({ repositories: [], groups: [] }),
+  setCodingWorkspaceVisibility: async () => ({}),
+  renderCommand: async () => ({ content: '' }),
+  renderSnippet: async () => ({ content: '' }),
+  resolveApiUrl: () => null,
+  resolveSession: async () => ({ id: 'new-session', created: true }),
+}))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: (workspace: string) => { savedWorkspaces.push(workspace) }, removeWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
+mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null, ChatNote: () => null }))
+mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
+mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
+mock.module('framer-motion', () => ({
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
+mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
+mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
+
+// Stands in for the composer: a submit button that fires ``onSubmit`` exactly
+// as the real bar does, plus the restore entry point under test.
+mock.module('@/components/composer/Composer', () => ({
+  Composer: forwardRef<
+    Record<string, (...args: never[]) => void>,
+    { onSubmit: (content: string, files?: File[], mentions?: string[]) => void | Promise<void> }
+  >(function ComposerMock({ onSubmit }, ref) {
+    useImperativeHandle(ref, () => ({
+      focus: () => {},
+      setValue: () => {},
+      appendValue: () => {},
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+    }))
+    return (
+      <button type="button" onClick={() => void onSubmit('hello team')}>
+        submit
+      </button>
+    )
+  }),
+}))
+
+mock.module('@/stores/useAgentStore', () => {
+  const state = {
+    connectStream: () => null,
+    loadAgentStatus: async () => {},
+    loadSession: async () => {},
+    sendMessage: async () => true,
+    beginResolvedSession: () => {},
+    consumeResolvedSessionReady: () => false,
+    setActiveAgent: () => {},
+    setSessionModelSettings: () => {},
+    setupRequired: null,
+    dismissSetupRequired: () => {},
+    activeAgent: 'code',
+    agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
+    agentNames: ['lead'],
+    isAgentWorking: false,
+    isContinuing: false,
+    sessionId: 'test-session',
+    sessionTitle: null,
+    sessionModel: null,
+    sessionThinkingLevel: null,
+    sessionFastMode: false,
+    leadName: 'lead',
+    isConnected: false,
+  }
+  return {
+    useAgentStore: Object.assign(
+      (selector: (draft: typeof state) => unknown) => selector(state),
+      {
+        getState: () => state,
+        setState: (partial: Partial<typeof state>) => Object.assign(state, partial),
+      },
+    ),
+  }
+})
+
+afterEach(cleanup)
+beforeEach(() => {
+  navigations.length = 0
+  savedWorkspaces.length = 0
+})
+
+const open = (detail: unknown) => act(() => {
+  window.dispatchEvent(new CustomEvent(OPEN_SESSION_EVENT, { detail }))
+})
+
+describe('AgentChatView opening another session by event', () => {
+  it("goes to the session and remembers its workspace", () => {
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
+    navigations.length = 0
+    open({ sessionId: 'other-session', workspace: '/repo/other' })
+    expect(savedWorkspaces).toEqual(['/repo/other'])
+    expect(navigations).toEqual([{ to: '/$sessionId', params: { sessionId: 'other-session' } }])
+  })
+
+  it('ignores a request that names no session', () => {
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
+    navigations.length = 0
+    open({ workspace: '/repo/other' })
+    expect(savedWorkspaces).toEqual([])
+    expect(navigations).toEqual([])
+  })
+})

@@ -9,6 +9,17 @@ export interface WorkspaceBrowserState {
   directories: Array<{ name: string; path: string }>
 }
 
+/** The OS folder picker of the desktop app; null when the user cancels. */
+export async function pickWorkspaceDirectory(): Promise<string | null> {
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: 'Open workspace',
+  })
+  return typeof selected === 'string' ? selected : null
+}
+
 export async function loadWorkspaceBrowser(
   path?: string | null,
 ): Promise<WorkspaceBrowserState> {

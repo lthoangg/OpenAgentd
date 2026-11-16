@@ -1,4 +1,4 @@
-// size-ceiling: 2415 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 2208 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -150,11 +150,7 @@ import {
   sourceWorkspacePaths,
   toggleExpandedPath,
 } from './Sidebar/helpers'
-import {
-  loadWorkspaceBrowser,
-  shouldUseServerWorkspaceBrowser,
-  validateTrustedWorkspace,
-} from './Sidebar/browser'
+import { pickWorkspaceDirectory, shouldUseServerWorkspaceBrowser } from './Sidebar/browser'
 import {
   loadWorktreesForSource,
   recoverCreatedWorktreeAfterTransientError,
@@ -170,10 +166,6 @@ import {
   openWorkspaceDraft,
   restoreHiddenWorkspace,
 } from './Sidebar/workspace'
-import {
-  consumeTrustedWorkspace,
-  selectTrustedWorkspace,
-} from './Sidebar/trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
@@ -192,6 +184,7 @@ import { useLargeTitleCollapse } from './Sidebar/useLargeTitleCollapse'
 import { CountChip } from './Sidebar/CountChip'
 import { MenuShortcut } from './Sidebar/MenuShortcut'
 import { TREE_INDENT_PX } from './Sidebar/tree-indent'
+import { OpenWorkspaceDialog, useOpenWorkspaceDialog } from './Sidebar/OpenWorkspaceDialog'
 
 const WORKSPACE_TREE_STALE_MS = 30_000
 /** How long a deleted session can be brought back before the server forgets it. */
@@ -266,16 +259,6 @@ interface SidebarProps {
   onOpenServers?: () => void
 }
 
-async function pickWorkspaceDirectory(): Promise<string | null> {
-  const { open } = await import('@tauri-apps/plugin-dialog')
-  const selected = await open({
-    directory: true,
-    multiple: false,
-    title: 'Open workspace',
-  })
-  return typeof selected === 'string' ? selected : null
-}
-
 /**
  * A workspace or checkout whose folder is gone from disk: a warning, not an
  * error. A small ⚠ in the warning tone beside the name, not a chip, so the
@@ -337,7 +320,6 @@ export function Sidebar({
   // inert) is left out of it, below.
   const isMobile = useIsMobile() || isPage
   const { isTauri, os } = usePlatform()
-  const [nativeFolderPickerEnabled, setNativeFolderPickerEnabled] = useState(isTauri)
   const isTauriMobile = isMobileApp({ isTauri, os })
   // Held rows open the session sheet in the iOS and Android apps while the
   // drawer is open, and on the Sessions page in any phone browser (the page
@@ -429,15 +411,15 @@ export function Sidebar({
   }
 
 
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
-  const [browserPath, setBrowserPath] = useState<string | null>(null)
-  const [parentPath, setParentPath] = useState<string | null>(null)
-  const [dirs, setDirs] = useState<Array<{ name: string; path: string }>>([])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
-  const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
+  const openWorkspace = useOpenWorkspaceDialog({
+    isTauri,
+    isTauriMobile,
+    openKey: openWorkspaceDialogKey,
+    setError,
+    onOpen: (path) => { void openFolderDraft(path) },
+  })
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchFocusKey, setSearchFocusKey] = useState(0)
@@ -485,69 +467,6 @@ export function Sidebar({
       .then((preview) => { if (removeWorktreeAsked.current === item.directory) setRemoveWorktreePreview(preview) })
       .catch(() => {})
   }
-
-  const loadBrowser = useCallback(async (path?: string | null) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await loadWorkspaceBrowser(path)
-      setBrowserPath(result.path)
-      setParentPath(result.parent)
-      setDirs(result.directories)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't read directory")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const openWebWorkspaceDialog = useCallback(() => {
-    setSelectedWorkspace(null)
-    setTrustWorkspace(null)
-    setDialogOpen(true)
-    if (!browserPath) void loadBrowser(null)
-    // `useState` setters are stable, so listing them is runtime-neutral — but
-    // the React Compiler infers them as dependencies and skips optimizing the
-    // whole component when the source list omits them.
-  }, [browserPath, loadBrowser, setSelectedWorkspace, setTrustWorkspace, setDialogOpen])
-
-  const openWorkspaceDialog = useCallback(async () => {
-    setError(null)
-    setSelectedWorkspace(null)
-    setTrustWorkspace(null)
-
-    if (await shouldUseServerWorkspaceBrowser(isTauri, isTauriMobile)) {
-      setNativeFolderPickerEnabled(false)
-      openWebWorkspaceDialog()
-      return
-    }
-    setNativeFolderPickerEnabled(true)
-
-    setDialogOpen(true)
-    setLoading(true)
-    try {
-      const selected = await pickWorkspaceDirectory()
-      if (!selected) return
-      setSelectedWorkspace(selected)
-      setTrustWorkspace(await validateTrustedWorkspace(selected))
-      setDialogOpen(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't open workspace")
-    } finally {
-      setLoading(false)
-    }
-    // Stable `useState` setters — see openWebWorkspaceDialog above.
-  }, [
-    isTauri,
-    isTauriMobile,
-    openWebWorkspaceDialog,
-    setError,
-    setSelectedWorkspace,
-    setTrustWorkspace,
-    setNativeFolderPickerEnabled,
-    setDialogOpen,
-    setLoading,
-  ])
 
   // Every caller has just changed the tree on the server, so a cached copy
   // is never good enough. Invalidating also restarts a fetch already in
@@ -605,10 +524,6 @@ export function Sidebar({
       window.removeEventListener('storage', onStorage)
     }
   }, [refreshWorkspaceTree])
-
-  useEffect(() => {
-    if (openWorkspaceDialogKey > 0) void openWorkspaceDialog()
-  }, [openWorkspaceDialogKey, openWorkspaceDialog])
 
   useEffect(() => {
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
@@ -671,7 +586,7 @@ export function Sidebar({
   const startSessionFromSidebar = () => {
     const target = workspace ?? chatWorkspace?.path ?? null
     if (!target) {
-      void openWorkspaceDialog()
+      void openWorkspace.open()
       return
     }
     if (isPage) {
@@ -1007,24 +922,6 @@ export function Sidebar({
       })
   }
 
-  const openSelectedFolder = async () => {
-    try {
-      const trustedWorkspace = await selectTrustedWorkspace(browserPath, validateTrustedWorkspace)
-      if (!trustedWorkspace) return
-      setTrustWorkspace(trustedWorkspace)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Workspace is invalid')
-    }
-  }
-
-  const confirmTrustedWorkspace = () => {
-    const nextState = consumeTrustedWorkspace(trustWorkspace)
-    if (!nextState.workspaceToOpen) return
-    setTrustWorkspace(nextState.nextTrustWorkspace)
-    setDialogOpen(nextState.nextDialogOpen)
-    void openFolderDraft(nextState.workspaceToOpen)
-  }
-
   const openInNewWindow = (session: SessionResponse) => {
     openSessionInNewWindow({ session }).catch((err) => {
       console.error("Couldn't open session in new window:", err)
@@ -1344,7 +1241,7 @@ export function Sidebar({
           searchButtonRef={searchButtonRef}
           onToggleSearch={closeSessionSearch}
           onCollapseAll={collapseAllWorkspaces}
-          onOpenFolder={() => { void openWorkspaceDialog() }}
+          onOpenFolder={() => { void openWorkspace.open() }}
         />
       )}
 
@@ -1392,7 +1289,7 @@ export function Sidebar({
         searchButtonRef={searchButtonRef}
         onToggleSearch={openSessionSearch}
         onCollapseAll={collapseAllWorkspaces}
-        onOpenFolder={() => { void openWorkspaceDialog() }}
+        onOpenFolder={() => { void openWorkspace.open() }}
         page={isPage}
       />
 
@@ -1444,7 +1341,7 @@ export function Sidebar({
             body="A workspace is a folder the agent works in."
             className="px-3 py-3"
             action={(
-              <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
+              <Button type="button" size="sm" onClick={() => { void openWorkspace.open() }}>
                 <FolderPlus size={13} aria-hidden="true" />
                 Open workspace…
               </Button>
@@ -1796,111 +1693,7 @@ export function Sidebar({
       </>
       )}
 
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open)
-          if (!open) setTrustWorkspace(null)
-        }}
-      >
-        <DialogContent showCloseButton={false} className="min-w-0">
-          {trustWorkspace ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>Let agents work in {workspaceLabel(trustWorkspace)}?</DialogTitle>
-                {/* The Undo limit is the snapshot's: edited files up to 2 MB, not what a command moved or deleted. */}
-                <DialogDescription>
-                  They can read, change and delete files in this folder, and run commands there. Undo in the chat
-                  brings back files they edited, up to 2 MB each.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
-                <p className="break-all font-mono text-xs text-(--color-text-muted)">{trustWorkspace}</p>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="default" onClick={() => setTrustWorkspace(null)}>Back</Button>
-                <Button variant="primary" type="button" onClick={confirmTrustedWorkspace}>Allow and open</Button>
-              </DialogFooter>
-            </>
-          ) : nativeFolderPickerEnabled && !isTauriMobile ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>Open workspace</DialogTitle>
-                <DialogDescription>
-                  Use the desktop folder picker to choose a workspace.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="min-w-0 space-y-2">
-                {selectedWorkspace && (
-                  <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
-                    <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={selectedWorkspace}>
-                      {selectedWorkspace}
-                    </p>
-                  </div>
-                )}
-                {error && <p className="text-xs text-(--color-error)">{error}</p>}
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="default" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button variant="primary" type="button" disabled={loading} onClick={() => { void openWorkspaceDialog() }}>
-                  {loading ? 'Opening…' : 'Choose folder…'}
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Open workspace</DialogTitle>
-                <DialogDescription>Choose a workspace folder on the server.</DialogDescription>
-              </DialogHeader>
-              <div className="min-w-0 space-y-2">
-                <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
-                  <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={browserPath ?? undefined}>
-                    {browserPath ?? 'Loading folders…'}
-                  </p>
-                </div>
-                <div className="max-h-64 space-y-1 overflow-y-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-1">
-                  {parentPath && (
-                    <button
-                      type="button"
-                      className="w-full rounded-xs px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
-                      onClick={() => void loadBrowser(parentPath)}
-                    >
-                      ..
-                    </button>
-                  )}
-                  {loading && dirs.length === 0 && (
-                    <div role="status" aria-label="Loading folders" className="space-y-2 px-2 py-3">
-                      <Skeleton className="h-3 w-2/3" />
-                      <Skeleton className="h-3 w-1/2" />
-                      <Skeleton className="h-3 w-3/5" />
-                    </div>
-                  )}
-                  {!loading && dirs.length === 0 && (
-                    <EmptyState compact icon={Folder} title="No folders here" className="px-2 py-3" />
-                  )}
-                  {dirs.map((dir) => (
-                    <button
-                      type="button"
-                      key={dir.path}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-xs px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
-                      onClick={() => void loadBrowser(dir.path)}
-                    >
-                      <Folder size={14} className="shrink-0" />
-                      <span className="min-w-0 truncate">{dir.name}</span>
-                    </button>
-                  ))}
-                </div>
-                {error && <p className="text-xs text-(--color-error)">{error}</p>}
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="default" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button variant="primary" type="button" disabled={!browserPath || loading} onClick={openSelectedFolder}>Open this folder</Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <OpenWorkspaceDialog state={openWorkspace} error={error} isTauriMobile={isTauriMobile} />
 
       {/* A workspace's long-press menu on a phone: a sheet from the bottom
           edge, like the session one below. */}

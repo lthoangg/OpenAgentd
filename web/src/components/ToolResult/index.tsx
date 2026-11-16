@@ -1,4 +1,4 @@
-// size-ceiling: 1026 — one file per tool's result
+// size-ceiling: 988 — one file per tool's result
 /**
  * Rich tool result renderers.
  *
@@ -20,7 +20,6 @@ import { FileRefButton, FileRefContext, LinkifiedText } from '../FileRefLink'
 import type { FileRef } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from '../ToolCall/displayText'
-import { parseShellOutcome } from '../ToolCall/summary'
 import { canonicalToolName } from '@/utils/tool-names'
 import { Button } from '@/components/ui/button'
 import { Chip, type ChipTone } from '@/components/ui/chip'
@@ -30,45 +29,8 @@ import { SubagentRow, openSubagentSession, type SubagentRowProps } from '../Tool
 import { parseStartedAt, subagentStatusView } from '../ToolCall/subagentStatus'
 import { useSubagentRoster } from '../ToolCall/useSubagentRoster'
 import { GenericResult, tryParseJSON } from './GenericResult'
+import { ShellResult } from './ShellResult'
 import { WebSearchResult } from './WebSearchResult'
-
-// ---------------------------------------------------------------------------
-// Shell renderer
-// ---------------------------------------------------------------------------
-
-function ShellResult({ result }: { result: string }) {
-  // First line is typically "[Succeeded]" or "[Failed — exit code N]"
-  const firstNewline = result.indexOf('\n')
-  const statusLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
-  const body = firstNewline >= 0 ? truncateForDisplay(result.slice(firstNewline + 1).trimStart()) : ''
-
-  const success = statusLine.startsWith('[Succeeded')
-  // The bracketed line is the tool's protocol; the screen shows the exit code, as a terminal does.
-  const outcome = parseShellOutcome(result)
-  const statusText = !outcome ? statusLine
-    : outcome.exitCode !== null ? `exit ${outcome.exitCode}`
-      : statusLine.replace(/^\[|\]$/g, '')
-
-  return (
-    <div className="flex flex-col gap-1">
-      {/* Status line — plain text, coloured by outcome */}
-      <span
-        className={`font-mono text-meta font-medium ${
-          success ? 'text-(--accent-green-text)' : 'text-(--color-error)'
-        }`}
-      >
-        {statusText}
-      </span>
-
-      {/* stdout / stderr output */}
-      {body && (
-        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text-2)">
-          <LinkifiedText text={body} />
-        </pre>
-      )}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Filesystem renderers

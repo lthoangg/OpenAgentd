@@ -1,19 +1,17 @@
-// size-ceiling: 1315 — ChatFrame, AgentChatView and ActiveAgentView: one file each
 /**
  * AgentChatView — top-level layout for the agent chat route.
  *
- * Owns:
- *   - Side panels (``Sidebar``, the Review panel, todos popover, command
- *     palette) and the docked composer with its run deck.
- *   - The header (token totals, panel toggles).
- *   - Mount-time SSE connect + session restore (carefully sequenced so
- *     ``loadSession`` runs *before* ``connectStream`` to avoid wiping
- *     replayed mid-turn state — see comment inside the init effect).
- *   - Keyboard shortcuts and the Command Palette assembly.
+ * Wires the parts in this folder together: the frame (``ChatFrame``) with
+ * header, sidebar and status bar; the chat column (``ChatPlaceholders``, the
+ * draft screen, ``ActiveAgentView``, then ``ChatComposer`` or
+ * ``SubagentBanner``); the Review dock (``useDockCover``); the panels and
+ * the Command Palette. Mount-time SSE connect + session restore live in
+ * ``useSessionBootstrap`` (``loadSession`` runs *before* ``connectStream``
+ * so replayed mid-turn state is not wiped).
  *
- * Stream subscriptions are split into the smallest selectors that work
- * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
- * that returning a freshly-built object on every render would trigger.
+ * Store reads are small selectors (``useChatSessionState`` is one shallow
+ * selector of primitives): returning a freshly-built object on every render
+ * would loop.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'

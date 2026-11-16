@@ -1,3 +1,4 @@
+use super::report::{failure_report, on_subagent_question_asked, on_subagent_turn_completed, prune_subagent_output};
 use super::stall::{stall_notice, StallWatch, STALL_NOTICE_AFTER};
 use super::*;
 use crate::events::ProviderStatus;

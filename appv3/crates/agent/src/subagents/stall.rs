@@ -2,7 +2,8 @@
 //! calls, and [`MemberStallHook`] tells its lead once per stall, so the lead
 //! can go on without it instead of waiting in silence.
 
-use super::{deliver_message_to_lead, with_instance};
+use super::report::deliver_message_to_lead;
+use super::with_instance;
 use crate::events::ProviderStatus;
 use crate::hooks::{AgentState, Hook, RunContext};
 use appv3_db::DbPool;

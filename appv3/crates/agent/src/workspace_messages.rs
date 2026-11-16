@@ -784,7 +784,7 @@ pub async fn on_turn_closed(pool: &DbPool, session_id: &str, status: &str, cance
         let mut extra = Map::new();
         extra.insert("from_agent".into(), json!(target_name));
         extra.insert("reply_from".into(), json!({"session_id": sid, "workspace": target_ws, "workspace_name": target_name, "status": outcome}));
-        if let Err(e) = crate::subagents::deliver_agent_message(&source, &content, extra, pool).await {
+        if let Err(e) = crate::subagents::report::deliver_agent_message(&source, &content, extra, pool).await {
             tracing::warn!("workspace_message_reply_failed source_session_id={} target_session_id={} error={}", source, sid, e);
             continue;
         }

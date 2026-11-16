@@ -211,7 +211,7 @@ impl AgentSession {
                 self.transition(Transition::WaitForLead);
                 self.emit("agent_status", Some("waiting_lead"), data.as_object().cloned());
                 if let Some(lead) = &self.parent_session_id {
-                    crate::subagents::on_subagent_question_asked(lead, &sid, data, &self.pool).await;
+                    crate::subagents::report::on_subagent_question_asked(lead, &sid, data, &self.pool).await;
                 }
             }
             TurnExit::Ready => {
@@ -481,7 +481,8 @@ impl AgentSession {
             }
             Some(lead) => {
                 let error = if status == "error" { self.last_error_info() } else { None };
-                crate::subagents::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set(), error.as_ref()).await;
+                crate::subagents::report::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set(), error.as_ref())
+                    .await;
             }
         }
         let mut payload = json!({"session_id": session_id, "status": status});

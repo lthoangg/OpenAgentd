@@ -167,7 +167,7 @@ pub async fn resume_after_restart(pool: &DbPool) -> Report {
             None => false,
         };
         let notice = if resumable { member_notice(&handle) } else { member_lost_notice(&handle) };
-        match crate::subagents::deliver_message_to_lead(&lead, &handle, &notice, pool).await {
+        match crate::subagents::report::deliver_message_to_lead(&lead, &handle, &notice, pool).await {
             Ok(()) => {
                 tracing::info!("restart_member_reported lead={} handle={} session_id={}", lead, handle, sid);
                 report.members_reported.push(sid);

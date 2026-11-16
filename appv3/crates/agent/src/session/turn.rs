@@ -350,7 +350,7 @@ impl AgentSession {
                 hooks.push(Arc::new(t));
             }
         } else if let Some(lead) = &self.parent_session_id {
-            hooks.push(Arc::new(crate::subagents::MemberStallHook::new(lead, &name, self.pool.clone())));
+            hooks.push(Arc::new(crate::subagents::stall::MemberStallHook::new(lead, &name, self.pool.clone())));
         }
         hooks.push(Arc::new(WorkspaceInstructionsHook::new(Some(&workspace), agent_mode == "coding")));
         if let Some(g) = &goal {

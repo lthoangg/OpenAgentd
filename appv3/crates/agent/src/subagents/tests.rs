@@ -1,4 +1,6 @@
+use super::stall::{stall_notice, StallWatch, STALL_NOTICE_AFTER};
 use super::*;
+use crate::events::ProviderStatus;
 
 #[test]
 fn handles_and_pruning() {

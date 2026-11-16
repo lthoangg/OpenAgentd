@@ -1,4 +1,3 @@
-// size-ceiling: 1310 — split the goal state machine from the update_goal handlers
 //! Session goals: an approved plan the lead keeps working through across
 //! turns, until a completion check confirms the plan's **Done when**, the
 //! agent reports a blocker, or a limit pauses it.

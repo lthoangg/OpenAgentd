@@ -127,7 +127,7 @@ credential or database format changes.
   assistant message's `extra`, and to the `metadata` of its live `message`
   and `thinking` deltas: the level the turn's provider was built with (the
   session's level, else the agent's own; a session model override drops the
-  agent's level, so none is recorded). Set in `agent/src/session.rs`, stamped
+  agent's level, so none is recorded). Set in `agent/src/session/turn.rs`, stamped
   in `agent/src/agent.rs` and `agent/src/hooks/publisher.rs`, tested in
   `agent/tests/turn_thinking_level.rs`. v2 never writes it, and the web
   footer then names the model alone.

@@ -341,7 +341,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   records a bare `Cancelled by user.` and sends no `tool_end`. A call that
   never started keeps v2's text. The shell tool also flushes pending live
   output and stops its streaming timer when its call is dropped.
-- **Notifications** (`agent/src/notification.rs`, `agent/src/session.rs`):
+- **Notifications** (`agent/src/notification.rs`, `agent/src/session/turn.rs`):
   `desktop_notification` titles are a short status and the workspace
   directory name (`Done · openagentd`, `Failed · …`, `Needs input · …`,
   `Plan ready · …`), and each body is one line of at most 100 characters,

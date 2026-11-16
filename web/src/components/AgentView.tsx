@@ -721,27 +721,19 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
           </div>
         )
       }
+      // An assistant message. No menu of its own: a right-click or a long
+      // press selects text and opens the system's menu (Copy, Look Up); the
+      // footer's Copy takes the whole answer.
       return (
-        <AssistantText content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
+        <div>
+          <MarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
+        </div>
       )
     }
     default:
       return null
   }
 })
-
-/**
- * An assistant message. No menu of its own: a right-click or a long press
- * selects text and opens the system's menu (Copy, Look Up); the footer's
- * Copy takes the whole answer.
- */
-function AssistantText({ content, sessionId, isStreaming }: { content: string; sessionId?: string; isStreaming: boolean }) {
-  return (
-    <div>
-      <MarkdownBlock content={content} sessionId={sessionId} isStreaming={isStreaming} />
-    </div>
-  )
-}
 
 export function AgentView({
   blocks: storeBlocks,

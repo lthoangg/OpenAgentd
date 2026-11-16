@@ -16,14 +16,13 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { failureToast } from '@/lib/failure-toast'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { AgentView } from '../AgentView'
-import type { OpenSessionHandler } from '../AgentView/UserBubble'
+import { ActiveAgentView } from './ActiveAgentView'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { NewSessionScreen } from '../NewSession/NewSessionScreen'
@@ -38,7 +37,7 @@ import { goalHeaderState } from '@/lib/work'
 import { useHealthQuery, useProvidersQuery } from '@/queries'
 import { modelReadiness } from '@/lib/model-readiness'
 import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHasGit } from '@/queries/useChatWorkspace'
-import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
@@ -119,58 +118,6 @@ const isInReviewDock = (element: Element) => element.closest('[data-review-dock]
 /** Stable selector: the shell only needs to know when the split stops fitting. */
 const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
 const isCenterTooNarrowForTouch = (width: number) => dockOverlaysChat(width, false, { touch: true })
-
-interface ActiveAgentViewProps {
-  emptyState?: React.ReactNode
-  onMentionFileOpen?: (path: string) => void
-  onOpenSession?: OpenSessionHandler
-  fileRefOpener?: FileRefOpener
-  onRetry?: () => void
-  onSwitchModel?: () => void
-  /** The docked composer is up: its tray carries the jump-to-latest chip. */
-  jumpToLatestInComposer?: boolean
-}
-
-const ActiveAgentView = memo(function ActiveAgentView({
-  emptyState,
-  onMentionFileOpen,
-  onOpenSession,
-  fileRefOpener,
-  onRetry,
-  onSwitchModel,
-  jumpToLatestInComposer,
-}: ActiveAgentViewProps) {
-  const activeStream = useAgentStore((s) => {
-    if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
-    return Object.values(s.agentStreams)[0]
-  })
-
-  const activeBlocks = activeStream?.blocks ?? EMPTY_BLOCKS
-  const activeCurrentBlocks = activeStream?.currentBlocks ?? EMPTY_BLOCKS
-  const activeStatus = activeStream?.status ?? 'idle'
-  const activeLastError = activeStream?.lastError ?? null
-  const activeAwaitingRestart = isAwaitingRestartOutput(activeStream)
-
-  return (
-    <AgentView
-      blocks={activeBlocks}
-      currentBlocks={activeCurrentBlocks}
-      isWorking={activeStatus === 'working'}
-      isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
-      isAwaitingRestart={activeAwaitingRestart}
-      isError={activeStatus === 'error'}
-      lastError={activeLastError}
-      onMentionFileOpen={onMentionFileOpen}
-      onOpenSession={onOpenSession}
-      fileRefOpener={fileRefOpener}
-      emptyState={emptyState}
-      onRetry={onRetry}
-      onSwitchModel={onSwitchModel}
-      jumpToLatestInComposer={jumpToLatestInComposer}
-      marksScrollEdge
-    />
-  )
-})
 
 interface AgentChatViewProps {
   sessionId?: string

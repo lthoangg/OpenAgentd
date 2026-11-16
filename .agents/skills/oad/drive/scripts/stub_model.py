@@ -19,6 +19,9 @@ message:
 - a user message holding ``drive:script <code>``: one ``script`` tool call
   that runs that code, described as ``Drive script`` (only when the request
   offers a ``script`` tool)
+- a user message holding ``drive:preview <JSON arguments>``: one ``preview``
+  tool call with those arguments, e.g. ``{"action": "open", "path": "a.html"}``
+  (only when the request offers a ``preview`` tool)
 - any other user message: ``Stub reply (<protocol>): <the message>``, streamed
   word by word
 - a request without ``stream``: the title request's own ``<message>`` text,
@@ -33,6 +36,7 @@ as one JSON line.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import time
@@ -42,9 +46,15 @@ from typing import Any
 
 MODEL = "stub"
 # A directive names the tool to call; the rest of its line is the tool's input.
-DIRECTIVE = re.compile(r"drive:(shell|script)\s+(.+)")
+DIRECTIVE = re.compile(r"drive:(shell|script|preview)\s+(.+)")
 TITLE_MESSAGE = re.compile(r"<message>\s*(.*?)\s*</message>", re.S)
-CALL_ID = "call_drive_1"
+# Each tool call gets its own id, so a session with several calls can read
+# each result back by id (`/agent/<session>/tool-results/<id>`).
+_CALLS = itertools.count(1)
+
+
+def next_call_id(prefix: str = "call_drive") -> str:
+    return f"{prefix}_{next(_CALLS)}"
 
 
 def _text(content: Any) -> str:
@@ -78,7 +88,7 @@ def read_request(protocol: str, body: dict[str, Any]) -> tuple[bool, str, set[st
 
 
 def plan(protocol: str, body: dict[str, Any]) -> tuple[str, str]:
-    """What to answer: ``("text", reply)``, ``("shell", command)`` or ``("script", code)``."""
+    """What to answer: ``("text", reply)``, or the tool to call and its input."""
     after_tool, user, offered = read_request(protocol, body)
     if after_tool:
         return "text", f"Stub ({protocol}): the tool finished."
@@ -90,6 +100,8 @@ def plan(protocol: str, body: dict[str, Any]) -> tuple[str, str]:
 
 def tool_arguments(kind: str, value: str) -> str:
     """The JSON arguments of the tool call a directive asks for."""
+    if kind == "preview":
+        return json.dumps(json.loads(value))
     return json.dumps({"command": value} if kind == "shell" else {"description": "Drive script", "code": value})
 
 
@@ -109,7 +121,7 @@ def chat_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
 
     events = [chunk({"role": "assistant", "content": ""})]
     if kind != "text":
-        call = {"index": 0, "id": CALL_ID, "type": "function", "function": {"name": kind, "arguments": tool_arguments(kind, value)}}
+        call = {"index": 0, "id": next_call_id(), "type": "function", "function": {"name": kind, "arguments": tool_arguments(kind, value)}}
         events += [chunk({"tool_calls": [call]}), chunk({}, "tool_calls")]
     else:
         events += [chunk({"content": piece}) for piece in pieces(value)]
@@ -123,7 +135,7 @@ def responses_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
     events: list[dict] = [{"type": "response.created", "response": {"id": "resp_stub_1", "status": "in_progress"}}]
     if kind != "text":
         arguments = tool_arguments(kind, value)
-        item = {"type": "function_call", "id": "fc_stub_1", "call_id": CALL_ID, "name": kind, "arguments": ""}
+        item = {"type": "function_call", "id": "fc_stub_1", "call_id": next_call_id(), "name": kind, "arguments": ""}
         events += [
             {"type": "response.output_item.added", "output_index": 0, "item": item},
             {"type": "response.function_call_arguments.delta", "item_id": "fc_stub_1", "output_index": 0, "delta": arguments},
@@ -146,7 +158,7 @@ def messages_events(kind: str, value: str) -> list[tuple[str | None, dict]]:
     message = {"id": "msg_stub_1", "type": "message", "role": "assistant", "model": MODEL, "content": [], "stop_reason": None, "usage": {"input_tokens": 10, "output_tokens": 0}}
     events: list[dict] = [{"type": "message_start", "message": message}]
     if kind != "text":
-        block = {"type": "tool_use", "id": "toolu_drive_1", "name": kind, "input": {}}
+        block = {"type": "tool_use", "id": next_call_id("toolu_drive"), "name": kind, "input": {}}
         deltas = [{"type": "input_json_delta", "partial_json": tool_arguments(kind, value)}]
         stop = "tool_use"
     else:

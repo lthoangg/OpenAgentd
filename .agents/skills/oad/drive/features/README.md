@@ -16,6 +16,7 @@ view; find code paths in the source when you need them.
 | [Script tool row](script.md) | `script` | A `script` call's nested tool calls run; its row shows the code, the calls and the result, and is the same after a reload |
 | [Settings](settings.md) | `settings` | Search lands on the setting it names; a changed setting applies and survives a reload |
 | [Seen on a screen](notify-seen.md) | `notify-seen` | A session on screen is reported seen when it opens and when its turn's notification arrives |
+| [Agent preview without the tab](preview.md) | `preview` | After the Preview tab closes and the app reloads on another session, the first session's agent still clicks and reads its page |
 
 Not mapped yet: plan mode and plan review, subagents, scheduled tasks, the
 command palette, attachments, web preview, undo, the account and remote

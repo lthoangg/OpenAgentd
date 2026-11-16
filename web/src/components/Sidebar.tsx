@@ -1,4 +1,4 @@
-// size-ceiling: 1320 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
+// size-ceiling: 1273 — one component: move the Sidebar.*.ts siblings into Sidebar/, then split the session list, the workspace rows and the menus
 /**
  * Sidebar — flat workspace + session switcher for the app's one
  * screen:
@@ -33,7 +33,7 @@
 import { failureToast } from '@/lib/failure-toast'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useDrawerMotion } from '@/hooks/use-drawer-motion'
 import { usePlatform } from '@/hooks/use-platform'
@@ -71,10 +71,9 @@ import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { sessionWorking } from '@/lib/active-sessions'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
-import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
-import { getCodingWorkspaceTree, listSessions } from '@/api/client'
-import { WORKSPACES_KEY, renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
+import { listSessions } from '@/api/client'
+import { renameSavedWorkspace, workspaceLabel } from '@/utils/workspace'
 import { RelocateWorkspaceDialog } from '@/components/LazyRelocateWorkspaceDialog'
 import type { WorkspaceRelocateResponse } from '@/api/types'
 import { startNewSession } from '@/lib/new-session'
@@ -93,7 +92,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
-import type { CodingWorkspaceTreeRepository, SessionResponse, WorkspaceGroup } from '@/api/types'
+import type { SessionResponse } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection, RunningSection } from './Sidebar/NeedsYouSection'
@@ -107,7 +106,6 @@ import { SessionStatusMark } from './Sidebar/SessionStatusMark'
 import { groupColor } from './Sidebar/groupColor'
 import {
   addExpandedPaths,
-  buildWorktreeSourceByDirectory,
   groupSessionsByWorkspace,
   newSessionChoicePaths,
   orderWorkspacePaths,
@@ -137,12 +135,10 @@ import { SessionActionsMenu } from './Sidebar/SessionActionsMenu'
 import { WorkspaceActionsContextMenu, WorkspaceActionsSheet } from './Sidebar/WorkspaceActionsMenu'
 import { CheckoutMenu, useCheckoutFilter } from './Sidebar/CheckoutMenu'
 import { MissingBadge } from './Sidebar/MissingBadge'
+import { NO_GROUPS, useWorkspaceTree } from './Sidebar/useWorkspaceTree'
 
-const WORKSPACE_TREE_STALE_MS = 30_000
 // Hiding undoes from the toast for as long as a delete does.
 const WORKSPACE_HIDE_UNDO_MS = 10_000
-const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
-const NO_GROUPS: WorkspaceGroup[] = []
 /** Rows that Up/Down/Home/End move between: sessions and workspace headers. */
 const SIDEBAR_ROW = '[data-sidebar-session], [data-sidebar-workspace]'
 
@@ -244,7 +240,6 @@ export function Sidebar({
   // The phone has no "Show details" switch: its rows always carry them.
   const storedShowDetails = useSidebarViewStore((s) => s.showDetails)
   const showDetails = isMobile || storedShowDetails
-  const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
 
   const workspaceSessions = useMemo(
@@ -257,43 +252,23 @@ export function Sidebar({
   const sessionActions = useSessionActions({ currentSessionId, workspaceSessions, isMobile, isPage, mobileOpen, onMobileClose })
   const { editingSessionId, sessionRowHandlers, handleSessionSelect } = sessionActions
 
-  // Read straight from the shared query, so a refresh made anywhere (the
-  // command palette's workspace switch, another window) shows here too.
   const {
-    data: workspaceTreeData,
-    isPending: workspaceTreePending,
-    isError: workspaceTreeFailed,
-    refetch: refetchWorkspaceTree,
-    isRefetching: workspaceTreeRetrying,
-  } = useQuery({
-    queryKey: queryKeys.coding.tree(),
-    queryFn: getCodingWorkspaceTree,
-    staleTime: WORKSPACE_TREE_STALE_MS,
-  })
-  const workspaceTree = workspaceTreeData?.repositories ?? NO_REPOSITORIES
-  const workspaceByPath = useMemo(
-    () => new Map(workspaceTree.map((repo) => [repo.path, repo])),
-    [workspaceTree],
-  )
-  // Workspace groups: tags on repositories that set who may message whom.
-  const workspaceGroups = workspaceTreeData?.groups ?? NO_GROUPS
-  const groupsOf = (path: string) => {
-    const ids = workspaceByPath.get(path)?.group_ids ?? []
-    return workspaceGroups.filter((g) => ids.includes(g.id))
-  }
-  // A filter for a group that no longer exists shows everything.
-  const activeGroupFilter = workspaceGroups.find((g) => g.id === groupFilter) ?? null
-  // The chat workspace is a pinned, non-repository row: the backend never
-  // stores it in ``coding_workspaces``, so it is prepended here.
-  const chatWorkspace = useChatWorkspace()
-  const isChatPath = (path: string | null | undefined) =>
-    isChatWorkspacePath(path, chatWorkspace)
-  const visibleWorkspaces = [
-    ...(chatWorkspace ? [chatWorkspace.path] : []),
-    ...workspaceTree.map((repo) => repo.path).filter((path) => !isChatPath(path)),
-  ]
+    workspaceTreePending,
+    workspaceTreeFailed,
+    refetchWorkspaceTree,
+    workspaceTreeRetrying,
+    workspaceTree,
+    workspaceByPath,
+    workspaceGroups,
+    groupsOf,
+    activeGroupFilter,
+    chatWorkspace,
+    isChatPath,
+    visibleWorkspaces,
+    worktreeSourceByDirectory,
+    refreshWorkspaceTree,
+  } = useWorkspaceTree()
   const activeWorkspace = workspace ?? null
-  const worktreeSourceByDirectory = buildWorktreeSourceByDirectory(workspaceTree)
 
   // ``expandedWorkspaces`` is local UI state — it auto-tracks the active
   // workspace but the user can also expand/collapse any other workspace
@@ -332,13 +307,6 @@ export function Sidebar({
   const [relocateTarget, setRelocateTarget] = useState<{ path: string; native: boolean } | null>(null)
   const [checkoutMenu, setCheckoutMenu] = useState<{ repo: string; x: number; y: number } | null>(null)
 
-  // Every caller has just changed the tree on the server, so a cached copy
-  // is never good enough. Invalidating also restarts a fetch already in
-  // flight, which may have left before the change landed.
-  const refreshWorkspaceTree = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() }),
-    [queryClient],
-  )
   // Pull to refresh on the Sessions page: every session list (the tree's,
   // Pinned, Needs you, the flat views) and the workspace tree. The promise
   // settles when the refetches do, which is when the spinner may stop.
@@ -387,21 +355,6 @@ export function Sidebar({
     useUIStore.getState().focusScheduledTask(null)
     dispatchAppEvent(APP_EVENTS.openScheduler)
   })
-
-  useEffect(() => {
-    const handler = () => { void refreshWorkspaceTree() }
-    // Other windows also write storage for unrelated state (unread marks on
-    // every finished turn, theme…); only the saved workspace list moves the tree.
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === WORKSPACES_KEY) handler()
-    }
-    window.addEventListener('workspaces-changed', handler)
-    window.addEventListener('storage', onStorage)
-    return () => {
-      window.removeEventListener('workspaces-changed', handler)
-      window.removeEventListener('storage', onStorage)
-    }
-  }, [refreshWorkspaceTree])
 
   useEffect(() => {
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)

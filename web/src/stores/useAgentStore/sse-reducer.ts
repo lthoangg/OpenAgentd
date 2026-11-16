@@ -140,6 +140,17 @@ function ensureAgent(draft: AgentStore, agent?: string) {
   if (!draft.leadName) draft.leadName = name
 }
 
+/** True when a failure is the model provider's, so the transcript shows it. */
+function isProviderFailure(title: string | undefined, message: string, code?: string, category?: AgentError['category']): boolean {
+  const text = `${title ?? ''} ${message}`.toLowerCase()
+  return category === 'provider' ||
+    Boolean(code?.startsWith('provider_')) ||
+    text.includes('provider') ||
+    text.includes('rate limit') ||
+    text.includes('quota') ||
+    text.includes('invalid api key')
+}
+
 interface CreateSSEHandlerArgs {
   set: Setter
   get: Getter
@@ -527,11 +538,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const promptTokens = (d.prompt_tokens as number) || 0
           const completionTokens = (d.completion_tokens as number) || 0
           const cachedTokens = d.cached_tokens as number | undefined
-          const cachePercent = (d.cache_percent as number | undefined) ?? (
-            typeof (d as Record<string, unknown>).cache_percent === 'number'
-              ? (d as Record<string, unknown>).cache_percent as number
-              : undefined
-          )
+          const cachePercent = d.cache_percent
           if (meta?.turn_total) {
             u.turnPromptTokens = promptTokens
             u.turnCompletionTokens = completionTokens
@@ -588,7 +595,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           const targetAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
           ensureAgent(draft, targetAgent)
-          if (!draft.leadName) draft.leadName = targetAgent
           draft.isAgentWorking = true
           draft.error = null
           draft.agentStreams[targetAgent].status = 'working'
@@ -853,14 +859,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               }
             }
 
-            const isProvider = errCategory === 'provider' ||
-              errCode?.startsWith('provider_') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('provider') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('rate limit') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('quota') ||
-              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('invalid api key')
-
-            if (isProvider && lastErr) {
+            if (lastErr && isProviderFailure(errTitle, lastErr, errCode, errCategory)) {
               const targets = new Set<string>()
               if (agent) targets.add(agent)
               if (draft.leadName) targets.add(draft.leadName)
@@ -989,14 +988,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           draft._runningPatchedFor = null
 
           const effectiveAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'lead'
-          const isProvider = category === 'provider' ||
-            code?.startsWith('provider_') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('provider') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('rate limit') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('quota') ||
-            `${title ?? ''} ${message}`.toLowerCase().includes('invalid api key')
-
-          if (isProvider) {
+          if (isProviderFailure(title, message, code, category)) {
             const targets = new Set<string>()
             if (agent) targets.add(agent)
             if (draft.leadName) targets.add(draft.leadName)

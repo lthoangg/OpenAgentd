@@ -39,9 +39,7 @@ import { isMobileApp } from '@/lib/mobile-app'
 import { cn } from '@/lib/utils'
 import { PanelResizeHandle, ResizableAside } from '@/components/ResizableAside'
 import { KeyLayerScope, useKeyLayer } from '@/lib/keyboard/hooks'
-import {
-  SquarePen,
-} from 'lucide-react'
+import { SquarePen } from 'lucide-react'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
@@ -236,7 +234,6 @@ export function Sidebar({
   const toggleWorkspaceExpanded = (path: string) => {
     setExpandedWorkspaces((current) => toggleExpandedPath(current, path))
   }
-
 
   const [error, setError] = useState<string | null>(null)
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)

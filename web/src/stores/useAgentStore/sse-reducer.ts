@@ -7,24 +7,21 @@ import {
   completeToolInto,
   generateBlockId,
   readBlocks,
-  startCompaction,
-  appendCompactionContentInto,
-  endCompaction,
 } from '@/utils/blocks'
 import type { ToolResultArrival } from '@/utils/blocks'
-import { createDefaultAgentStream } from './defaults'
 import {
   FS_MUTATING_TOOLS,
   PLAN_MUTATING_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
   anyAgentLive,
+  ensureAgent,
   appendLocalBlocks,
-  applyLocalBlockTransform,
   applyQuestionResolution,
   extractToolPaths,
   revokeBlobUrlsFromBlocks,
 } from './helpers'
+import { onSummarizationContent, onSummarizationEnd, onSummarizationStart } from './sse-compaction'
 import { onQuestionAsked, onQuestionResolved } from './sse-questions'
 import type { CacheInvalidation, AgentError, AgentStore, StoreGet, StoreSet } from './types'
 import { canonicalToolName } from '@/utils/tool-names'
@@ -67,13 +64,6 @@ export function splitEventAttachments(raw: unknown): {
  */
 export const IGNORED_SSE_EVENTS: Partial<Record<SSEEventType, string>> = {
   rate_limit: 'always followed by a provider_status "retrying" event carrying the same retry_after, which the UI renders',
-}
-
-function ensureAgent(draft: AgentStore, agent?: string) {
-  const name = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
-  if (!draft.agentStreams[name]) draft.agentStreams[name] = createDefaultAgentStream()
-  if (!draft.agentNames.includes(name)) draft.agentNames.push(name)
-  if (!draft.leadName) draft.leadName = name
 }
 
 /** True when a failure is the model provider's, so the transcript shows it. */
@@ -941,55 +931,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'summarization_start': {
-        const agent = d.agent as string
-        if (!agent) break
-        const forced = (d.metadata as Record<string, unknown> | undefined)?.forced === true
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          // Auto-compaction can start between model iterations, after this turn
-          // has already streamed text/tools into currentBlocks. Seal those
-          // blocks first so the divider lands at the actual trigger point;
-          // subsequent deltas then remain after it. Everything sealed (plus a
-          // newly created "compacting" divider) is local-only, exactly like a
-          // `done` flush, so `applyLocalBlockTransform` tags it unsynced the
-          // same way.
-          const sealed = stream.currentBlocks
-          stream.currentBlocks = []
-          applyLocalBlockTransform(stream, (blocks) => startCompaction([...blocks, ...sealed], forced))
-        })
+        onSummarizationStart(set, d)
         break
       }
 
       case 'summarization_content': {
-        const agent = d.agent as string
-        const text = d.text as string
-        if (!agent || !text) break
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          appendCompactionContentInto(stream.blocks, text)
-        })
+        onSummarizationContent(set, d)
         break
       }
 
       case 'summarization_end': {
-        const agent = d.agent as string
-        if (!agent) break
-        const summary = (d.summary as string | undefined) ?? ''
-        const meta = d.metadata as Record<string, unknown> | undefined
-        const error = Boolean(meta?.error)
-        const forced = meta?.forced === true
-        set((draft) => {
-          ensureAgent(draft, agent)
-          const stream = draft.agentStreams[agent]
-          // Usually edits the in-flight divider in place (nothing new to tag).
-          // Defensive path: no in-flight "compacting" block existed (e.g.
-          // events arrived out of order), so `endCompaction` synthesized a
-          // fresh completed one — tag it as unsynced like every other
-          // locally-created block.
-          applyLocalBlockTransform(stream, (blocks) => endCompaction(blocks, summary, error, forced))
-        })
+        onSummarizationEnd(set, d)
         break
       }
 

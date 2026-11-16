@@ -2,7 +2,8 @@ import type { ContentBlock, PendingQuestion } from '@/api/types'
 import { patchFiles } from '@/components/ToolCall/diffUtils'
 import { isGoalTurnBlock } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
-import type { AgentStream, CacheInvalidation, QuestionClosedReason, ResolvedQuestion } from './types'
+import { createDefaultAgentStream } from './defaults'
+import type { AgentStore, AgentStream, CacheInvalidation, QuestionClosedReason, ResolvedQuestion } from './types'
 
 /** Kinds whose live id (``generateBlockId``) differs from the server row's. */
 const ADOPTABLE_KINDS = new Set<ContentBlock['type']>(['thinking', 'text'])
@@ -353,4 +354,12 @@ export function applyRevertBoundary(
       attachments: b.type === 'user' ? b.attachments : undefined,
     }))
     .filter((m) => m.content.trim().length > 0 || (m.attachments && m.attachments.length > 0))
+}
+
+/** Make sure the stream an event names (else the lead's) exists and is listed. */
+export function ensureAgent(draft: AgentStore, agent?: string) {
+  const name = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
+  if (!draft.agentStreams[name]) draft.agentStreams[name] = createDefaultAgentStream()
+  if (!draft.agentNames.includes(name)) draft.agentNames.push(name)
+  if (!draft.leadName) draft.leadName = name
 }

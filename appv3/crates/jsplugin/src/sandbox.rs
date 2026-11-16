@@ -298,6 +298,12 @@ pub(crate) struct ImportJail {
 }
 
 impl ImportJail {
+    /// A jail for `plugin`'s imports that admits files under `roots` only
+    /// (none: every import is refused). Roots must already be resolved.
+    pub(crate) fn new(plugin: &str, roots: Vec<PathBuf>) -> Self {
+        Self { plugin: plugin.to_string(), roots }
+    }
+
     /// The resolved path of `file` (an existing module file, imported as
     /// `shown`), if it may be loaded. QuickJS cuts an import error short at
     /// 255 bytes, after a prefix that holds the importing file's path, so the

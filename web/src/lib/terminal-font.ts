@@ -1,5 +1,6 @@
 /**
- * terminal-font — the terminal's font stack and size. Both are fixed.
+ * terminal-font — the terminal's font stack (fixed) and size (the app's
+ * Text size setting, so the terminal reads at the size the app does).
  *
  * Browsers and webviews do not expose the OS's installed font list (it is a
  * fingerprinting vector), so the stack guesses: the most common Nerd Font
@@ -30,6 +31,8 @@ const GUESS_STACK = [
  * requiring any user action. On desktop it sits after the guess stack so any
  * real installed Nerd Font still wins.
  */
+import type { TextSize } from '@/stores/useDisplayPrefsStore'
+
 export const BUNDLED_ICONS_FAMILY = 'Symbols Nerd Font Mono'
 
 const GENERIC_TAIL = 'ui-monospace, SFMono-Regular, Menlo, monospace'
@@ -42,4 +45,11 @@ const GENERIC_TAIL = 'ui-monospace, SFMono-Regular, Menlo, monospace'
  */
 export const TERMINAL_FONT_FAMILY = [...GUESS_STACK, BUNDLED_ICONS_FAMILY].map((name) => `"${name}"`).concat(GENERIC_TAIL).join(', ')
 
-export const TERMINAL_FONT_SIZE = 13
+/** Terminal px per Text size: the desktop UI's own sizes, Default at 13. */
+const TERMINAL_FONT_SIZES: Record<TextSize, number> = { compact: 12, default: 13, large: 14 }
+
+export const TERMINAL_FONT_SIZE = TERMINAL_FONT_SIZES.default
+
+export function terminalFontSize(size: TextSize): number {
+  return TERMINAL_FONT_SIZES[size]
+}

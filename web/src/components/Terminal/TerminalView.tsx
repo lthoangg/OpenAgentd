@@ -16,7 +16,7 @@
  * `useThemePreference`; the store swaps every session's palette so hidden
  * terminals wake up already matching.
  *
- * Font: a fixed Nerd Font stack and size (`lib/terminal-font.ts`).
+ * Font: a fixed Nerd Font stack at the app's Text size (`lib/terminal-font.ts`).
  *
  * `data-swipe-ignore` opts the surface out of mobile edge-swipe so
  * xterm owns its own touches. On touch a drag only scrolls: xterm selects
@@ -35,8 +35,9 @@ import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
-import { TERMINAL_FONT_FAMILY } from '@/lib/terminal-font'
+import { TERMINAL_FONT_FAMILY, terminalFontSize } from '@/lib/terminal-font'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { readCommandFieldOn, TerminalCommandField, writeCommandFieldOn } from './TerminalCommandField'
 import { TerminalContextMenu } from './TerminalContextMenu'
@@ -74,6 +75,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const [commandFieldOn, setCommandFieldOn] = useState(readCommandFieldOn)
   const commandFieldRef = useRef<HTMLInputElement>(null)
   const { resolved } = useThemePreference()
+  const textSize = useDisplayPrefsStore((s) => s.textSize)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [textSnapshot, setTextSnapshot] = useState<TerminalText | null>(null)
@@ -92,6 +94,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   useEffect(() => {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
+
+  // The terminal reads at the app's Text size, live.
+  useEffect(() => {
+    useTerminalStore.getState().syncFontSize(terminalFontSize(textSize))
+  }, [textSize])
 
   // Sticky Ctrl/Alt (terminal-modifiers.ts): the next key is sent with them,
   // then they release. Registered on the store so it applies to keystrokes

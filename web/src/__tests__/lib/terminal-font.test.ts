@@ -1,11 +1,12 @@
 /**
- * terminal-font — the terminal's fixed font stack and size.
+ * terminal-font — the terminal's fixed font stack, and its size per Text size.
  */
 import { describe, expect, it } from 'bun:test'
 import {
   BUNDLED_ICONS_FAMILY,
   TERMINAL_FONT_FAMILY,
   TERMINAL_FONT_SIZE,
+  terminalFontSize,
 } from '@/lib/terminal-font'
 
 describe('TERMINAL_FONT_FAMILY', () => {
@@ -22,7 +23,11 @@ describe('TERMINAL_FONT_FAMILY', () => {
     expect(TERMINAL_FONT_FAMILY.endsWith('monospace')).toBe(true)
   })
 
-  it('is 13 px', () => {
+  it('is 13 px at the default Text size', () => {
     expect(TERMINAL_FONT_SIZE).toBe(13)
+  })
+
+  it('follows Text size: Compact 12, Default 13, Large 14', () => {
+    expect([terminalFontSize('compact'), terminalFontSize('default'), terminalFontSize('large')]).toEqual([12, 13, 14])
   })
 })

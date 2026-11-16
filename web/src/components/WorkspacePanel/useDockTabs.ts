@@ -18,7 +18,7 @@ import type { PreviewTarget } from '@/api/preview'
 import { appShortcut, useAppShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, dockTabStepKeys } from '@/lib/app-shortcuts'
 import { getPlatform } from '@/hooks/use-platform'
-import { useTerminalStore } from '@/stores/useTerminalStore'
+import { takeTerminalShowRequest, useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
 import {
@@ -307,12 +307,16 @@ export function useDockTabs({
 
   /**
    * Show the last shell (where it is), or start one. After a reload the shell
-   * that was in front comes first, as the restored ``frontBackendId``.
+   * that was in front comes first, as the restored ``frontBackendId``; a shell
+   * asked for by name (a "Command finished" notice's Show) comes before both.
    */
   const showOrOpenTerminal = useCallback((preferRestored: boolean) => {
     const metas = useTerminalStore.getState().sessionsForContext(workspace)
+    const requested = takeTerminalShowRequest()
     const front = preferRestored ? useTerminalStore.getState().restoredActiveBackendId(workspace) : undefined
-    const target = metas.find((m) => front !== undefined && m.backendId === front) ?? metas[metas.length - 1]
+    const target = metas.find((m) => m.id === requested)
+      ?? metas.find((m) => front !== undefined && m.backendId === front)
+      ?? metas[metas.length - 1]
     if (target) setState((current) => activateTab(syncTerminalTabs(current, metas, target.id), terminalTabId(target.id)))
     else openTerminal()
   }, [workspace, openTerminal])

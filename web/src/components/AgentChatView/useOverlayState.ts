@@ -78,6 +78,8 @@ import { useTouchFirst } from '@/hooks/use-touch-first'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import { registerTerminalRunner } from '@/lib/terminal-run'
+import { requestTerminalShow } from '@/stores/useTerminalStore'
+import { useTerminalFinishedNotice } from '../Terminal/use-terminal-finished-notice'
 import { useBackHandler } from '@/lib/back-button'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { AttachmentTabRequest, DiffTabRequest, DockLayoutRequest, DockView, DockViewRequest, PreviewTabRequest, TerminalRunRequest } from '../WorkspacePanel/dock-tabs'
@@ -649,6 +651,14 @@ export function useOverlayState({
     setWorkspacePanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
+
+  // "Command finished" notices for this workspace's hidden terminals; Show
+  // brings that terminal up through Open Terminal.
+  const showTerminal = useCallback((id: string) => {
+    requestTerminalShow(id)
+    handleOpenTerminal()
+  }, [handleOpenTerminal])
+  useTerminalFinishedNotice(workspace, showTerminal)
 
   // Run in terminal (a shell code block's button): open the Review panel and
   // hand the command to the dock, which picks the shell. Registered only with

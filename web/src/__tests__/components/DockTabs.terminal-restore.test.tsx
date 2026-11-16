@@ -38,7 +38,7 @@ mock.module('@/api/terminal-sessions', () => ({
   deleteTerminalSession: fn(async () => {}),
 }))
 
-const { useTerminalStore, _resetTerminalStoreForTests, TERMINAL_LAYOUT_KEY, TERMINAL_RESTORE_WAIT_MS } =
+const { useTerminalStore, _resetTerminalStoreForTests, requestTerminalShow, TERMINAL_LAYOUT_KEY, TERMINAL_RESTORE_WAIT_MS } =
   await import('@/stores/useTerminalStore')
 const { _resetKeyboardForTests } = await import('@/lib/keyboard/dispatcher')
 const { useDockTabs } = await import('@/components/WorkspacePanel/useDockTabs')
@@ -204,5 +204,17 @@ describe('Open terminal right after a reload', () => {
     release()
     await new Promise((r) => setTimeout(r, 20))
     expect(sessions()).toHaveLength(0)
+  })
+
+  it('shows the shell a "Command finished" notice asked for, not the last one', async () => {
+    sessionList = [info('a', 1), info('b', 2)]
+    const { result, rerender } = renderTabs(0)
+    await waitFor(() => expect(sessions()).toHaveLength(2))
+    requestTerminalShow(idOf('a'))
+    act(() => rerender({ key: 1 }))
+    expect(result.current.activeTabId).toBe(terminalTabId(idOf('a')))
+    // Once: the next Open Terminal shows the last shell again.
+    act(() => rerender({ key: 2 }))
+    expect(result.current.activeTabId).toBe(terminalTabId(idOf('b')))
   })
 })

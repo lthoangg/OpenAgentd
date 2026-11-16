@@ -3827,7 +3827,8 @@ agent against it.
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
   soft-keyboard focus preservation, quick symbol row).
   Terminal font is a best-guess Nerd Font stack (MesloLGS NF and similar)
-  for correct Powerlevel10k/Starship glyph rendering, at 13 px.
+  for correct Powerlevel10k/Starship glyph rendering, at 13 px (at the
+  Text size since `[v3.57.0]`).
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
   including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and
@@ -3886,6 +3887,14 @@ agent against it.
     and the cursor work as in any app. Return sends the line with Enter (an
     empty Return sends Enter); the bar's keys still reach the shell while
     the field keeps the keyboard. The choice is kept on the device.
+  - **Text size** `[v3.57.0]`: terminals follow Settings → Text size
+    (Compact 12 px, Default 13 px, Large 14 px), live, refitting the
+    terminals on screen.
+  - **Command finished** `[v3.57.0]`: a command that ran 10 seconds or more
+    in a terminal that is not on screen (another tab, or the Review panel
+    closed) shows "Terminal 1 · Command finished" with **Show**, which brings
+    that terminal up. Only the open workspace's terminals, and not on
+    Windows, which does not say when a command runs.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace

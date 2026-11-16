@@ -8,9 +8,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** Fallback cap in px, where the CSS max-height does not resolve to px. */
-export const MAX_TEXTAREA_HEIGHT = 120
+const MAX_TEXTAREA_HEIGHT = 120
 /** The box grows to six lines, then it scrolls inside. */
-export const COMPOSER_MAX_LINES = 6
+const COMPOSER_MAX_LINES = 6
 
 /** The textarea's (and its mirror's) CSS max-height. */
 export function composerMaxHeight(): string {
@@ -24,7 +24,7 @@ function maxHeightOf(el: HTMLElement): number {
 }
 
 /** The view of a draft taller than its box, as fractions of the draft's height. */
-export interface ComposerScrollThumb {
+interface ComposerScrollThumb {
   top: number
   height: number
 }

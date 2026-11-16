@@ -25,7 +25,7 @@ import {
   filterSnippetCommands,
 } from './menus'
 
-export type SuggestionRange = { start: number; end: number; query: string } | null
+type SuggestionRange = { start: number; end: number; query: string } | null
 
 /**
  * The currently open picker menu. ``rows`` is what gets rendered (for slash
@@ -39,7 +39,7 @@ export type SuggestionMenu =
 
 export type SuggestionRow = SlashCommand | SnippetCommand | FileRef
 
-export interface UseInputComposerSuggestionEngineOptions {
+interface UseInputComposerSuggestionEngineOptions {
   value: string
   setValue: Dispatch<SetStateAction<string>>
   textareaRef: React.RefObject<HTMLTextAreaElement | null>

@@ -26,7 +26,7 @@ export interface FileRef {
  * change (the overlay) should build this once via {@link buildMentionLookup}
  * and memoize it against ``fileRefs``.
  */
-export interface MentionLookup {
+interface MentionLookup {
   /** All valid mention tokens: ``@path`` (and ``@path/`` for directories). */
   valid: Set<string>
   /** File-only ``@path`` bases, used to validate ``@path#L1-L2`` line refs. */
@@ -112,7 +112,7 @@ export function findActiveMention(
   return null
 }
 
-export interface MentionRange {
+interface MentionRange {
   path: string
   start: number
   end: number

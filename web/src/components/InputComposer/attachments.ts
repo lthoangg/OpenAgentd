@@ -17,7 +17,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { formatBytes } from '@/utils/format'
 
-export interface UseInputComposerAttachmentsOptions {
+interface UseInputComposerAttachmentsOptions {
   capabilities?: AgentCapabilities
 }
 

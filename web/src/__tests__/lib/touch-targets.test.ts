@@ -100,7 +100,9 @@ describe('coarse-pointer touch targets', () => {
   })
 
   it('sizes Send to 36px on touch, a phone included, as the split Steer half beside its chevron', () => {
-    const composer = readFileSync(fileURLToPath(new URL('../../components/InputComposer/index.tsx', import.meta.url)), 'utf8')
+    // The composer folder as one text: the class strings live in whichever of its modules draws Send.
+    const dir = fileURLToPath(new URL('../../components/InputComposer/', import.meta.url))
+    const composer = readdirSync(dir).filter((f) => /\.tsx?$/.test(f)).map((f) => readFileSync(`${dir}${f}`, 'utf8')).join('\n')
     expect(composer).toMatch(/sendSlotClass =\s*'[^']*pointer-coarse:size-9'/)
     expect(composer).toMatch(/DELIVERY_TRIGGER_CLASS =[\s\S]*?pointer-coarse:h-9 \[/)
     expect(composer).not.toMatch(/phone:(size|h)-11/)

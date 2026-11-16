@@ -8,7 +8,7 @@
  * rules themselves.
  */
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@tailwindcss/node'
 
@@ -101,7 +101,9 @@ describe('phone controls', () => {
   })
 
   it('keeps Send a 36px circle on a phone, its touch area grown to 44px', () => {
-    const composer = read('../../components/InputComposer/index.tsx')
+    // The composer folder as one text: the class string lives in whichever of its modules draws Send.
+    const dir = fileURLToPath(new URL('../../components/InputComposer/', import.meta.url))
+    const composer = readdirSync(dir).filter((f) => /\.tsx?$/.test(f)).map((f) => readFileSync(`${dir}${f}`, 'utf8')).join('\n')
     expect(composer).toMatch(/const sendSlotClass =\s*'relative touch-hit [^']*pointer-coarse:size-9'/)
     expect(composer).not.toMatch(/const sendSlotClass =\s*'[^']*phone:size-11/)
   })

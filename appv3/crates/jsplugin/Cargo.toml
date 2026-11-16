@@ -31,7 +31,7 @@ oxc_ast = "0.156"
 oxc_codegen = "0.156"
 oxc_diagnostics = "0.156"
 oxc_parser = "0.156"
-oxc_semantic = "0.156"
+oxc_semantic = "0.158"
 oxc_span = "0.156"
 oxc_transformer = "0.156"
 

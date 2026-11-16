@@ -2,7 +2,7 @@
  * Verifies that the context meter's trigger threshold updates correctly when the
  * session switches from one model to another.
  *
- * The logic under test (in AgentChatView/index.tsx):
+ * The logic under test (in AgentChatView/useLeadModel.ts):
  *   - No session model override → use leadAgent.summary_trigger_tokens (from /agent/agents)
  *   - Session model set → look up that model in the registry and use its
  *     summary_trigger_tokens so the meter reflects the active model, not the

@@ -41,7 +41,7 @@ web/src/
   components/
     ui/                     primitives (button, dialog, popover, dropdown, tooltip, tabs, inline-title-input, …)
     AgentChatView/          chat screen: header, overlays (useOverlayState), session bootstrap
-    AgentView/ AgentView.tsx   transcript; UserBubble.tsx renders mentions and design feedback cards
+    AgentView/              transcript (index.tsx, BlockRenderer.tsx); UserBubble.tsx renders mentions and design feedback cards
     InputComposer*.ts(x)    composer: mentions, suggestions, attachments, delivery menu
     FloatingInputComposer.tsx
     WorkspacePanel/         review dock: tab bar, drag reorder (useTabDrag), Git, commits

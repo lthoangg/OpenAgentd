@@ -2,6 +2,37 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## `script` tool (v3.57.0)
+
+Every agent, lead and member, is offered a new built-in tool, `script`
+(`crates/tools/data/tool_definitions.json`). An agent file's `tools:` list
+cannot remove it, so the tools block of every model request grows by about
+2.9k characters.
+
+A script's nested tool calls publish no tool events and store no rows of
+their own: the transcript holds one `script` call and one result. The web
+client reads that result as text
+(`web/src/components/ToolCall/scriptTrace.ts`), so its lines are a wire
+format:
+
+- `calls (<count>, <seconds> s):`, then one line per nested call, at most
+  30, then `… <n> more`: `→ <tool> <target> · <ms> ms · <size>`, or
+  `· error: <message>` for a failed call, or `· cancelled` for one the
+  script's end cut off.
+- `output:`, then what the script logged and the value it returned, or
+  `(nothing logged or returned)`; `[output cut at 50000 characters: log
+  less]` when it was cut.
+- `error: <message>` when the script failed or reached its 270 s limit.
+- `saved as <name> (<path>)` when `save_as` stored it.
+
+While a script runs, its live output has one line per event: `▸ <n> <tool>
+<target>` when a nested call starts, then `✓ <n> <ms> ms · <size>` or `✗ <n>
+error: <message>`.
+
+On disk, `save_as` writes `<workspace>/.agents/scripts/<name>.ts` in a coding
+workspace and `<config>/scripts/<name>.ts` otherwise, and removes a
+`<name>.js` beside it. `name` looks in the workspace folder first.
+
 ## Account names, recovery code and departed devices (v3.56.0)
 
 All of these are local-only routes unless said otherwise (an unproxied

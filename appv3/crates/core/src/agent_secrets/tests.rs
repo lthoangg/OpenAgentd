@@ -118,7 +118,7 @@ fn usable_names_are_those_the_project_resolves() {
 #[test]
 fn the_store_round_trips_through_yaml_and_debug_hides_values() {
     let mut f = CredentialsFile { version: 1, ..Default::default() };
-    new(&mut f, "STRIPE_SECRET_KEY", "sk_live_123456", &["/client-a"]);
+    new(&mut f, "STRIPE_SECRET_KEY", "sk_live_123456", &["/client-a"]); // gitleaks:allow (synthetic fixture)
     let back = CredentialsFile::parse(&f.to_yaml()).unwrap();
     assert_eq!(back.agent_secrets, f.agent_secrets);
     assert!(!format!("{f:?}").contains("sk_live_123456"));

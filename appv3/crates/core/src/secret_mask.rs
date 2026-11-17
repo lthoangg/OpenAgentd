@@ -181,13 +181,14 @@ mod tests {
     use super::*;
 
     fn masker() -> Arc<Masker> {
-        Arc::new(Masker::new([("STRIPE_SECRET_KEY".to_string(), "sk_live_abcdef123456".to_string()), ("SHORT".to_string(), "abc".to_string())]))
+        let stripe = "sk_live_abcdef123456".to_string(); // gitleaks:allow (synthetic fixture)
+        Arc::new(Masker::new([("STRIPE_SECRET_KEY".to_string(), stripe), ("SHORT".to_string(), "abc".to_string())]))
     }
 
     #[test]
     fn e1_a_value_in_output_is_replaced_by_its_name() {
         let m = masker();
-        assert_eq!(m.mask("Invalid API Key provided: sk_live_abcdef123456."), "Invalid API Key provided: [secret STRIPE_SECRET_KEY].");
+        assert_eq!(m.mask("Invalid API Key provided: sk_live_abcdef123456."), "Invalid API Key provided: [secret STRIPE_SECRET_KEY]."); // gitleaks:allow (synthetic fixture)
         assert!(matches!(m.mask("nothing here"), Cow::Borrowed(_)));
         assert_eq!(m.mask("abc stays"), "abc stays", "values under 8 characters are not masked");
     }

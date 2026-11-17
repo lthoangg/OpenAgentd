@@ -1,5 +1,5 @@
 // What a screen says when something fails or is still loading, and the
-// shared confirm and action sheet (DESIGN.md → Rulebook 7 and 10): a folder
+// shared confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 10): a folder
 // list that failed, a workspace whose sessions could not be read, deleting
 // a workspace group, and ✎'s sheet on a phone.
 // Feature notes: ../../features/ui-states.md

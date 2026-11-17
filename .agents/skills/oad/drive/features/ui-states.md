@@ -1,7 +1,7 @@
 # Failure, loading and confirm states
 
 What a screen says when a request fails or is still loading, and the shared
-confirm and action sheet (DESIGN.md → Rulebook 7 and 10).
+confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 10).
 
 ## Sub-features
 

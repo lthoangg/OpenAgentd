@@ -403,6 +403,17 @@ impl AgentSession {
             _ => return Ok(GOAL_GONE.into()),
         }
         goal.tokens_used += tokens;
+        // The user paused it while the check ran: the pause stands, whatever
+        // the verdict, and the verdict is kept for them to read.
+        if !goal.is_active() {
+            if let Ok(v) = &checked {
+                let found = if v.met { "met" } else { "not met yet" };
+                goal.detail = Some(format!("The check finished after the pause and found the goal {found}: {}", v.reason));
+            }
+            let goal = save(&self.pool, &goal).await.map_err(err)?;
+            publish(&sid, Some(&goal));
+            return Ok(PAUSED_DURING_CHECK.into());
+        }
         let verdict = match checked {
             Ok(v) => {
                 local.check_failures = 0;
@@ -550,6 +561,7 @@ impl AgentSession {
 
 const NO_GOAL: &str = "There is no goal. update_goal only works while a goal runs a plan the user approved with \"Keep going until done\".";
 const PAUSED_GOAL: &str = "The goal is paused, so no completion check runs until the user resumes it. Stop goal work and summarize what is done and what remains.";
+const PAUSED_DURING_CHECK: &str = "The user paused the goal while the check ran, so it stays paused. Stop goal work and summarize what is done and what remains.";
 const GOAL_GONE: &str = "The goal was cleared while the check ran. Stop goal work.";
 
 /// Count a rejected claim on `goal`, pausing it at [`MAX_REJECTED_CLAIMS`];

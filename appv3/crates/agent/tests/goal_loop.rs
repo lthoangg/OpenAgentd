@@ -101,12 +101,16 @@ struct Harness {
 }
 
 async fn harness(name: &str, turns: Vec<appv3_providers::mock::MockTurn>, slow: Arc<AtomicBool>) -> Harness {
+    let mock = Arc::new(MockProvider::new(turns));
+    harness_on(name, mock.clone(), mock, slow).await
+}
+
+/// [`harness`] whose model calls go through `provider`, which wraps `mock`.
+async fn harness_on(name: &str, mock: Arc<MockProvider>, provider: Arc<dyn LlmProvider>, slow: Arc<AtomicBool>) -> Harness {
     let root = root();
     let pool = appv3_db::create_pool(root.join(format!("{name}.db"))).await.unwrap();
     let ws = root.join(name);
     std::fs::create_dir_all(&ws).unwrap();
-    let mock = Arc::new(MockProvider::new(turns));
-    let provider: Arc<dyn LlmProvider> = mock.clone();
     let p2 = provider.clone();
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
     let sid = uuid::Uuid::now_v7().to_string();
@@ -173,6 +177,48 @@ impl Harness {
 
 fn verdict(met: bool, reason: &str) -> appv3_providers::mock::MockTurn {
     MockProvider::text(&json!({"met": met, "reason": reason}).to_string())
+}
+
+/// The mock, except that its model call number `hold` (from 0) waits until
+/// `release` has a permit. `held` is notified when that call starts waiting.
+struct HoldsCall {
+    mock: Arc<MockProvider>,
+    hold: usize,
+    held: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Semaphore>,
+}
+
+#[async_trait]
+impl LlmProvider for HoldsCall {
+    fn model(&self) -> &str {
+        self.mock.model()
+    }
+    fn provider_name(&self) -> Option<&str> {
+        self.mock.provider_name()
+    }
+    fn base_kwargs(&self) -> &appv3_providers::Kwargs {
+        self.mock.base_kwargs()
+    }
+    async fn chat(
+        &self,
+        m: &[ChatMessage],
+        t: Option<&[appv3_providers::ToolSpec]>,
+        k: &appv3_providers::Kwargs,
+    ) -> appv3_providers::ProviderResult<appv3_providers::AssistantMessage> {
+        self.mock.chat(m, t, k).await
+    }
+    async fn stream(
+        &self,
+        m: &[ChatMessage],
+        t: Option<&[appv3_providers::ToolSpec]>,
+        k: &appv3_providers::Kwargs,
+    ) -> appv3_providers::ProviderResult<appv3_providers::ChunkStream> {
+        if self.mock.calls.lock().unwrap().len() == self.hold {
+            self.held.notify_one();
+            self.release.acquire().await.expect("release open").forget();
+        }
+        self.mock.stream(m, t, k).await
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -527,6 +573,32 @@ async fn stop_ends_a_completion_check_at_once() {
     assert!(h.session.wait_for_stop(Duration::from_secs(5)).await, "the turn ended without the 60 s grace");
     let g = h.goal().await;
     assert_eq!((g.status.as_str(), g.pause_reason.as_deref(), g.rejected_claims), ("paused", Some(goal::reason::STOPPED), 0), "{g:?}");
+}
+
+/// The user pauses while a completion check runs. The pause stands even
+/// when the check finds the goal met, and the goal keeps the verdict for
+/// the user to read when they decide to resume.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pause_during_the_check_stands_and_keeps_the_verdict() {
+    let claim = r#"{"status": "complete", "evidence": "bun test: 0 failures"}"#;
+    let mock = Arc::new(MockProvider::new(vec![
+        MockProvider::tool_call("a", "update_goal", claim),
+        verdict(true, "The test run shows 0 failures."),
+        MockProvider::text("Stopping here."),
+    ]));
+    let (held, release) = (Arc::new(tokio::sync::Notify::new()), Arc::new(tokio::sync::Semaphore::new(0)));
+    let provider = Arc::new(HoldsCall { mock: mock.clone(), hold: 1, held: held.clone(), release: release.clone() });
+    let h = harness_on("pause-check", mock, provider, Arc::default()).await;
+    h.start_goal("tests pass", 10).await;
+    tokio::time::timeout(Duration::from_secs(10), held.notified()).await.expect("the check started");
+
+    h.session.pause_goal(&h.sid).await.unwrap();
+    release.add_permits(1);
+    h.finish().await;
+
+    let g = h.goal().await;
+    assert_eq!((g.status.as_str(), g.pause_reason.as_deref()), ("paused", Some(goal::reason::USER)), "a check finishing after Pause overrode it: {g:?}");
+    assert!(g.detail.as_deref().is_some_and(|d| d.contains("0 failures")), "the verdict is kept: {g:?}");
 }
 
 /// Resume while a stopped turn is still ending would leave the goal active

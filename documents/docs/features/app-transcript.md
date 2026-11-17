@@ -103,7 +103,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     later edits. Claiming again with nothing run since a rejection is turned
     down without another check. A check that fails to give a verdict neither
     accepts nor rejects the claim, so the agent can claim again; three such
-    failures in a row pause the goal. Goal turns run unattended by default: the
+    failures in a row pause the goal. If you pause the goal while a check
+    runs, the pause stands even when the check finds it met, and the Goal
+    tab shows the verdict under why it paused `[v3.59.0]`. Goal turns run unattended by default: the
     agent decides instead of asking and notes each choice, and a plan it
     submits is saved without opening a review. **Settings → Sessions** sets
     whether Keep going starts ticked and the turn limit, and allows questions

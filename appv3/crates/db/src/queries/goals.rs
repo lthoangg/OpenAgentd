@@ -112,10 +112,20 @@ pub async fn get_session_goal(pool: &DbPool, session_id: &str, id: &str) -> Resu
 /// Write every mutable field of `goal` (and move `updated_at`). Returns the
 /// stored row, or `None` when it no longer exists.
 pub async fn save_session_goal(pool: &DbPool, goal: &SessionGoal) -> Result<Option<SessionGoal>> {
+    save_goal_where(pool, goal, None).await
+}
+
+/// [`save_session_goal`] only while the stored row's status is still
+/// `expected`: `None` when someone moved it meanwhile (a pause, a clear).
+pub async fn save_session_goal_if(pool: &DbPool, goal: &SessionGoal, expected: &str) -> Result<Option<SessionGoal>> {
+    save_goal_where(pool, goal, Some(expected)).await
+}
+
+async fn save_goal_where(pool: &DbPool, goal: &SessionGoal, expected: Option<&str>) -> Result<Option<SessionGoal>> {
     Ok(sqlx::query_as::<_, SessionGoal>(
         "UPDATE session_goals SET status = ?, pause_reason = ?, detail = ?, max_turns = ?, turns_used = ?, \
          tokens_used = ?, active_seconds = ?, rejected_claims = ?, idle_turns = ?, updated_at = ?, ended_at = ? \
-         WHERE session_id = ? AND id = ? RETURNING *",
+         WHERE session_id = ? AND id = ? AND (? IS NULL OR status = ?) RETURNING *",
     )
     .bind(&goal.status)
     .bind(&goal.pause_reason)
@@ -130,6 +140,8 @@ pub async fn save_session_goal(pool: &DbPool, goal: &SessionGoal) -> Result<Opti
     .bind(&goal.ended_at)
     .bind(db_id(&goal.session_id))
     .bind(db_id(&goal.id))
+    .bind(expected)
+    .bind(expected)
     .fetch_optional(pool)
     .await?)
 }
@@ -264,6 +276,17 @@ mod tests {
         assert!(live_session_goal(&pool, SID).await.unwrap().is_none());
         assert_eq!(saved.to_api()["detail"], "evidence");
         assert_eq!(saved.to_api()["session_id"], SID);
+    }
+
+    #[tokio::test]
+    async fn a_conditional_save_refuses_a_goal_moved_meanwhile() {
+        let (_d, pool) = pool().await;
+        let mut g = insert_session_goal(&pool, SID, "ship it", 50).await.unwrap();
+        g.status = GOAL_PAUSED.into();
+        save_session_goal(&pool, &g).await.unwrap();
+        g.status = GOAL_ACHIEVED.into();
+        assert_eq!(save_session_goal_if(&pool, &g, GOAL_ACTIVE).await.unwrap(), None);
+        assert_eq!(live_session_goal(&pool, SID).await.unwrap().unwrap().status, GOAL_PAUSED);
     }
 
     #[tokio::test]

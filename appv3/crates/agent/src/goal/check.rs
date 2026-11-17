@@ -7,6 +7,7 @@
 //! what actually ran, and the task board. The verdict goes on the goal row;
 //! nothing of the check is saved to the transcript.
 
+use super::state::GoalEvent;
 use super::{end, fence, pause, plan_work, publish, reason, save, spent, GOAL_NOTE_KEY, GOAL_TURN_KEY, MAX_CHECK_FAILURES, MAX_REJECTED_CLAIMS};
 use crate::hooks::otel::{set_usage_span_attributes, GOAL_ID_ATTR, WORKSPACE_ATTR};
 use crate::session::AgentSession;
@@ -14,7 +15,7 @@ use crate::streaming::{fit_request_images, merge_consecutive_user_messages, Mode
 use anyhow::{anyhow, Result};
 use appv3_core::otel::{self, Span, SpanCtx, SpanKind};
 use appv3_db::codec::db_id;
-use appv3_db::{self as db, SessionGoal, GOAL_ACHIEVED};
+use appv3_db::{self as db, SessionGoal, GOAL_ACTIVE};
 use appv3_providers::usage::usage_to_dict;
 use appv3_providers::{AssistantMessage, ChatMessage, Kwargs, ToolCall, Usage};
 use appv3_tools::ToolContext;
@@ -439,7 +440,7 @@ impl AgentSession {
         goal.detail = Some(verdict.reason.clone());
         tracing::info!("goal_check session_id={} goal_id={} met={}", sid, goal.id, verdict.met);
         let text = if verdict.met {
-            end(&mut goal, GOAL_ACHIEVED);
+            end(&mut goal, GoalEvent::Achieve);
             format!(
                 "The check confirmed the goal is met: {}\nThe goal is achieved. Stop goal work and give the user a short summary of what was done and how it was verified.",
                 verdict.reason
@@ -447,7 +448,11 @@ impl AgentSession {
         } else {
             reject(&mut goal, &verdict.reason)
         };
-        let goal = save(&self.pool, &goal).await.map_err(err)?;
+        // Only over the active goal re-read above: a writer outside this
+        // session's goal lock (an undo clearing it) may have moved it.
+        let Some(goal) = db::save_session_goal_if(&self.pool, &goal, GOAL_ACTIVE).await.map_err(err)? else {
+            return Ok(GOAL_GONE.into());
+        };
         publish(&sid, Some(&goal));
         Ok(text)
     }

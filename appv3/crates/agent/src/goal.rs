@@ -30,18 +30,20 @@
 //!   with its spend ([`check::CheckSpan`]).
 
 mod check;
+mod state;
 
 use crate::hooks::otel::{GOAL_ID_ATTR, GOAL_TURN_ATTR};
 use crate::hooks::{AgentState, Hook, RunContext};
 use crate::session::AgentSession;
 use anyhow::{anyhow, Result};
 use appv3_core::runtime_settings::{self as rs, GoalSettings, MAX_GOAL_MAX_TURNS};
-use appv3_db::codec::{db_id, json_col, now_db};
-use appv3_db::{self as db, DbPool, NewMessage, SessionGoal, GOAL_ACHIEVED, GOAL_ACTIVE, GOAL_CLEARED, GOAL_PAUSED};
+use appv3_db::codec::{db_id, json_col};
+use appv3_db::{self as db, DbPool, NewMessage, SessionGoal, GOAL_ACHIEVED, GOAL_CLEARED, GOAL_PAUSED};
 use appv3_providers::AssistantMessage;
 use appv3_tools::{denied, todo};
 use async_trait::async_trait;
 use serde_json::{json, Map, Value};
+use state::GoalEvent;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -232,17 +234,14 @@ pub fn account(goal: &mut SessionGoal, tokens: i64, tool_calls: i64, seconds: i6
 }
 
 pub fn pause(goal: &mut SessionGoal, why: &str, detail: Option<String>) {
-    goal.status = GOAL_PAUSED.into();
-    goal.pause_reason = Some(why.into());
-    if detail.is_some() {
+    if state::transition(goal, GoalEvent::Pause { reason: why.into() }).is_ok() && detail.is_some() {
         goal.detail = detail;
     }
 }
 
-fn end(goal: &mut SessionGoal, status: &str) {
-    goal.status = status.into();
-    goal.pause_reason = None;
-    goal.ended_at = Some(now_db());
+/// End the goal: achieved (only an active one) or cleared.
+fn end(goal: &mut SessionGoal, how: GoalEvent) {
+    let _ = state::transition(goal, how);
 }
 
 /// Make a paused goal active again with a fresh allowance where a limit
@@ -251,8 +250,9 @@ pub fn resume(goal: &mut SessionGoal, settings: &GoalSettings) {
     if goal.turns_used >= goal.max_turns {
         goal.max_turns = goal.turns_used + settings.max_turns();
     }
-    goal.status = GOAL_ACTIVE.into();
-    goal.pause_reason = None;
+    if state::transition(goal, GoalEvent::Resume).is_err() {
+        return;
+    }
     goal.detail = None;
     goal.rejected_claims = 0;
     goal.idle_turns = 0;
@@ -442,7 +442,7 @@ pub async fn clear_undone_goal(pool: &DbPool, session_id: &str, target: &db::Ses
     if !before {
         return Ok(());
     }
-    end(&mut goal, GOAL_CLEARED);
+    end(&mut goal, GoalEvent::Clear);
     let goal = save(pool, &goal).await?;
     db::delete_queued_goal_reminders(pool, session_id).await?;
     tracing::info!("goal_cleared_by_undo session_id={} goal_id={}", session_id, goal.id);
@@ -731,7 +731,7 @@ impl AgentSession {
         let goal = {
             let _lock = self.goal_lock().lock().await;
             let Some(mut goal) = db::live_session_goal(&self.pool, session_id).await? else { return Ok(None) };
-            end(&mut goal, GOAL_CLEARED);
+            end(&mut goal, GoalEvent::Clear);
             let goal = save(&self.pool, &goal).await?;
             db::delete_queued_goal_reminders(&self.pool, session_id).await?;
             tracing::info!("goal_cleared session_id={} goal_id={}", session_id, goal.id);

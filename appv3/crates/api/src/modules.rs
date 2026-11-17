@@ -297,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn builtin_modules_stop_in_the_servers_shutdown_order() {
         let (_, stops) = run_recorded().await;
-        assert_eq!(stops, ["cloud", "restart_resume", "model_registry", "terminal", "preview", "scheduler", "snapshots", "sessions", "subagents", "mcp", "lsp", "otel"]);
+        assert_eq!(stops, ["cloud", "model_registry", "terminal", "preview", "scheduler", "snapshots", "sessions", "subagents", "mcp", "lsp", "otel"]);
     }
 
     #[tokio::test]

@@ -6,7 +6,8 @@
 
 use super::control::{SessionStatus, Transition, TurnExit};
 use super::provider::{forget_provider_credentials, forget_retired_model, provider_error_to_agent};
-use super::{agent_only_since, session_workspace_dir, AgentSession, RuntimeProvider, Suspension, TurnOptions, TURN_FLOOR_META};
+use super::questions::Suspension;
+use super::{agent_only_since, session_workspace_dir, AgentSession, RuntimeProvider, TurnOptions, TURN_FLOOR_META};
 use crate::agent::RunOptions;
 use crate::broadcaster;
 use crate::checkpointer::Checkpointer;

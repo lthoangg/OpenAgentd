@@ -148,8 +148,6 @@ impl Machine for TaskMachine {
 }
 
 impl TaskState {
-    pub const ALL_STATUSES: [&'static str; 5] = ["pending", "running", "paused", "completed", "failed"];
-
     pub fn as_str(&self) -> &'static str {
         match self {
             TaskState::Pending => "pending",

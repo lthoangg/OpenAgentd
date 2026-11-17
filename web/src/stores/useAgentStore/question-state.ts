@@ -55,6 +55,12 @@ export function openQuestion(state: Pick<AgentStore, 'questionCard'>): PendingQu
   return state.questionCard.kind === 'open' ? state.questionCard.question : null
 }
 
+/** The open plan review, or ``null`` (also ``null`` while another kind of question is open). */
+export function openPlanReview(state: Pick<AgentStore, 'questionCard'>): PendingQuestion | null {
+  const question = openQuestion(state)
+  return question?.kind === 'plan_review' ? question : null
+}
+
 /** A question card for a store seed. */
 export function questionCardOf(question: PendingQuestion | null): QuestionCard {
   return restored(question)

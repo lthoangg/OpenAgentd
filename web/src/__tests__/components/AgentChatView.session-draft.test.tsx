@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { forwardRef, useEffect, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 let latestOnValueChange: ((value: string) => void) | undefined
 let latestOnSlashCommand: ((id: string) => void) | undefined
@@ -123,7 +124,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

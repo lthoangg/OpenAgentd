@@ -3,6 +3,7 @@ import { cancelQueuedMessage, postAgentChat } from '@/api/client'
 import { revokeBlobUrlsFromBlocks } from './helpers'
 import { applyQuestionResolution } from './question-state'
 import { applyRun, isRunLive, markRowRunning, setAgentStatus } from './run-state'
+import { isLinkOpen } from './link-state'
 import { createDefaultAgentStream } from './defaults'
 import { clearReconnectTimer } from './stream-slice'
 import type { PendingMessage, AgentStore, SendMessageOptions } from './types'
@@ -280,7 +281,7 @@ export const createPendingSlice: StateCreator<
     const shownBefore = {
       working: isRunLive(get().sessionRun),
       lead: agentStreams[effectiveLead]?.status ?? 'none',
-      connected: get().isConnected,
+      connected: isLinkOpen(get().streamLink),
     }
     set((draft) => {
       applyRun(draft, { type: 'start' })

@@ -5,6 +5,7 @@ import type React from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
@@ -129,7 +130,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

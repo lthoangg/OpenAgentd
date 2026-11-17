@@ -29,6 +29,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { streamWatchClock, STREAM_SILENCE_MS, QUESTION_GRACE_MS } from '@/stores/useAgentStore/stream-slice'
 import { runOf } from '@/stores/useAgentStore/run-state'
 import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 type Callbacks = { onEvent: (type: string, data: unknown) => void; onDone?: () => void; onError?: (e: Error) => void }
 
@@ -68,7 +69,7 @@ beforeEach(() => {
     leadName: 'lead',
     agentNames: ['lead'],
     sessionRun: runOf(true),
-    isConnected: false,
+    streamLink: linkOf(false),
     questionCard: questionCardOf(null),
     _abortController: null,
     _sessionGeneration: 1,

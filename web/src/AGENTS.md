@@ -97,8 +97,9 @@ flow) is a state machine, written out rather than spread over flags.
 - **Register it.** Add the machine to `MACHINES` in
   `__tests__/state-writes.test.ts` (its file, its fields, where the first
   value is set). That test fails on an unregistered `defineMachine` and on a
-  write that is not a transition; its `LEGACY` counts only shrink. Data a
-  machine reads that any value may follow (an agent's status, mirrored from
+  write that is not a transition. Name the store field after the machine
+  (`sessionRun`, `streamLink`), not a word as common as `status` or `run`,
+  so the test can find its writes. Data a machine reads that any value may follow (an agent's status, mirrored from
   the server) gets one writer function instead, listed in `SINGLE_WRITER`.
 - **Examples.** `stores/useAgentStore/run-state.ts` (the session run, with
   `reconcileSnapshot` as a pure verdict for a history page) and

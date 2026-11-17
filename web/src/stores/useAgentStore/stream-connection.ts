@@ -3,14 +3,14 @@
  *
  * Authority: the link's own closure in `connectStream` owns its abort
  * controller, held frames, delta buffer and silence timer; the store owns
- * `isConnected`, `_abortController` and the reconnect counters. Every
+ * the link state (`streamLink`, `link-state.ts`) and `_abortController`. Every
  * callback is checked against its identity (session id, generation, and
  * controller). A superseded input never applies to the replacement view.
  *
- * `isConnected` stays optimistic: it turns true when a link is opened (before
- * any frame arrives) and false when the link closes, fails or is aborted from
- * outside. A replacement keeps it true. These functions decide; the caller
- * performs the store writes in the same order as before.
+ * The link reads open optimistically: from when it is opened (before any
+ * frame arrives) until it closes, fails, backs off or is aborted from
+ * outside. A replacement keeps it open. These functions decide; the caller
+ * moves the link state.
  */
 
 /** Why an input from a link is not applied. */

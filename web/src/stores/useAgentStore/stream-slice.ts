@@ -4,6 +4,7 @@ import { restoredPromptText } from '@/lib/goal'
 import { applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
 import { NO_QUESTION, applyQuestionResolution, openQuestion } from './question-state'
 import { RUN_IDLE, applyRun, isRunLive, markRowStopped, setAgentStatus } from './run-state'
+import { LINK_CLOSED, applyLink, isLinkOpen } from './link-state'
 import { applySSEDeltaBatch, isBufferedSSEDelta, type BufferedSSEDelta } from './sse-content'
 import { createSSEHandler } from './sse-reducer'
 import { isTransientNetworkError } from '@/utils/errors'
@@ -112,12 +113,11 @@ export type StreamSlice = Pick<
   | 'sessionRun'
   | 'questionCard'
   | 'resolvedQuestions'
-  | 'isConnected'
+  | 'streamLink'
   | 'error'
   | 'setupRequired'
   | '_abortController'
   | '_reconnectTimer'
-  | '_reconnectAttempts'
   | '_silentStreamAttempts'
   | '_directStreamSession'
   | '_unloading'
@@ -153,13 +153,12 @@ export const createStreamSlice: StateCreator<
   sessionRun: RUN_IDLE,
   questionCard: NO_QUESTION,
   resolvedQuestions: {},
-  isConnected: false,
+  streamLink: LINK_CLOSED,
   error: null,
   setupRequired: null,
   pendingDraft: null,
   _abortController: null,
   _reconnectTimer: null,
-  _reconnectAttempts: 0,
   _silentStreamAttempts: 0,
   _directStreamSession: null,
   _unloading: false,
@@ -417,8 +416,8 @@ export const createStreamSlice: StateCreator<
       markRestartPending(lead)
       if (lead.status === 'waiting_input') setAgentStatus(lead, 'working')
     })
-    // Treat an answer as a stream handoff, even when isConnected still says
-    // true. That flag is optimistic (set before fetch attaches) and can remain
+    // Treat an answer as a stream handoff, even when the link still reads
+    // open. That is optimistic (set before fetch attaches) and can remain
     // stale after an aborted/suspended socket, which leaves the resumed tokens
     // streaming to no browser until reload. Reattach unconditionally; attach
     // replay covers anything emitted during the handoff.
@@ -458,7 +457,7 @@ export const createStreamSlice: StateCreator<
     // One store update: each one re-runs every subscribed selector.
     set((draft) => {
       clearReconnectTimer(draft)
-      draft.isConnected = true
+      applyLink(draft, { type: 'open' })
       draft._abortController = abort
       draft._attachReplay = true
       // The global stream may have patched the row while this one was down.
@@ -510,7 +509,7 @@ export const createStreamSlice: StateCreator<
       const decision = decideAbort({ replaced: replacedControllers.has(abort), current: get()._abortController === abort })
       if (decision.kind === 'ignore') return
       set((draft) => {
-        draft.isConnected = false
+        applyLink(draft, { type: 'close' })
         draft._abortController = null
       })
     }, { once: true })
@@ -558,20 +557,19 @@ export const createStreamSlice: StateCreator<
     const isSameSession = (s: AgentStore) => s.sessionId === sessionId && s._sessionGeneration === generation
     const scheduleReconnect = () => {
       set((draft) => {
-        draft.isConnected = false
         clearReconnectTimer(draft)
         // Retry quickly for brief Wi-Fi switches, then back off while a
         // mobile device remains offline so background wakeups do not run
         // an unbounded 1.5-second polling loop. Any received SSE event
         // resets the attempt counter.
-        const delay = reconnectDelay(draft._reconnectAttempts)
-        draft._reconnectAttempts += 1
+        const delay = reconnectDelay(draft.streamLink.attempt)
+        applyLink(draft, { type: 'back_off' })
         draft._reconnectTimer = setTimeout(() => {
           set((timerDraft) => {
             if (timerDraft._reconnectTimer !== null) timerDraft._reconnectTimer = null
           })
           const s = get()
-          const decision = decideReconnectTimer({ sameSession: isSameSession(s), unloading: s._unloading, connected: s.isConnected })
+          const decision = decideReconnectTimer({ sameSession: isSameSession(s), unloading: s._unloading, connected: isLinkOpen(s.streamLink) })
           if (decision.kind === 'ignore') return
           get().connectStream()
         }, delay)
@@ -601,9 +599,9 @@ export const createStreamSlice: StateCreator<
             gapChecked = true
             if (isRunLive(current.sessionRun)) void current.fillAttachGap(sessionId)
           }
-          if (current._reconnectAttempts > 0 || current._silentStreamAttempts > 0) {
+          if (current.streamLink.attempt > 0 || current._silentStreamAttempts > 0) {
             set((draft) => {
-              draft._reconnectAttempts = 0
+              applyLink(draft, { type: 'frame' })
               draft._silentStreamAttempts = 0
             })
           }
@@ -634,10 +632,10 @@ export const createStreamSlice: StateCreator<
             return
           }
           if (decision.kind === 'detach') {
-            set((draft) => { draft.isConnected = false })
+            set((draft) => { applyLink(draft, { type: 'close' }) })
             return
           }
-          set((draft) => { draft.error = decision.message; draft.isConnected = false })
+          set((draft) => { draft.error = decision.message; applyLink(draft, { type: 'close' }) })
     }
     const onDone = () => {
           disarmWatch()
@@ -668,7 +666,7 @@ export const createStreamSlice: StateCreator<
           })
           if (decision.kind === 'ignore') return
           if (decision.kind === 'reattach') {
-            set((draft) => { draft.isConnected = false })
+            set((draft) => { applyLink(draft, { type: 'close' }) })
             get().connectStream()
             return
           }
@@ -677,7 +675,7 @@ export const createStreamSlice: StateCreator<
             return
           }
           set((draft) => {
-            draft.isConnected = false
+            applyLink(draft, { type: 'close' })
             // Stream closed with the session idle — the row is no longer
             // running. Patch that flag rather than refetching every loaded
             // page of the session list.
@@ -739,7 +737,7 @@ export const createStreamSlice: StateCreator<
   streamLiveSince: (since) => {
     const s = get()
     const frame = lastFrame
-    if (!s.isConnected || frame === null || frame.abort !== s._abortController) return false
+    if (!isLinkOpen(s.streamLink) || frame === null || frame.abort !== s._abortController) return false
     return !frame.abort.signal.aborted && frame.at >= since
   },
 

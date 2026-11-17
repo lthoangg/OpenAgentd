@@ -7,6 +7,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient } from '@tanstack/react-query'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const sendDesktopNotification = mock(async (..._args: unknown[]) => ({ status: 'sent', message: 'sent' }))
 mock.module('@/lib/desktop-notifications', () => ({ sendDesktopNotification }))
@@ -28,7 +29,7 @@ beforeEach(() => {
   localStorage.clear()
   resetGlobalNotificationDedupe()
   sendDesktopNotification.mockClear()
-  useAgentStore.setState({ sessionId: null, isConnected: false, sessionRun: runOf(false) })
+  useAgentStore.setState({ sessionId: null, streamLink: linkOf(false), sessionRun: runOf(false) })
   useUnreadStore.setState({ ids: [], failed: [] })
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })

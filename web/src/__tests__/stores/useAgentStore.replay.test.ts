@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, afterAll, mock } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 import { openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const realLoadSession = useAgentStore.getState().loadSession
 afterAll(() => useAgentStore.setState({ loadSession: realLoadSession }))
@@ -30,7 +31,7 @@ beforeEach(() => {
     leadName: "lead",
     sessionId: "s1",
     sessionRun: runOf(false),
-    isConnected: false,
+    streamLink: linkOf(false),
     cacheInvalidations: [],
   })
 })

@@ -10,6 +10,7 @@ import type React from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { OPEN_SESSION_EVENT } from '@/utils/workspace-messages'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 
 const navigations: unknown[] = []
@@ -133,7 +134,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

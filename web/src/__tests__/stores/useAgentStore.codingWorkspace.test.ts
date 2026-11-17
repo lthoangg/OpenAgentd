@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 /**
  * Coding-mode workspace invalidation.
@@ -41,7 +42,7 @@ function resetStore(overrides: Partial<ReturnType<typeof useAgentStore.getState>
     sessionId: null,
     sessionTitle: null,
     sessionRun: runOf(false),
-    isConnected: false,
+    streamLink: linkOf(false),
     error: null,
     _pendingMessages: [],
     _sessionGeneration: 0,

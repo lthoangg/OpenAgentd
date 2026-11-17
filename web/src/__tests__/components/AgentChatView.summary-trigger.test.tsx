@@ -179,7 +179,7 @@ function makeStore(sessionModel: string | null) {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: true,
+    streamLink: linkOf(true),
   }
   return {
     useAgentStore: Object.assign(
@@ -196,6 +196,7 @@ afterEach(() => {
 
 import { AgentChatView } from '@/components/AgentChatView'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 describe('ContextMeter trigger — model switch', () => {
   it('uses the agent config model trigger when no session override', () => {

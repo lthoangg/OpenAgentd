@@ -68,6 +68,7 @@ const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: an
 import { useAgentStore } from '@/stores/useAgentStore'
 import { handleGlobalEvent } from '@/hooks/use-global-event-stream'
 import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
 const store = () => useAgentStore.getState()
@@ -203,7 +204,7 @@ describe('a send the server queues behind a turn this client had not seen', () =
     expect(lead().status).toBe('working')
     expect(isRunLive(store().sessionRun)).toBe(true)
     expect(rowPatches()).toEqual([{ kind: 'session_running', sessionId: 'sess-1', running: true }])
-    expect(store().isConnected).toBe(true)
+    expect(isLinkOpen(store().streamLink)).toBe(true)
     // What this client showed when the message left, for the next report.
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0][0])).toContain('queued a message this client sent as a new turn (working=false, lead=idle, connected=false)')

@@ -5,6 +5,7 @@ import { AgentChatView } from '@/components/AgentChatView'
 import { HANDOFF_ACTIVE_MS } from '@/components/AgentChatView/useDraftHandoff'
 import type { ComposerHandoff } from '@/components/composer/Composer'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 // What AgentChatView last handed its composer.
 let latestCapture: ((snapshot: ComposerHandoff) => void) | undefined
@@ -124,7 +125,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

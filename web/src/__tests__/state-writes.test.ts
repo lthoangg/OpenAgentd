@@ -12,10 +12,6 @@
  *
  * ``SINGLE_WRITER`` names data a machine reads that has one writer (an
  * agent's status, set only by ``setAgentStatus``).
- *
- * ``LEGACY`` counts writes to the flags that machines are replacing. The
- * counts are exact, so removing a write means lowering its count, and the
- * list only shrinks; it is deleted once empty.
  */
 import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -54,6 +50,11 @@ export const MACHINES: Record<string, MachineEntry> = {
     fields: ['questionCard'],
     initial: ['stores/useAgentStore/stream-slice.ts'],
   },
+  'session link': {
+    file: 'stores/useAgentStore/link-state.ts',
+    fields: ['streamLink'],
+    initial: ['stores/useAgentStore/stream-slice.ts'],
+  },
 }
 
 /**
@@ -67,18 +68,6 @@ const SINGLE_WRITER: Record<string, { pattern: RegExp; under: string; file: stri
     pattern: /\.status\s*=(?![=>])/g,
     under: 'stores/useAgentStore/',
     file: 'stores/useAgentStore/run-state.ts',
-  },
-}
-
-/** Old flags a machine replaces: an exact count of writes per file. */
-const LEGACY: Record<string, { pattern: RegExp; under: string; allow: Record<string, number> }> = {
-  'link isConnected': {
-    pattern: /(?<![\w.])\w+\.isConnected\s*=(?![=>])|\bisConnected:\s*(?:true|false)\b/g,
-    under: 'stores/',
-    allow: {
-      'stores/useAgentStore/session-slice.ts': 1,
-      'stores/useAgentStore/stream-slice.ts': 8,
-    },
   },
 }
 
@@ -123,12 +112,6 @@ describe('state machines', () => {
   for (const [name, rule] of Object.entries(SINGLE_WRITER)) {
     it(`${name}: written only in ${rule.file}`, () => {
       expect(Object.keys(count(rule.pattern, rule.under))).toEqual([rule.file])
-    })
-  }
-
-  for (const [name, legacy] of Object.entries(LEGACY)) {
-    it(`${name}: no new writes to a flag a machine replaces`, () => {
-      expect(count(legacy.pattern, legacy.under)).toEqual(legacy.allow)
     })
   }
 })

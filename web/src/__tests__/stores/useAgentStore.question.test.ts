@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, mock } from "bun:test"
 import { useAgentStore, isAwaitingRestartOutput } from "@/stores/useAgentStore"
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 /**
  * ``ask_user`` store behaviour.
@@ -41,7 +42,7 @@ function resetStore() {
     liveAgentNames: null,
     sessionId: SESSION_ID,
     sessionRun: runOf(false),
-    isConnected: true,
+    streamLink: linkOf(true),
     questionCard: questionCardOf(null),
     resolvedQuestions: {},
     cacheInvalidations: [],
@@ -458,7 +459,7 @@ describe("useAgentStore — ask_user", () => {
      */
     it("reopens the stream when the answer lands while disconnected", () => {
       const connectStream = mock(() => new AbortController())
-      useAgentStore.setState({ isConnected: false, connectStream } as never)
+      useAgentStore.setState({ streamLink: linkOf(false), connectStream } as never)
       suspend()
 
       useAgentStore.getState().markTurnResuming()
@@ -468,7 +469,7 @@ describe("useAgentStore — ask_user", () => {
 
     it("replaces even a nominally connected stream when the answer lands", () => {
       const connectStream = mock(() => new AbortController())
-      useAgentStore.setState({ isConnected: true, connectStream } as never)
+      useAgentStore.setState({ streamLink: linkOf(true), connectStream } as never)
       suspend()
 
       useAgentStore.getState().markTurnResuming()

@@ -11,6 +11,7 @@ import { isTransientNetworkError } from '@/utils/errors'
 import { createDefaultAgentStream } from './defaults'
 import { applyQuestion } from './question-state'
 import { applyRun, isRunLive, setAgentStatus } from './run-state'
+import { applyLink } from './link-state'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
 import type { SessionInteractionMode } from '@/api/types'
@@ -50,14 +51,16 @@ function resetSessionState(
   applyRun(state, { type: 'reset' })
   applyQuestion(state, { type: 'reset' })
   state.resolvedQuestions = {}
-  state.isConnected = false
+  applyLink(state, { type: 'reset' })
   state.error = null
   state.setupRequired = null
   state.pendingDraft = null
   state._abortController = null
   state._pendingMessages = []
   clearReconnectTimer(state)
-  state._reconnectAttempts = 0
+  // A session whose feed failed on the shared connection got its own; the
+  // next visit tries the shared one again.
+  state._directStreamSession = null
   state._silentStreamAttempts = 0
   state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
   state.cacheInvalidations = []

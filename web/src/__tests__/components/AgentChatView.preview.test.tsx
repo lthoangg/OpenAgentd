@@ -14,6 +14,7 @@ import { OPEN_PREVIEW_EVENT } from '@/components/Preview/preview-events'
 import { previewsAvailable } from '@/api/preview'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 let composerProps: { onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void } = {}
 
@@ -137,7 +138,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

@@ -18,6 +18,7 @@ import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/question-types'
 import { questionCardOf } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 const SAVE_ARGS = JSON.stringify({ action: 'save', server: 'excalidraw', config: { transport: 'http', url: 'https://mcp.excalidraw.com', enabled: true } })
@@ -42,7 +43,7 @@ const CONFIRM: PendingQuestion = {
 beforeEach(() => {
   answerQuestion.mockClear()
   clearQuestionDrafts()
-  useAgentStore.setState({ sessionId: 's-1', isConnected: true, questionCard: questionCardOf(CONFIRM), resolvedQuestions: {} })
+  useAgentStore.setState({ sessionId: 's-1', streamLink: linkOf(true), questionCard: questionCardOf(CONFIRM), resolvedQuestions: {} })
 })
 
 afterEach(() => {

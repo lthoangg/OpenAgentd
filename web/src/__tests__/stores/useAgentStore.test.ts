@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { useAgentStore } from "@/stores/useAgentStore";
 import type { ContentBlock } from "@/api/types";
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { linkOf, isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 // Me reset store before each test
 const INITIAL = {
@@ -13,7 +14,7 @@ const INITIAL = {
   sessionId: null,
   sessionRun: runOf(false),
   isContinuing: false,
-  isConnected: false,
+  streamLink: linkOf(false),
   error: null,
   _pendingMessages: [] as import('@/stores/useAgentStore').PendingMessage[],
   _sessionGeneration: 0,
@@ -79,7 +80,7 @@ describe("newSession", () => {
     const abort = new AbortController();
     useAgentStore.setState({
       sessionId: "streaming-session",
-      isConnected: true,
+      streamLink: linkOf(true),
       _abortController: abort,
     });
 
@@ -88,7 +89,7 @@ describe("newSession", () => {
     const s = useAgentStore.getState();
     expect(abort.signal.aborted).toBe(true);
     expect(s._abortController).toBeNull();
-    expect(s.isConnected).toBe(false);
+    expect(isLinkOpen(s.streamLink)).toBe(false);
   });
 });
 
@@ -100,7 +101,7 @@ describe("beginResolvedSession", () => {
       sessionId: "old-sid",
       sessionModel: "old:model",
       sessionThinkingLevel: "low",
-      isConnected: true,
+      streamLink: linkOf(true),
     });
 
     useAgentStore.getState().beginResolvedSession("new-sid", {
@@ -113,7 +114,7 @@ describe("beginResolvedSession", () => {
     expect(s.sessionId).toBe("new-sid");
     expect(s.sessionModel).toBe("openai:gpt-5.5");
     expect(s.sessionThinkingLevel).toBe("high");
-    expect(s.isConnected).toBe(false);
+    expect(isLinkOpen(s.streamLink)).toBe(false);
   });
 
   it("keeps settings picked before a background session resolve completes", () => {
@@ -139,7 +140,7 @@ describe("beginResolvedSession", () => {
       leadName: "lead",
       agentNames: ["lead"],
       sessionRun: runOf(true),
-      isConnected: true,
+      streamLink: linkOf(true),
       _abortController: abort,
       agentStreams: {
         lead: makeStream({

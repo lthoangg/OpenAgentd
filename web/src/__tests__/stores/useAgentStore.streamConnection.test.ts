@@ -37,6 +37,7 @@ import { useAgentStore } from "@/stores/useAgentStore"
 import { createDefaultAgentStream } from "@/stores/useAgentStore/defaults"
 import { runOf } from '@/stores/useAgentStore/run-state'
 import { questionCardOf } from '@/stores/useAgentStore/question-state'
+import { linkOf, isLinkOpen, applyLink } from '@/stores/useAgentStore/link-state'
 
 const REAL_SET_TIMEOUT = globalThis.setTimeout
 const REAL_CLEAR_TIMEOUT = globalThis.clearTimeout
@@ -69,7 +70,7 @@ function switchSession(sessionId: string) {
   useAgentStore.setState((state) => {
     state.sessionId = sessionId
     state._sessionGeneration += 1
-    state.isConnected = false
+    applyLink(state, { type: 'close' })
     state._abortController = null
     state.agentStreams.lead.currentBlocks = []
   })
@@ -93,12 +94,11 @@ beforeEach(() => {
     leadName: "lead",
     agentNames: ["lead"],
     sessionRun: runOf(true),
-    isConnected: false,
+    streamLink: linkOf(false, 0),
     questionCard: questionCardOf(null),
     error: null,
     _abortController: null,
     _reconnectTimer: null,
-    _reconnectAttempts: 0,
     _unloading: false,
     _sessionGeneration: 1,
     _syncedThrough: null,
@@ -119,16 +119,16 @@ afterEach(() => {
 describe("session stream link: optimistic connection", () => {
   it("counts as connected from the attach, before any frame arrives", () => {
     useAgentStore.getState().connectStream()
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
     links[0].onEvent("agent_status", { agent: "lead", status: "working" })
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
   })
 
   it("counts as connected while its frames wait for the history read", () => {
     const history = deferred()
     useAgentStore.getState().connectStream({ holdUntil: history.promise })
     links[0].onEvent("tool_call", { agent: "lead", name: "shell", tool_call_id: "call-1" })
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
     expect(lead().currentBlocks).toHaveLength(0)
   })
 })
@@ -145,7 +145,7 @@ describe("session stream link: held frames", () => {
     expect(lead().currentBlocks).toHaveLength(0)
     expect(mockAgentStream).toHaveBeenCalledTimes(2)
     expect(useAgentStore.getState()._abortController).toBe(replacement)
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
   })
 
   it("does not apply held frames to the session that replaced theirs", async () => {
@@ -170,7 +170,7 @@ describe("session stream link: held frames", () => {
     await history.release()
     expect(useAgentStore.getState().error).toBeNull()
     expect(useAgentStore.getState()._reconnectTimer).toBeNull()
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
   })
 })
 
@@ -199,7 +199,7 @@ describe("session stream link: closes and retries", () => {
     links[0].onError(new Error("Stream failed: 500"))
 
     expect(useAgentStore.getState().error).toBe("Stream failed: 500")
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
     expect(useAgentStore.getState()._reconnectTimer).toBeNull()
     expect(mockAgentStream).toHaveBeenCalledTimes(1)
   })
@@ -210,14 +210,14 @@ describe("session stream link: closes and retries", () => {
     links[0].onError(new Error("Stream failed: 500"))
 
     expect(useAgentStore.getState().error).toBeNull()
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
     expect(useAgentStore.getState()._reconnectTimer).toBeNull()
   })
 
   it("does not reconnect from a back-off timer once the session was reopened as new", () => {
     useAgentStore.getState().connectStream()
     links[0].onError(new TypeError("Load failed"))
-    expect(useAgentStore.getState()._reconnectAttempts).toBe(1)
+    expect(useAgentStore.getState().streamLink.attempt).toBe(1)
     // Same session id, new generation: a reload of the session that left the old timer behind.
     useAgentStore.setState((state) => { state._sessionGeneration += 1 })
 
@@ -232,7 +232,7 @@ describe("session stream link: closes and retries", () => {
     links[0].onDone()
 
     expect(mockAgentStream).toHaveBeenCalledTimes(1)
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
     expect(useAgentStore.getState().cacheInvalidations).toContainEqual({ kind: "session_running", sessionId: "s1", running: false })
   })
 
@@ -244,7 +244,7 @@ describe("session stream link: closes and retries", () => {
     links[0].onError(new Error("old link broke"))
     links[0].onDone()
     expect(useAgentStore.getState().error).toBeNull()
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
     expect(useAgentStore.getState().cacheInvalidations).toEqual([])
     expect(mockAgentStream).toHaveBeenCalledTimes(2)
   })
@@ -252,10 +252,10 @@ describe("session stream link: closes and retries", () => {
   it("keeps the reconnect back-off attempts across a link that closed silently", () => {
     useAgentStore.getState().connectStream()
     links[0].onDone()
-    expect(useAgentStore.getState()._reconnectAttempts).toBe(1)
+    expect(useAgentStore.getState().streamLink.attempt).toBe(1)
     runTimers(1_500)
     links[1].onDone()
-    expect(useAgentStore.getState()._reconnectAttempts).toBe(2)
+    expect(useAgentStore.getState().streamLink.attempt).toBe(2)
     expect(timers.filter((t) => !t.cleared).map((t) => t.ms)).toContain(3_000)
   })
 })

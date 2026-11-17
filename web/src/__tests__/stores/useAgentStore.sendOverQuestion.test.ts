@@ -64,6 +64,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { handleGlobalEvent } from '@/hooks/use-global-event-stream'
 import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { openQuestion } from '@/stores/useAgentStore/question-state'
+import { isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
 
@@ -92,13 +93,13 @@ describe('sendMessage over an open question', () => {
     const s = useAgentStore.getState()
     expect(openQuestion(s)?.id).toBe('q-1')
     expect(s.agentStreams.lead.status).toBe('waiting_input')
-    expect(s.isConnected).toBe(true)
+    expect(isLinkOpen(s.streamLink)).toBe(true)
   })
 
   it('shows one bubble when the turn start lands before the POST answers', async () => {
     const sent = useAgentStore.getState().sendMessage('continue', undefined, { workspace: '/repo' })
     await flush()
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
 
     // The server persisted the message and started the turn; the global
     // signal beats the POST response back to this window.
@@ -114,7 +115,7 @@ describe('sendMessage over an open question', () => {
     // The reload already took the server's word that the card is closed; its
     // label then comes from the persisted "Superseded" tool result.
     expect(openQuestion(s)).toBeNull()
-    expect(s.isConnected).toBe(true)
+    expect(isLinkOpen(s.streamLink)).toBe(true)
     expect(s._abortController?.signal.aborted).toBe(false)
     expect(isRunLive(s.sessionRun)).toBe(true)
   })
@@ -133,7 +134,7 @@ describe('sendMessage over an open question', () => {
     const s = useAgentStore.getState()
     expect(userBubbles('continue')).toHaveLength(1)
     expect(openQuestion(s)).toBeNull()
-    expect(s.isConnected).toBe(true)
+    expect(isLinkOpen(s.streamLink)).toBe(true)
     expect(mockSessionHistory).toHaveBeenCalledTimes(1)
   })
 })

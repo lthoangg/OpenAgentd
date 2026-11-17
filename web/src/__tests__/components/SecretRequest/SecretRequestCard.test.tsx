@@ -22,6 +22,7 @@ import { toPendingQuestion } from '@/stores/useAgentStore/sse-questions'
 import { secretSummaryFromResult } from '@/components/SecretRequest/summary'
 import type { PendingQuestion, SecretRequestCard } from '@/api/question-types'
 import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 
@@ -46,7 +47,7 @@ beforeEach(() => {
   answerSecretRequest.mockClear()
   localStorage.clear()
   sessionStorage.clear()
-  useAgentStore.setState({ sessionId: 's-1', isConnected: true, questionCard: questionCardOf(question()), resolvedQuestions: {} })
+  useAgentStore.setState({ sessionId: 's-1', streamLink: linkOf(true), questionCard: questionCardOf(question()), resolvedQuestions: {} })
 })
 
 afterEach(() => {

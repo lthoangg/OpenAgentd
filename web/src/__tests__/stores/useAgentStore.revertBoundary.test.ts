@@ -43,6 +43,7 @@ import { applyRevertBoundary } from "@/stores/useAgentStore/helpers"
 import type { AgentStream } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 function block(
   id: string,
@@ -96,7 +97,7 @@ const INITIAL_STATE = {
   sessionTitle: null,
   sessionRun: runOf(false),
   isContinuing: false,
-  isConnected: false,
+  streamLink: linkOf(false),
   error: null,
   setupRequired: null,
   _pendingMessages: [] as import("@/stores/useAgentStore").PendingMessage[],

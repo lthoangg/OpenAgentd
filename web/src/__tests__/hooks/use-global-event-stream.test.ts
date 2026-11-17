@@ -28,13 +28,14 @@ import { useUnreadStore } from '@/stores/useUnreadStore'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { runOf } from '@/stores/useAgentStore/run-state'
 import { questionCardOf } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const INITIAL = {
   sessionId: null as string | null,
   sessionTitle: null as string | null,
   _workspace: null as string | null,
   _sessionGeneration: 0,
-  isConnected: false,
+  streamLink: linkOf(false),
   // Settled by default — most tests exercise the non-racing completion path
   // where the local stream's `done` has already landed before the global
   // `session_turn_completed` notification does.
@@ -340,7 +341,7 @@ describe('handleGlobalEvent', () => {
     useAgentStore.setState({
       sessionId: 'current',
       _sessionGeneration: 1,
-      isConnected: true,
+      streamLink: linkOf(true),
       sessionRun: runOf(true),
       loadSession,
       connectStream,
@@ -362,7 +363,7 @@ describe('handleGlobalEvent', () => {
       sessionId: 'lead-sess',
       _workspace: '/workspace',
       _sessionGeneration: 1,
-      isConnected: false,
+      streamLink: linkOf(false),
       sessionRun: runOf(false),
       loadSession,
       connectStream,
@@ -547,7 +548,7 @@ describe('handleGlobalEvent', () => {
     useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
-      isConnected: true,
+      streamLink: linkOf(true),
       questionCard: questionCardOf(question as unknown as import('@/api/question-types').PendingQuestion),
       loadSession,
       connectStream,
@@ -566,7 +567,7 @@ describe('handleGlobalEvent', () => {
     useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
-      isConnected: false,
+      streamLink: linkOf(false),
       questionCard: questionCardOf(question as unknown as import('@/api/question-types').PendingQuestion),
       loadSession,
       connectStream,

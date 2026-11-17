@@ -21,6 +21,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 function Harness({
   loadSession,
@@ -76,7 +77,7 @@ beforeEach(() => {
   useAgentStore.setState({
     sessionId: 'session-1',
     _workspace: null,
-    isConnected: true,
+    streamLink: linkOf(true),
     sessionRun: runOf(true),
     _unloading: false,
     _abortController: null,
@@ -140,7 +141,7 @@ describe('useSessionBootstrap opening a session', () => {
       holds.push(options?.holdUntil)
       return new AbortController()
     }
-    useAgentStore.setState({ isConnected: false, sessionRun: runOf(false) })
+    useAgentStore.setState({ streamLink: linkOf(false), sessionRun: runOf(false) })
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
     // Both start before the history lands; the feed waits on that very load.
@@ -252,7 +253,7 @@ describe('useSessionBootstrap foreground resume', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       _workspace: null,
-      isConnected: true,
+      streamLink: linkOf(true),
       sessionRun: runOf(true),
     })
 
@@ -471,7 +472,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       _workspace: null,
-      isConnected: true,
+      streamLink: linkOf(true),
       sessionRun: runOf(true),
       _unloading: false,
       _abortController: null,
@@ -497,7 +498,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       _workspace: '/repo/app',
-      isConnected: true,
+      streamLink: linkOf(true),
       sessionRun: runOf(true),
       _unloading: false,
       _abortController: externalController,
@@ -527,7 +528,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       _workspace: '/repo/app',
-      isConnected: true,
+      streamLink: linkOf(true),
       sessionRun: runOf(true),
       _unloading: false,
       _abortController: liveController,
@@ -595,7 +596,7 @@ describe('useSessionBootstrap new-session draft', () => {
   })
 
   it('opens a draft for the workspace without creating a session', () => {
-    useAgentStore.setState({ sessionId: 'session-1', sessionRun: runOf(false), isConnected: false })
+    useAgentStore.setState({ sessionId: 'session-1', sessionRun: runOf(false), streamLink: linkOf(false) })
     const navigate = mock((..._args: unknown[]) => {})
     let result: ReturnType<typeof useSessionBootstrap> | null = null
     render(

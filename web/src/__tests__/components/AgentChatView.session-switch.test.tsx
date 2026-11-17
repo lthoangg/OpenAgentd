@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 let agentsLoading = false
 let healthError = false
@@ -135,7 +136,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
     _workspace: null as string | null,
   }
   return {

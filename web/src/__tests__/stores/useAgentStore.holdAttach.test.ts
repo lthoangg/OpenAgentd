@@ -20,6 +20,7 @@ const mockAgentStream = mock((_sid: any, callbacks: any) => { streamCallbacks = 
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 function lead() {
   return useAgentStore.getState().agentStreams.lead
@@ -111,7 +112,7 @@ describe("a feed attached beside the history read", () => {
     streamCallbacks.onEvent("message", { agent: "lead", text: "Half" })
     streamCallbacks.onDone()
     // Not yet: the end is read against the committed history.
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
     mockAgentStream.mockClear()
 
     await history.commit()

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { AgentCommandResponse, ContentBlock } from '@/api/types'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const postAgentCommand = mock(async (): Promise<AgentCommandResponse> => ({
   status: 'accepted',
@@ -60,7 +61,7 @@ beforeEach(() => {
     sessionId: null,
     sessionInteractionMode: 'code',
     sessionRun: runOf(false),
-    isConnected: false,
+    streamLink: linkOf(false),
     error: null,
     pendingDraft: null,
     _workspace: null,
@@ -193,7 +194,7 @@ describe('commands completing after session navigation', () => {
             _workspace: '/second',
             _leadRevertTime: 1234,
             sessionRun: runOf(false),
-            isConnected: false,
+            streamLink: linkOf(false),
             error: null,
             pendingDraft: { content: 'second draft', attachments: [] },
             agentStreams: {

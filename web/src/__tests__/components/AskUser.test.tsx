@@ -34,6 +34,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/question-types'
 import { runOf } from '@/stores/useAgentStore/run-state'
 import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const PLACEHOLDER =
   'Waiting for the user to answer. Do not continue until their reply arrives.'
@@ -62,7 +63,7 @@ beforeEach(() => {
   clearQuestionDrafts()
   useAgentStore.setState({
     sessionId: 's-1',
-    isConnected: true,
+    streamLink: linkOf(true),
     questionCard: questionCardOf(QUESTION),
     resolvedQuestions: {},
   })

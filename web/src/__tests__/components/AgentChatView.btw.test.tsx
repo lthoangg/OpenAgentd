@@ -12,6 +12,7 @@ import { AgentChatView } from '@/components/AgentChatView'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const setValueMock = mock((..._args: unknown[]) => {})
 const setFilesMock = mock((..._args: unknown[]) => {})
@@ -141,7 +142,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

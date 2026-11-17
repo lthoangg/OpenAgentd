@@ -10,6 +10,7 @@ import type { QuestionItem } from '@/api/question-types'
 import type { OrphanToolResult } from '@/utils/messages'
 import type { QuestionCard } from './question-state'
 import type { SessionRun } from './run-state'
+import type { StreamLink } from './link-state'
 
 /**
  * The session states the backend sends as ``agent_status``, in the order of
@@ -209,7 +210,11 @@ export interface AgentStoreState {
    * immediately, from structured data rather than by re-parsing a sentence.
    */
   resolvedQuestions: Record<string, ResolvedQuestion>
-  isConnected: boolean
+  /**
+   * The session's live link (``link-state.ts``). Read it with ``isLinkOpen``;
+   * change it only with ``applyLink``.
+   */
+  streamLink: StreamLink
   error: AgentError | string | null
   setupRequired: SetupRequiredNotice | null
   pendingDraft: { content: string; attachments?: MessageAttachment[] } | null
@@ -244,7 +249,6 @@ export interface AgentStoreState {
   _resolvedSessionReadyId: string | null
   _unloading: boolean
   _reconnectTimer: ReturnType<typeof setTimeout> | null
-  _reconnectAttempts: number
   /**
    * Consecutive times this session's live feed was found silent when it
    * should have been talking (see ``resyncStream``). Reset by any frame.

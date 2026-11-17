@@ -3,6 +3,7 @@ import type { Toast } from "@/stores/useToastStore";
 import { inferErrorTitle, useAgentStore } from "@/stores/useAgentStore";
 import { useToastStore } from "@/stores/useToastStore";
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const INITIAL_TEAM_STATE = {
   agentStreams: {},
@@ -13,7 +14,7 @@ const INITIAL_TEAM_STATE = {
   sessionId: null,
   sessionTitle: null,
   sessionRun: runOf(false),
-  isConnected: false,
+  streamLink: linkOf(false),
   error: null,
   _pendingMessages: [],
   _abortController: null,

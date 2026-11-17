@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { mockPostAgentChat, mockTeamStream, mockSessionHistory, makeStream, makeMessageResponse, resetAsyncStore } from "./async-fixture"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { linkOf, isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 beforeEach(resetAsyncStore)
 
@@ -188,7 +189,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
     unsubscribe()
     expect(notifications).toBe(1)
-    expect(useAgentStore.getState()).toMatchObject({ isConnected: true, _reconnectTimer: null })
+    expect(useAgentStore.getState()).toMatchObject({ streamLink: linkOf(true), _reconnectTimer: null })
   })
 
   it("coalesces streaming text deltas into one store update per frame window", () => {
@@ -232,7 +233,7 @@ describe("connectStream", () => {
   it("sets isConnected=true", () => {
     useAgentStore.setState({ sessionId: "stream-sid" })
     useAgentStore.getState().connectStream()
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
   })
 
   it("returns an AbortController", () => {
@@ -270,7 +271,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
     callbacks.onError(new Error("SSE parser failed"))
     expect(useAgentStore.getState().error).toBe("SSE parser failed")
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
   })
 
   it("downgrades iOS transport stream failures while work continues", () => {
@@ -280,7 +281,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
     callbacks.onError(new TypeError("Load failed"))
     expect(useAgentStore.getState().error).toBeNull()
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
     expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
   })
 
@@ -306,7 +307,7 @@ describe("connectStream", () => {
     // Fire the timer — should reopen the stream.
     timerCb()
     expect(mockTeamStream).toHaveBeenCalledTimes(2)
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
 
   })
 
@@ -332,7 +333,7 @@ describe("connectStream", () => {
     streamCallbacks.onError(new TypeError("Load failed"))
     expect(delays[1]).toBe(3_000)
     streamCallbacks.onEvent("message", { text: "recovered", agent: "lead" })
-    expect(useAgentStore.getState()._reconnectAttempts).toBe(0)
+    expect(useAgentStore.getState().streamLink.attempt).toBe(0)
   })
 
   it("clears a pending reconnect timer when starting a new session", () => {
@@ -399,7 +400,7 @@ describe("connectStream", () => {
     callbacks.onError(new TypeError("Load failed"))
 
     // Manually reconnect before the timer fires (e.g. visibilitychange).
-    useAgentStore.setState({ isConnected: true })
+    useAgentStore.setState({ streamLink: linkOf(true) })
 
     timerCb()
     // Still only one agentStream call — isConnected guard prevents the extra one.
@@ -414,7 +415,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
     callbacks.onError(new Error("NetworkError when attempting to fetch resource"))
     expect(useAgentStore.getState().error).toBeNull()
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
   })
 
   it("ignores backend error events while the page is unloading", () => {
@@ -436,7 +437,7 @@ describe("connectStream", () => {
     useAgentStore.setState({ sessionId: "stream-sid" })
     useAgentStore.getState().connectStream()
 
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
     // Patched in place rather than invalidating the (infinite, sequentially
     // refetched) session list just to clear a running badge.
     expect(useAgentStore.getState().cacheInvalidations).toContainEqual({
@@ -471,7 +472,7 @@ describe("connectStream", () => {
 
     // Should have opened the stream twice: original + reconnect.
     expect(mockTeamStream).toHaveBeenCalledTimes(2)
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
     // No cache invalidation pushed. The session is still in-flight.
   })
 
@@ -491,11 +492,11 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
-    expect(useAgentStore.getState()._reconnectAttempts).toBe(1)
+    expect(useAgentStore.getState().streamLink.attempt).toBe(1)
     expect(useAgentStore.getState()._reconnectTimer).not.toBeNull()
 
     clearTimeout(useAgentStore.getState()._reconnectTimer as ReturnType<typeof setTimeout>)
-    useAgentStore.setState({ _reconnectTimer: null, _reconnectAttempts: 0 })
+    useAgentStore.setState({ _reconnectTimer: null, streamLink: linkOf(false, 0) })
   })
 
   it("does not reopen a second time when a superseded connection's onDone fires after its own abort", () => {
@@ -534,7 +535,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
   })
 
   it("does not reconnect after onDone when queued messages are pending", () => {
@@ -551,7 +552,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
   })
 
   it("does not reconnect after onDone when no queued messages are pending", () => {
@@ -565,7 +566,7 @@ describe("connectStream", () => {
     useAgentStore.getState().connectStream()
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
   })
 
   it("ignores a stray event delivered by a superseded connection within the same session", () => {
@@ -608,7 +609,7 @@ describe("connectStream", () => {
     useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     const abort = useAgentStore.getState().connectStream()
     abort.abort()
-    expect(useAgentStore.getState().isConnected).toBe(false)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(false)
     expect(useAgentStore.getState()._abortController).toBeNull()
   })
 
@@ -616,7 +617,7 @@ describe("connectStream", () => {
     useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     useAgentStore.getState().connectStream()
     const second = useAgentStore.getState().connectStream()
-    expect(useAgentStore.getState().isConnected).toBe(true)
+    expect(isLinkOpen(useAgentStore.getState().streamLink)).toBe(true)
     expect(useAgentStore.getState()._abortController).toBe(second)
   })
 

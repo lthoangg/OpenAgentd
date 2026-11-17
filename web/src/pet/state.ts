@@ -855,10 +855,8 @@ export function badgeLabel(state: BubbleState): string {
 }
 
 /**
- * The dismissed bubbles to tell the shell about: every one about a session.
- * The shell reads finished and failed turns everywhere and reports each
- * session seen to its server, a question put off with "Later" too; a
- * question is never read away (`pet_dismiss` in `desktop/src-tauri/src/pet.rs`).
+ * Dismissed bubbles about a session, "Later" questions too: `pet_dismiss` (pet.rs)
+ * reports each seen and reads finished or failed turns away, never a question.
  */
 export function reportOnDismiss(bubbles: PetBubble[]): string[] {
   return bubbles.filter((b) => b.sessionId).map((b) => b.id)

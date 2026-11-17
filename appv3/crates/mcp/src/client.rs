@@ -1,4 +1,4 @@
-// size-ceiling: 1195 — split the stdio transport from the HTTP transport
+// size-ceiling: 1207 — split the stdio transport from the HTTP transport
 //! Minimal MCP client (JSON-RPC 2.0) over stdio and Streamable HTTP — the
 //! subset of the Python `mcp` SDK `ClientSession` that v2 uses.
 

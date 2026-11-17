@@ -1,4 +1,4 @@
-// size-ceiling: 864 — 63 request functions: group them by resource into modules
+// size-ceiling: 873 — 63 request functions: group them by resource into modules
 /**
  * OpenAgentd API client — agent sessions, workspace, and files.
  */

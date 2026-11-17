@@ -11,6 +11,9 @@ const phone = { isTauri: true, os: 'ios', isMacOverlay: false, isFullscreen: fal
 mock.module('@/hooks/use-platform', () => ({ ...realPlatform, getPlatform: () => phone, usePlatform: () => phone }))
 
 let queued: unknown[] = []
+let cloudStatus: Record<string, unknown> = { state: 'guest', notice: null, supported: true }
+let statusReads = 0
+let pendingReads = 0
 mock.module('@tauri-apps/api/core', () => ({
   invoke: async (command: string) => {
     if (command === 'notification_take_taps') {
@@ -18,7 +21,14 @@ mock.module('@tauri-apps/api/core', () => ({
       queued = []
       return taps
     }
-    if (command === 'cloud_status') return { state: 'guest', notice: null, supported: true }
+    if (command === 'cloud_status') {
+      statusReads += 1
+      return cloudStatus
+    }
+    if (command === 'cloud_pending') {
+      pendingReads += 1
+      return [{ id: 'r1', created_at: 1 }]
+    }
     throw new Error(`unexpected command: ${command}`)
   },
 }))
@@ -46,6 +56,9 @@ function setVisibility(state: 'visible' | 'hidden') {
 beforeEach(() => {
   window.localStorage.clear()
   queued = []
+  cloudStatus = { state: 'guest', notice: null, supported: true }
+  statusReads = 0
+  pendingReads = 0
   tapped = null
   openSessionOnServer.mockClear()
   setVisibility('visible')
@@ -98,5 +111,26 @@ describe('notification taps on the phone', () => {
     tapped?.()
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(openSessionOnServer).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the requests an approval tap that launched the app points at, once the status says this phone signs', async () => {
+    cloudStatus = { state: 'connected', fingerprint: 'f', signer: true }
+    queued = [{ kind: 'approval' }]
+    render(<PhoneCloudSync />)
+    await waitFor(() => expect(pendingReads).toBe(1))
+  })
+
+  it('drops an approval tap this phone cannot answer, instead of opening it after a later sign-in', async () => {
+    queued = [{ kind: 'approval' }]
+    render(<PhoneCloudSync />)
+    await waitFor(() => expect(statusReads).toBeGreaterThan(0))
+    await waitFor(() => expect(queued).toEqual([]))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    cloudStatus = { state: 'connected', fingerprint: 'f', signer: true }
+    await queryClient.refetchQueries()
+    await waitFor(() => expect(statusReads).toBeGreaterThan(1))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(pendingReads).toBe(0)
   })
 })

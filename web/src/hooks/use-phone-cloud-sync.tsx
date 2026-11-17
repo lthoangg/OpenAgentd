@@ -30,6 +30,7 @@ const SAME_TAP_MS = 3_000
  */
 export function PhoneCloudSync() {
   const status = usePhoneCloudStatus().data
+  const statusKnown = status !== undefined
   const signer = status?.state === 'connected' && status.signer
   const [reviewing, setReviewing] = useState<PendingRow | null>(null)
   const [approvalTapped, setApprovalTapped] = useState(false)
@@ -79,7 +80,15 @@ export function PhoneCloudSync() {
   }, [])
 
   useEffect(() => {
-    if (!signer || !approvalTapped) return
+    if (!approvalTapped) return
+    // A tap that launched the app waits for the first status read. Once the
+    // status is known and this phone cannot approve, the tap is dropped:
+    // kept, it would open the sheet by itself after a later sign-in.
+    if (!statusKnown) return
+    if (!signer) {
+      setApprovalTapped(false)
+      return
+    }
     let cancelled = false
     void getPhoneCloudPending()
       .catch(() => [] as PendingRow[])
@@ -92,7 +101,7 @@ export function PhoneCloudSync() {
     return () => {
       cancelled = true
     }
-  }, [signer, approvalTapped])
+  }, [statusKnown, signer, approvalTapped])
 
   return reviewing ? <ApprovalSheet row={reviewing} onClose={() => setReviewing(null)} /> : null
 }

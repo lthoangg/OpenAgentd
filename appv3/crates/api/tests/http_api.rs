@@ -770,8 +770,7 @@ async fn provider_credentials_flow(c: &Client, pool: &appv3_db::DbPool, root: &s
 }
 
 /// A session pinned to one of the provider's credentials (v3 addition):
-/// PATCH sets and clears it, it survives a reload, the credential list
-/// counts the sessions pinned to each credential, and a pin is refused for
+/// PATCH sets and clears it, it survives a reload, and a pin is refused for
 /// a credential that is not the session model's provider's or not enabled.
 async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path, base: &str, personal: &str, work: &str) {
     let new = appv3_db::NewSession { workspace: root.display().to_string(), model: Some("openrouter:test/model".into()), ..Default::default() };
@@ -790,10 +789,7 @@ async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path:
     let row = list["data"].as_array().unwrap().iter().find(|r| r["id"] == json!(appv3_db::codec::api_uuid(&s.id))).cloned().unwrap();
     assert_eq!(row["credential_label"], json!("Work"), "lists name it too, for the desktop tray: {row}");
     let (_, v) = c.json("GET", base, None).await;
-    let pinned: Vec<i64> = v["credentials"].as_array().unwrap().iter().map(|c| c["pinned_sessions"].as_i64().unwrap()).collect();
-    let work_index = v["credentials"].as_array().unwrap().iter().position(|c| c["id"] == json!(work)).unwrap();
-    assert_eq!(pinned[work_index], 1, "{v}");
-    assert_eq!(pinned.iter().sum::<i64>(), 1, "{v}");
+    assert!(v["credentials"].as_array().unwrap().iter().all(|c| c.get("pinned_sessions").is_none()), "no pinned counts: {v}");
 
     // Picking an account cooling after a 429 is the user forcing it: the
     // next request tries it instead of silently staying on another one.

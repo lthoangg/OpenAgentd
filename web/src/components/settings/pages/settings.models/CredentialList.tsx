@@ -19,7 +19,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { cn } from '@/lib/utils'
 import { errorMessage } from '@/utils/errors'
-import { testCredential, usePinnedSessionCounts } from './credentialApi'
+import { testCredential } from './credentialApi'
 import { UsageScope } from './ProfileUsage'
 import { supportsCredentialUsage, supportsUsage } from './providerUtils'
 
@@ -62,21 +62,14 @@ function kindLabel(c: StoredCredential): string {
 }
 
 function StatusChips({ c, ctx }: { c: StoredCredential; ctx: RowContext }) {
-  const pins = ctx.pinsFor(c)
+  if (ctx.envPinned) return <Chip>Standby</Chip>
   return (
     <>
-      {ctx.envPinned ? (
-        <Chip>Standby</Chip>
-      ) : (
-        <>
-          {c.in_use && c.status !== 'disabled' && <StatusChip status={STATUS.inUse} />}
-          {c.status === 'ready' && <StatusChip status={STATUS.ready} />}
-          {c.status === 'disabled' && <Chip>Hidden</Chip>}
-          {c.status === 'needs_reconnect' && <Chip tone="error">Reconnect required</Chip>}
-          {c.status === 'cooling_down' && <CooldownPill reason={c.cooldown_reason} until={c.cooldown_until} />}
-        </>
-      )}
-      {pins > 0 && <Chip>{`Pinned by ${pins} ${pins === 1 ? 'session' : 'sessions'}`}</Chip>}
+      {c.in_use && c.status !== 'disabled' && <StatusChip status={STATUS.inUse} />}
+      {c.status === 'ready' && <StatusChip status={STATUS.ready} />}
+      {c.status === 'disabled' && <Chip>Hidden</Chip>}
+      {c.status === 'needs_reconnect' && <Chip tone="error">Reconnect required</Chip>}
+      {c.status === 'cooling_down' && <CooldownPill reason={c.cooldown_reason} until={c.cooldown_until} />}
     </>
   )
 }
@@ -84,7 +77,7 @@ function StatusChips({ c, ctx }: { c: StoredCredential; ctx: RowContext }) {
 /**
  * The line under a row that says what its status means, so "Standby" or "In
  * use" never lives only in a tooltip. "In use" is what new messages use; a
- * session can still be pinned to another account (the chip counts them).
+ * session can still be pinned to another account.
  */
 function rowCaption(c: StoredCredential, ctx: RowContext, index: number): string | null {
   if (ctx.envPinned) {
@@ -187,7 +180,6 @@ interface RowContext {
   busy: boolean
   /** Index of the row the provider is using now, or -1. */
   inUseIndex: number
-  pinsFor: (c: StoredCredential) => number
   testingId: string | null
   usageOpen: string | null
   onReconnect?: (credentialId: string) => void
@@ -412,7 +404,6 @@ export function CredentialList({
   const remove = useDeleteProviderCredentialMutation()
   const signOut = useDisconnectOauthProviderMutation()
   const push = useToastStore((s) => s.push)
-  const pinned = usePinnedSessionCounts(provider.id, credentials.length > 0)
 
   const fail = (title: string, err: unknown) => push({ tone: 'error', title, description: errorMessage(err) })
   const noun = isOauth ? 'account' : 'key'
@@ -492,7 +483,6 @@ export function CredentialList({
     noun,
     busy: order.isPending,
     inUseIndex: credentials.findIndex((c) => c.in_use && !c.disabled),
-    pinsFor: (c) => c.pinned_sessions ?? pinned[c.id] ?? 0,
     testingId,
     usageOpen,
     onReconnect,

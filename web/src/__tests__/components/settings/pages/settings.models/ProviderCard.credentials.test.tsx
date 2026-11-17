@@ -30,11 +30,10 @@ mock.module('@/api/client', () => ({
   configureDefaultModel: () => Promise.resolve({ agents_updated: 0 }),
 }))
 
-// The credentials list (pinned sessions) and a per-account Test go straight to the daemon.
+// A per-account Test goes straight to the daemon.
 const originalFetch = globalThis.fetch
 type FetchCall = { method: string; path: string; body: Record<string, unknown> | null }
 let fetchCalls: FetchCall[] = []
-let pinned: Record<string, number> = {}
 let testReply: () => Response = () => json({ provider: 'openai', models: ['openai:gpt-5.5'], source: 'provider' })
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
@@ -125,16 +124,12 @@ beforeEach(() => {
   mockAdd.mockImplementation((...args: unknown[]) => Promise.resolve({ id: 'cred_new', ...(args[1] as object) }))
   useToastStore.setState({ toasts: [] })
   fetchCalls = []
-  pinned = {}
   testReply = () => json({ provider: 'openai', models: ['openai:gpt-5.5'], source: 'provider' })
   globalThis.fetch = mock(async (...args: unknown[]) => {
     const init = args[1] as RequestInit | undefined
     const method = init?.method ?? 'GET'
     const path = new URL(String(args[0]), 'http://localhost').pathname
     fetchCalls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : null })
-    if (method === 'GET' && path.endsWith('/credentials')) {
-      return json({ credentials: Object.entries(pinned).map(([id, n]) => ({ id, pinned_sessions: n })) })
-    }
     if (method === 'POST' && path.endsWith('/models')) return testReply()
     return json({}, 404)
   }) as unknown as typeof fetch
@@ -216,28 +211,10 @@ describe('ProviderCard — several API keys', () => {
     expect(within(list[1]).getByText(/Usage limit reached/).closest('[data-slot="chip"]')?.getAttribute('data-tone')).toBe('warning')
   })
 
-  it('says how many sessions pin a key, and nothing when none do', () => {
-    renderCard({
-      ...openai,
-      stored_credentials: [
-        credential({ id: 'cred_a', label: 'Personal', pinned_sessions: 2 }),
-        credential({ id: 'cred_b', label: 'Work', pinned_sessions: 1 }),
-        credential({ id: 'cred_c', label: 'Spare', pinned_sessions: 0 }),
-      ],
-    })
-    const list = rows('OpenAI keys')
-    expect(within(list[0]).getByText('Pinned by 2 sessions')).toBeTruthy()
-    expect(within(list[1]).getByText('Pinned by 1 session')).toBeTruthy()
-    expect(within(list[2]).queryByText(/Pinned by/)).toBeNull()
-  })
-
-  it('reads the pinned counts from the daemon, since the provider list does not carry them', async () => {
-    pinned = { cred_a: 0, cred_b: 3 }
+  it('shows no pinned-session count and does not fetch one', () => {
     renderCard(openai)
-    const list = rows('OpenAI keys')
-    expect(await within(list[1]).findByText('Pinned by 3 sessions')).toBeTruthy()
-    expect(within(list[0]).queryByText(/Pinned by/)).toBeNull()
-    expect(fetchCalls).toContainEqual({ method: 'GET', path: '/api/settings/providers/openai/credentials', body: null })
+    expect(screen.queryByText(/Pinned by/)).toBeNull()
+    expect(fetchCalls.some((c) => c.path.endsWith('/credentials'))).toBe(false)
   })
 
   it('has one action set for a key, all behind its ⋯ menu', () => {

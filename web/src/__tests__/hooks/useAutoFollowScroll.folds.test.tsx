@@ -124,7 +124,7 @@ describe('useAutoFollowScroll — folds', () => {
       observe()
       scrollEvent(el)
       act(() => timers.tick(400))
-      expect(hook!.attachedRef.current).toBe(true)
+      expect(hook!.isFollowing()).toBe(true)
       expect(el.dataset.follow).toBe('live')
       expect(chip()).toBe(false)
     } finally {
@@ -142,7 +142,7 @@ describe('useAutoFollowScroll — folds', () => {
     expect(box.scrollTop).toBe(1200)
     scrollEvent(el)
 
-    expect(hook!.attachedRef.current).toBe(false)
+    expect(hook!.isFollowing()).toBe(false)
     expect(chip()).toBe(true)
   })
 
@@ -159,7 +159,7 @@ describe('useAutoFollowScroll — folds', () => {
     expect(box.scrollTop).toBe(2100)
     expect(chip()).toBe(false)
     // Not following yet: if the layout grows back, what they read stays put.
-    expect(hook!.attachedRef.current).toBe(false)
+    expect(hook!.isFollowing()).toBe(false)
   })
 
   it('follows again when the reader scrolls down from the end, which moves nothing', () => {
@@ -172,7 +172,7 @@ describe('useAutoFollowScroll — folds', () => {
     // Nothing is below, so the wheel makes no scroll event of its own.
     fireEvent.wheel(el, { deltaY: 100 })
 
-    expect(hook!.attachedRef.current).toBe(true)
+    expect(hook!.isFollowing()).toBe(true)
     expect(el.dataset.follow).toBe('live')
     expect(chip()).toBe(false)
   })
@@ -186,7 +186,7 @@ describe('useAutoFollowScroll — folds', () => {
 
     act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })) })
 
-    expect(hook!.attachedRef.current).toBe(true)
+    expect(hook!.isFollowing()).toBe(true)
   })
 
   it('brings the chip back when content arrives below a reader sitting at the end', () => {
@@ -209,8 +209,7 @@ describe('useAutoFollowScroll — the chip after a jump', () => {
   it('shows when the app takes the view away from the end (a prompt jump)', () => {
     const { el, box } = setup()
     act(() => {
-      hook!.attachedRef.current = false
-      hook!.syncAnchor()
+      hook!.stopFollowing()
     })
     box.scrollTop = 900
     scrollEvent(el)
@@ -234,7 +233,7 @@ describe('useAutoFollowScroll — the chip after a jump', () => {
       act(() => timers.tick(700))
 
       expect(box.scrollTop).toBe(1500)
-      expect(hook!.attachedRef.current).toBe(false)
+      expect(hook!.isFollowing()).toBe(false)
       expect(chip()).toBe(true)
     } finally {
       timers.restore()

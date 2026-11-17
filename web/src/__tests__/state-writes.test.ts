@@ -33,7 +33,7 @@ const FILES = sourceFiles(SRC).map((path) => ({ rel: relative(SRC, path), text: 
 interface MachineEntry {
   /** The file whose ``defineMachine`` call makes it. */
   file: string
-  /** Store fields that hold its state. */
+  /** Store fields (or a hook's ref, ``name.current``) that hold its state. */
   fields: string[]
   /** Files that may write a field's first value (defaults, a reset). */
   initial: string[]
@@ -54,6 +54,11 @@ export const MACHINES: Record<string, MachineEntry> = {
     file: 'stores/useAgentStore/link-state.ts',
     fields: ['streamLink'],
     initial: ['stores/useAgentStore/stream-slice.ts'],
+  },
+  'transcript follow': {
+    file: 'hooks/follow-state.ts',
+    fields: ['followMode.current'],
+    initial: [],
   },
 }
 
@@ -91,15 +96,16 @@ describe('state machines', () => {
     it(`${name}: its state changes only through transition`, () => {
       const offenders: string[] = []
       for (const field of machine.fields) {
+        const name = field.replace(/\./g, '\\.')
         // ``field = x`` or ``field: x`` (in a set/patch object), unless x is a transition.
-        const write = new RegExp(`(?<![\\w.])(?:\\w+\\.)?${field}\\s*(?:=(?![=>])|:(?!:))(?!\\s*[\\w.]*\\.transition\\()`, 'g')
+        const write = new RegExp(`(?<![\\w.])(?:\\w+\\.)?${name}\\s*(?:=(?![=>])|:(?!:))(?!\\s*[\\w.]*\\.transition\\()`, 'g')
         for (const { rel, text } of FILES) {
           if (machine.initial.includes(rel)) continue
           for (const line of text.split('\n')) {
             const trimmed = line.trim()
             if (/^(?:\*|\/\/|\/\*)/.test(trimmed)) continue
             // A type member (``field: SessionRun``) declares it, not a write.
-            if (new RegExp(`^(?:readonly\\s+)?${field}\\??:\\s*[A-Z]`).test(trimmed)) continue
+            if (new RegExp(`^(?:readonly\\s+)?${name}\\??:\\s*[A-Z]`).test(trimmed)) continue
             if (write.test(line)) offenders.push(`${rel}: ${trimmed}`)
             write.lastIndex = 0
           }

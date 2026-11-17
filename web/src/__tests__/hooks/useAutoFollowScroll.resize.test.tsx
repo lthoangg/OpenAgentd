@@ -90,7 +90,7 @@ describe('useAutoFollowScroll and layout changes', () => {
     layout.relayout(1775, 701)
     await scrollEvent(el)
 
-    expect(hook!.attachedRef.current).toBe(true)
+    expect(hook!.isFollowing()).toBe(true)
     expect(hook!.showScrollBtn).toBe(false)
     await observe()
     expect(layout.box.scrollTop).toBe(1775 - 701)
@@ -108,7 +108,7 @@ describe('useAutoFollowScroll and layout changes', () => {
     layout.box.scrollTop = 900
     await scrollEvent(el)
 
-    expect(hook!.attachedRef.current).toBe(false)
+    expect(hook!.isFollowing()).toBe(false)
     expect(hook!.showScrollBtn).toBe(true)
   })
 

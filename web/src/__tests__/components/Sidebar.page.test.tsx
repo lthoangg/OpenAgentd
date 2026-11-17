@@ -803,10 +803,6 @@ describe('Sidebar page mode: press and slide on the toolbar', () => {
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
       const id = this.dataset.slideId
       if (id === 'new') return box(300, 600, 52, 52)
-      if (id?.startsWith('ws:')) {
-        const rows = [...document.querySelectorAll('[data-slide-id^="ws:"]')]
-        return box(120, 400 + rows.indexOf(this) * 44, 240, 44)
-      }
       if (id !== undefined) {
         const items = [...document.querySelectorAll('[data-sessions-toolbar-item]')]
         return box(16 + items.indexOf(this) * 44, 604, 40, 40)
@@ -837,100 +833,50 @@ describe('Sidebar page mode: press and slide on the toolbar', () => {
 
   const at = (x: number, y: number) => ({ pointerType: 'touch', pointerId: 7, clientX: x, clientY: y })
   const newButton = () => document.querySelector('[data-sessions-new]') as HTMLElement
-  const menu = () => document.querySelector('[data-sessions-new-menu]') as HTMLElement | null
+  const sheet = () => document.querySelector('[data-action-sheet]') as HTMLElement | null
   const draftsIn = () => navigate.mock.calls.map((call) => ((call as unknown[])[0] as { search?: { workspace?: string } }).search?.workspace)
   async function holdNew() {
     fireEvent.pointerDown(newButton(), at(320, 620))
-    await waitFor(() => { if (!menu()) throw new Error('no menu yet') }, { timeout: 1500 })
+    await waitFor(() => { if (!sheet()) throw new Error('no sheet yet') }, { timeout: 1500 })
+    fireEvent.pointerUp(newButton(), at(320, 620))
   }
+  const rowLabels = () => [...(sheet() as HTMLElement).querySelectorAll('[data-action-sheet-item]')].map((row) => row.textContent)
 
-  it('holds ✎ to list Chat, the recent workspaces and the current one last, and turns ✎ into Cancel', async () => {
+  it('holds ✎ to open "New session in…": Chat, the recent workspaces and the current one last, with Cancel', async () => {
     await renderPage()
     await holdNew()
 
-    const rows = within(menu() as HTMLElement).getAllByRole('menuitem').map((row) => row.textContent)
-    expect(rows).toEqual(['Chat', 'api', 'web', 'projectcurrent'])
-    expect(newButton().getAttribute('aria-label')).toBe('Cancel')
+    expect(within(sheet() as HTMLElement).getByText('New session in…')).toBeTruthy()
+    expect(rowLabels()).toEqual(['Chat', 'api', 'web', 'projectcurrent'])
+    expect(within(sheet() as HTMLElement).getByRole('button', { name: 'Cancel' })).toBeTruthy()
     expect(newButton().getAttribute('aria-expanded')).toBe('true')
-    fireEvent.pointerUp(newButton(), at(320, 620))
+    // The release that ended the hold started nothing.
+    expect(navigate).not.toHaveBeenCalled()
   })
 
-  it('presses ✎ in under the finger, lets it spring back when the hold opens the menu, and blooms the menu', async () => {
+  it('presses ✎ in under the finger and lets it spring back when the hold opens the sheet', async () => {
     await renderPage()
     fireEvent.pointerDown(newButton(), at(320, 620))
     expect(newButton().hasAttribute('data-pressed')).toBe(true)
-    await waitFor(() => { if (!menu()) throw new Error('no menu yet') }, { timeout: 1500 })
+    await waitFor(() => { if (!sheet()) throw new Error('no sheet yet') }, { timeout: 1500 })
     expect(newButton().hasAttribute('data-pressed')).toBe(false)
-    expect(menu()?.className).toContain('oa-menu-bloom')
     fireEvent.pointerUp(newButton(), at(320, 620))
   })
 
-  it('slides from ✎ to a workspace and lifts there to open a draft in it', async () => {
+  it('opens a draft in the workspace tapped in the sheet', async () => {
     await renderPage()
     await holdNew()
-    navigate.mockClear()
 
-    fireEvent.pointerMove(newButton(), at(200, 500))
-    // The third row (web) is under the finger, and only it is highlighted.
-    const web = screen.getByRole('menuitem', { name: 'web' })
-    expect(web.hasAttribute('data-active')).toBe(true)
-    expect(screen.getByRole('menuitem', { name: 'api' }).hasAttribute('data-active')).toBe(false)
-    fireEvent.pointerUp(newButton(), at(200, 500))
-    fireEvent.click(newButton())
-
+    fireEvent.click(within(sheet() as HTMLElement).getByText('web'))
     expect(draftsIn()).toEqual(['/repo/web'])
-    expect(menu()).toBeNull()
-    expect(newButton().getAttribute('aria-label')).toBe('New session')
   })
 
-  it('cancels when the slide comes back to ✕ or ends outside the menu', async () => {
-    await renderPage()
-
-    await holdNew()
-    fireEvent.pointerMove(newButton(), at(200, 500))
-    fireEvent.pointerMove(newButton(), at(320, 620))
-    fireEvent.pointerUp(newButton(), at(320, 620))
-    expect(menu()).toBeNull()
-
-    await holdNew()
-    fireEvent.pointerMove(newButton(), at(20, 200))
-    fireEvent.pointerUp(newButton(), at(20, 200))
-    expect(menu()).toBeNull()
-
-    expect(navigate).not.toHaveBeenCalled()
-    expect(newButton().getAttribute('aria-label')).toBe('New session')
-  })
-
-  it('keeps the menu open when the hold lifts where it began, for a tap', async () => {
+  it('closes from Cancel, starting nothing', async () => {
     await renderPage()
     await holdNew()
-    fireEvent.pointerUp(newButton(), at(320, 620))
 
-    expect(menu()).not.toBeNull()
-    // A fresh tap on the first row (Chat).
-    const chat = screen.getByRole('menuitem', { name: 'Chat' })
-    fireEvent.pointerDown(chat, at(200, 420))
-    fireEvent.pointerUp(chat, at(200, 420))
-    fireEvent.click(chat)
-    expect(draftsIn()).toEqual(['/home/me'])
-    expect(menu()).toBeNull()
-  })
-
-  it('closes the open menu from ✕ or a tap outside, starting nothing', async () => {
-    const { view } = await renderPage()
-    await holdNew()
-    fireEvent.pointerUp(newButton(), at(320, 620))
-    // A fresh tap on ✕.
-    fireEvent.pointerDown(newButton(), at(320, 620))
-    fireEvent.pointerUp(newButton(), at(320, 620))
-    fireEvent.click(newButton())
-    expect(menu()).toBeNull()
-
-    await holdNew()
-    fireEvent.pointerUp(newButton(), at(320, 620))
-    fireEvent.click(view.container.querySelector('[data-sessions-new-scrim]') as HTMLElement)
-    expect(menu()).toBeNull()
-
+    fireEvent.click(within(sheet() as HTMLElement).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(newButton().getAttribute('aria-expanded')).toBe('false'))
     expect(navigate).not.toHaveBeenCalled()
   })
 
@@ -943,7 +889,7 @@ describe('Sidebar page mode: press and slide on the toolbar', () => {
     fireEvent.click(newButton())
 
     expect(draftsIn()).toEqual(['/repo/project'])
-    expect(menu()).toBeNull()
+    expect(sheet()).toBeNull()
   })
 
   it('slides across the pill with a highlight and a name bubble, and runs only the button it lifts on', async () => {

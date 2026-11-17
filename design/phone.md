@@ -78,7 +78,9 @@ Back at a time.
   primary ✎ New session on the right, under the thumb. They are actions,
   not tabs, so there are no captions; each is named for assistive tech. It
   steps aside while searching, so it never rides up on the soft keyboard.
-  ✎ taps a soft haptic and pushes a draft that is already built.
+  ✎ taps a soft haptic and pushes a draft that is already built; held, it
+  opens **New session in…**, an action sheet of Chat and the recent
+  workspaces (the current one last).
   **Search** happens in place: the field moves under the bar with a
   **Cancel** beside it, and the list gives way to results under the field.
   Before anything is typed it shows **Recently opened** (the latest eight

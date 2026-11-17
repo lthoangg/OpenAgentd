@@ -141,7 +141,10 @@ describe('phone: select part of the output', () => {
     // Held past the long-press threshold.
     await act(() => new Promise((resolve) => setTimeout(resolve, 600)))
     fireEvent.pointerUp(surface, { pointerType: 'touch' })
-    fireEvent.click(await screen.findByRole('button', { name: 'Select Text' }))
+    // A tap of its own (a press, then the click): the release's click is swallowed.
+    const selectText = await screen.findByRole('button', { name: 'Select Text' })
+    fireEvent.pointerDown(selectText, { pointerType: 'touch' })
+    fireEvent.click(selectText)
 
     // The output as text, nothing selected yet; the soft keyboard goes away.
     const text = await screen.findByTestId('terminal-text')

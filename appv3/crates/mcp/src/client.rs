@@ -888,6 +888,9 @@ pub struct McpClient {
     transport: Mutex<Transport>,
     next_id: AtomicI64,
     tool_timeout: std::time::Duration,
+    /// Set while a user signs in: `initialize` meets the 401 and waits on
+    /// their browser, so it gets this long instead of the request default.
+    sign_in_wait: Option<std::time::Duration>,
 }
 
 /// Default deadline for `tools/call`; a server's `timeout` overrides it.
@@ -941,7 +944,7 @@ impl McpClient {
     }
 
     fn with_transport(transport: Transport) -> Self {
-        McpClient { transport: Mutex::new(transport), next_id: AtomicI64::new(1), tool_timeout: std::time::Duration::from_secs(DEFAULT_TOOL_TIMEOUT_S) }
+        McpClient { transport: Mutex::new(transport), next_id: AtomicI64::new(1), tool_timeout: std::time::Duration::from_secs(DEFAULT_TOOL_TIMEOUT_S), sign_in_wait: None }
     }
 
     fn transport(&self) -> Transport {
@@ -957,6 +960,12 @@ impl McpClient {
         self
     }
 
+    /// Give `initialize` `wait` (see `sign_in_wait`); `None` keeps the default.
+    pub fn with_sign_in_wait(mut self, wait: Option<std::time::Duration>) -> Self {
+        self.sign_in_wait = wait;
+        self
+    }
+
     /// Requests still waiting for a stdio reply (tests only).
     #[cfg(test)]
     pub(crate) fn pending_len(&self) -> usize {
@@ -967,11 +976,14 @@ impl McpClient {
         }
     }
 
-    fn deadline(&self, method: &str) -> std::time::Duration {
+    pub(crate) fn deadline(&self, method: &str) -> std::time::Duration {
+        let request = std::time::Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_S);
         if method == "tools/call" {
             self.tool_timeout
+        } else if let (Some(wait), "initialize") = (self.sign_in_wait, method) {
+            wait.max(request)
         } else {
-            self.tool_timeout.min(std::time::Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_S))
+            self.tool_timeout.min(request)
         }
     }
 

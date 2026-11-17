@@ -388,7 +388,9 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             let discovered = OAuthConfig { client_id: None, client_secret: None };
             let oauth = oauth.as_ref().or(cfg.signs_in_with_oauth().then_some(&discovered));
             let auth = oauth::build_oauth_provider(name, url, oauth)?;
-            Ok(McpClient::http(url, &hdrs, auth, *kind)?.with_timeout(cfg.timeout()))
+            // A sign-in finishes inside `initialize`, after the user approves in a browser.
+            let sign_in_wait = oauth::interactive_oauth_allowed(name).then_some(oauth::CLIENT_SIGN_IN_TIMEOUT);
+            Ok(McpClient::http(url, &hdrs, auth, *kind)?.with_timeout(cfg.timeout()).with_sign_in_wait(sign_in_wait))
         }
     }
 }

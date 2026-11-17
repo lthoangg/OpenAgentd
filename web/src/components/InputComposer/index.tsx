@@ -1,3 +1,4 @@
+// size-ceiling: 823 — the composer's wiring: move the imperative handle (lines ~320-420) into its own hook
 // Not compiled: the React Compiler skipped InputComposer (a ref read in
 // render) before its split; compiling it is a change of its own to verify.
 'use no memo'

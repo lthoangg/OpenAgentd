@@ -1,4 +1,4 @@
-// size-ceiling: 803 — the chat route's layout and its wiring: move the session hooks it composes into their own module
+// size-ceiling: 813 — the chat route's layout and its wiring: move the session hooks it composes into their own module
 /**
  * AgentChatView — top-level layout for the agent chat route.
  *

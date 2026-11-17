@@ -574,6 +574,18 @@ describe('AppBackendDialog', () => {
     expect(useCalls()).toHaveLength(0)
   })
 
+  it('drops the scanned note with the form once the scanned computer is connected', async () => {
+    const user = userEvent.setup()
+    const prefill = { baseUrl: 'http://127.0.0.1:4082', accessKey: 'scanned-key' }
+    render(<AppBackendDialog open onOpenChange={() => {}} prefill={prefill} />)
+    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
+
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(screen.queryByLabelText('Address')).toBeNull())
+    expect(screen.queryByText(/Scanned from another device/)).toBeNull()
+  })
+
   it('renders the same list as the Settings → Switch computer page', async () => {
     render(<SwitchComputerSettingsPage />)
 

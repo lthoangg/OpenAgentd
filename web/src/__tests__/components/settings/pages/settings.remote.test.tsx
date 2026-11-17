@@ -261,6 +261,28 @@ describe('RemoteSettingsPage', () => {
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
   })
 
+  it('starts the signed-out page fresh after a sign-in is cancelled', async () => {
+    serveStatus({ state: 'guest', notice: null })
+    server.use(
+      http.post(LOGIN_URL, () => HttpResponse.json({
+        state: 'signing_in', user_code: 'ABCD-EFGH', url: 'https://account.openagentd.dev/device', fingerprint: 'k7f2 91ab', expires_in: 600,
+      })),
+      http.post(CANCEL_URL, () => HttpResponse.json({ state: 'guest', notice: null })),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Join with a link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    const other = await screen.findByRole('button', { name: 'Other ways to sign in' })
+    expect(other.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(other)
+    expect(screen.queryByLabelText('Invitation link')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Join with a link' })).toBeTruthy()
+  })
+
   it('joins with a pasted invitation link and shows what to compare on the phone', async () => {
     let sent: unknown = null
     serveStatus({ state: 'guest', notice: null })

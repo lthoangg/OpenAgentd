@@ -60,6 +60,18 @@ export const MACHINES: Record<string, MachineEntry> = {
     fields: ['followMode.current'],
     initial: [],
   },
+  'cloud pairing ui': {
+    file: 'components/settings/pages/pairing-ui-state.ts',
+    // Held by ``useReducer(pairingStep)``, so it has no write to look for.
+    fields: ['pairingUi'],
+    initial: [],
+  },
+  'server form': {
+    file: 'components/server-form-state.ts',
+    // Held by ``useReducer(serverFormStep)``.
+    fields: ['formState'],
+    initial: [],
+  },
 }
 
 /**

@@ -30,7 +30,7 @@
  * On the phone the row in use also offers **Sessions ›** (``onOpenInUse``),
  * back up to its session list, and a tap on a row uses it; ⋯ holds the rest.
  */
-import { Fragment, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
+import { Fragment, useEffect, useImperativeHandle, useReducer, useRef, useState, type ReactNode, type Ref } from 'react'
 import { ChevronRight, Info, MoreHorizontal, Pencil, Plus, ScanQrCode, Trash2 } from 'lucide-react'
 import { cancelQrScan, canScanQr, scanQrCode } from '@/lib/qr-scan'
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
@@ -88,6 +88,7 @@ import {
   type ServerWatchState,
 } from '@/lib/app-backend'
 import { useAppStatusWithNames } from '@/lib/account-computers'
+import { FORM_CLOSED, NO_VALUES, formTargetOf, serverFormStep, type ServerFormTarget } from '@/components/server-form-state'
 
 /** Where Rename would be, for a computer the app is not on. */
 const RENAME_ON_ITSELF = 'Switch to this computer to rename it.'
@@ -173,16 +174,6 @@ export interface AppBackendPanelControl {
   refresh: () => Promise<void>
 }
 
-/**
- * The open form: adding a computer (at the end of the list, from "Add a
- * computer by address"), or editing one (right under its row, from Edit in
- * its Details). One at a time; neither opens by itself, except for a
- * scanned link.
- */
-type ServerFormTarget =
-  | { kind: 'add' }
-  | { kind: 'edit'; baseUrl: string; label: string; inUse: boolean }
-
 export function AppBackendPanel({ active, prefill = null, showNetworkAccess = false, accountRows = null, untitled = false, onOpenInUse, controlRef, onScanQr }: AppBackendPanelProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   // The names the app remembers, kept current while the list is shown: one
@@ -192,7 +183,19 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // phone with no server would flash the browser build's placeholder rows.
   const [loaded, setLoaded] = useState(false)
   const [confirm, setConfirm] = useState<{ kind: 'stop' } | { kind: 'remove'; baseUrl: string; label: string } | null>(null)
-  const [form, setForm] = useState<ServerFormTarget | null>(null)
+  // The open form: adding a computer (at the end of the list, from "Add a
+  // computer by address"), or editing one (right under its row, from Edit in
+  // its Details). One at a time; neither opens by itself, except for a
+  // scanned link. Its fields and checks live in it (``server-form-state.ts``).
+  const [formState, sendForm] = useReducer(serverFormStep, FORM_CLOSED)
+  const form = formTargetOf(formState)
+  const { baseUrl, serverName, accessKey } = formState.kind === 'open' ? formState.values : NO_VALUES
+  const original = formState.kind === 'open' ? formState.original : null
+  const testedBaseUrl = formState.kind === 'open' ? formState.tested : null
+  const formError = formState.kind === 'open' ? formState.error : null
+  const scanned = formState.kind === 'open' && formState.scanned
+  const setFormError = (error: string | null) => sendForm({ type: 'error', error })
+  const closeFormNow = () => sendForm({ type: 'close' })
   // Touch: a saved server's row keeps one button; Edit and Remove move to
   // its action sheet (a long press, or ⋯).
   const touch = useTouchFirst()
@@ -202,19 +205,10 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   // computer while the dialog closes.
   const [details, setDetails] = useState<'builtin' | 'unlisted' | { saved: string }>('builtin')
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [baseUrl, setBaseUrl] = useState('')
-  const [serverName, setServerName] = useState('')
-  const [accessKey, setAccessKeyInput] = useState('')
-  /** What the edited server had, so a rename saves without a new test. */
-  const [original, setOriginal] = useState<{ baseUrl: string; accessKey: string } | null>(null)
-  const [testedBaseUrl, setTestedBaseUrl] = useState<string | null>(null)
   const [serverHealth, setServerHealth] = useState<Record<string, Health>>({})
   const [pending, setPending] = useState(false)
   /** A list action that failed (Use, Start, Stop, Remove, Enabled). */
   const [listError, setListError] = useState<string | null>(null)
-  /** The open form's check or save failed. */
-  const [formError, setFormError] = useState<string | null>(null)
-  const [scanned, setScanned] = useState(false)
   // The camera viewfinder is up (Scan QR code).
   const [qrScanning, setQrScanning] = useState(false)
   const [watchStates, setWatchStates] = useState<Record<string, ServerWatchState>>({})
@@ -248,10 +242,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       setStatus(next)
       setLoaded(true)
       setListError(null)
-      setScanned(Boolean(prefill))
       // A scanned link opens the add form, filled in and tested; otherwise no form is open.
-      if (prefill) fillForm({ kind: 'add' }, prefill.baseUrl, hostnameOf(prefill.baseUrl), prefill.accessKey)
-      else setForm(null)
+      if (prefill) fillForm({ kind: 'add' }, prefill.baseUrl, hostnameOf(prefill.baseUrl), prefill.accessKey, { scanned: true })
+      else sendForm({ type: 'close' })
       const servers = next?.servers ?? DEFAULT_SERVERS
       // The connected server is checked too, saved or not.
       const unlisted = unlistedConnectedUrl(next, servers)
@@ -284,18 +277,18 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
     },
   }), [])
 
-  function fillForm(target: ServerFormTarget, nextBaseUrl: string, nextName: string, nextKey: string) {
-    setForm(target)
-    setBaseUrl(nextBaseUrl)
-    setServerName(nextName)
-    setAccessKeyInput(nextKey)
-    setTestedBaseUrl(null)
-    setFormError(null)
+  function fillForm(
+    target: ServerFormTarget,
+    nextBaseUrl: string,
+    nextName: string,
+    nextKey: string,
+    extra: { scanned?: boolean; original?: { baseUrl: string; accessKey: string } } = {},
+  ) {
+    sendForm({ type: 'open', target, values: { baseUrl: nextBaseUrl, serverName: nextName, accessKey: nextKey }, ...extra })
   }
 
   /** "Add a computer by address": the empty form at the end of the list. */
   function openAdd() {
-    setOriginal(null)
     fillForm({ kind: 'add' }, '', '', '')
   }
 
@@ -303,19 +296,15 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   function openEdit(server: SavedAppServer, inUse: boolean) {
     const normalized = normalizeServerBaseUrl(server.base_url)
     const label = savedServerTitle(server, names)
-    setOriginal({ baseUrl: normalized, accessKey: '' })
-    fillForm({ kind: 'edit', baseUrl: normalized, label, inUse }, normalized, server.name ?? '', '')
+    fillForm({ kind: 'edit', baseUrl: normalized, label, inUse }, normalized, server.name ?? '', '', { original: { baseUrl: normalized, accessKey: '' } })
     void getStoredAccessKey(normalized).then((storedKey) => {
-      setAccessKeyInput(storedKey ?? '')
-      setOriginal({ baseUrl: normalized, accessKey: storedKey ?? '' })
+      sendForm({ type: 'keyLoaded', baseUrl: normalized, accessKey: storedKey ?? '' })
     })
   }
 
   function closeForm() {
     const target = form
-    setForm(null)
-    setFormError(null)
-    setScanned(false)
+    closeFormNow()
     // After the render: the add form stands where its button goes back.
     requestAnimationFrame(() => {
       const opener = target?.kind === 'edit' ? detailsButtonRefs.current.get(target.baseUrl) : addButtonRef.current
@@ -341,9 +330,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         return
       }
       const url = await pickReachableUrl(link.urls)
-      setOriginal(null)
-      setScanned(true)
-      fillForm({ kind: 'add' }, url, hostnameOf(url), link.key)
+      fillForm({ kind: 'add' }, url, hostnameOf(url), link.key, { scanned: true })
       void testConnection(url, link.key)
     }
   }
@@ -395,7 +382,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         return false
       }
       if (rawAccessKey.trim()) await setStoredAccessKey(rawAccessKey, target)
-      setTestedBaseUrl(target)
+      sendForm({ type: 'tested', baseUrl: target })
       return true
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err))
@@ -426,7 +413,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
   async function saveAndConnect() {
     const target = normalizeServerBaseUrl(baseUrl)
     if (testedBaseUrl !== target && !await testConnection()) return
-    if (await connectExternal(target, serverName, accessKey, setFormError)) setForm(null)
+    if (await connectExternal(target, serverName, accessKey, setFormError)) closeFormNow()
   }
 
   /**
@@ -444,7 +431,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       // The app talks to it: switch to the new address, then drop the old one.
       if (!await connectExternal(target, serverName, accessKey, setFormError)) return
       await removeAppBackendServer(form.baseUrl).catch(() => undefined)
-      setForm(null)
+      closeFormNow()
       return
     }
     setPending(true)
@@ -483,7 +470,7 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
         const { [baseUrl]: _removed, ...rest } = prev
         return rest
       })
-      if (form?.kind === 'edit' && form.baseUrl === normalizeServerBaseUrl(baseUrl)) setForm(null)
+      if (form?.kind === 'edit' && form.baseUrl === normalizeServerBaseUrl(baseUrl)) closeFormNow()
     } catch (err) {
       setListError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -545,9 +532,9 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
       baseUrl={baseUrl}
       accessKey={accessKey}
       serverName={serverName}
-      onBaseUrlChange={(value) => { setBaseUrl(value); setTestedBaseUrl(null) }}
-      onAccessKeyChange={(value) => { setAccessKeyInput(value); setTestedBaseUrl(null) }}
-      onServerNameChange={setServerName}
+      onBaseUrlChange={(value) => sendForm({ type: 'input', field: 'baseUrl', value })}
+      onAccessKeyChange={(value) => sendForm({ type: 'input', field: 'accessKey', value })}
+      onServerNameChange={(value) => sendForm({ type: 'input', field: 'serverName', value })}
       error={formError}
       tested={tested}
       pending={pending}

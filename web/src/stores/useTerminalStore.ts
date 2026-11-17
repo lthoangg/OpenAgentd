@@ -52,15 +52,8 @@ import { TERMINAL_THEMES, type TerminalResolvedTheme } from '@/components/Termin
 import { readStoredPreference, resolveTheme } from '@/lib/theme'
 import { TERMINAL_FONT_FAMILY, terminalFontSize } from '@/lib/terminal-font'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
-import {
-  SHELL_CONNECTING,
-  closedReasonOf,
-  isShellLive,
-  terminalShellMachine,
-  type TerminalClosedReason,
-  type TerminalShell,
-  type TerminalShellEvent,
-} from '@/stores/terminal-state'
+import { SHELL_CONNECTING, closedReasonOf, isShellLive, terminalShellMachine } from '@/stores/terminal-state'
+import type { TerminalClosedReason, TerminalShell, TerminalShellEvent } from '@/stores/terminal-state'
 
 export const TERMINAL_IDLE_CLOSE_MS = 15 * 60 * 1000
 const REAPER_TICK_MS = 60 * 1000

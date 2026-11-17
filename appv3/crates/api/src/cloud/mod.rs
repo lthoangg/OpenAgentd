@@ -625,11 +625,10 @@ fn read_roster_note(me: &str, known_version: u64, version: u64, revoked: &[Strin
 
 /// Saves the ledger next to `K`.
 fn persist_ledger(l: &ledger::Ledger) {
-    let saved = state::update_identity(&identity_store(), |id| {
+    if let Err(e) = state::update_identity(&identity_store(), |id| {
         l.write_into(id);
         true
-    });
-    if let Err(e) = saved {
+    }) {
         tracing::warn!("cloud_ledger_save_failed error={e}");
     }
 }
@@ -843,12 +842,11 @@ fn after_presence(ended: &RelayError, now_ms: u64) -> Next {
 
 /// Saves a newly verified roster as the host's `K`.
 pub(crate) fn persist_roster(r: &Roster) {
-    let saved = state::update_identity(&identity_store(), |id| {
+    if let Err(e) = state::update_identity(&identity_store(), |id| {
         id.roster = Some(r.blob.clone());
         id.problem = None;
         true
-    });
-    if let Err(e) = saved {
+    }) {
         tracing::warn!("cloud_roster_save_failed error={e}");
     }
 }

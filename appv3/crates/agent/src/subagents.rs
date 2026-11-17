@@ -8,7 +8,7 @@ use crate::agent::Agent;
 use crate::broadcaster;
 use crate::events::Envelope;
 use crate::loader::{self, ProviderFactory, DEFAULT_NEW_USER_MODEL};
-use crate::session::{AgentSession, UserMessage};
+use crate::session::{AgentSession, StopCause, UserMessage};
 use crate::stream_store::store;
 use appv3_core::settings::settings;
 use appv3_db::{self as db, DbPool};
@@ -835,11 +835,20 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
 
 /// `stop_all_subagents`.
 pub async fn stop_all_subagents(lead: &str) {
+    stop_subagents(lead, StopCause::User).await
+}
+
+/// Stop `lead`'s members; at shutdown with the shutdown token, so their
+/// turns are continued by the next start.
+pub(crate) async fn stop_subagents(lead: &str, cause: StopCause) {
     let insts: Vec<SubagentInstance> = reg().lock().unwrap().live.get(lead).map(|m| m.values().cloned().collect()).unwrap_or_default();
     for i in &insts {
         // The session, not the registry status, knows whether a turn runs:
         // a status set by an earlier stop must not shield a turn still going.
-        i.session.handle_stop().await;
+        match cause {
+            StopCause::User => i.session.handle_stop().await,
+            StopCause::Shutdown => i.session.handle_stop_for_shutdown().await,
+        };
         with_instance(lead, &i.handle, |x| {
             if x.status.is_active() {
                 let _ = x.apply(MemberEvent::Stop);
@@ -858,7 +867,7 @@ pub async fn stop_all_subagents(lead: &str) {
 pub async fn stop_all_members(limit: std::time::Duration) {
     let sessions: Vec<Arc<AgentSession>> = reg().lock().unwrap().live.values().flat_map(|m| m.values().map(|i| i.session.clone())).collect();
     for s in &sessions {
-        s.handle_stop().await;
+        s.handle_stop_for_shutdown().await;
     }
     let waits = sessions.iter().map(|s| s.wait_for_stop(limit));
     let settled = futures::future::join_all(waits).await;

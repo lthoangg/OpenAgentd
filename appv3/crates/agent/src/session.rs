@@ -147,6 +147,10 @@ pub struct AgentSession {
     control: Mutex<ControlState>,
     cancel: Event,
     hard_cancel: Event,
+    /// The shutdown token: set with `cancel` when the server's own shutdown
+    /// stops the turn ([`Self::stop_for_shutdown`]), so the turn keeps its
+    /// in-flight mark and the next start continues it.
+    shutdown: Event,
     pub user_message_lock: tokio::sync::Mutex<()>,
     command_lock: tokio::sync::Mutex<()>,
     /// When a turn last started or ended; the manager counts idle time
@@ -247,6 +251,7 @@ impl AgentSession {
             control: Mutex::new(ControlState::default()),
             cancel: Event::new(),
             hard_cancel: Event::new(),
+            shutdown: Event::new(),
             user_message_lock: tokio::sync::Mutex::new(()),
             command_lock: tokio::sync::Mutex::new(()),
             last_turn_activity: Mutex::new(std::time::Instant::now()),
@@ -480,6 +485,12 @@ impl AgentSession {
     fn clear_cancel(&self) {
         self.cancel.clear();
         self.hard_cancel.clear();
+        self.shutdown.clear();
+    }
+
+    /// The server's shutdown stopped the current turn.
+    pub(crate) fn stopped_for_shutdown(&self) -> bool {
+        self.cancel.is_set() && self.shutdown.is_set()
     }
 
     /// When a turn last started or ended (session creation before any turn).
@@ -518,7 +529,22 @@ impl AgentSession {
         tracing::info!("agent_session_started agent={} session_id={}", self.name(), self.session_id());
     }
 
+    /// Unload the session: stop its turn and timers.
     pub async fn stop(&self) {
+        self.stop_with(StopCause::User).await
+    }
+
+    /// The server shuts down: stop as [`Self::stop`], passing the shutdown
+    /// token, so a turn cut off here (the lead's and its members') is
+    /// continued by the next start.
+    pub async fn stop_for_shutdown(&self) {
+        self.stop_with(StopCause::Shutdown).await
+    }
+
+    async fn stop_with(&self, cause: StopCause) {
+        if cause == StopCause::Shutdown {
+            self.shutdown.set();
+        }
         self.cancel_idle_timer();
         self.cancel.set();
         self.hard_cancel.set();
@@ -535,7 +561,7 @@ impl AgentSession {
             }
         }
         if self.parent_session_id.is_none() {
-            crate::subagents::stop_all_subagents(&self.session_id()).await;
+            crate::subagents::stop_subagents(&self.session_id(), cause).await;
         }
         self.transition(Transition::GoOffline);
         tracing::info!("agent_session_stopped session_id={}", self.session_id());
@@ -799,6 +825,13 @@ impl AgentSession {
         self.handle_stop_with(true).await
     }
 
+    /// Stop the turn because the server shuts down (a member, from
+    /// `stop_all_members`): as [`Self::handle_stop`], with the shutdown token.
+    pub async fn handle_stop_for_shutdown(&self) -> bool {
+        self.shutdown.set();
+        self.handle_stop_with(false).await
+    }
+
     async fn handle_stop_with(&self, keep_goal: bool) -> bool {
         // A turn task still running is stopped even if the state already
         // reads idle, or nothing could ever reach it.
@@ -920,4 +953,12 @@ impl AgentSession {
             Err(e) => tracing::warn!("interaction_mode_apply_failed mode={} error={}", mode, e),
         }
     }
+}
+
+/// Why the server stops a session: unloading it (or the user), or its own
+/// shutdown, which keeps the turn's in-flight mark for the next start.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StopCause {
+    User,
+    Shutdown,
 }

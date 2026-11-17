@@ -231,7 +231,9 @@ const BUILTIN: &[Spec] = &[
                 Ok(())
             })
         }),
-        stop: Some(|| Box::pin(async { appv3_agent::restart_resume::begin_shutdown() })),
+        // A turn the shutdown cuts off keeps its mark: `manager::stop` and
+        // `stop_all_members` pass the shutdown token to each session.
+        stop: None,
     },
     // OpenAgentd Cloud: reconnects a signed-in host. Last in the table, so
     // it stops first: remote sessions close before anything they use.

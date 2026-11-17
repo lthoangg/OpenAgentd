@@ -243,7 +243,7 @@ impl AgentSession {
             // A turn the server's own shutdown stopped stays marked, so the
             // next start continues it; every other end clears the mark
             // (before the turn reads as over, so a new turn's mark survives).
-            let stopped_by_shutdown = self.cancel.is_set() && crate::restart_resume::is_shutting_down();
+            let stopped_by_shutdown = self.stopped_for_shutdown();
             if tracks_in_flight && !stopped_by_shutdown {
                 if let Err(e) = db::clear_turn_in_flight(&self.pool, &marked_sid).await {
                     tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", marked_sid, e);

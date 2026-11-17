@@ -271,6 +271,6 @@ pub async fn stop() {
         v
     };
     for s in all {
-        s.stop().await;
+        s.stop_for_shutdown().await;
     }
 }

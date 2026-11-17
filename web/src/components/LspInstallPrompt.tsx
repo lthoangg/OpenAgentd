@@ -1,7 +1,8 @@
 /**
  * The TypeScript tools prompt: one line in the notices column, the same
  * shape as the update notice. Done leaves a toast; a failure says why in a
- * toast and keeps the line, with Retry.
+ * toast and keeps the line, with Retry. It is a status line, not a dialog:
+ * nothing takes focus, and it is announced politely when it appears.
  */
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -67,12 +68,11 @@ function LspInstallLine({ request }: { request: LspInstallRequest }) {
   }
 
   return (
-    <aside className="pointer-events-none flex w-full justify-end" aria-live="polite">
+    <aside className="pointer-events-none flex w-full justify-end">
       {installing ? (
-        <NoticeLine role="dialog" aria-label="Install TypeScript language tools" busy text="Installing TypeScript tools…" />
+        <NoticeLine aria-label="Install TypeScript language tools" busy text="Installing TypeScript tools…" />
       ) : (
         <NoticeLine
-          role="dialog"
           aria-label="Install TypeScript language tools"
           text={`Install TypeScript tools for ${name}?`}
           detail={`Downloaded and installed on the computer the agent runs on, not on this device.\n${request.workspace}\nLanguage server ${request.languageServerVersion}, TypeScript ${request.typeScriptVersion}`}

@@ -4,11 +4,15 @@
  * code (most of the screen's width, not all of it); the page around it
  * stays opaque. Inside the window four corner marks frame where the code
  * goes, nothing filled. A hint and Cancel sit under it. Rendered into
- * <body>, over everything.
+ * <body>, over everything. A modal like the others (``useModalFocus``):
+ * focus lands on Cancel, Escape cancels (a hardware keyboard on an iPad),
+ * and focus goes back to the button that opened it.
  */
+import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
+import { useModalFocus } from '@/hooks/useModalFocus'
 
 /** One corner mark: two 3px strokes meeting at a rounded corner. */
 const CORNER = 'absolute size-8 drop-shadow-sm'
@@ -17,9 +21,12 @@ export function QrScanOverlay({
   onCancel,
   hint = 'Scan the QR code under Network access on your computer.',
 }: { onCancel: () => void; hint?: string }) {
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  useModalFocus(true, onCancel, cancelRef)
   return createPortal(
     <div
       data-qr-scan-overlay=""
+      data-modal-focus="true"
       role="dialog"
       aria-modal="true"
       aria-label="Scan QR code"
@@ -40,7 +47,7 @@ export function QrScanOverlay({
       <p className="relative text-center text-xs text-(--color-text-2)">
         {hint}
       </p>
-      <Button type="button" variant="default" className="relative h-11 px-6" onClick={onCancel}>
+      <Button ref={cancelRef} type="button" variant="default" className="relative h-11 px-6" onClick={onCancel}>
         Cancel
       </Button>
     </div>,

@@ -16,7 +16,6 @@ export function NoticeLine({ text, detail, busy = false, children, ...rest }: {
   busy?: boolean
   /** The buttons, quiet one first. */
   children?: ReactNode
-  role?: 'status' | 'dialog'
   'aria-label'?: string
 }) {
   return (

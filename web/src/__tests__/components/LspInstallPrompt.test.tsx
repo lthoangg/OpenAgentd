@@ -39,7 +39,7 @@ const toasts = () => useToastStore.getState().toasts
 it('asks in one line, naming the workspace, and installs after consent', async () => {
   render(<LspInstallPrompt />)
 
-  const line = screen.getByRole('dialog', { name: 'Install TypeScript language tools' })
+  const line = screen.getByRole('status', { name: 'Install TypeScript language tools' })
   expect(line).toHaveTextContent('Install TypeScript tools for project?')
   expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Later', 'Install'])
   fireEvent.click(screen.getByRole('button', { name: 'Install' }))
@@ -96,7 +96,7 @@ it('keeps the line with Retry and says why in a toast when the install fails', a
 
   await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(["Couldn't install TypeScript tools"]))
   expect(toasts()[0].description).toBe('The download was refused by the registry.')
-  expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(screen.getByRole('status')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
 })
 
@@ -122,13 +122,13 @@ it('dismisses without installing', () => {
 
   expect(installTypeScriptLsp).not.toHaveBeenCalled()
   expect(useLspInstallStore.getState().request).toBeNull()
-  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.queryByRole('status')).toBeNull()
 })
 
-it('uses narrow-layout-safe dialog markup', () => {
+it('uses narrow-layout-safe markup', () => {
   render(<LspInstallPrompt />)
 
-  expect(screen.getByRole('dialog')).toHaveAttribute('data-swipe-ignore')
+  expect(screen.getByRole('status')).toHaveAttribute('data-swipe-ignore')
 })
 
 it('renders as a non-blocking line that does not interfere with chat', () => {
@@ -138,7 +138,7 @@ it('renders as a non-blocking line that does not interfere with chat', () => {
   // only has to stay click-through outside its panel.
   const aside = container.querySelector('aside')
   expect(aside).toHaveClass('pointer-events-none')
-  expect(screen.getByRole('dialog')).toHaveClass('pointer-events-auto')
+  expect(screen.getByRole('status')).toHaveClass('pointer-events-auto')
 
   // No blocking modal backdrop overlay
   expect(container.querySelector('[data-slot="dialog-overlay"]')).toBeNull()

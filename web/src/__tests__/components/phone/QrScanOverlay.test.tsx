@@ -1,6 +1,6 @@
 /** The in-app viewfinder: a camera window with four corner marks, a line saying what to scan, and Cancel. */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { QrScanOverlay } from '@/components/phone/QrScanOverlay'
 
@@ -16,5 +16,22 @@ describe('QrScanOverlay', () => {
     expect(dialog.querySelectorAll('[data-qr-frame] > span')).toHaveLength(4)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes focus on Cancel, cancels on Escape, and gives focus back to the button that opened it', async () => {
+    const opener = document.createElement('button')
+    opener.textContent = 'Scan'
+    document.body.appendChild(opener)
+    opener.focus()
+    const onCancel = mock(() => {})
+    const view = render(<QrScanOverlay onCancel={onCancel} />)
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' })))
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+
+    act(() => view.unmount())
+    expect(document.activeElement).toBe(opener)
+    opener.remove()
   })
 })

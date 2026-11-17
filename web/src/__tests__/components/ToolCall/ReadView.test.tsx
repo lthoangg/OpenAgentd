@@ -36,4 +36,16 @@ describe("ReadView", () => {
     expect(screen.getByRole("status", { name: "Loading lines" }).getAttribute("data-slot")).toBe("skeleton")
     expect(screen.queryByText("Loading…")).toBeNull()
   })
+
+  it("shows no numbered empty line while the lines load", () => {
+    const { container } = render(<ReadView args={JSON.stringify({ path: "src/app.ts" })} loading />)
+    expect(screen.queryByText("1")).toBeNull()
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(1)
+  })
+
+  it("shows the loading lines in a fill the header itself does not use", () => {
+    render(<ReadView args={JSON.stringify({ path: "src/app.ts" })} loading />)
+    // The header is filled with --bg-key; a skeleton in that fill is invisible.
+    expect(screen.getByRole("status", { name: "Loading lines" }).className).not.toContain("bg-(--bg-key)")
+  })
 })

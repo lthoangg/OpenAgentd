@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { deepLinkParts, parseDeepLinkUrl } from '@/hooks/useDeepLinkRouter'
+import { DEEP_LINK_PROMPT_MAX, deepLinkParts, parseDeepLinkUrl } from '@/hooks/useDeepLinkRouter'
 
 describe('parseDeepLinkUrl', () => {
   it('leaves connect links to useConnectLink', () => {
@@ -97,6 +97,35 @@ describe('parseDeepLinkUrl', () => {
   it('rejects widget hosts with extra path segments', () => {
     expect(parseDeepLinkUrl('openagentd://new/extra')).toEqual({ kind: 'unknown' })
     expect(parseDeepLinkUrl('openagentd://scheduler/extra')).toEqual({ kind: 'unknown' })
+  })
+
+  it('fills a new draft with the prompt a link carries, cut to length', () => {
+    expect(parseDeepLinkUrl('openagentd://new?prompt=hi%20there')).toEqual({ kind: 'new_session', workspace: null, prompt: 'hi there' })
+    expect(parseDeepLinkUrl('openagentd://new?workspace=%2Frepo&prompt=fix+it')).toEqual({ kind: 'new_session', workspace: '/repo', prompt: 'fix it' })
+    expect(parseDeepLinkUrl('openagentd://new?prompt=%20%0A')).toEqual({ kind: 'new_session', workspace: null })
+    const long = parseDeepLinkUrl(`openagentd://new?prompt=${'a'.repeat(9000)}`)
+    expect(long.kind === 'new_session' ? long.prompt?.length : 0).toBe(DEEP_LINK_PROMPT_MAX)
+  })
+
+  it('opens Settings, on the section a link names', () => {
+    expect(parseDeepLinkUrl('openagentd://settings')).toEqual({ kind: 'open_settings', section: null })
+    expect(parseDeepLinkUrl('openagentd://settings/')).toEqual({ kind: 'open_settings', section: null })
+    expect(parseDeepLinkUrl('openagentd-dev://settings/models')).toEqual({ kind: 'open_settings', section: 'models' })
+    expect(parseDeepLinkUrl('openagentd://settings/a/b')).toEqual({ kind: 'unknown' })
+  })
+
+  it('opens telemetry on the range, trace or session a link names', () => {
+    expect(parseDeepLinkUrl('openagentd://telemetry')).toEqual({ kind: 'open_telemetry' })
+    expect(parseDeepLinkUrl('openagentd://telemetry?days=7&traceId=t1&session=s1')).toEqual({ kind: 'open_telemetry', days: 7, traceId: 't1', session: 's1' })
+    // A range the view has no button for, and empty values, are dropped.
+    expect(parseDeepLinkUrl('openagentd://telemetry?days=5&traceId=&session=%20')).toEqual({ kind: 'open_telemetry' })
+    expect(parseDeepLinkUrl('openagentd://telemetry/extra')).toEqual({ kind: 'unknown' })
+  })
+
+  it('reads a session link as one session id, not any app path', () => {
+    expect(parseDeepLinkUrl('openagentd://session/abc')).toEqual({ kind: 'navigate', path: '/abc' })
+    expect(parseDeepLinkUrl('openagentd://session/settings/models')).toEqual({ kind: 'unknown' })
+    expect(parseDeepLinkUrl('openagentd://session/a/b?srv=k')).toEqual({ kind: 'unknown' })
   })
 })
 

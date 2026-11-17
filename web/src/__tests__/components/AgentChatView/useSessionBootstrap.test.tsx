@@ -18,6 +18,7 @@ import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import { requestComposerInsert } from '@/lib/composer-insert'
 import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 
 function Harness({
@@ -671,6 +672,68 @@ describe('useSessionBootstrap new-session draft', () => {
     act(() => { useAgentStore.setState({ sessionId: 'new-session' }) })
     expect(stored()).toContainEqual(['new-session', { value: 'half a thought' }])
     expect(stored().some(([key]) => key === 'draft:/repo/other')).toBe(false)
+  })
+
+  function prefillComposer() {
+    const calls: string[] = []
+    const inputRef = createRef<InputComposerHandle>()
+    inputRef.current = {
+      focus: () => { calls.push('focus') },
+      setValue: (value: string) => { calls.push(`set ${value}`) },
+      appendValue: (text: string, options?: { paragraph?: boolean }) => { calls.push(`append ${text}${options?.paragraph ? ' ¶' : ''}`) },
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+    }
+    return { calls, inputRef }
+  }
+
+  it('fills a link prompt into the draft that mounts for its folder, once and unsent', () => {
+    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    // Cold start: the link was read before the chat view mounted.
+    useUIStore.getState().requestComposerPrefill('/repo/app', 'fix the build')
+    const { calls, inputRef } = prefillComposer()
+    const { rerender } = render(<Harness sessionId={null} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={inputRef} />)
+
+    // After the folder's saved text is restored, the prompt is added, never set over it.
+    expect(calls).toEqual(['set ', 'append fix the build ¶', 'focus'])
+    expect(useUIStore.getState().composerPrefill).toBeNull()
+    rerender(<Harness sessionId={null} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={inputRef} />)
+    expect(calls.filter((c) => c.startsWith('append'))).toHaveLength(1)
+  })
+
+  it('fills a link prompt into a draft already on screen, and leaves other folders’ prompts waiting', () => {
+    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    const { calls, inputRef } = prefillComposer()
+    render(<Harness sessionId={null} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={inputRef} />)
+    calls.length = 0
+
+    act(() => useUIStore.getState().requestComposerPrefill('/repo/other', 'not here'))
+    expect(calls).toEqual([])
+    expect(useUIStore.getState().composerPrefill).toEqual({ workspace: '/repo/other', text: 'not here' })
+
+    act(() => useUIStore.getState().requestComposerPrefill('/repo/app', 'run the tests'))
+    expect(calls).toEqual(['append run the tests ¶', 'focus'])
+    expect(useUIStore.getState().composerPrefill).toBeNull()
+  })
+
+  it('keeps a link prompt until the composer mounts (cold start: "Opening workspace…" first)', () => {
+    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    useUIStore.getState().requestComposerPrefill('/repo/app', 'list the files')
+    const { calls, inputRef: mounted } = prefillComposer()
+    const inputRef = createRef<InputComposerHandle>()
+    let result: ReturnType<typeof useSessionBootstrap> | null = null
+    render(<Harness sessionId={null} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={inputRef} onResult={(r) => { result = r }} />)
+
+    // No composer yet: the prompt waits instead of being used up.
+    expect(useUIStore.getState().composerPrefill).toEqual({ workspace: '/repo/app', text: 'list the files' })
+
+    inputRef.current = mounted.current
+    act(() => result!.handleComposerMount())
+    expect(calls).toEqual(['append list the files ¶', 'focus'])
+    expect(useUIStore.getState().composerPrefill).toBeNull()
   })
 })
 

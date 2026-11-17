@@ -5,7 +5,7 @@
  * the run deck and context meter under the box, and what sits pinned above
  * it (who drives the session, the run's question or plan, side questions).
  */
-import { useCallback, type RefObject } from 'react'
+import { useCallback, useEffect, type RefObject } from 'react'
 import type { AgentCapabilities, ContentBlock } from '@/api/types'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState } from '@/stores/useAgentStore/types'
@@ -72,6 +72,8 @@ interface ChatComposerProps {
   sideQuestionsInDock: boolean
   /** That tab is on screen. */
   sideQuestionsTabShown: boolean
+  /** Called once the composer is mounted and ``composerRef`` is set. */
+  onMount?: () => void
 }
 
 export function ChatComposer({
@@ -114,8 +116,12 @@ export function ChatComposer({
   onOpenSideQuestions,
   sideQuestionsInDock,
   sideQuestionsTabShown,
+  onMount,
 }: ChatComposerProps) {
   const pushToast = useToastStore((s) => s.push)
+
+  // The child composer's ref is set before this runs.
+  useEffect(() => { onMount?.() }, [onMount])
 
   // ↑/↓ recall in the composer shows the recalled prompt in the transcript;
   // walking back out to an empty draft returns to the live end, as ⌥⌘↓ past

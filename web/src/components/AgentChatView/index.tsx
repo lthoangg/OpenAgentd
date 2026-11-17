@@ -304,6 +304,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
+    handleComposerMount,
   } = useSessionBootstrap({
     sessionId,
     workspace,
@@ -493,6 +494,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       historyPrompts={historyPrompts}
       onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
       onValueChange={handleDraftValueChange}
+      onMount={handleComposerMount}
       fileRefs={fileRefs}
       onFileRefsNeeded={() => setFileRefsEnabled(true)}
       revertedCount={leadRevertedCount}

@@ -37,6 +37,7 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
+import { closedReasonOf, shellErrorOf } from '@/stores/terminal-state'
 import { TERMINAL_FONT_FAMILY, terminalFontSize } from '@/lib/terminal-font'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { readCommandFieldOn, TerminalCommandField, writeCommandFieldOn } from './TerminalCommandField'
@@ -64,7 +65,7 @@ interface TerminalViewProps {
 export function TerminalView({ sessionId }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const meta = useTerminalStore((s) => s.sessions[sessionId])
-  const status = meta?.status ?? 'error'
+  const status = meta?.shellState.kind ?? 'error'
   const handleReady = meta?.handleReady ?? false
   const [modifiers, setModifiersState] = useState<StickyModifiers>({ ctrl: false, alt: false })
   const modifiersRef = useRef<StickyModifiers>({ ctrl: false, alt: false })
@@ -376,15 +377,15 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
         {status === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
             <p className="text-xs font-semibold text-(--color-text)">Terminal unavailable</p>
-            {meta?.errorMsg && (
-              <p className="text-xs text-(--color-text-muted)">{meta.errorMsg}</p>
+            {shellErrorOf(meta) && (
+              <p className="text-xs text-(--color-text-muted)">{shellErrorOf(meta)}</p>
             )}
             <ReconnectButton onClick={reconnect} />
           </div>
         )}
         {status === 'exited' && (
           <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 bg-(--color-surface)/90 px-3 py-2 text-center text-xs text-(--color-text-muted)">
-            {terminalClosedMessage(meta?.closedReason)}
+            {terminalClosedMessage(closedReasonOf(meta))}
             <ReconnectButton onClick={reconnect} />
           </div>
         )}

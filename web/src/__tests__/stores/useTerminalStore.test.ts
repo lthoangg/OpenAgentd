@@ -19,6 +19,7 @@ import {
 } from '@/components/WorkspacePanel/dock-panes'
 import type { DockTab } from '@/components/WorkspacePanel/dock-tabs'
 import { useFakeTimers } from '../fake-timers'
+import { closedReasonOf, shellErrorOf } from '@/stores/terminal-state'
 import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from '@/lib/terminal-font'
 
 // ── Module mocks (must precede store import) ────────────────────────────────
@@ -235,9 +236,9 @@ beforeEach(() => {
 describe('useTerminalStore', () => {
   it('open() registers a connecting session, then connects', async () => {
     const id = open()
-    expect(meta(id)?.status).toBe('connecting')
+    expect(meta(id)?.shellState.kind).toBe('connecting')
     await settle()
-    expect(meta(id)?.status).toBe('connected')
+    expect(meta(id)?.shellState.kind).toBe('connected')
     // Server output is written to the persistent term instance.
     lastCallbacks!.onOutput('hello')
     expect(createdTerms[0].write).toHaveBeenCalledWith('hello')
@@ -300,8 +301,8 @@ describe('useTerminalStore', () => {
     const id = open()
     await settle()
     lastCallbacks!.onExit?.()
-    expect(meta(id)?.status).toBe('exited')
-    expect(meta(id)?.closedReason).toBe('exit')
+    expect(meta(id)?.shellState.kind).toBe('exited')
+    expect(closedReasonOf(meta(id))).toBe('exit')
     // Term NOT disposed — scrollback stays readable until user closes tab.
     expect(createdTerms[0].dispose).not.toHaveBeenCalled()
   })
@@ -312,8 +313,8 @@ describe('useTerminalStore', () => {
     await settle()
     s.setAttached(id, false)
     s.reapIdle(Date.now() + TERMINAL_IDLE_CLOSE_MS + 1)
-    expect(meta(id)?.status).toBe('exited')
-    expect(meta(id)?.closedReason).toBe('idle')
+    expect(meta(id)?.shellState.kind).toBe('exited')
+    expect(closedReasonOf(meta(id))).toBe('idle')
     // Idle close frees the renderer.
     expect(createdTerms[0].dispose).toHaveBeenCalled()
     expect(lastSocket!.close).toHaveBeenCalled()
@@ -332,12 +333,12 @@ describe('useTerminalStore', () => {
 
     s.reapIdle(Date.now() + TERMINAL_IDLE_CLOSE_MS + 1)
     // Attached session survives arbitrarily long idle.
-    expect(meta(attached)?.status).toBe('connected')
+    expect(meta(attached)?.shellState.kind).toBe('connected')
     // Recently-active detached session survives this pass…
-    expect(meta(fresh)?.status).toBe('connected')
+    expect(meta(fresh)?.shellState.kind).toBe('connected')
     // …but is reaped once a full idle window elapses.
     s.reapIdle(Date.now() + 2 * TERMINAL_IDLE_CLOSE_MS + 2)
-    expect(meta(fresh)?.status).toBe('exited')
+    expect(meta(fresh)?.shellState.kind).toBe('exited')
   })
 
   it('reapIdle never closes a session with a running command', async () => {
@@ -350,13 +351,13 @@ describe('useTerminalStore', () => {
     expect(meta(id)?.busy).toBe(true)
 
     s.reapIdle(Date.now() + 10 * TERMINAL_IDLE_CLOSE_MS)
-    expect(meta(id)?.status).toBe('connected')
+    expect(meta(id)?.shellState.kind).toBe('connected')
     expect(createdTerms[0].dispose).not.toHaveBeenCalled()
 
     // Back at the prompt, the idle window applies again.
     lastCallbacks!.onBusy!(false)
     s.reapIdle(Date.now() + 10 * TERMINAL_IDLE_CLOSE_MS)
-    expect(meta(id)?.status).toBe('exited')
+    expect(meta(id)?.shellState.kind).toBe('exited')
   })
 
   it('a shell that exits is no longer busy', async () => {
@@ -463,20 +464,20 @@ describe('useTerminalStore', () => {
     const id = open()
     await settle()
     lastCallbacks!.onExit?.()
-    expect(meta(id)?.status).toBe('exited')
+    expect(meta(id)?.shellState.kind).toBe('exited')
     s.reconnect(id)
-    expect(meta(id)?.status).toBe('connecting')
+    expect(meta(id)?.shellState.kind).toBe('connecting')
     await settle()
-    expect(meta(id)?.status).toBe('connected')
-    expect(meta(id)?.closedReason).toBeUndefined()
+    expect(meta(id)?.shellState.kind).toBe('connected')
+    expect(closedReasonOf(meta(id))).toBeUndefined()
   })
 
   it('connect failure marks the session error with the message', async () => {
     connectFailures = [failure()]
     const id = open()
     await settle()
-    expect(meta(id)?.status).toBe('error')
-    expect(meta(id)?.errorMsg).toBe('boom')
+    expect(meta(id)?.shellState.kind).toBe('error')
+    expect(shellErrorOf(meta(id))).toBe('boom')
   })
 
   it('rename() sets a custom title, trimmed, ignoring blank input', async () => {
@@ -573,7 +574,7 @@ describe('terminal protocol v2', () => {
   async function openConnected(workspace = WS) {
     const id = open(workspace)
     await settle()
-    expect(meta(id)?.status).toBe('connected')
+    expect(meta(id)?.shellState.kind).toBe('connected')
     return id
   }
 
@@ -665,7 +666,7 @@ describe('terminal protocol v2', () => {
       lastCallbacks!.onBusy!(false) // the server reports busy: Unix
       s.setAttached(id, false)
       s.reapIdle(Date.now() + TERMINAL_IDLE_CLOSE_MS + 1)
-      expect(meta(id)?.closedReason).toBe('idle')
+      expect(closedReasonOf(meta(id))).toBe('idle')
       expect(events).toEqual(['delete', 'socket.close'])
       expect(deleteCalls).toEqual(['sess-1'])
     })
@@ -675,7 +676,7 @@ describe('terminal protocol v2', () => {
       const s = useTerminalStore.getState()
       s.setAttached(id, false)
       s.reapIdle(Date.now() + 100 * TERMINAL_IDLE_CLOSE_MS)
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
       expect(deleteCalls).toEqual([])
       expect(createdTerms[0].dispose).not.toHaveBeenCalled()
     })
@@ -686,7 +687,7 @@ describe('terminal protocol v2', () => {
       const id = await openConnected()
       lastCallbacks!.onSeq!(777)
       lastCallbacks!.onClose!(1006)
-      expect(meta(id)?.status).toBe('connecting')
+      expect(meta(id)?.shellState.kind).toBe('connecting')
       expect(connectCalls).toHaveLength(1)
       timers.tick(TERMINAL_REATTACH_DELAYS_MS[0] - 1)
       await tick()
@@ -695,7 +696,7 @@ describe('terminal protocol v2', () => {
       await tick()
       expect(connectCalls).toHaveLength(2)
       expect(connectCalls[1].options).toEqual({ sessionId: 'sess-1', since: 777 })
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
       expect(meta(id)?.backendId).toBe('sess-1')
       // The shell is the same one: nothing was killed or re-spawned.
       expect(deleteCalls).toEqual([])
@@ -717,7 +718,7 @@ describe('terminal protocol v2', () => {
         expect(connectCalls).toHaveLength(calls)
       }
       // Five failed tries: stop, and offer Reconnect.
-      expect(meta(id)?.status).toBe('error')
+      expect(meta(id)?.shellState.kind).toBe('error')
       timers.tick(60_000)
       await tick()
       expect(connectCalls).toHaveLength(6)
@@ -747,8 +748,8 @@ describe('terminal protocol v2', () => {
       lastCallbacks!.onClose!(1006)
       timers.tick(500)
       await tick()
-      expect(meta(id)?.status).toBe('exited')
-      expect(meta(id)?.closedReason).toBe('lost')
+      expect(meta(id)?.shellState.kind).toBe('exited')
+      expect(closedReasonOf(meta(id))).toBe('lost')
       timers.tick(60_000)
       await tick()
       expect(connectCalls).toHaveLength(2)
@@ -760,8 +761,8 @@ describe('terminal protocol v2', () => {
       lastCallbacks!.onClose!(1000)
       timers.tick(60_000)
       await tick()
-      expect(meta(id)?.status).toBe('exited')
-      expect(meta(id)?.closedReason).toBe('exit')
+      expect(meta(id)?.shellState.kind).toBe('exited')
+      expect(closedReasonOf(meta(id))).toBe('exit')
       expect(connectCalls).toHaveLength(1)
     })
 
@@ -780,9 +781,9 @@ describe('terminal protocol v2', () => {
       stale.onClose!(1006)
       timers.tick(500)
       await tick()
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
       stale.onClose!(1006) // late close of the old socket
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
       timers.tick(60_000)
       await tick()
       expect(connectCalls).toHaveLength(2)
@@ -791,15 +792,15 @@ describe('terminal protocol v2', () => {
     it('a ws error alone does not fail a v2 session (the close decides)', async () => {
       const id = await openConnected()
       lastCallbacks!.onError!(new Error('x'))
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
     })
 
     it('spawn failure (4429) is an error, not a retry loop', async () => {
       const id = open()
       connectFailures = [failure('spawn-failed', "Couldn't start the shell")]
       await settle()
-      expect(meta(id)?.status).toBe('error')
-      expect(meta(id)?.errorMsg).toBe("Couldn't start the shell")
+      expect(meta(id)?.shellState.kind).toBe('error')
+      expect(shellErrorOf(meta(id))).toBe("Couldn't start the shell")
       timers.tick(60_000)
       await tick()
       expect(connectCalls).toHaveLength(1)
@@ -810,8 +811,8 @@ describe('terminal protocol v2', () => {
     it('marks the session as opened in another window, without retrying', async () => {
       const id = await openConnected()
       lastCallbacks!.onClose!(4409)
-      expect(meta(id)?.status).toBe('exited')
-      expect(meta(id)?.closedReason).toBe('elsewhere')
+      expect(meta(id)?.shellState.kind).toBe('exited')
+      expect(closedReasonOf(meta(id))).toBe('elsewhere')
       timers.tick(60_000)
       await tick()
       expect(connectCalls).toHaveLength(1)
@@ -824,7 +825,7 @@ describe('terminal protocol v2', () => {
       lastCallbacks!.onClose!(1006)
       timers.tick(500)
       await tick()
-      expect(meta(id)?.closedReason).toBe('elsewhere')
+      expect(closedReasonOf(meta(id))).toBe('elsewhere')
     })
 
     it('reconnect() reattaches the same shell by backendId at the current seq', async () => {
@@ -832,11 +833,11 @@ describe('terminal protocol v2', () => {
       lastCallbacks!.onSeq!(900)
       lastCallbacks!.onClose!(4409)
       useTerminalStore.getState().reconnect(id)
-      expect(meta(id)?.status).toBe('connecting')
+      expect(meta(id)?.shellState.kind).toBe('connecting')
       await settle()
       expect(connectCalls[1].options).toEqual({ sessionId: 'sess-1', since: 900 })
-      expect(meta(id)?.status).toBe('connected')
-      expect(meta(id)?.closedReason).toBeUndefined()
+      expect(meta(id)?.shellState.kind).toBe('connected')
+      expect(closedReasonOf(meta(id))).toBeUndefined()
       expect(meta(id)?.backendId).toBe('sess-1')
     })
 
@@ -848,7 +849,7 @@ describe('terminal protocol v2', () => {
       await settle()
       expect(connectCalls).toHaveLength(3)
       expect(connectCalls[2].options).toBeUndefined()
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
       expect(meta(id)?.backendId).toBe('sess-2')
       expect(getTerminalRuntime(id)!.seq).toBe(0)
     })
@@ -870,11 +871,11 @@ describe('terminal protocol v2', () => {
         timers.tick(delay)
         await tick()
       }
-      expect(meta(id)?.status).toBe('error')
+      expect(meta(id)?.shellState.kind).toBe('error')
       useTerminalStore.getState().reconnect(id)
       await settle()
       expect(connectCalls.at(-1)?.options).toMatchObject({ sessionId: 'sess-1' })
-      expect(meta(id)?.status).toBe('connected')
+      expect(meta(id)?.shellState.kind).toBe('connected')
     })
   })
 
@@ -898,7 +899,7 @@ describe('terminal protocol v2', () => {
       await tick()
       const metas = useTerminalStore.getState().sessionsForContext(WS)
       expect(metas.map((m) => m.backendId)).toEqual(['a', 'b'])
-      expect(metas.every((m) => m.status === 'connected')).toBe(true)
+      expect(metas.every((m) => m.shellState.kind === 'connected')).toBe(true)
       expect(connectCalls.map((c) => c.options)).toEqual([
         { sessionId: 'a', since: 0 },
         { sessionId: 'b', since: 0 },
@@ -966,10 +967,10 @@ describe('terminal protocol v2', () => {
       await useTerminalStore.getState().restoreSessions(WS)
       await settle()
       const [m] = useTerminalStore.getState().sessionsForContext(WS)
-      expect(m.status).toBe('connecting')
+      expect(m.shellState.kind).toBe('connecting')
       timers.tick(500)
       await tick()
-      expect(meta(m.id)?.status).toBe('connected')
+      expect(meta(m.id)?.shellState.kind).toBe('connected')
       expect(connectCalls.at(-1)?.options).toEqual({ sessionId: 'a', since: 0 })
     })
 
@@ -1287,7 +1288,7 @@ describe('run in terminal', () => {
 
     await settle()
 
-    expect(meta(id)?.status).toBe('connected')
+    expect(meta(id)?.shellState.kind).toBe('connected')
     expect(sent()).toEqual(['ls', '\r'])
   })
 
@@ -1307,12 +1308,12 @@ describe('run in terminal', () => {
     const id = open()
     useTerminalStore.getState().runCommand(id, 'ls')
     await settle()
-    expect(meta(id)?.status).toBe('error')
+    expect(meta(id)?.shellState.kind).toBe('error')
 
     useTerminalStore.getState().reconnect(id)
     await settle()
 
-    expect(meta(id)?.status).toBe('connected')
+    expect(meta(id)?.shellState.kind).toBe('connected')
     expect(sent()).toEqual([])
   })
 

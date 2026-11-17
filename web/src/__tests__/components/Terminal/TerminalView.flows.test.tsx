@@ -88,7 +88,7 @@ function device(kind: 'phone' | 'desktop') {
 async function openTerminal() {
   const id = useTerminalStore.getState().open({ workspace: '/repo' }, '/repo')
   render(<TerminalView sessionId={id} />)
-  await waitFor(() => expect(useTerminalStore.getState().sessions[id]?.status).toBe('connected'))
+  await waitFor(() => expect(useTerminalStore.getState().sessions[id]?.shellState.kind).toBe('connected'))
   return id
 }
 

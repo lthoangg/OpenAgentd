@@ -72,6 +72,19 @@ export const MACHINES: Record<string, MachineEntry> = {
     fields: ['formState'],
     initial: [],
   },
+  'terminal shell': {
+    file: 'stores/terminal-state.ts',
+    fields: ['shellState'],
+    // The store sets a new tab's first value; the tab bar draws a
+    // placeholder for a tab whose session is not in the store yet.
+    initial: ['stores/useTerminalStore.ts', 'components/WorkspacePanel/DockTabBar.tsx'],
+  },
+  'draft handoff': {
+    file: 'components/AgentChatView/handoff-state.ts',
+    // Held by ``useReducer(handoffStep)``.
+    fields: ['handoffState'],
+    initial: [],
+  },
 }
 
 /**

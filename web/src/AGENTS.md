@@ -89,6 +89,11 @@ flow) is a state machine, written out rather than spread over flags.
   as "working", "connected" or "show the chip" are selectors over it, never
   stored beside it. Timers and requests are effects the caller runs after a
   transition, keyed to the state they were started for.
+  A component holds it with `useReducer(step)` (`step = (s, e) =>
+  machine.transition(s, e)`); a hook that must not re-render holds it in a
+  ref and changes it in one `move(event)` (register the field as
+  `name.current`). A state that follows a prop or a query (a status, a
+  route) is moved in render when they disagree, so its first frame is right.
 - **Illegal moves.** An event the table does not list is a bug: under test
   it throws, in the app it is logged as `illegal_transition` and the state
   stays. A stale event that is fine to drop is listed as a move that
@@ -99,12 +104,16 @@ flow) is a state machine, written out rather than spread over flags.
   value is set). That test fails on an unregistered `defineMachine` and on a
   write that is not a transition. Name the store field after the machine
   (`sessionRun`, `streamLink`), not a word as common as `status` or `run`,
-  so the test can find its writes. Data a machine reads that any value may follow (an agent's status, mirrored from
-  the server) gets one writer function instead, listed in `SINGLE_WRITER`.
+  so the test can find its writes. Data a machine reads that any value may
+  follow (an agent's status, mirrored from the server) gets one writer
+  function instead, listed in `SINGLE_WRITER`.
 - **Examples.** `stores/useAgentStore/run-state.ts` (the session run, with
   `reconcileSnapshot` as a pure verdict for a history page) and
   `question-state.ts` (the question card) show the shape, the store field,
   the selectors (`isRunLive`, `openQuestion`) and the tests beside them.
+  `components/settings/pages/pairing-ui-state.ts` is a component's
+  (sub-flags kept inside the screen they belong to, so they go with it), and
+  `hooks/follow-state.ts` a hook's ref.
 - **Test it** with a table test of its moves, one test per illegal move that
   matters, and a test that drives the real store or hook through the events.
   The session states the backend sends are listed in

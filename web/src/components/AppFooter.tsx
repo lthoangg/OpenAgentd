@@ -40,6 +40,7 @@ import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTerminalStore } from '@/stores/useTerminalStore'
+import { isShellLive } from '@/stores/terminal-state'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
@@ -158,7 +159,7 @@ function useRunningTerminalCount(workspace: string | null | undefined): number {
     if (!workspace) return 0
     let running = 0
     for (const meta of Object.values(state.sessions)) {
-      if (meta.contextKey === workspace && (meta.status === 'connected' || meta.status === 'connecting')) running += 1
+      if (meta.contextKey === workspace && isShellLive(meta.shellState)) running += 1
     }
     return running
   })

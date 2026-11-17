@@ -91,4 +91,16 @@ describe('useDraftHandoff', () => {
     expect(result.current.active).toBe(true)
     expect(result.current.snapshot).toBeNull()
   })
+
+  it('ends the hand-off when a new draft opens before it settles', () => {
+    timers = useFakeTimers()
+    const { result, rerender } = renderHandoff({ isDraft: true, reducedMotion: false })
+    result.current.capture(snapshot)
+    rerender({ isDraft: false, reducedMotion: false })
+    expect(result.current.active).toBe(true)
+
+    rerender({ isDraft: true, reducedMotion: false })
+    expect(result.current.active).toBe(false)
+    expect(result.current.snapshot).toBeNull()
+  })
 })

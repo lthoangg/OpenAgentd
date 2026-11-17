@@ -39,6 +39,7 @@ import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { cn } from '@/lib/utils'
 import { absoluteWorkspacePath } from '@/utils/workspace'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
+import { SHELL_CONNECTING } from '@/stores/terminal-state'
 import {
   DOCK_ACTION_BUTTON_CLASS,
   DOCK_TAB_LIFTED_CLASS,
@@ -416,7 +417,7 @@ export function DockTabBar({
                 className={dragging ? DOCK_TAB_LIFTED_CLASS : undefined}
                 buttonRef={(node) => registerTabRef(tab.id, node)}
                 meta={terminalMetas.find((m) => m.id === tab.termId) ?? {
-                  id: tab.termId, contextKey: workspace, title: tab.title, status: 'connecting', order: 0,
+                  id: tab.termId, contextKey: workspace, title: tab.title, shellState: SHELL_CONNECTING, order: 0,
                 }}
                 active={active}
                 mobile={mobile}

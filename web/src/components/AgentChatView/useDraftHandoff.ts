@@ -13,8 +13,9 @@
  * session id) is not a hand-off, and neither is anything under reduced
  * motion.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 import type { ComposerHandoff } from '../composer/Composer'
+import { DRAFTING, IN_CHAT, handoffStep } from './handoff-state'
 
 /** How long the hand-off state lasts: the 400ms glide plus a little slack. */
 export const HANDOFF_ACTIVE_MS = 450
@@ -46,14 +47,14 @@ export function useDraftHandoff({ isDraft, sessionId, reducedMotion }: {
 
   // Derived during render, not in an effect: the first render of the chat
   // must already know it is a hand-off, or it paints one frame unanimated.
-  const [wasDraft, setWasDraft] = useState(isDraft)
-  const [handoff, setHandoff] = useState<{ snapshot: ComposerHandoff | null } | null>(null)
-  if (wasDraft !== isDraft) {
-    setWasDraft(isDraft)
-    if (wasDraft && !sessionId && !reducedMotion) {
+  // The state says whether this was a draft, so there is nothing else to keep in step.
+  const [handoffState, send] = useReducer(handoffStep, isDraft ? DRAFTING : IN_CHAT)
+  if ((handoffState.kind === 'drafting') !== isDraft) {
+    if (isDraft) send({ type: 'enter' })
+    else {
       const pending = pendingRef.current
       const fresh = pending !== null && Date.now() - pending.at <= SNAPSHOT_MAX_AGE_MS
-      setHandoff({ snapshot: fresh ? pending.snapshot : null })
+      send({ type: 'leave', play: !sessionId && !reducedMotion, snapshot: fresh ? pending.snapshot : null })
     }
   }
 
@@ -63,10 +64,14 @@ export function useDraftHandoff({ isDraft, sessionId, reducedMotion }: {
   }, [isDraft])
 
   useEffect(() => {
-    if (!handoff) return
-    const timer = setTimeout(() => setHandoff(null), HANDOFF_ACTIVE_MS)
+    if (handoffState.kind !== 'playing') return
+    const timer = setTimeout(() => send({ type: 'settle' }), HANDOFF_ACTIVE_MS)
     return () => clearTimeout(timer)
-  }, [handoff])
+  }, [handoffState])
 
-  return { capture, active: handoff !== null, snapshot: handoff?.snapshot ?? null }
+  return {
+    capture,
+    active: handoffState.kind === 'playing',
+    snapshot: handoffState.kind === 'playing' ? handoffState.snapshot : null,
+  }
 }

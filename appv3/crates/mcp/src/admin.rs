@@ -37,6 +37,14 @@ fn oauth_env_key(name: &str, field: &str) -> String {
     format!("{}_MCP_{field}", if p.is_empty() { "MCP".to_string() } else { p })
 }
 
+/// Store a connector's API key as a named secret in `credentials.yaml` and
+/// return the `${NAME}` reference a header uses in its place.
+pub fn store_api_key(name: &str, key: &str) -> std::io::Result<String> {
+    let env_key = oauth_env_key(name, "API_KEY");
+    save_env_values(&[(env_key.clone(), key.to_string())])?;
+    Ok(format!("${{{env_key}}}"))
+}
+
 /// Store MCP client secrets as named secrets in `credentials.yaml`;
 /// `mcp.json` keeps only the `${NAME}` references.
 fn save_env_values(values: &[(String, String)]) -> std::io::Result<()> {
@@ -192,8 +200,77 @@ pub fn servers_text(m: &McpManager) -> String {
     servers_text_for(m, cfgmod::load_config())
 }
 
+// ── the gallery, for the agent ──────────────────────────────────────────────
+
+/// How a gallery connector signs in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GalleryAuth {
+    None,
+    OAuth,
+    Key,
+}
+
+/// A ready-made connector from the gallery, for the agent to suggest.
+#[derive(Clone, Debug)]
+pub struct GalleryHint {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub auth: GalleryAuth,
+}
+
+type GallerySource = Box<dyn Fn() -> Vec<GalleryHint> + Send + Sync>;
+
+fn gallery_source() -> &'static std::sync::OnceLock<GallerySource> {
+    static S: std::sync::OnceLock<GallerySource> = std::sync::OnceLock::new();
+    &S
+}
+
+/// Where `action='servers'` reads the gallery from (the API server's last
+/// good list). Set once at startup.
+pub fn set_gallery_source(f: impl Fn() -> Vec<GalleryHint> + Send + Sync + 'static) {
+    let _ = gallery_source().set(Box::new(f));
+}
+
+fn same_address(a: &str, b: &str) -> bool {
+    a.trim().trim_end_matches('/').eq_ignore_ascii_case(b.trim().trim_end_matches('/'))
+}
+
+/// The gallery's connectors that are not configured yet, and how to add each.
+fn gallery_text(cfg: Option<&cfgmod::McpConfig>) -> Option<String> {
+    gallery_text_from(&gallery_source().get()?(), cfg)
+}
+
+fn gallery_text_from(hints: &[GalleryHint], cfg: Option<&cfgmod::McpConfig>) -> Option<String> {
+    let configured = |url: &str| cfg.is_some_and(|c| c.servers.values().any(|sc| matches!(sc, ServerConfig::Http { url: u, .. } if same_address(u, url))));
+    let lines: Vec<String> = hints
+        .iter()
+        .filter(|h| !configured(&h.url))
+        .map(|h| {
+            let how = match h.auth {
+                GalleryAuth::None => format!("free, no account: add it with action='save', server='{}', config={{\"url\": \"{}\"}}", h.id, h.url),
+                GalleryAuth::OAuth => {
+                    format!("signs in with the user's account: add it with action='save', server='{}', config={{\"url\": \"{}\"}}, then the user signs in", h.id, h.url)
+                }
+                GalleryAuth::Key => "needs the user's key: the user turns it on in Settings → Connectors".to_string(),
+            };
+            format!("- {} ({}) — {how}", h.name, h.id)
+        })
+        .collect();
+    (!lines.is_empty()).then(|| format!("Ready-made connectors the user can turn on (Settings → Connectors shows them too):\n{}", lines.join("\n")))
+}
+
 /// [`servers_text`] for a loaded `mcp.json`.
 fn servers_text_for(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> String {
+    let gallery = gallery_text(cfg.as_ref().ok());
+    let text = servers_list_text(m, cfg);
+    match gallery {
+        Some(g) => format!("{text}\n{g}"),
+        None => text,
+    }
+}
+
+fn servers_list_text(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> String {
     let plugin_servers = m.plugin_servers();
     let mut lines = match cfg {
         Err(e) => vec![format!("mcp.json is invalid, so no server runs from it: {e}")],
@@ -433,5 +510,22 @@ mod tests {
             assert_eq!(e, "changelog-tools/github comes from plugin changelog-tools; manage it in Settings → Plugins");
         }
         assert!(m.get_status("changelog-tools/github").is_some());
+    }
+
+    #[test]
+    fn the_agent_sees_the_gallery_connectors_not_added_yet_and_how_to_add_each() {
+        let hint = |id: &str, url: &str, auth| GalleryHint { id: id.into(), name: id.to_uppercase(), url: url.into(), auth };
+        let hints = [
+            hint("docs", "https://docs.example/mcp", GalleryAuth::None),
+            hint("notes", "https://notes.example/mcp", GalleryAuth::OAuth),
+            hint("gh", "https://gh.example/mcp/", GalleryAuth::Key),
+        ];
+        let mut cfg = cfgmod::McpConfig::default();
+        cfg.servers.insert("mine".into(), entry(json!({"url": "https://DOCS.example/mcp/"})));
+        let text = gallery_text_from(&hints, Some(&cfg)).unwrap();
+        assert!(!text.contains("(docs)"), "already added: {text}");
+        assert!(text.contains(r#"- NOTES (notes) — signs in with the user's account: add it with action='save', server='notes', config={"url": "https://notes.example/mcp"}, then the user signs in"#), "{text}");
+        assert!(text.contains("- GH (gh) — needs the user's key: the user turns it on in Settings → Connectors"), "{text}");
+        assert_eq!(gallery_text_from(&hints[..1], Some(&cfg)), None, "nothing left to add");
     }
 }

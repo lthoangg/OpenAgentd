@@ -221,6 +221,7 @@ dependencies = [
  "bytes",
  "chrono",
  "dunce",
+ "ed25519-dalek",
  "flate2",
  "form_urlencoded",
  "futures",

@@ -7,6 +7,8 @@ pub mod events;
 pub mod health;
 pub mod library;
 pub mod mcp;
+pub mod mcp_gallery;
+pub mod mcp_sign_in;
 pub mod misc;
 pub mod modules;
 pub mod plugins;

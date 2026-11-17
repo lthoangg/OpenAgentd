@@ -25,6 +25,7 @@ appv3-mcp.workspace = true
 appv3-terminal.workspace = true
 appv3-preview.workspace = true
 base64 = "0.23"
+ed25519-dalek = { version = "2.2", default-features = false, features = ["std"] }
 indexmap = { version = "2", features = ["serde"] }
 sqlx.workspace = true
 anyhow.workspace = true

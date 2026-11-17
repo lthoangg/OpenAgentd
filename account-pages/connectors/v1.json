@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "entries": [
+    {"type": "connector", "id": "context7", "name": "Context7", "category": "docs", "description": "Up-to-date docs and code examples for thousands of libraries.", "url": "https://mcp.context7.com/mcp", "auth": "none"},
+    {"type": "connector", "id": "deepwiki", "name": "DeepWiki", "category": "docs", "description": "Ask questions about any public GitHub repository.", "url": "https://mcp.deepwiki.com/mcp", "auth": "none"},
+    {"type": "connector", "id": "microsoft-learn", "name": "Microsoft Learn", "category": "docs", "description": "Official Microsoft and Azure documentation.", "url": "https://learn.microsoft.com/api/mcp", "auth": "none"},
+    {"type": "connector", "id": "aws-knowledge", "name": "AWS Knowledge", "category": "docs", "description": "AWS documentation, guidance and regional availability.", "url": "https://knowledge-mcp.global.api.aws", "auth": "none"},
+    {"type": "connector", "id": "cloudflare-docs", "name": "Cloudflare Docs", "category": "docs", "description": "Search Cloudflare's developer documentation.", "url": "https://docs.mcp.cloudflare.com/mcp", "auth": "none"},
+    {"type": "connector", "id": "exa", "name": "Exa Search", "category": "search", "description": "Search the web and read pages, built for agents. Free tier is rate-limited.", "url": "https://mcp.exa.ai/mcp", "auth": "none"},
+    {"type": "connector", "id": "huggingface", "name": "Hugging Face", "category": "dev", "description": "Search models, datasets, Spaces and papers on the Hub.", "url": "https://huggingface.co/mcp", "auth": "none"},
+    {"type": "connector", "id": "notion", "name": "Notion", "category": "work", "description": "Search, read and write pages and databases.", "url": "https://mcp.notion.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "linear", "name": "Linear", "category": "work", "description": "Find, create and update issues and projects.", "url": "https://mcp.linear.app/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "monday", "name": "monday.com", "category": "work", "description": "Boards, items and updates in your monday.com account.", "url": "https://mcp.monday.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "neon", "name": "Neon", "category": "dev", "description": "Manage Neon Postgres projects, branches and queries.", "url": "https://mcp.neon.tech/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "posthog", "name": "PostHog", "category": "dev", "description": "Product analytics, feature flags and errors.", "url": "https://mcp.posthog.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "semgrep", "name": "Semgrep", "category": "dev", "description": "Scan code for security issues.", "url": "https://mcp.semgrep.ai/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "stripe", "name": "Stripe", "category": "work", "description": "Customers, payments and the Stripe docs.", "url": "https://mcp.stripe.com", "auth": "oauth"},
+    {"type": "connector", "id": "canva", "name": "Canva", "category": "design", "description": "Find, create and export Canva designs.", "url": "https://mcp.canva.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "atlassian", "name": "Atlassian", "category": "work", "description": "Jira issues and Confluence pages.", "url": "https://mcp.atlassian.com/v1/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "sentry", "name": "Sentry", "category": "dev", "description": "Errors, issues and releases from Sentry.", "url": "https://mcp.sentry.dev/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "supabase", "name": "Supabase", "category": "dev", "description": "Supabase projects, databases and edge functions.", "url": "https://mcp.supabase.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "webflow", "name": "Webflow", "category": "design", "description": "Sites, pages and CMS collections in Webflow.", "url": "https://mcp.webflow.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "paypal", "name": "PayPal", "category": "work", "description": "Invoices, orders and transactions in PayPal.", "url": "https://mcp.paypal.com/mcp", "auth": "oauth"},
+    {"type": "connector", "id": "github", "name": "GitHub", "category": "dev", "description": "Repositories, issues and pull requests. Uses a personal access token.", "url": "https://api.githubcopilot.com/mcp/", "auth": {"header": "Authorization", "template": "Bearer {key}", "key_url": "https://github.com/settings/personal-access-tokens/new", "key_label": "Personal access token"}}
+  ]
+}

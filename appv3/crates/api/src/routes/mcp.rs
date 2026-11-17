@@ -31,21 +31,25 @@ pub fn router() -> Router<AppState> {
         .route("/app-context", post(update_app_context))
         .route("/app-storage", post(update_app_storage))
         .route("/apply", post(apply))
+        .merge(super::mcp_sign_in::router())
+        .merge(super::mcp_gallery::router())
 }
 
-fn internal(e: impl std::fmt::Display) -> ApiError {
+pub(super) fn internal(e: impl std::fmt::Display) -> ApiError {
     ApiError::internal(e)
 }
 
 /// `ServerStatusResponse`. A server a plugin provides adds `plugin` (the
 /// user's own have no such key), and its `config` is the plugin's: it has no
 /// entry in `mcp.json`.
-fn status_json(st: &ServerStatus, cfg: Option<&ServerConfig>) -> Value {
+pub(super) fn status_json(st: &ServerStatus, cfg: Option<&ServerConfig>) -> Value {
     let config = if st.plugin.is_some() { plugin_config_body(cfg) } else { masked_config_body(cfg) };
     let mut v = json!({
         "name": st.name, "transport": st.transport, "enabled": st.enabled, "state": st.state,
         "error": st.error, "tool_names": st.tool_names, "started_at": st.started_at,
         "config": config,
+        // Holds a sign-in it can use (or refresh): what "Sign out" forgets.
+        "signed_in": oauth::has_cached_oauth_tokens(&st.name),
     });
     if let Some(plugin) = &st.plugin {
         v["plugin"] = json!(plugin);
@@ -55,7 +59,7 @@ fn status_json(st: &ServerStatus, cfg: Option<&ServerConfig>) -> Value {
 
 /// The config `st` shows: the user's entry in `mcp.json`, or for a plugin's
 /// server the one its plugin gave it.
-fn config_of(st: &ServerStatus, user: &cfgmod::McpConfig) -> Option<ServerConfig> {
+pub(super) fn config_of(st: &ServerStatus, user: &cfgmod::McpConfig) -> Option<ServerConfig> {
     match st.plugin {
         Some(_) => mcp_manager().plugin_server_config(&st.name),
         None => user.servers.get(&st.name).cloned(),
@@ -242,6 +246,9 @@ async fn delete_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
     }
     cfgmod::save_config(&cfg).map_err(internal)?;
     mcp_manager().remove_runner(&name).await;
+    // Removing a connector forgets its sign-in too.
+    oauth::disallow_interactive_oauth(&name);
+    oauth::clear_cached_oauth(&name);
     appv3_agent::mcp_apps::remove_storage(&name).await;
     Ok(json(json!({"name": name})))
 }
@@ -511,7 +518,7 @@ mod tests {
         assert!(user.get("plugin").is_none());
         assert_eq!(
             user.to_string(),
-            r#"{"name":"n","transport":"stdio","enabled":true,"state":"ready","error":null,"tool_names":["n_t"],"started_at":null,"config":{"transport":"stdio","command":"x","args":[],"env":{},"enabled":true}}"#
+            r#"{"name":"n","transport":"stdio","enabled":true,"state":"ready","error":null,"tool_names":["n_t"],"started_at":null,"config":{"transport":"stdio","command":"x","args":[],"env":{},"enabled":true},"signed_in":false}"#
         );
         let plugin = status_json(&status(Some("p")), Some(&cfg));
         assert_eq!(plugin["plugin"], "p");

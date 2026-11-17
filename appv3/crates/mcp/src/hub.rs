@@ -27,7 +27,7 @@ const MAX_LIMIT: usize = 20;
 /// Longest tool description a search result carries (characters).
 const RESULT_DESCRIPTION_MAX: usize = 800;
 
-const DESCRIPTION: &str = "Use tools from the user's MCP servers. action='search' finds tools by keywords (or, with an empty query and a server, lists that server's tools) and returns each tool's input_schema. action='call' runs one tool: server, tool (its name as search returned it) and arguments matching its input_schema. Search before calling a tool whose schema you have not seen. In Plan mode only tools marked read_only can be called. action='servers' shows each server's state, errors and config; action='save' (server, config) adds or replaces one and action='remove' deletes one, after the user applies it on a card.";
+const DESCRIPTION: &str = "Use tools from the user's MCP servers. action='search' finds tools by keywords (or, with an empty query and a server, lists that server's tools) and returns each tool's input_schema. action='call' runs one tool: server, tool (its name as search returned it) and arguments matching its input_schema. Search before calling a tool whose schema you have not seen. In Plan mode only tools marked read_only can be called. action='servers' shows each server's state, errors and config, and ready-made connectors the user can turn on; action='save' (server, config) adds or replaces one and action='remove' deletes one, after the user applies it on a card.";
 /// Freezes the description for a session (see [`crate::McpHubTool::definition_for`]).
 const FROZEN_KEY: &str = "mcp_tool_description";
 

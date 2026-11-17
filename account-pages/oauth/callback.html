@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Finish connecting · OpenAgentd</title>
+<style>
+  :root { color-scheme: dark light; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #15110D; color: #F5EBD8;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif; }
+  @media (prefers-color-scheme: light) { body { background: #FFFDF7; color: #2A2219; } .muted { color: #6A5640 !important; } }
+  main { max-width: 440px; padding: 24px; }
+  h1 { font-size: 19px; margin: 0 0 10px; }
+  p { margin: 0 0 14px; }
+  .muted { color: #AF9F85; font-size: 13px; }
+  .where { font-family: ui-monospace, "SF Mono", monospace; word-break: break-all; }
+  button { font: inherit; border-radius: 8px; padding: 9px 16px; cursor: pointer; border: 1px solid #3A2F23; background: #221C16; color: inherit; }
+  button.primary { background: #F5EBD8; color: #15110D; border-color: #F5EBD8; font-weight: 600; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 18px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="confirm" hidden>
+    <h1>Finish connecting <span id="server"></span></h1>
+    <p>Send this sign-in to the OpenAgentd at</p>
+    <p class="where" id="where"></p>
+    <div class="row"><button class="primary" id="go">Continue</button></div>
+    <p class="muted">If you didn't start this from your own OpenAgentd, close this page. Whoever runs that address would get access to your account.</p>
+  </section>
+  <section id="opening" hidden>
+    <h1>Opening OpenAgentd…</h1>
+    <p class="muted">If nothing happens, copy the address below and paste it into the connector in OpenAgentd.</p>
+  </section>
+  <section id="declined" hidden>
+    <h1>Sign-in didn't finish</h1>
+    <p id="reason"></p>
+  </section>
+  <section id="copy" hidden>
+    <p class="muted" id="copy-hint">Copy this page's address and paste it into the connector in OpenAgentd to finish signing in.</p>
+    <div class="row"><button id="copy-btn">Copy sign-in address</button></div>
+  </section>
+</main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var state = q.get('state') || '';
+  var $ = function (id) { return document.getElementById(id); };
+
+  function decodeInfo(s) {
+    var part = s.split('.')[1];
+    if (!part) return null;
+    try {
+      var info = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+      return info && info.v === 1 ? info : null;
+    } catch (e) { return null; }
+  }
+
+  // The same rule the server applies when the sign-in starts.
+  function validReturn(raw) {
+    if (typeof raw !== 'string' || raw.length > 2048) return null;
+    if (raw === 'openagentd://mcp-oauth' || raw === 'openagentd-dev://mcp-oauth') return raw;
+    try {
+      var u = new URL(raw);
+      if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname && !u.username && !u.password &&
+          !u.search && !u.hash && /\/oauth-done\.html$/.test(u.pathname)) return u.href;
+    } catch (e) {}
+    return null;
+  }
+
+  var forward = new URLSearchParams();
+  ['code', 'state', 'iss', 'error', 'error_description'].forEach(function (k) {
+    var v = q.get(k);
+    if (v) forward.set(k, v);
+  });
+  var info = decodeInfo(state);
+  var target = info && validReturn(info.return_to);
+  var name = info && typeof info.server === 'string' ? info.server : 'a connector';
+
+  $('copy').hidden = !(q.get('code') && state);
+  $('copy-btn').onclick = function () {
+    navigator.clipboard.writeText(location.href).then(function () { $('copy-btn').textContent = 'Copied'; });
+  };
+
+  if (q.get('error') && !target) {
+    $('declined').hidden = false;
+    $('reason').textContent = q.get('error') === 'access_denied' ? 'The sign-in was declined.' : (q.get('error_description') || q.get('error'));
+    return;
+  }
+  if (!target) return;
+  var dest = target + '?' + forward.toString();
+  if (target.indexOf('openagentd') === 0) {
+    // The app on this device: nothing to confirm.
+    $('opening').hidden = false;
+    location.replace(dest);
+    return;
+  }
+  $('server').textContent = name;
+  var u = new URL(target);
+  $('where').textContent = u.origin;
+  $('confirm').hidden = false;
+  $('go').onclick = function () { location.replace(dest); };
+})();
+</script>
+</body>
+</html>

@@ -10,6 +10,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import type React from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 let centerWidth = 1200
 mock.module('@/hooks/use-element-width', () => ({
@@ -131,7 +132,8 @@ mock.module('@/stores/useAgentStore', () => {
     activeAgent: 'code',
     agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
     agentNames: ['lead'],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
+    questionCard: { kind: 'none' as const },
     isContinuing: false,
     sessionId: 'test-session',
     sessionTitle: null,

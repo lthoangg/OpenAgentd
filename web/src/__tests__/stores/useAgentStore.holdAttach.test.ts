@@ -19,6 +19,7 @@ const mockAgentStream = mock((_sid: any, callbacks: any) => { streamCallbacks = 
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 function lead() {
   return useAgentStore.getState().agentStreams.lead
@@ -30,7 +31,7 @@ function pendingHistory(blocks: ContentBlock[]) {
   const promise = new Promise<void>((done) => {
     resolve = () => {
       useAgentStore.setState((state) => {
-        state.isAgentWorking = true
+        state.sessionRun = runOf(true)
         state.agentStreams.lead.blocks = blocks
         state.agentStreams.lead.currentBlocks = []
         state.agentStreams.lead.status = "working"
@@ -48,7 +49,7 @@ beforeEach(() => {
     _workspace: "/repo",
     leadName: "lead",
     agentNames: ["lead"],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
     _syncedThrough: null,
     loadSession: mock(async () => {}),
     agentStreams: {
@@ -101,7 +102,7 @@ describe("a feed attached beside the history read", () => {
 
     await history.commit()
     expect(lead().blocks.map((b) => b.content)).toEqual(["go", "All done."])
-    expect(useAgentStore.getState().isAgentWorking).toBe(false)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(false)
   })
 
   it("keeps a stream end that came while held until the history says whether the turn runs", async () => {

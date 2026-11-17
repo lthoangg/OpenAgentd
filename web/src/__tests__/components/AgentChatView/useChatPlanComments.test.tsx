@@ -14,6 +14,7 @@ import type { PlanCommentsBlock } from '@/components/PlanReview/plan-comments-bl
 import { usePlanCommentsInChat } from '@/components/PlanReview/plan-comments-in-chat'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 const REVIEW: PendingQuestion = { id: 'q-1', sessionId: 's-1', toolCallId: 'call-1', kind: 'plan_review', planRevision: 2, questions: [] }
 const BLOCK: PlanCommentsBlock = { path: '.agents/plans/x.md', revision: 2, comments: [{ quote: 'Step A', text: 'Split it' }] }
@@ -38,11 +39,11 @@ function composer() {
 beforeEach(() => {
   clearPlanReviewDrafts()
   usePlanCommentsInChat.setState({ block: null })
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: REVIEW })
+  useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(REVIEW) })
 })
 
 afterEach(() => {
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ questionCard: questionCardOf(null) })
 })
 
 describe('useChatPlanComments', () => {
@@ -84,7 +85,7 @@ describe('useChatPlanComments', () => {
 
   it('drops removed comments once the review is closed', () => {
     const { ref } = composer()
-    useAgentStore.setState({ pendingQuestion: null })
+    useAgentStore.setState({ questionCard: questionCardOf(null) })
     const { result } = renderHook(() => useChatPlanComments({ isMobile: false, inputRef: ref, setWorkspacePanel: () => {} }))
     result.current.handlePlanCommentsRemoved(BLOCK)
     expect(readPlanReviewDraft('q-1').comments).toEqual([])

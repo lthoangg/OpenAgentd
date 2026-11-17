@@ -10,6 +10,9 @@
  * field that is not ``<machine>.transition(…)`` fails too (``initial`` names
  * the files that may set the first value).
  *
+ * ``SINGLE_WRITER`` names data a machine reads that has one writer (an
+ * agent's status, set only by ``setAgentStatus``).
+ *
  * ``LEGACY`` counts writes to the flags that machines are replacing. The
  * counts are exact, so removing a write means lowering its count, and the
  * list only shrinks; it is deleted once empty.
@@ -40,58 +43,35 @@ interface MachineEntry {
   initial: string[]
 }
 
-export const MACHINES: Record<string, MachineEntry> = {}
+export const MACHINES: Record<string, MachineEntry> = {
+  'session run': {
+    file: 'stores/useAgentStore/run-state.ts',
+    fields: ['sessionRun'],
+    initial: ['stores/useAgentStore/stream-slice.ts'],
+  },
+  'question card': {
+    file: 'stores/useAgentStore/question-state.ts',
+    fields: ['questionCard'],
+    initial: ['stores/useAgentStore/stream-slice.ts'],
+  },
+}
+
+/**
+ * Fields with one writer: data a machine reads, set only through the named
+ * function in the named file. An agent's status mirrors the backend's member
+ * state, so any status may follow any other, but it is still written in one
+ * place, beside the session run it feeds.
+ */
+const SINGLE_WRITER: Record<string, { pattern: RegExp; under: string; file: string }> = {
+  'agent status (setAgentStatus)': {
+    pattern: /\.status\s*=(?![=>])/g,
+    under: 'stores/useAgentStore/',
+    file: 'stores/useAgentStore/run-state.ts',
+  },
+}
 
 /** Old flags a machine replaces: an exact count of writes per file. */
 const LEGACY: Record<string, { pattern: RegExp; under: string; allow: Record<string, number> }> = {
-  'lead-run isAgentWorking': {
-    pattern: /(?<![\w.])\w+\.isAgentWorking\s*=(?![=>])|\bisAgentWorking:\s*(?:true|false)\b/g,
-    under: 'stores/',
-    allow: {
-      'stores/useAgentStore/history-slice.ts': 1,
-      'stores/useAgentStore/load-session.ts': 2,
-      'stores/useAgentStore/pending-slice.ts': 3,
-      'stores/useAgentStore/session-slice.ts': 2,
-      'stores/useAgentStore/sse-agent-status.ts': 6,
-      'stores/useAgentStore/sse-turn.ts': 2,
-      'stores/useAgentStore/stream-slice.ts': 4,
-    },
-  },
-  'lead-run stream status': {
-    pattern: /\.status\s*=\s*'(?:idle|working|waiting_input|waiting_lead|offline|error)'/g,
-    under: 'stores/useAgentStore/',
-    allow: {
-      'stores/useAgentStore/helpers.ts': 1,
-      'stores/useAgentStore/load-session.ts': 1,
-      'stores/useAgentStore/pending-slice.ts': 1,
-      'stores/useAgentStore/session-slice.ts': 2,
-      'stores/useAgentStore/sse-agent-status.ts': 8,
-      'stores/useAgentStore/sse-turn.ts': 2,
-      'stores/useAgentStore/stream-slice.ts': 1,
-    },
-  },
-  'lead-run _runningPatchedFor': {
-    pattern: /\._runningPatchedFor\s*=(?![=>])/g,
-    under: 'stores/',
-    allow: {
-      'stores/useAgentStore/load-session.ts': 2,
-      'stores/useAgentStore/pending-slice.ts': 1,
-      'stores/useAgentStore/session-slice.ts': 1,
-      'stores/useAgentStore/sse-agent-status.ts': 2,
-      'stores/useAgentStore/sse-turn.ts': 1,
-      'stores/useAgentStore/stream-slice.ts': 2,
-    },
-  },
-  'question pendingQuestion': {
-    pattern: /\.pendingQuestion\s*=(?![=>])/g,
-    under: 'stores/',
-    allow: {
-      'stores/useAgentStore/helpers.ts': 1,
-      'stores/useAgentStore/load-session.ts': 1,
-      'stores/useAgentStore/session-slice.ts': 1,
-      'stores/useAgentStore/sse-questions.ts': 1,
-    },
-  },
   'link isConnected': {
     pattern: /(?<![\w.])\w+\.isConnected\s*=(?![=>])|\bisConnected:\s*(?:true|false)\b/g,
     under: 'stores/',
@@ -123,13 +103,13 @@ describe('state machines', () => {
       const offenders: string[] = []
       for (const field of machine.fields) {
         // ``field = x`` or ``field: x`` (in a set/patch object), unless x is a transition.
-        const write = new RegExp(`(?<![\\w.])(?:\\w+\\.)?${field}\\s*(?:=(?![=>])|:(?!:))\\s*(?![\\w.]*\\.transition\\()`, 'g')
+        const write = new RegExp(`(?<![\\w.])(?:\\w+\\.)?${field}\\s*(?:=(?![=>])|:(?!:))(?!\\s*[\\w.]*\\.transition\\()`, 'g')
         for (const { rel, text } of FILES) {
           if (machine.initial.includes(rel)) continue
           for (const line of text.split('\n')) {
             const trimmed = line.trim()
             if (/^(?:\*|\/\/|\/\*)/.test(trimmed)) continue
-            // A type member (``field: LeadRun``) declares it, not a write.
+            // A type member (``field: SessionRun``) declares it, not a write.
             if (new RegExp(`^(?:readonly\\s+)?${field}\\??:\\s*[A-Z]`).test(trimmed)) continue
             if (write.test(line)) offenders.push(`${rel}: ${trimmed}`)
             write.lastIndex = 0
@@ -137,6 +117,12 @@ describe('state machines', () => {
         }
       }
       expect(offenders).toEqual([])
+    })
+  }
+
+  for (const [name, rule] of Object.entries(SINGLE_WRITER)) {
+    it(`${name}: written only in ${rule.file}`, () => {
+      expect(Object.keys(count(rule.pattern, rule.under))).toEqual([rule.file])
     })
   }
 

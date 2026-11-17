@@ -32,6 +32,8 @@ import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/question-types'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
 
 const PLACEHOLDER =
   'Waiting for the user to answer. Do not continue until their reply arrives.'
@@ -61,14 +63,14 @@ beforeEach(() => {
   useAgentStore.setState({
     sessionId: 's-1',
     isConnected: true,
-    pendingQuestion: QUESTION,
+    questionCard: questionCardOf(QUESTION),
     resolvedQuestions: {},
   })
 })
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 })
 
 describe('AskUser — waiting state', () => {
@@ -126,7 +128,7 @@ describe('AskUser — waiting state', () => {
 
     await waitFor(() => expect(answerQuestion).toHaveBeenCalledTimes(1))
     expect(answerQuestion.mock.calls[0]).toEqual(['s-1', 'q-1', [['bun']]])
-    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    await waitFor(() => expect(openQuestion(useAgentStore.getState())).toBeNull())
   })
 
   it('sends an empty answer when Send is pressed with nothing picked', async () => {
@@ -173,7 +175,7 @@ describe('AskUser — waiting state', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
-    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    await waitFor(() => expect(openQuestion(useAgentStore.getState())).toBeNull())
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByRole('button', { name: /send|skip/i })).toBeNull()
     expect(screen.queryByText(/needs you · a question/i)).toBeNull()
@@ -185,7 +187,7 @@ describe('AskUser — waiting state', () => {
 describe('AskUser — resolved state', () => {
   it('shows the answer immediately, before the tool result is rewritten', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: [['bun']], reason: null },
       },
@@ -203,7 +205,7 @@ describe('AskUser — resolved state', () => {
 
   it('reports a dismissal', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
       },
@@ -216,7 +218,7 @@ describe('AskUser — resolved state', () => {
 
   it('marks a question the user skipped', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: [[]], reason: null },
       },
@@ -230,7 +232,7 @@ describe('AskUser — resolved state', () => {
   it('wraps a long URL in the answered summary instead of clipping it', () => {
     const url = `https://example.com/${'a'.repeat(200)}`
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': {
           questions: [{ ...QUESTION.questions[0], question: `Use ${url}?` }],
@@ -247,7 +249,7 @@ describe('AskUser — resolved state', () => {
   })
 
   it('parses the persisted sentence on a cold load, dropping the model instructions', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     const { container } = render(
       <AskUser
@@ -266,9 +268,9 @@ describe('AskUser — resolved state', () => {
 
   it('says it will ask while its turn runs and the question has not opened here yet', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {},
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: liveTurnWith('call-1'),
     })
 
@@ -276,11 +278,11 @@ describe('AskUser — resolved state', () => {
 
     expect(screen.getByText('Asking…')).toBeInTheDocument()
     expect(screen.queryByText('Needs you · a question')).toBeNull()
-    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
+    useAgentStore.setState({ sessionRun: runOf(false), agentStreams: {} })
   })
 
   it('does not wait forever: with the turn over and no question open, it says no answer was recorded', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, isAgentWorking: false })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {}, sessionRun: runOf(false) })
 
     render(<AskUser toolCallId="call-1" args={JSON.stringify({ questions: QUESTION.questions })} result={PLACEHOLDER} />)
 
@@ -291,7 +293,7 @@ describe('AskUser — resolved state', () => {
   })
 
   it('shows a dismissal recorded on the server', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     render(
       <AskUser toolCallId="call-1" result="Question(s) being dismissed." />,
@@ -314,7 +316,7 @@ describe('AskUser — resolution ordering', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    await waitFor(() => expect(openQuestion(useAgentStore.getState())).toBeNull())
 
     // The broadcast lands afterwards, with the open question already closed.
     useAgentStore.getState()._handleSSEEvent('question_answered', {
@@ -337,7 +339,7 @@ describe('AskUser — resolution ordering', () => {
     })
 
     await waitFor(() => expect(screen.getByText(/dismissed/i)).toBeInTheDocument())
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
     expect(screen.queryByRole('radio')).toBeNull()
     expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
   })
@@ -368,7 +370,7 @@ describe('AskUser — resolution ordering', () => {
 describe('AskUser — closed without an answer', () => {
   it('still lists the questions it asked when dismissed', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
       },
@@ -382,7 +384,7 @@ describe('AskUser — closed without an answer', () => {
 
   it('distinguishes a superseded question from a dismissal', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: null, reason: 'superseded' },
       },
@@ -396,7 +398,7 @@ describe('AskUser — closed without an answer', () => {
 
   it('stays minimised — no options and no controls survive the resolution', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
       },
@@ -412,7 +414,7 @@ describe('AskUser — closed without an answer', () => {
   it('recovers the questions from the tool call args on a cold load', () => {
     // Nothing in the store and nothing in the result sentence: the args are the
     // only surviving record of what was asked.
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     render(
       <AskUser
@@ -427,7 +429,7 @@ describe('AskUser — closed without an answer', () => {
   })
 
   it('reads a superseded resolution back from the persisted sentence', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     render(
       <AskUser
@@ -442,7 +444,7 @@ describe('AskUser — closed without an answer', () => {
   })
 
   it('survives unparseable tool call args', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     render(
       <AskUser
@@ -462,7 +464,7 @@ describe('AskUser — closed without an answer', () => {
    * open, so "Closed without an answer" reads as a bug.
    */
   it('labels a budget-refused ask as not asked, not as closed without an answer', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     const { container } = render(
       <AskUser
@@ -488,7 +490,7 @@ describe('AskUser — closed without an answer', () => {
    * without an answer" for a question the primary card actually carried.
    */
   it('labels a merged duplicate ask as merged, not as closed without an answer', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     const { container } = render(
       <AskUser
@@ -516,7 +518,7 @@ describe('AskUser — closed without an answer', () => {
  */
 describe('AskUser — asks that failed before a question opened', () => {
   it('labels an args-validation failure as never asked', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     const { container } = render(
       <AskUser
@@ -536,7 +538,7 @@ describe('AskUser — asks that failed before a question opened', () => {
   })
 
   it('labels an undeliverable ask (no tool call id) as never asked', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     const { container } = render(
       <AskUser
@@ -555,7 +557,7 @@ describe('AskUser — asks that failed before a question opened', () => {
   })
 
   it('labels a restart-healed ask as interrupted, not closed without an answer', () => {
-    useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     const { container } = render(
       <AskUser
@@ -585,7 +587,7 @@ describe('AskUser — card label', () => {
 
   it('stops asking for input once the question is answered', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: [['bun']], reason: null },
       },
@@ -599,7 +601,7 @@ describe('AskUser — card label', () => {
 
   it('stops asking for input once the question is dismissed', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
       },
@@ -616,7 +618,7 @@ describe('AskUser — card label', () => {
    */
   it('shows the form while the reply\'s other tool calls still run', () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: {
           status: 'working',
@@ -634,7 +636,7 @@ describe('AskUser — card label', () => {
     expect(screen.getByText('Needs you · a question')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
     expect(screen.queryByText('Asking…')).toBeNull()
-    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
+    useAgentStore.setState({ sessionRun: runOf(false), agentStreams: {} })
   })
 
   /**
@@ -644,9 +646,9 @@ describe('AskUser — card label', () => {
    */
   it('does not ask for input before the call\'s question has opened', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {},
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: liveTurnWith('call-1'),
     })
 
@@ -654,7 +656,7 @@ describe('AskUser — card label', () => {
 
     expect(screen.queryByText(/needs you · a question/i)).toBeNull()
     expect(screen.getByText('Asking…')).toBeInTheDocument()
-    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
+    useAgentStore.setState({ sessionRun: runOf(false), agentStreams: {} })
   })
 
   /**
@@ -664,9 +666,9 @@ describe('AskUser — card label', () => {
    */
   it('does not ask for input for an earlier turn\'s unsettled call while a new turn runs', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {},
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: liveTurnWith('call-other'),
     })
 
@@ -675,7 +677,7 @@ describe('AskUser — card label', () => {
     expect(screen.queryByText(/needs you · a question/i)).toBeNull()
     expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
-    useAgentStore.setState({ isAgentWorking: false, agentStreams: {} })
+    useAgentStore.setState({ sessionRun: runOf(false), agentStreams: {} })
   })
 })
 
@@ -714,7 +716,7 @@ describe('AskUser — frame and type', () => {
 
   it('draws one frame around an answered card too', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: { 'call-1': { questions: QUESTION.questions, answers: [['bun']], reason: null } },
     })
     const { container } = render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
@@ -726,7 +728,7 @@ describe('AskUser — frame and type', () => {
 
   it('reads the answers, the skipped marker and the closing reason at 12px', () => {
     useAgentStore.setState({
-      pendingQuestion: null,
+      questionCard: questionCardOf(null),
       resolvedQuestions: {
         'call-1': { questions: [...QUESTION.questions, { ...QUESTION.questions[0], question: 'And the registry?' }], answers: [['bun'], []], reason: null },
       },

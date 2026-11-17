@@ -52,6 +52,7 @@ import { isLiveGoal } from '@/lib/goal'
 import { useSessionGoalQuery, useStartGoalMutation } from '@/queries/useSessionGoalQuery'
 import { useUpdateSessionPlanMutation } from '@/queries/useUpdateSessionPlanMutation'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { useToastStore } from '@/stores/useToastStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { workspaceRelativePath } from '@/utils/file-refs'
@@ -188,7 +189,7 @@ export function planFileOpener(
 }
 
 export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPreview, workspace = null, todos, onSendPlanComments }: PlanTabViewProps) {
-  const pendingQuestion = useAgentStore((s) => s.pendingQuestion)
+  const pendingQuestion = useAgentStore((s) => openQuestion(s))
   const review = pendingQuestion?.kind === 'plan_review' ? pendingQuestion : null
   const reviewId = review?.id ?? null
   const { data: goalData } = useSessionGoalQuery(sessionId)

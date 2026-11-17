@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => true }))
 
@@ -13,14 +14,14 @@ const { APP_EVENTS } = await import('@/lib/app-events')
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ questionCard: questionCardOf(null) })
 })
 
 describe('PinnedPlanReview', () => {
   it('opens the plan from a bar above the composer while it awaits approval', () => {
     useAgentStore.setState({
       sessionId: 's1',
-      pendingQuestion: { id: 'q', sessionId: 's1', toolCallId: 'c', questions: [], kind: 'plan_review', planRevision: 3 } as never,
+      questionCard: questionCardOf({ id: 'q', sessionId: 's1', toolCallId: 'c', questions: [], kind: 'plan_review', planRevision: 3 } as never),
     })
     const opened = mock(() => {})
     window.addEventListener(APP_EVENTS.openPlan, opened)
@@ -32,7 +33,7 @@ describe('PinnedPlanReview', () => {
   })
 
   it('is gone without an open plan review', () => {
-    useAgentStore.setState({ sessionId: 's1', pendingQuestion: null })
+    useAgentStore.setState({ sessionId: 's1', questionCard: questionCardOf(null) })
     const { container } = render(<PinnedPlanReview />)
     expect(container.textContent).toBe('')
   })

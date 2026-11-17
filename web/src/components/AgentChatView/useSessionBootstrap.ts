@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { useNavigate } from '@tanstack/react-router'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { useUIStore } from '@/stores/useUIStore'
 import { workspaceLabel } from '@/utils/workspace'
 import { draftComposerKey, startNewSession } from '@/lib/new-session'
@@ -120,7 +121,7 @@ export function useSessionBootstrap({
     if (
       activeController &&
       store.sessionId === sessionId &&
-      (store.isConnected || store.isAgentWorking)
+      (store.isConnected || isRunLive(store.sessionRun))
     ) {
       abortRef.current = activeController
       return
@@ -233,7 +234,7 @@ export function useSessionBootstrap({
       if (
         !backgroundSuspendsSockets() &&
         state.isConnected &&
-        (state.isAgentWorking || active !== null)
+        (isRunLive(state.sessionRun) || active !== null)
       ) {
         return
       }
@@ -265,7 +266,7 @@ export function useSessionBootstrap({
         await loadSession(sessionId, agentWorkspace)
         const current = useAgentStore.getState()
         if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
-        if (current.isAgentWorking) attach()
+        if (isRunLive(current.sessionRun)) attach()
       }).finally(() => {
         resumeInFlightRef.current = false
       })
@@ -294,7 +295,7 @@ export function useSessionBootstrap({
     const store = useAgentStore.getState()
     // Already on an empty draft here, or on a saved session with nothing in
     // it yet: there is nothing new to start.
-    if (!sessionId && !store.sessionId && !store.isAgentWorking) return
+    if (!sessionId && !store.sessionId && !isRunLive(store.sessionRun)) return
     if (isEmptyIdleSession()) return
     abortRef.current?.abort()
     abortRef.current = null

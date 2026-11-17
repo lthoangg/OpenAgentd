@@ -66,6 +66,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -634,7 +635,10 @@ export function useOverlayState({
 
   // A new plan review brings the plan forward on desktop, once per review.
   // Phones leave the chat on screen; the transcript card opens the plan.
-  const planReviewId = useAgentStore((s) => (s.pendingQuestion?.kind === 'plan_review' ? s.pendingQuestion.id : null))
+  const planReviewId = useAgentStore((s) => {
+    const question = openQuestion(s)
+    return question?.kind === 'plan_review' ? question.id : null
+  })
   const autoOpenedReviewRef = useRef<string | null>(null)
   useEffect(() => {
     if (!dockViewsEnabled || !planReviewId || autoOpenedReviewRef.current === planReviewId) return

@@ -7,6 +7,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import type { MessageAttachment } from '@/api/types'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
@@ -25,7 +26,7 @@ export function useChatSessionState() {
         setupRequired: s.setupRequired,
         dismissSetupRequired: s.dismissSetupRequired,
 
-        isAgentWorking: s.isAgentWorking,
+        isAgentWorking: isRunLive(s.sessionRun),
         sessionId: s.sessionId,
         parentSessionId: s.parentSessionId,
         leadName: s.leadName,

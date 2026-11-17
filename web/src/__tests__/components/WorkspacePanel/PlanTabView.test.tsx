@@ -25,6 +25,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { ContentBlock, SessionGoal, SessionPlan } from '@/api/types'
 import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',
@@ -81,7 +82,7 @@ beforeEach(() => {
   resetPlanDecisionChoice()
   usePlanCommentsInChat.setState({ block: null })
   useToastStore.setState({ toasts: [] })
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {}, markTurnResuming })
+  useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(null), resolvedQuestions: {}, markTurnResuming })
   globalThis.fetch = mock(async (input: unknown, rawInit?: unknown) => {
     const init = rawInit as RequestInit | undefined
     const url = String(input)
@@ -104,7 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, leadName: null, agentStreams: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {}, leadName: null, agentStreams: {} })
 })
 
 /** Put the lead's ``plan`` call in the current turn, as the stream builds it. */
@@ -209,7 +210,7 @@ describe('PlanTabView', () => {
   })
 
   it('shows the review footer while a plan review is open', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     expect(screen.getByText('Awaiting review')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reply in chat' })).toBeTruthy()
@@ -220,7 +221,7 @@ describe('PlanTabView', () => {
   })
 
   it('keeps the review footer in the plan column while its band runs the dock width', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     const band = container.querySelector('[data-plan-review-footer]') as HTMLElement
     // index.css: `.oa-review-column` is the column's 46rem, 88ch in a maximized dock.
@@ -235,40 +236,40 @@ describe('PlanTabView', () => {
   })
 
   it('ignores an ask_user question: only plan reviews get the footer', () => {
-    useAgentStore.setState({ pendingQuestion: { ...REVIEW, kind: undefined } })
+    useAgentStore.setState({ questionCard: questionCardOf({ ...REVIEW, kind: undefined }) })
     renderTab()
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
   })
 
   it('answers Approve and marks the turn as resuming', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
     await waitFor(() => expect(answerCalls()).toHaveLength(1))
     expect(answerCalls()[0]?.body).toEqual({ answers: [['Approve']] })
     await waitFor(() => expect(markTurnResuming).toHaveBeenCalledTimes(1))
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
   })
 
   it('with no comments, Reply in chat only takes the user to the chat box and answers nothing', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Reply in chat' }))
 
     expect(handoffs()).toEqual([{ block: null, text: '' }])
     expect(answerCalls()).toHaveLength(0)
-    expect(useAgentStore.getState().pendingQuestion).toEqual(REVIEW)
+    expect(openQuestion(useAgentStore.getState())).toEqual(REVIEW)
   })
 
   it('offers Reply in chat only where there is a chat to reply in', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ onSendPlanComments: undefined })
     expect((screen.getByRole('button', { name: 'Reply in chat' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('disables Approve while plan comments wait unsent in the chat box', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(false)
     act(() => {
@@ -283,7 +284,7 @@ describe('PlanTabView', () => {
   })
 
   it('disables Approve while the plan has unsaved edits', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Edit plan' }))
     fireEvent.change(screen.getByLabelText('Plan Markdown'), { target: { value: `${PLAN.content}\n3. Test it` } })
@@ -293,7 +294,7 @@ describe('PlanTabView', () => {
   })
 
   it('comments on a selected passage and lists the comment under it', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
@@ -310,7 +311,7 @@ describe('PlanTabView', () => {
   })
 
   it('moves every comment, a half-written one too, to the chat box and empties the draft', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     comment(container, 'Write the migration', 'Make it reversible.')
     selectText(planItem(container, 'Wire the endpoint'))
@@ -338,7 +339,7 @@ describe('PlanTabView', () => {
   })
 
   it('removes a comment', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     comment(container, 'Write the migration', 'Make it reversible.')
     fireEvent.click(screen.getByRole('button', { name: 'Remove comment 1' }))
@@ -348,7 +349,7 @@ describe('PlanTabView', () => {
   })
 
   it('disables Approve while there are comments, or one is still being written', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
@@ -362,7 +363,7 @@ describe('PlanTabView', () => {
   })
 
   it('cancels a comment with Escape', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
@@ -373,7 +374,7 @@ describe('PlanTabView', () => {
   })
 
   it('keeps the comments when the tab remounts during the review', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const first = renderTab()
     comment(first.container, 'Write the migration', 'Make it reversible.')
     first.unmount()
@@ -426,7 +427,7 @@ describe('PlanTabView', () => {
 
   it('disables Clear while the plan is awaiting review', () => {
     const onClearPlan = mock(() => {})
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ onClearPlan })
     expect((screen.getByRole('button', { name: 'Clear plan…' }) as HTMLButtonElement).disabled).toBe(true)
   })
@@ -481,7 +482,7 @@ describe('PlanTabView — Run as goal', () => {
     expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
     cleanup()
 
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: APPROVED })
     expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
   })
@@ -495,7 +496,7 @@ describe('PlanTabView — Keep going until done', () => {
   }
 
   it('is disabled with a hint when the plan has no Done when', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     expect(keepGoingBox().hasAttribute('disabled')).toBe(true)
     // The reason is a tooltip on the control (a native title does not show on touch or by keyboard).
@@ -503,7 +504,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('explains why it is disabled when the control is hovered', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.mouseOver(screen.getByText('Keep going until done'))
 
@@ -512,7 +513,7 @@ describe('PlanTabView — Keep going until done', () => {
 
   it('starts ticked when Settings say so, with the default turns, and approves with them', async () => {
     goalSettings = { ...goalSettings, keep_going_default: true, max_turns: 30 }
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     await waitFor(() => expect(keepGoingBox().checked).toBe(true))
     expect((screen.getByLabelText('Turns for this goal') as HTMLInputElement).value).toBe('30')
@@ -523,7 +524,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('starts unticked by default, and plain Approve starts no goal', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     await waitFor(() => expect(calls.some((call) => call.url.includes('/settings/goals'))).toBe(true))
     expect(keepGoingBox().checked).toBe(false)
@@ -535,7 +536,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('sends turns changed right before Approve', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     fireEvent.click(keepGoingBox())
     fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '20' } })
@@ -547,7 +548,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('blocks Approve on turns out of range', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     fireEvent.click(keepGoingBox())
     fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '0' } })
@@ -556,7 +557,7 @@ describe('PlanTabView — Keep going until done', () => {
 
   it('never reads a bare "Approve" while a goal would start', async () => {
     goalSettings = { ...goalSettings, keep_going_default: true, max_turns: 30 }
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
 
     await screen.findByRole('button', { name: 'Approve and keep going (30 turns)' })
@@ -642,7 +643,7 @@ describe('PlanTabView — links, images and the Appendix', () => {
   })
 
   it('takes comments on Appendix text and opens the Appendix to show one', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab({ plan: VISUAL_PLAN })
     const toggle = screen.getByRole('button', { name: /^Appendix/ })
     fireEvent.click(toggle)
@@ -659,7 +660,7 @@ describe('PlanTabView — links, images and the Appendix', () => {
 })
 describe('PlanTabView — no Comment action per block', () => {
   it('puts no Comment button on each heading, paragraph or list item; selecting text is how to comment', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
 
     expect(screen.queryAllByRole('button', { name: /^Comment on: / })).toEqual([])
@@ -669,7 +670,7 @@ describe('PlanTabView — no Comment action per block', () => {
 
 describe('PlanTabView — one review draft for the tab and the card', () => {
   it('carries feedback left in a draft from the former feedback box into the chat box', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
 
     act(() => {
@@ -682,7 +683,7 @@ describe('PlanTabView — one review draft for the tab and the card', () => {
   })
 
   it('keeps its comments in the review draft, which others can add to', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     comment(container, 'Write the migration', 'Make it reversible.')
 

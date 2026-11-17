@@ -14,6 +14,7 @@ import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 export const navigate = mock(() => {})
 export const originalFetch = globalThis.fetch
@@ -343,7 +344,7 @@ export function resetSidebarHarness() {
     supports_bundled: true,
     servers: [],
   }
-  useAgentStore.setState({ isAgentWorking: false, sessionId: null })
+  useAgentStore.setState({ sessionRun: runOf(false), sessionId: null })
   navigate.mockClear()
   invokeMock.mockClear()
   dialogOpen.mockReset()

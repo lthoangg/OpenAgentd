@@ -40,6 +40,7 @@ import { formatDurationWords } from '@/utils/format'
 import { useGoalActionMutation, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { useGoalSessionState } from '@/hooks/useGoalSessionState'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { planTitle } from '../ActivePlanSection'
@@ -238,7 +239,7 @@ export function GoalTabView({ sessionId, plan = null, todos = [], onOpenPlan }: 
   const { data, isLoading, isError, isFetching, refetch } = useSessionGoalQuery(sessionId)
   const goal = data?.goal && data.goal.status !== 'cleared' ? data.goal : null
   const session = useGoalSessionState(sessionId, goal)
-  const reviewing = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
+  const reviewing = useAgentStore((s) => openQuestion(s)?.kind === 'plan_review')
   const mutation = useGoalActionMutation()
   const pushToast = useToastStore((s) => s.push)
   const [confirmingClear, setConfirmingClear] = useState(false)

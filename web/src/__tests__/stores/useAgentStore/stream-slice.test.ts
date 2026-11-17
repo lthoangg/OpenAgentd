@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { mockPostAgentChat, mockTeamStream, mockSessionHistory, makeStream, makeMessageResponse, resetAsyncStore } from "./async-fixture"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 beforeEach(resetAsyncStore)
 
@@ -15,7 +16,7 @@ describe("stopAgent", () => {
   it("reloads immediately after the interrupt without waiting for the trailing done", async () => {
     useAgentStore.setState({
       sessionId: "session-a",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _workspace: "/repo/a",
     })
 
@@ -31,7 +32,7 @@ describe("stopAgent", () => {
   })
 
   it("asks the server to keep the goal when stopping for Stop and send", async () => {
-    useAgentStore.setState({ sessionId: "session-a", isAgentWorking: true, _workspace: "/repo/a" })
+    useAgentStore.setState({ sessionId: "session-a", sessionRun: runOf(true), _workspace: "/repo/a" })
 
     await useAgentStore.getState().stopAgent({ keepGoal: true })
 
@@ -51,7 +52,7 @@ describe("stopAgent", () => {
     const streamedAt = new Date(Date.now() - 1000)
     useAgentStore.setState({
       sessionId: "sess-1",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       leadName: "lead",
       agentNames: ["lead"],
       agentStreams: {
@@ -110,7 +111,7 @@ describe("stopAgent", () => {
     // and `done` must still commit them.
     useAgentStore.setState({
       sessionId: "sess-1",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       leadName: "lead",
       agentNames: ["lead"],
       _pendingMessages: [{ id: "pm-b", sessionId: "sess-1", content: "message B" }],
@@ -172,7 +173,7 @@ describe("connectStream", () => {
   })
 
   it("calls agentStream with the current sessionId", () => {
-    useAgentStore.setState({ sessionId: "stream-sid", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "stream-sid", sessionRun: runOf(true) })
     useAgentStore.getState().connectStream()
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
     expect(mockTeamStream.mock.calls[0][0]).toBe("stream-sid")
@@ -181,7 +182,7 @@ describe("connectStream", () => {
   // Every store update re-runs every subscribed selector in the app.
   it("opens a stream with a single store update, even over a pending reconnect", () => {
     const pending = REAL_SET_TIMEOUT(() => {}, 60_000)
-    useAgentStore.setState({ sessionId: "stream-sid", isAgentWorking: true, _reconnectTimer: pending })
+    useAgentStore.setState({ sessionId: "stream-sid", sessionRun: runOf(true), _reconnectTimer: pending })
     let notifications = 0
     const unsubscribe = useAgentStore.subscribe(() => { notifications += 1 })
     useAgentStore.getState().connectStream()
@@ -263,7 +264,7 @@ describe("connectStream", () => {
   })
 
   it("onError sets error and isConnected=false for non-transport failures", () => {
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
@@ -273,14 +274,14 @@ describe("connectStream", () => {
   })
 
   it("downgrades iOS transport stream failures while work continues", () => {
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
     callbacks.onError(new TypeError("Load failed"))
     expect(useAgentStore.getState().error).toBeNull()
     expect(useAgentStore.getState().isConnected).toBe(false)
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
   })
 
   it("schedules a reconnect after a transient network error while working", () => {
@@ -291,7 +292,7 @@ describe("connectStream", () => {
       return 0 as unknown as ReturnType<typeof setTimeout>
     })
 
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let callbacks!: { onError: (err: Error) => void }
     // First call captures callbacks; second call (reconnect) just sets isConnected.
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
@@ -319,7 +320,7 @@ describe("connectStream", () => {
       return callbacks.length as unknown as ReturnType<typeof setTimeout>
     })
 
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let streamCallbacks!: { onError: (err: Error) => void; onEvent: (type: string, data: unknown) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof streamCallbacks) => { streamCallbacks = cbs })
 
@@ -342,7 +343,7 @@ describe("connectStream", () => {
       return 123 as unknown as ReturnType<typeof setTimeout>
     })
 
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
@@ -368,7 +369,7 @@ describe("connectStream", () => {
       return 0 as unknown as ReturnType<typeof setTimeout>
     })
 
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
@@ -391,7 +392,7 @@ describe("connectStream", () => {
       return 0 as unknown as ReturnType<typeof setTimeout>
     })
 
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
@@ -407,7 +408,7 @@ describe("connectStream", () => {
   })
 
   it("ignores stream errors while the page is unloading", () => {
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true, _unloading: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true), _unloading: true })
     let callbacks!: { onError: (err: Error) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
@@ -417,13 +418,13 @@ describe("connectStream", () => {
   })
 
   it("ignores backend error events while the page is unloading", () => {
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true, _unloading: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true), _unloading: true })
     let callbacks!: { onEvent: (type: string, data: unknown) => void }
     mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
     useAgentStore.getState().connectStream()
     callbacks.onEvent("error", { message: "Error in input stream" })
     expect(useAgentStore.getState().error).toBeNull()
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
   })
 
   it("onDone sets isConnected=false and patches the session running flag", () => {
@@ -465,7 +466,7 @@ describe("connectStream", () => {
         }
       }
     )
-    useAgentStore.setState({ sessionId: "stream-sid", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "stream-sid", sessionRun: runOf(true) })
     useAgentStore.getState().connectStream()
 
     // Should have opened the stream twice: original + reconnect.
@@ -486,7 +487,7 @@ describe("connectStream", () => {
         if (callCount === 1) cbs.onDone?.()
       }
     )
-    useAgentStore.setState({ sessionId: "stream-sid", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "stream-sid", sessionRun: runOf(true) })
     useAgentStore.getState().connectStream()
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
@@ -510,7 +511,7 @@ describe("connectStream", () => {
     mockTeamStream.mockImplementation((_sid: string, cbs: { onDone?: () => void }) => {
       callbacksByCall.push(cbs)
     })
-    useAgentStore.setState({ sessionId: "stream-sid", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "stream-sid", sessionRun: runOf(true) })
 
     useAgentStore.getState().connectStream() // connection A
     const onDoneA = callbacksByCall[0].onDone!
@@ -529,7 +530,7 @@ describe("connectStream", () => {
         cbs.onDone?.()
       }
     )
-    useAgentStore.setState({ sessionId: "stream-sid", isAgentWorking: true, _unloading: true })
+    useAgentStore.setState({ sessionId: "stream-sid", sessionRun: runOf(true), _unloading: true })
     useAgentStore.getState().connectStream()
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
@@ -604,7 +605,7 @@ describe("connectStream", () => {
     // `isConnected: true`, every recovery path ("already connected and
     // working") skipped this session, and the chat stayed frozen until a
     // reload.
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     const abort = useAgentStore.getState().connectStream()
     abort.abort()
     expect(useAgentStore.getState().isConnected).toBe(false)
@@ -612,7 +613,7 @@ describe("connectStream", () => {
   })
 
   it("stays connected when a reconnect replaces the stream", () => {
-    useAgentStore.setState({ sessionId: "s1", isAgentWorking: true })
+    useAgentStore.setState({ sessionId: "s1", sessionRun: runOf(true) })
     useAgentStore.getState().connectStream()
     const second = useAgentStore.getState().connectStream()
     expect(useAgentStore.getState().isConnected).toBe(true)
@@ -642,7 +643,7 @@ describe("connectStream", () => {
 
     const state = useAgentStore.getState()
     expect(state.sessionId).toBeNull()
-    expect(state.isAgentWorking).toBe(false)
+    expect(isRunLive(state.sessionRun)).toBe(false)
     expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
   })
 })

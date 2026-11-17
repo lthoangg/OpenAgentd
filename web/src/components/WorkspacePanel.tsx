@@ -53,6 +53,7 @@ import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
@@ -401,7 +402,7 @@ export function WorkspacePanel({
   const { data: goalData } = useSessionGoalQuery(sessionId)
   const goal = goalData?.goal ?? null
   const goalControls = useGoalControls(sessionId)
-  const agentWorking = useAgentStore((s) => s.isAgentWorking)
+  const agentWorking = useAgentStore((s) => isRunLive(s.sessionRun))
   const goalTitle = goalTabTitle(goal, agentWorking)
   const stripTabs = useMemo(
     () => Object.fromEntries(Object.entries(strips).map(([pane, strip]) => [pane, strip.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)

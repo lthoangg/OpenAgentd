@@ -5,6 +5,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 // lucide-react is deliberately NOT mocked here. Bun validates every static
 // named import in the tree against the mock's own keys, so an explicit icon map
@@ -228,7 +229,7 @@ describe('AgentChatView reactive derived state', () => {
     // Usage arrives when the first model call completes, so gating on totals
     // alone hid the meter for the whole first response of a new session.
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
     })
 

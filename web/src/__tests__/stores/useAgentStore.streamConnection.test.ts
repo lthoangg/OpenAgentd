@@ -35,6 +35,8 @@ mock.module("@/api/client", () => ({
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import { createDefaultAgentStream } from "@/stores/useAgentStore/defaults"
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 const REAL_SET_TIMEOUT = globalThis.setTimeout
 const REAL_CLEAR_TIMEOUT = globalThis.clearTimeout
@@ -90,9 +92,9 @@ beforeEach(() => {
     _workspace: "/repo",
     leadName: "lead",
     agentNames: ["lead"],
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     isConnected: false,
-    pendingQuestion: null,
+    questionCard: questionCardOf(null),
     error: null,
     _abortController: null,
     _reconnectTimer: null,
@@ -203,7 +205,7 @@ describe("session stream link: closes and retries", () => {
   })
 
   it("stops calling an idle session's link connected after a non-network failure, without an error", () => {
-    useAgentStore.setState({ isAgentWorking: false })
+    useAgentStore.setState({ sessionRun: runOf(false) })
     useAgentStore.getState().connectStream()
     links[0].onError(new Error("Stream failed: 500"))
 

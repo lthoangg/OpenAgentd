@@ -20,6 +20,7 @@ import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 function Harness({
   loadSession,
@@ -76,7 +77,7 @@ beforeEach(() => {
     sessionId: 'session-1',
     _workspace: null,
     isConnected: true,
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     _unloading: false,
     _abortController: null,
   })
@@ -139,7 +140,7 @@ describe('useSessionBootstrap opening a session', () => {
       holds.push(options?.holdUntil)
       return new AbortController()
     }
-    useAgentStore.setState({ isConnected: false, isAgentWorking: false })
+    useAgentStore.setState({ isConnected: false, sessionRun: runOf(false) })
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
     // Both start before the history lands; the feed waits on that very load.
@@ -177,7 +178,7 @@ describe('useSessionBootstrap foreground resume', () => {
   it('reconciles history and replaces a stale connected stream after pageshow on mobile', async () => {
     suspendsSockets = true
     const loadSession = mock(async () => {
-      useAgentStore.setState({ isAgentWorking: true })
+      useAgentStore.setState({ sessionRun: runOf(true) })
     })
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
@@ -252,7 +253,7 @@ describe('useSessionBootstrap foreground resume', () => {
       sessionId: 'session-1',
       _workspace: null,
       isConnected: true,
-      isAgentWorking: true,
+      sessionRun: runOf(true),
     })
 
     // Simulate returning to the app on desktop
@@ -297,7 +298,7 @@ describe('useSessionBootstrap session switch', () => {
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app'))
     const state = useAgentStore.getState()
     expect(state.sessionId).toBe('session-2')
-    expect(state.isAgentWorking).toBe(false)
+    expect(isRunLive(state.sessionRun)).toBe(false)
     expect(state.sessionTitle).toBeNull()
     expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
     expect(state.agentStreams.lead.currentText).toBe('')
@@ -471,7 +472,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       sessionId: 'session-1',
       _workspace: null,
       isConnected: true,
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _unloading: false,
       _abortController: null,
     })
@@ -497,7 +498,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       sessionId: 'session-1',
       _workspace: '/repo/app',
       isConnected: true,
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _unloading: false,
       _abortController: externalController,
     })
@@ -527,7 +528,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       sessionId: 'session-1',
       _workspace: '/repo/app',
       isConnected: true,
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _unloading: false,
       _abortController: liveController,
     })
@@ -594,7 +595,7 @@ describe('useSessionBootstrap new-session draft', () => {
   })
 
   it('opens a draft for the workspace without creating a session', () => {
-    useAgentStore.setState({ sessionId: 'session-1', isAgentWorking: false, isConnected: false })
+    useAgentStore.setState({ sessionId: 'session-1', sessionRun: runOf(false), isConnected: false })
     const navigate = mock((..._args: unknown[]) => {})
     let result: ReturnType<typeof useSessionBootstrap> | null = null
     render(
@@ -621,7 +622,7 @@ describe('useSessionBootstrap new-session draft', () => {
   })
 
   it('does nothing on an empty draft of the same workspace', () => {
-    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    useAgentStore.setState({ sessionId: null, sessionRun: runOf(false) })
     const navigate = mock((..._args: unknown[]) => {})
     let result: ReturnType<typeof useSessionBootstrap> | null = null
     render(
@@ -639,7 +640,7 @@ describe('useSessionBootstrap new-session draft', () => {
   })
 
   it('keeps unsent draft text per folder and hands it to the session the first message creates', () => {
-    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    useAgentStore.setState({ sessionId: null, sessionRun: runOf(false) })
     const setValue = mock((..._args: unknown[]) => {})
     let result: ReturnType<typeof useSessionBootstrap> | null = null
     const { rerender } = render(
@@ -697,7 +698,7 @@ describe('useSessionBootstrap new-session draft', () => {
   }
 
   it('fills a link prompt into the draft that mounts for its folder, once and unsent', () => {
-    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    useAgentStore.setState({ sessionId: null, sessionRun: runOf(false) })
     // Cold start: the link was read before the chat view mounted.
     useUIStore.getState().requestComposerPrefill('/repo/app', 'fix the build')
     const { calls, inputRef } = prefillComposer()
@@ -711,7 +712,7 @@ describe('useSessionBootstrap new-session draft', () => {
   })
 
   it('fills a link prompt into a draft already on screen, and leaves other folders’ prompts waiting', () => {
-    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    useAgentStore.setState({ sessionId: null, sessionRun: runOf(false) })
     const { calls, inputRef } = prefillComposer()
     render(<Harness sessionId={null} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={inputRef} />)
     calls.length = 0
@@ -726,7 +727,7 @@ describe('useSessionBootstrap new-session draft', () => {
   })
 
   it('keeps a link prompt until the composer mounts (cold start: "Opening workspace…" first)', () => {
-    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    useAgentStore.setState({ sessionId: null, sessionRun: runOf(false) })
     useUIStore.getState().requestComposerPrefill('/repo/app', 'list the files')
     const { calls, inputRef: mounted } = prefillComposer()
     const inputRef = createRef<InputComposerHandle>()

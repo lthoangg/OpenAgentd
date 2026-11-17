@@ -62,6 +62,8 @@ const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: an
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { handleGlobalEvent } from '@/hooks/use-global-event-stream'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
 
@@ -88,7 +90,7 @@ afterEach(() => {
 describe('sendMessage over an open question', () => {
   it('starts from a parked lead with the card open and the stream attached', () => {
     const s = useAgentStore.getState()
-    expect(s.pendingQuestion?.id).toBe('q-1')
+    expect(openQuestion(s)?.id).toBe('q-1')
     expect(s.agentStreams.lead.status).toBe('waiting_input')
     expect(s.isConnected).toBe(true)
   })
@@ -111,10 +113,10 @@ describe('sendMessage over an open question', () => {
     expect(userBubbles('continue')).toHaveLength(1)
     // The reload already took the server's word that the card is closed; its
     // label then comes from the persisted "Superseded" tool result.
-    expect(s.pendingQuestion).toBeNull()
+    expect(openQuestion(s)).toBeNull()
     expect(s.isConnected).toBe(true)
     expect(s._abortController?.signal.aborted).toBe(false)
-    expect(s.isAgentWorking).toBe(true)
+    expect(isRunLive(s.sessionRun)).toBe(true)
   })
 
   it('shows one bubble when the POST answers first', async () => {
@@ -130,7 +132,7 @@ describe('sendMessage over an open question', () => {
 
     const s = useAgentStore.getState()
     expect(userBubbles('continue')).toHaveLength(1)
-    expect(s.pendingQuestion).toBeNull()
+    expect(openQuestion(s)).toBeNull()
     expect(s.isConnected).toBe(true)
     expect(mockSessionHistory).toHaveBeenCalledTimes(1)
   })

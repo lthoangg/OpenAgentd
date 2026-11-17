@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => false }))
 
@@ -24,11 +25,11 @@ const QUESTION = {
 }
 
 beforeEach(() => {
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: QUESTION as never, resolvedQuestions: {} })
+  useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(QUESTION as never), resolvedQuestions: {} })
 })
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ questionCard: questionCardOf(null) })
 })
 
 describe('PinnedQuestion on desktop', () => {

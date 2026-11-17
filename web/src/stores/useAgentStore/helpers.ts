@@ -1,10 +1,10 @@
 import type { ContentBlock } from '@/api/types'
-import type { PendingQuestion } from '@/api/question-types'
 import { patchFiles } from '@/components/ToolCall/diffUtils'
 import { isGoalTurnBlock } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
 import { createDefaultAgentStream } from './defaults'
-import type { AgentStore, AgentStream, CacheInvalidation, QuestionClosedReason, ResolvedQuestion } from './types'
+import { setAgentStatus } from './run-state'
+import type { AgentStore, AgentStream, QuestionClosedReason } from './types'
 
 /** Kinds whose live id (``generateBlockId``) differs from the server row's. */
 const ADOPTABLE_KINDS = new Set<ContentBlock['type']>(['thinking', 'text'])
@@ -69,65 +69,6 @@ export function parseQuestionClosedReason(raw: unknown): QuestionClosedReason | 
     default:
       return null
   }
-}
-
-/**
- * Close the open question and record how it ended.
- *
- * Resolving is a race between the POST reply and the broadcast of the same
- * resolution, and either can land first. Both call this, so whichever wins
- * records the outcome and the loser is a no-op — the guard makes it idempotent
- * rather than letting the second caller wipe what the first stored.
- *
- * The outcome is kept against the *tool call*: the persisted tool result is
- * only rewritten server-side at the end of the turn, so without this the card
- * would fall back to "waiting" for the seconds until history reconciles.
- *
- * Closing a plan review also refreshes the plan: an approval records the
- * approved revision, and the user may have edited it during the review.
- */
-export function applyQuestionResolution(
-  draft: {
-    pendingQuestion: PendingQuestion | null
-    resolvedQuestions: Record<string, ResolvedQuestion>
-    sessionId?: string | null
-    cacheInvalidations?: CacheInvalidation[]
-  },
-  /** ``null`` closes whatever is open — used by turn-level events that end a
-   *  question without naming it. */
-  questionId: string | null,
-  answers: string[][] | null,
-  reason: QuestionClosedReason | null,
-): void {
-  if (!draft.pendingQuestion) return
-  if (questionId !== null && draft.pendingQuestion.id !== questionId) return
-  draft.resolvedQuestions[draft.pendingQuestion.toolCallId] = {
-    questions: draft.pendingQuestion.questions,
-    answers,
-    reason,
-  }
-  if (draft.pendingQuestion.kind === 'plan_review' && draft.sessionId) {
-    draft.cacheInvalidations?.push({ kind: 'plan', sessionId: draft.sessionId })
-  }
-  draft.pendingQuestion = null
-}
-
-/**
- * Statuses that mean "this agent's turn has not ended yet".
- *
- * Mirrors ``BUSY_STATES`` in ``app/agent/mode/agent/member.py``: a lead suspended
- * on ``ask_user`` emits no tokens but must still read as live, or the
- * UI would look finished with a question card still on screen.
- */
-const LIVE_STATUSES: ReadonlySet<AgentStream['status']> = new Set(['working', 'waiting_input'])
-
-export function isLiveStatus(status: AgentStream['status']): boolean {
-  return LIVE_STATUSES.has(status)
-}
-
-/** True when any agent in the map is still mid-turn. */
-export function anyAgentLive(streams: Record<string, AgentStream>): boolean {
-  return Object.values(streams).some((s) => isLiveStatus(s.status))
 }
 
 /**
@@ -276,7 +217,7 @@ export function applyRevertBoundary(
     stream.currentBlocks = []
     stream.currentText = ''
     stream.currentThinking = ''
-    stream.status = 'idle'
+    setAgentStatus(stream, 'idle')
   }
 
   if (boundaryTime === null && !options.boundaryId && !options.boundaryContent) {

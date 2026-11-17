@@ -245,6 +245,10 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     **Send** on the last one. Keys 1–9 pick an option (the next number is
     "Type your own answer") and Enter sends. Double-clicking an answer
     picks it and sends (or goes to the next question).
+  - A turn that ends while its question is still open keeps reading as
+    waiting for your answer (Stop stays, the sidebar row keeps its
+    needs-input mark), the same as after a reload; it used to read as
+    finished until the page was reloaded. `[v3.59.0]`
   - An open tool row's arguments and output show in full, no longer cut at
     its edges.
   - A plan review is decided in the Plan tab: **Approve** (or **Approve and

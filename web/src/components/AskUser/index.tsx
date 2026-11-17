@@ -28,6 +28,8 @@
 import { useCallback, useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react'
 
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 import type { QuestionItem } from '@/api/question-types'
@@ -71,7 +73,7 @@ function useRegisterPinHost(): void {
 
 /** The ``tool_call_id`` of the question open in this session, or ``null``. */
 function selectOpenQuestionCallId(state: AgentStoreState): string | null {
-  const question = state.pendingQuestion
+  const question = openQuestion(state)
   return question !== null && state.sessionId !== null && question.sessionId === state.sessionId
     ? question.toolCallId
     : null
@@ -89,7 +91,7 @@ function isUnsettledResult(result: string | undefined): boolean {
  * turn once the previous question is closed (answered, dismissed, superseded).
  */
 function selectInLiveTurn(state: AgentStoreState, toolCallId: string | undefined): boolean {
-  if (!toolCallId || !state.isAgentWorking) return false
+  if (!toolCallId || !isRunLive(state.sessionRun)) return false
   return Object.values(state.agentStreams).some((stream) =>
     stream.currentBlocks.some((block) => block.toolCallId === toolCallId),
   )
@@ -97,7 +99,7 @@ function selectInLiveTurn(state: AgentStoreState, toolCallId: string | undefined
 
 /** ``|``-joined tool call ids of the running turn (a stable selector value). */
 function selectLiveTurnCallIds(state: AgentStoreState): string {
-  if (!state.isAgentWorking) return ''
+  if (!isRunLive(state.sessionRun)) return ''
   const ids: string[] = []
   for (const stream of Object.values(state.agentStreams)) {
     for (const block of stream.currentBlocks) if (block.toolCallId) ids.push(block.toolCallId)
@@ -193,7 +195,7 @@ export function AskUser({
   /** A ``secret`` request's card: masked fields, and a summary of names. */
   secret?: boolean
 }) {
-  const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
+  const pendingQuestion = useAgentStore(openQuestion)
   const openCallId = useAgentStore(selectOpenQuestionCallId)
   const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
@@ -273,7 +275,7 @@ function SummaryLines({ lines }: { lines: string[] }) {
 export function PinnedQuestion() {
   useRegisterPinHost()
   const isPhone = useIsPhone()
-  const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
+  const pendingQuestion = useAgentStore(openQuestion)
   const openCallId = useAgentStore(selectOpenQuestionCallId)
   const show = pendingQuestion !== null && openCallId !== null && pendingQuestion.kind !== 'plan_review'
   const { submitting, error, answer, answerSecret } = useQuestionResolver(show ? pendingQuestion : null)

@@ -20,6 +20,8 @@ mock.module('@/lib/haptics', () => ({ haptic: () => {}, outcomeHapticFeedback: (
 
 import { reconcileCurrentSession } from '@/hooks/use-global-event-stream'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 type Callbacks = { onEvent: (type: string, data: unknown) => void; onDone?: () => void; onError?: (e: Error) => void }
 
@@ -39,13 +41,13 @@ beforeEach(() => {
     _workspace: '/repo',
     leadName: 'lead',
     agentNames: ['lead'],
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     isConnected: false,
-    pendingQuestion: null,
+    questionCard: questionCardOf(null),
     _abortController: null,
     _sessionGeneration: 1,
     // The history reload keeps the turn running.
-    loadSession: mock(async () => { useAgentStore.setState({ isAgentWorking: true }) }),
+    loadSession: mock(async () => { useAgentStore.setState({ sessionRun: runOf(true) }) }),
   })
 })
 

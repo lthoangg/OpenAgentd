@@ -20,6 +20,7 @@ import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { SessionPlan } from '@/api/types'
 import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',
@@ -61,7 +62,7 @@ beforeEach(() => {
   clearPlanReviewDrafts()
   resetPlanDecisionChoice()
   document.documentElement.removeAttribute('data-keyboard-open')
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: REVIEW, resolvedQuestions: {}, markTurnResuming: () => {} })
+  useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(REVIEW), resolvedQuestions: {}, markTurnResuming: () => {} })
   globalThis.fetch = mock(async (input: unknown, rawInit?: unknown) => {
     const init = rawInit as RequestInit | undefined
     const url = String(input)
@@ -80,7 +81,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   document.documentElement.removeAttribute('data-keyboard-open')
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 })
 
 function renderTab() {

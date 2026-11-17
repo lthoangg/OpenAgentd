@@ -11,7 +11,9 @@ import { isTransientNetworkError } from '@/utils/errors'
 import { parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
-import { applyQuestionResolution, applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
+import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
+import { applyQuestion, applyQuestionResolution, openQuestion } from './question-state'
+import { applyRun, isRunLive, markRowRunning, markRowStopped, reconcileSnapshot, setAgentStatus } from './run-state'
 import {
   dropSnapshotAlignedPrefix,
   dropSnapshotCoveredBlocks,
@@ -128,11 +130,9 @@ async function loadSessionImpl(
   // changed it during the fetch (asked, answered, dismissed), the stream is
   // newer than the response: a response fetched before a review opened
   // cleared the live card, and the agent looked stuck until the next reload.
-  const questionIdAtFetch = get().pendingQuestion?.id ?? null
+  const questionIdAtFetch = openQuestion(get())?.id ?? null
   set((draft) => {
-    if (draft.sessionId !== sessionId) {
-      draft.isAgentWorking = false
-    }
+    if (draft.sessionId !== sessionId) applyRun(draft, { type: 'reset' })
   })
   try {
     const liveNames = get().liveAgentNames
@@ -182,7 +182,7 @@ async function loadSessionImpl(
       const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
       const boundary = { boundaryId, boundaryContent: boundaryMsg?.content }
 
-      // The client's `isAgentWorking` lags the server: after a /stop the
+      // The client's run state lags the server: after a /stop the
       // backend keeps unwinding for seconds before its trailing `done` clears
       // the flag, and `session_turn_completed` can arrive over the global
       // stream ahead of that `done` too. When the server says the turn is
@@ -194,7 +194,7 @@ async function loadSessionImpl(
       const turnStillRunning = history.lead.running === true
       // Read before this page overwrites it; a switch to another session
       // cleared it when the request went out.
-      const believedRunning = draft.isAgentWorking
+      const believedRunning = isRunLive(draft.sessionRun)
       // What each stream showed before this page lands (before the covered
       // live blocks are dropped), so a just-finished turn keeps its ids.
       const shownBefore = new Map<string, readonly ContentBlock[]>()
@@ -218,17 +218,18 @@ async function loadSessionImpl(
       const historyQuestion = history.pending_question
         ? toPendingQuestion(history.pending_question)
         : null
-      const liveQuestionChanged = (draft.pendingQuestion?.id ?? null) !== questionIdAtFetch
-      const restoredQuestion = liveQuestionChanged ? draft.pendingQuestion : historyQuestion
+      const shownQuestion = openQuestion(draft)
+      const liveQuestionChanged = (shownQuestion?.id ?? null) !== questionIdAtFetch
+      const restoredQuestion = liveQuestionChanged ? shownQuestion : historyQuestion
       const awaitingAnswer = restoredQuestion !== null
       if (!liveQuestionChanged) {
         // The server closed the card this client showed (another window, a
         // stop or dismissal whose event it missed): record that, or the card
         // would fall back to its persisted placeholder and "wait" for good.
-        if (draft.pendingQuestion && draft.pendingQuestion.id !== historyQuestion?.id) {
-          applyQuestionResolution(draft, draft.pendingQuestion.id, null, 'resolved_elsewhere')
+        if (shownQuestion && shownQuestion.id !== historyQuestion?.id) {
+          applyQuestionResolution(draft, shownQuestion.id, null, 'resolved_elsewhere')
         }
-        draft.pendingQuestion = historyQuestion
+        applyQuestion(draft, { type: 'restore', question: historyQuestion })
       }
       // A review restored here may be for a plan revision this client never
       // saw written.
@@ -237,17 +238,20 @@ async function loadSessionImpl(
       }
 
       const leadHadNewerActivity = leadName
-        ? hasLiveContent(draft.agentStreams[leadName], draft.isAgentWorking, fetchStartedAt)
+        ? hasLiveContent(draft.agentStreams[leadName], believedRunning, fetchStartedAt)
         : false
-      if (!leadHadNewerActivity) {
-        // After a daemon restart the stream store has forgotten the turn, so
-        // ``running`` is false while the question row says otherwise. The row is
-        // the durable half, so it wins.
-        draft.isAgentWorking =
-          history.lead.running === true ||
-          history.members.some((m) => m.running === true) ||
-          awaitingAnswer
-      }
+      // After a daemon restart the stream store has forgotten the turn, so
+      // ``running`` is false while the question row says otherwise. The row is
+      // the durable half, so it wins (``reconcileSnapshot``).
+      const verdict = reconcileSnapshot({
+        leadRunning: turnStillRunning,
+        memberRunning: history.members.some((m) => m.running === true),
+        awaitingAnswer,
+        leadKeepsLive: leadHadNewerActivity,
+        believedRunning,
+        leadStatus: (leadName ? draft.agentStreams[leadName]?.status : undefined) ?? 'idle',
+      })
+      if (verdict.run) applyRun(draft, verdict.run)
 
       if (leadName) {
         if (!draft.agentStreams[leadName]) {
@@ -272,14 +276,9 @@ async function loadSessionImpl(
           }
           removePersistedOptimisticUserBlocks(leadStream)
           // The page may have just committed the bubble that showed the send
-          // was pending. When the server says the turn runs and this client
-          // still expects it to, the lead reads as working without waiting
-          // for a stream frame; otherwise the transcript looks finished.
-          // Only from idle: a live frame that failed or parked the lead since
-          // the page was read is newer than the page.
-          if (turnStillRunning && !awaitingAnswer && draft.isAgentWorking && leadStream.status === 'idle') {
-            leadStream.status = 'working'
-          }
+          // was pending: a lead the server and this client both take for
+          // running reads as working without waiting for a stream frame.
+          if (verdict.leadStatus) setAgentStatus(leadStream, verdict.leadStatus)
         }
         if (!leadHadNewerActivity) {
           leadStream.currentBlocks = []
@@ -288,9 +287,7 @@ async function loadSessionImpl(
           // A suspended lead is still "running" to the stream store (the turn
           // never closed), but it is waiting, not working — so the question is
           // what distinguishes the two here, not the ``running`` flag.
-          leadStream.status = awaitingAnswer
-            ? 'waiting_input'
-            : history.lead.running === true ? 'working' : 'idle'
+          if (verdict.leadStatus) setAgentStatus(leadStream, verdict.leadStatus)
           leadStream._turnStartedAt =
             history.lead.running === true && !awaitingAnswer ? Date.now() : null
         }
@@ -333,7 +330,7 @@ async function loadSessionImpl(
           draft.agentStreams[member.name] = createDefaultAgentStream()
         }
         const memberStream = draft.agentStreams[member.name]
-        const memberHadNewerActivity = hasLiveContent(memberStream, draft.isAgentWorking, fetchStartedAt)
+        const memberHadNewerActivity = hasLiveContent(memberStream, isRunLive(draft.sessionRun), fetchStartedAt)
         installPage(memberStream, member.messages, memberHadNewerActivity, leadRevertTime, boundary)
         if (memberHadNewerActivity && turnStillRunning) {
           dropSnapshotAlignedPrefix(
@@ -351,12 +348,14 @@ async function loadSessionImpl(
           memberStream.currentBlocks = []
           memberStream.currentText = ''
           memberStream.currentThinking = ''
-          memberStream.status =
+          setAgentStatus(
+            memberStream,
             !isLiveMember
               ? 'offline'
               : member.running === true
                 ? 'working'
-                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
+                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle',
+          )
           memberStream._turnStartedAt = member.running === true ? Date.now() : null
         }
         keepLiveIds(memberStream, shownBefore.get(member.name))
@@ -384,15 +383,8 @@ async function loadSessionImpl(
       // says the turn is over: with the event feed down, this page is the
       // only word of that. A session waiting on an answer is left alone: the
       // patch would clear the row's needs-input mark.
-      if (!awaitingAnswer) {
-        if (turnStillRunning && draft._runningPatchedFor !== sessionId) {
-          draft._runningPatchedFor = sessionId
-          draft.cacheInvalidations.push({ kind: 'session_running', sessionId, running: true })
-        } else if (!turnStillRunning && !leadHadNewerActivity && believedRunning) {
-          draft._runningPatchedFor = null
-          draft.cacheInvalidations.push({ kind: 'session_running', sessionId, running: false })
-        }
-      }
+      if (verdict.row === 'running') markRowRunning(draft)
+      else if (verdict.row === 'stopped') markRowStopped(draft, sessionId)
     })
 
     if (liveNames === null && get()._sessionGeneration === gen) {

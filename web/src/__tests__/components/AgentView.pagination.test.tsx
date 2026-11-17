@@ -27,7 +27,8 @@ const storeState = {
   loadOlderMessages: mockLoadOlderMessages,
   // A prompt-less page seeks its prompt on mount; not what these tests cover.
   loadOlderUntilPrompt: mock(() => Promise.resolve(false)),
-  pendingQuestion: null,
+  questionCard: questionCardOf(null),
+  sessionRun: runOf(false),
   resolvedQuestions: {},
 }
 
@@ -43,6 +44,8 @@ mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 // ── Component import (after mocks) ───────────────────────────────────────────
 
 import { AgentView } from "@/components/AgentView"
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

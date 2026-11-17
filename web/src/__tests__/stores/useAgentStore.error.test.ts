@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Toast } from "@/stores/useToastStore";
 import { inferErrorTitle, useAgentStore } from "@/stores/useAgentStore";
 import { useToastStore } from "@/stores/useToastStore";
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 const INITIAL_TEAM_STATE = {
   agentStreams: {},
@@ -11,7 +12,7 @@ const INITIAL_TEAM_STATE = {
   sidebarOpen: false,
   sessionId: null,
   sessionTitle: null,
-  isAgentWorking: false,
+  sessionRun: runOf(false),
   isConnected: false,
   error: null,
   _pendingMessages: [],
@@ -71,7 +72,7 @@ describe("_handleSSEEvent: done", () => {
 
   it("preserves error status", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream("error"),
       },
@@ -84,7 +85,7 @@ describe("_handleSSEEvent: done", () => {
 
   it("resets working streams to idle", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream("working"),
       },
@@ -97,7 +98,7 @@ describe("_handleSSEEvent: done", () => {
 
   it("keeps idle streams idle", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream("idle"),
       },
@@ -226,7 +227,7 @@ describe("inferErrorTitle", () => {
 
 describe("_handleSSEEvent structured error handling", () => {
   it("parses structured error events into store state", () => {
-    useAgentStore.setState({ error: null, isAgentWorking: true });
+    useAgentStore.setState({ error: null, sessionRun: runOf(true) });
 
     useAgentStore.getState()._handleSSEEvent("error", {
       title: "Provider Connection Failed",
@@ -244,7 +245,7 @@ describe("_handleSSEEvent structured error handling", () => {
       code: "provider_connection_failed",
       agent: undefined,
     });
-    expect(useAgentStore.getState().isAgentWorking).toBe(false);
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(false);
   });
 
   it("surfaces agent_status error into store error state when not set", () => {
@@ -382,7 +383,7 @@ describe("_handleSSEEvent structured error handling", () => {
       category: "provider",
     };
     const call = { agent: "code", model: "router9:test-model", max_attempts: 5, error_type: "HTTPStatusError", status_code: 503, message: null };
-    useAgentStore.setState({ leadName: "code", isAgentWorking: true, agentStreams: { code: makeStream("working") } });
+    useAgentStore.setState({ leadName: "code", sessionRun: runOf(true), agentStreams: { code: makeStream("working") } });
     const send = useAgentStore.getState()._handleSSEEvent;
 
     send("provider_status", { ...call, status: "retrying", attempt: 2, delay_seconds: 2.6 });

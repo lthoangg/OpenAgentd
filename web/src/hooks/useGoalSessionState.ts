@@ -2,12 +2,17 @@ import type { SessionGoal } from '@/api/types'
 import type { GoalSessionState } from '@/lib/goal'
 import { activeWaiting, useSessionWaitingQuery } from '@/queries/useSessionsQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 
 /** The session state a goal reads, from the live stream (and the sessions it waits for between turns). */
 export function useGoalSessionState(sessionId: string | null, goal: SessionGoal | null): GoalSessionState {
-  const running = useAgentStore((s) => s.isAgentWorking)
-  const waitingForUser = useAgentStore((s) => Boolean(s.pendingQuestion) && s.pendingQuestion?.kind !== 'plan_review')
-  const planReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
+  const running = useAgentStore((s) => isRunLive(s.sessionRun))
+  const waitingForUser = useAgentStore((s) => {
+    const question = openQuestion(s)
+    return question !== null && question.kind !== 'plan_review'
+  })
+  const planReview = useAgentStore((s) => openQuestion(s)?.kind === 'plan_review')
   const planMode = useAgentStore((s) => (s.sessionPendingInteractionMode ?? s.sessionInteractionMode) === 'plan')
   const queuedMessages = useAgentStore((s) => s._pendingMessages?.length ?? 0)
   // Only an active goal between turns waits: on its subagents, and on

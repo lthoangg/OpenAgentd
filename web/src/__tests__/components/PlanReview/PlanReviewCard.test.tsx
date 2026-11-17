@@ -22,6 +22,7 @@ import { APP_EVENTS } from '@/lib/app-events'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { SessionPlan } from '@/api/types'
 import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 /** Kept so a card can render inside the app's providers. */
 function render(ui: ReactElement) {
@@ -62,7 +63,7 @@ beforeEach(() => {
   clearQuestionDrafts()
   clearPlanReviewDrafts()
   resetPlanDecisionChoice()
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {}, markTurnResuming })
+  useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(null), resolvedQuestions: {}, markTurnResuming })
   globalThis.fetch = mock(async (input: unknown, rawInit?: unknown) => {
     const init = rawInit as RequestInit | undefined
     const url = String(input)
@@ -78,12 +79,12 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 })
 
 describe('PlanReviewCard', () => {
   it('waits for the review and opens the plan while its review is open', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const opened = mock(() => {})
     window.addEventListener(APP_EVENTS.openPlan, opened)
 
@@ -101,7 +102,7 @@ describe('PlanReviewCard', () => {
   })
 
   it('never shows the placeholder written for the model', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = render(<PlanReviewCard toolCallId="call-1" result={PLACEHOLDER} done />)
     expect(container.textContent).not.toContain('Do not continue')
   })
@@ -238,7 +239,7 @@ describe('PlanReviewCard', () => {
   })
 
   it('does not treat another plan review as its own', () => {
-    useAgentStore.setState({ pendingQuestion: { ...REVIEW, toolCallId: 'call-2' } })
+    useAgentStore.setState({ questionCard: questionCardOf({ ...REVIEW, toolCallId: 'call-2' }) })
     const { container } = render(<PlanReviewCard toolCallId="call-1" result="The user approved plan revision 1." done />)
     expect(screen.getByText('Approved')).toBeTruthy()
     expect(container.querySelector('[data-question-waiting]')).toBeNull()
@@ -247,7 +248,7 @@ describe('PlanReviewCard', () => {
 
 describe('PlanReviewCard — no decision in the chat', () => {
   it('offers only Open plan on the open card: Approve and Request changes live in the Plan panel', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     render(<PlanReviewCard toolCallId="call-1" result={PLACEHOLDER} done />)
 
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Open plan'])
@@ -262,7 +263,7 @@ describe('PlanReviewCard — look', () => {
   const BORDER = /(?<![\w-:])border-[btlrxy](?![\w-])|(?<![\w-:])border(?![\w-])/
 
   it('has no icon before the title and one thin frame with nothing bordered inside', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = render(<PlanReviewCard toolCallId="call-1" result={PLACEHOLDER} done />)
 
     const frame = container.querySelector('[data-question-waiting]') as HTMLElement

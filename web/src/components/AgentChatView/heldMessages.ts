@@ -9,6 +9,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { haptic, outcomeHapticFeedback } from '@/lib/haptics'
 import { pauseSessionGoal } from '@/api/client'
 import { useAgentStore, type PendingMessage } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle } from '../InputComposer'
 import type { SendDelivery } from '../InputComposer/deliveries'
@@ -146,8 +147,8 @@ export async function deliverFromComposer(
 ): Promise<void> {
   // Phones: a light tap confirms the message left the composer (no-op elsewhere).
   haptic('tick')
-  const { isAgentWorking, sessionId } = useAgentStore.getState()
-  const plan = planComposerDelivery({ working: isAgentWorking, sessionId, delivery })
+  const { sessionRun, sessionId } = useAgentStore.getState()
+  const plan = planComposerDelivery({ working: isRunLive(sessionRun), sessionId, delivery })
   let calledOff: Returned[] = []
   const stoppedForSend = plan.kind === 'stop_then_send'
   if (stoppedForSend) {
@@ -189,7 +190,7 @@ export function useReturnQueuedAfterFailure({ sessionId, composerRef }: {
   // A session switch clears the working flag before the server has said
   // whether that session's turn is still running; its loaded history is what
   // makes an idle flag trustworthy.
-  const idle = useAgentStore((s) => !s.isAgentWorking && s._syncedThrough !== null)
+  const idle = useAgentStore((s) => !isRunLive(s.sessionRun) && s._syncedThrough !== null)
   const turnFailed = useAgentStore((s) => (s.leadName ? s.agentStreams[s.leadName]?.status === 'error' : false))
   const returningRef = useRef(false)
 

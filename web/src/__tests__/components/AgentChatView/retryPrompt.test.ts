@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { AgentCommandResponse, ContentBlock, MessageResponse } from '@/api/types'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const postAgentCommand = mock(async (): Promise<AgentCommandResponse> => ({ status: 'accepted', session_id: 'session-1', command: 'undo' }))
 const postAgentChat = mock(async (..._args: unknown[]) => ({ status: 'accepted', session_id: 'session-1', message_id: 'm-new' }))
@@ -50,7 +51,7 @@ beforeEach(() => {
     sessionModel: 'openai:gpt-5',
     sessionThinkingLevel: 'high',
     sessionFastMode: false,
-    isAgentWorking: false,
+    sessionRun: runOf(false),
     error: null,
     pendingDraft: null,
     _pendingMessages: [],

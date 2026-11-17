@@ -20,6 +20,7 @@ const mockSessionHistorySince = mock(async () => ({ lead: { messages: [] }, memb
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const shownTool: ContentBlock = { id: "t1", type: "tool", content: "", toolName: "shell", toolCallId: "call-1", toolDone: true }
 
@@ -41,7 +42,7 @@ beforeEach(() => {
     _workspace: "/repo",
     leadName: "lead",
     agentNames: ["lead"],
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     _syncedThrough: "01a18c00-0000-7000-8000-000000000001",
     loadSession,
     agentStreams: {
@@ -86,7 +87,7 @@ describe("history gap at a stream attach", () => {
   })
 
   it("does not check an idle session", async () => {
-    useAgentStore.setState({ isAgentWorking: false })
+    useAgentStore.setState({ sessionRun: runOf(false) })
     useAgentStore.getState().connectStream()
     streamCallbacks.onEvent("message", { agent: "lead", text: "a" })
     await new Promise((resolve) => setTimeout(resolve, 0))

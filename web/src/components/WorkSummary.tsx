@@ -20,6 +20,8 @@ import { isPlanGoal, planStatus } from '@/lib/plan'
 import { workStatusLabel } from '@/lib/work'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { ActivePlanSection, SUMMARY_ROW_BUTTON_CLASS } from './ActivePlanSection'
 
 const TONE_CLASS: Record<GoalTone, string> = {
@@ -62,7 +64,7 @@ export function GoalSummaryRow({ goal, onOpen, onAction, bare = false, className
   bare?: boolean
   className?: string
 }) {
-  const running = useAgentStore((s) => s.isAgentWorking)
+  const running = useAgentStore((s) => isRunLive(s.sessionRun))
   const tone = goalStatusTone(goal)
   const turn = Math.max(1, goalTurnNumber(goal, running))
   const text = bare && goal.status !== 'achieved' ? `Turn ${turn}/${goal.max_turns}` : goalSummaryText(goal, running)
@@ -116,7 +118,7 @@ export interface WorkSummaryProps {
 
 /** The goal row (while the session has one) over the plan row (while it has a plan). */
 export function WorkSummary({ goal: rawGoal = null, plan, todos, onClearPlan, onOpenPlan, onOpenGoal, onGoalAction, className }: WorkSummaryProps) {
-  const reviewing = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
+  const reviewing = useAgentStore((s) => openQuestion(s)?.kind === 'plan_review')
   const goal = rawGoal && rawGoal.status !== 'cleared' ? rawGoal : null
   const planRow = plan && onClearPlan
   if (!goal && !planRow) return null

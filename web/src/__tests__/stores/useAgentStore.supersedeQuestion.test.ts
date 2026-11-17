@@ -12,17 +12,18 @@ mock.module('@/api/client', () => ({
 }))
 
 import { useAgentStore } from '@/stores/useAgentStore'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
 
 beforeEach(() => {
   postAgentChat.mockClear()
   useAgentStore.setState({
     sessionId: 's-1',
-    pendingQuestion: {
+    questionCard: questionCardOf({
       id: 'q-1',
       sessionId: 's-1',
       toolCallId: 'call-1',
       questions: [{ question: 'Q?', header: 'Q', multiple: false, options: [] }],
-    },
+    }),
     resolvedQuestions: {},
   })
 })
@@ -31,7 +32,7 @@ describe('sendMessage with an open question', () => {
   it('closes the card as superseded', async () => {
     await useAgentStore.getState().sendMessage('hello', undefined, { workspace: '/tmp' })
     const s = useAgentStore.getState()
-    expect(s.pendingQuestion).toBeNull()
+    expect(openQuestion(s)).toBeNull()
     expect(s.resolvedQuestions['call-1']?.reason).toBe('superseded')
   })
 })

@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => false }))
 
@@ -14,14 +15,14 @@ const { APP_EVENTS } = await import('@/lib/app-events')
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ questionCard: questionCardOf(null) })
 })
 
 describe('PinnedPlanReview on desktop', () => {
   it('keeps the plan awaiting approval above the composer', () => {
     useAgentStore.setState({
       sessionId: 's1',
-      pendingQuestion: { id: 'q', sessionId: 's1', toolCallId: 'c', questions: [], kind: 'plan_review', planRevision: 2 } as never,
+      questionCard: questionCardOf({ id: 'q', sessionId: 's1', toolCallId: 'c', questions: [], kind: 'plan_review', planRevision: 2 } as never),
     })
     const opened = mock(() => {})
     window.addEventListener(APP_EVENTS.openPlan, opened)

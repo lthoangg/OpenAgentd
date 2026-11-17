@@ -18,6 +18,7 @@ import {
   resetSidebarHarness,
   type TestSession,
 } from './harness'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 describe('Sidebar workspace trust flow', () => {
   beforeEach(resetSidebarHarness)
@@ -199,7 +200,7 @@ describe('Sidebar workspace trust flow', () => {
     fx.workspaceSessionsData = fx.sessionsData
     useAgentStore.setState({
       sessionId: 'session-1',
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentNames: ['lead'],
       agentStreams: {
         lead: {

@@ -10,10 +10,11 @@ mock.module('@/hooks/use-is-phone', () => ({ useIsPhone: () => true }))
 import { RunBar, runBarLabel } from '@/components/composer/RunBar'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ leadName: null, agentStreams: {}, isAgentWorking: false, pinnedPrompt: null })
+  useAgentStore.setState({ leadName: null, agentStreams: {}, sessionRun: runOf(false), pinnedPrompt: null })
   useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
 })
 
@@ -41,23 +42,23 @@ describe('RunBar', () => {
   })
 
   it('shows the step and elapsed time while working', () => {
-    useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: stream('working', 3) as never } })
+    useAgentStore.setState({ leadName: 'lead', sessionRun: runOf(true), agentStreams: { lead: stream('working', 3) as never } })
     render(<RunBar />)
     expect(screen.getByText(/^Running · step 3 · 1:0\d$/)).toBeTruthy()
   })
 
   it('shows Working and the elapsed time with the Detail setting on Simple', () => {
     useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
-    useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: stream('working', 3) as never } })
+    useAgentStore.setState({ leadName: 'lead', sessionRun: runOf(true), agentStreams: { lead: stream('working', 3) as never } })
     render(<RunBar />)
     expect(screen.getByText(/^Working · 1:0\d$/)).toBeTruthy()
     expect(screen.queryByText(/step/)).toBeNull()
   })
 
   it('is gone when the agent is not working', () => {
-    useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: stream('working', 1) as never } })
+    useAgentStore.setState({ leadName: 'lead', sessionRun: runOf(true), agentStreams: { lead: stream('working', 1) as never } })
     const { container } = render(<RunBar />)
-    act(() => { useAgentStore.setState({ isAgentWorking: false, agentStreams: { lead: stream('idle', 1) as never } }) })
+    act(() => { useAgentStore.setState({ sessionRun: runOf(false), agentStreams: { lead: stream('idle', 1) as never } }) })
     expect(container.textContent).toBe('')
   })
 
@@ -68,7 +69,7 @@ describe('RunBar', () => {
     const compaction = (id: string) => ({ id, type: 'compaction', content: 'summary' })
     const working = (blocks: unknown[], currentBlocks: unknown[]) => ({ ...stream('working', 0), blocks, currentBlocks })
     const renderWith = (blocks: unknown[], currentBlocks: unknown[]) => {
-      useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: working(blocks, currentBlocks) as never } })
+      useAgentStore.setState({ leadName: 'lead', sessionRun: runOf(true), agentStreams: { lead: working(blocks, currentBlocks) as never } })
       render(<RunBar />)
     }
 
@@ -102,7 +103,7 @@ describe('RunBar', () => {
     const compaction = (id: string) => ({ id, type: 'compaction', content: 'summary' })
     const renderWith = (blocks: unknown[], currentBlocks: unknown[], turnStartedAt: number | null = reconnectedJustNow()) => {
       const lead = { ...stream('working', 0), blocks, currentBlocks, _turnStartedAt: turnStartedAt }
-      useAgentStore.setState({ leadName: 'lead', isAgentWorking: true, agentStreams: { lead: lead as never } })
+      useAgentStore.setState({ leadName: 'lead', sessionRun: runOf(true), agentStreams: { lead: lead as never } })
       render(<RunBar />)
     }
 

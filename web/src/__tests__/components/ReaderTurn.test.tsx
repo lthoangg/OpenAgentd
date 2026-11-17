@@ -8,13 +8,14 @@ import { AssistantTurn } from '@/components/AssistantTurnFooter'
 import { FileRefContext, type FileRefOpener } from '@/components/FileRefLink'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 beforeEach(() => {
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.resolve() }, configurable: true, writable: true })
 })
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ sessionId: null, pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ sessionId: null, questionCard: questionCardOf(null), resolvedQuestions: {} })
 })
 
 const patchArgs = (...lines: string[]) => JSON.stringify({ patch_text: ['*** Begin Patch', ...lines, '*** End Patch'].join('\n') })
@@ -370,7 +371,7 @@ describe('AssistantTurn — reader mode, ask_user', () => {
   })
 
   it('folds a question answered here before the transcript catches up', () => {
-    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: { 'call-q': { questions: [], answers: [['A']], reason: null } } })
+    useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(null), resolvedQuestions: { 'call-q': { questions: [], answers: [['A']], reason: null } } })
 
     renderTurn([read, ask(PLACEHOLDER), shell, answer])
 
@@ -378,7 +379,7 @@ describe('AssistantTurn — reader mode, ask_user', () => {
   })
 
   it('keeps the open question out of the fold', () => {
-    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-q', questions: [] }, resolvedQuestions: {} })
+    useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf({ id: 'q-1', sessionId: 's-1', toolCallId: 'call-q', questions: [] }), resolvedQuestions: {} })
 
     renderTurn([read, ask(PLACEHOLDER)])
 
@@ -386,7 +387,7 @@ describe('AssistantTurn — reader mode, ask_user', () => {
   })
 
   it('does not say it is working while the turn waits on the answer', () => {
-    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-q', questions: [] }, resolvedQuestions: {} })
+    useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf({ id: 'q-1', sessionId: 's-1', toolCallId: 'call-q', questions: [] }), resolvedQuestions: {} })
 
     renderTurn([read, ask(PLACEHOLDER)], { isTurnOpen: true, startedAt: Date.now() - 5000 })
 
@@ -407,7 +408,7 @@ describe('AssistantTurn — reader mode, submit_plan', () => {
   it('keeps a plan waiting for review out of the fold', () => {
     useAgentStore.setState({
       sessionId: 's-1',
-      pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] },
+      questionCard: questionCardOf({ id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] }),
       resolvedQuestions: {},
     })
 
@@ -417,7 +418,7 @@ describe('AssistantTurn — reader mode, submit_plan', () => {
   })
 
   it('folds a reviewed plan with the rest of the work', () => {
-    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {} })
+    useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(null), resolvedQuestions: {} })
 
     renderTurn([read, submit('The user approved plan revision 1. The session is now in Code mode with full tool access.'), shell, answer])
 
@@ -427,7 +428,7 @@ describe('AssistantTurn — reader mode, submit_plan', () => {
   it('keeps a plan call with submit waiting for review out of the fold', () => {
     useAgentStore.setState({
       sessionId: 's-1',
-      pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] },
+      questionCard: questionCardOf({ id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] }),
       resolvedQuestions: {},
     })
     const planSubmit: ContentBlock = { ...submit(PLACEHOLDER), toolName: 'plan', toolArgs: '{"action":"write","content":"# P","submit":true}' }

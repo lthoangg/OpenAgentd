@@ -2,7 +2,8 @@
  * Questions the agent puts to the user (``ask_user``, plan review): the wire
  * shape mapped to the store's, and the events that open and close the card.
  */
-import { applyQuestionResolution, parseQuestionClosedReason } from './helpers'
+import { parseQuestionClosedReason } from './helpers'
+import { applyQuestion, applyQuestionResolution } from './question-state'
 import type { StoreSet } from './types'
 import type { PendingQuestion, QuestionItem, SecretRequestCard } from '@/api/question-types'
 
@@ -106,7 +107,7 @@ export function onQuestionAsked(set: StoreSet, d: Record<string, unknown>) {
   const question = toPendingQuestion({ ...d, id: d.question_id })
   if (!question) return
   set((draft) => {
-    draft.pendingQuestion = question
+    applyQuestion(draft, { type: 'ask', question })
     // The Plan panel must show the revision under review, even if this
     // client missed the `plan` tool finishing (it refreshes on that too).
     const sid = draft.sessionId ?? question.sessionId

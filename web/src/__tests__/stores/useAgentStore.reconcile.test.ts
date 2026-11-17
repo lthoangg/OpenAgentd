@@ -71,6 +71,7 @@ function deltaHistory(overrides: object = {}) {
 }))
 
 import { useAgentStore } from '@/stores/useAgentStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 /** Load a baseline page so the watermark and confirmed blocks exist. */
 async function seedLoadedSession() {
@@ -285,7 +286,7 @@ describe('reconcileTurnTail', () => {
         { id: 'block-2-answer', type: 'text', content: 'canonical', timestamp: new Date() },
       ]
       stream._unsyncedBlockIds = ['block-2-answer']
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       return state
     })
     mockSessionHistory.mockImplementation(() => Promise.resolve(fullHistory({
@@ -422,7 +423,7 @@ describe('reconcileTurnTail', () => {
   it('falls back to a full load when a turn is still running', async () => {
     await seedLoadedSession()
     mockSessionHistory.mockClear()
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
 
     await useAgentStore.getState().reconcileTurnTail('lead-sess')
 
@@ -486,7 +487,7 @@ describe('reconcileTurnTail', () => {
       state.agentStreams.lead.currentBlocks = [
         { id: 'local-user', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:02Z') },
       ]
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       return state
     })
     useAgentStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'pre-compaction reply' })
@@ -529,7 +530,7 @@ describe('reconcileTurnTail', () => {
     // delegates to loadSession, which must adopt the server's finished turn
     // rather than preserve the live copy and let `done` append it again.
     await seedLoadedSession()
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     useAgentStore.setState((state) => {
       state.agentStreams.lead.currentBlocks = [
         // Streamed in a moment ago, i.e. before this reconcile's fetch started.
@@ -555,7 +556,7 @@ describe('reconcileTurnTail', () => {
     // one full page is required to establish canonical order.
     await seedLoadedSession()
 
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     useAgentStore.getState()._handleSSEEvent('summarization_start', { agent: 'lead' })
     useAgentStore.getState()._handleSSEEvent('summarization_end', { agent: 'lead', summary: 'summary text' })
     useAgentStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'post-compaction reply' })
@@ -635,7 +636,7 @@ describe('reconcileTurnTail', () => {
     // cannot be in that snapshot, so it must survive the reload and still be
     // committed by `done`.
     await seedLoadedSession()
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     mockSessionHistory.mockImplementation(async () => {
       useAgentStore.setState((state) => {
         state.agentStreams.lead.currentBlocks.push({
@@ -688,7 +689,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         {
@@ -725,7 +726,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         {
@@ -763,7 +764,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
@@ -797,7 +798,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
@@ -832,7 +833,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
@@ -865,7 +866,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
@@ -898,7 +899,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.worker = {
         ...state.agentStreams.lead,
         blocks: [],
@@ -936,7 +937,7 @@ describe('mid-turn loadSession reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.agentStreams.lead.status = 'working'
       state.agentStreams.lead.currentBlocks = [
         { id: 'user-optimistic', type: 'user', content: 'yes', timestamp: new Date('2026-07-01T00:00:20.000Z') },
@@ -971,7 +972,7 @@ describe('queued messages mid-turn injection and reconciliation', () => {
     await seedLoadedSession()
 
     useAgentStore.setState((state) => {
-      state.isAgentWorking = true
+      state.sessionRun = runOf(true)
       state.leadName = 'lead'
       state._pendingMessages = [
         { id: 'queued-msg-1', sessionId: 'lead-sess', content: 'run follow-up' },

@@ -170,7 +170,8 @@ function makeStore(sessionModel: string | null) {
       },
     },
     agentNames: ['lead'],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
+    questionCard: { kind: 'none' as const },
     isContinuing: false,
     sessionId: 'test-session',
     sessionTitle: 'Test',
@@ -194,6 +195,7 @@ afterEach(() => {
 })
 
 import { AgentChatView } from '@/components/AgentChatView'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 describe('ContextMeter trigger — model switch', () => {
   it('uses the agent config model trigger when no session override', () => {

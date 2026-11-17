@@ -21,6 +21,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { toPendingQuestion } from '@/stores/useAgentStore/sse-questions'
 import { secretSummaryFromResult } from '@/components/SecretRequest/summary'
 import type { PendingQuestion, SecretRequestCard } from '@/api/question-types'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 
@@ -45,12 +46,12 @@ beforeEach(() => {
   answerSecretRequest.mockClear()
   localStorage.clear()
   sessionStorage.clear()
-  useAgentStore.setState({ sessionId: 's-1', isConnected: true, pendingQuestion: question(), resolvedQuestions: {} })
+  useAgentStore.setState({ sessionId: 's-1', isConnected: true, questionCard: questionCardOf(question()), resolvedQuestions: {} })
 })
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 })
 
 /** Every key and value a Storage holds. */
@@ -98,7 +99,7 @@ describe('SecretRequestCard', () => {
       expect(storedText(localStorage)).not.toContain(v)
       expect(storedText(sessionStorage)).not.toContain(v)
     }
-    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    await waitFor(() => expect(openQuestion(useAgentStore.getState())).toBeNull())
     expect(useAgentStore.getState().resolvedQuestions['call-s']?.answers).toEqual([['Provided: AWS_ACCESS_KEY_ID, STRIPE_SECRET_KEY']])
   })
 
@@ -119,7 +120,7 @@ describe('SecretRequestCard', () => {
       replace: true,
       keys: [{ name: 'OPENWEATHER_API_KEY', help_url: null, optional: false, multiline: false, state: 'replace', values: [{ id: 'sec_w', all: false, projects: [{ key: '/w/weather', name: 'weather' }, { key: '/w/dash', name: 'dash' }] }] }],
     }
-    useAgentStore.setState({ pendingQuestion: question(replace) })
+    useAgentStore.setState({ questionCard: questionCardOf(question(replace)) })
     render(<AskUser toolCallId="call-s" result={PLACEHOLDER} secret />)
     expect((screen.getByRole('radio', { name: /Replace it everywhere/ }) as HTMLInputElement).checked).toBe(true)
     fireEvent.change(field('OPENWEATHER_API_KEY'), { target: { value: 'owm_new_value_0002' } })
@@ -145,7 +146,7 @@ describe('SecretRequestCard', () => {
   })
 
   it('shows a names-only summary from the persisted result after a reload', () => {
-    useAgentStore.setState({ pendingQuestion: null })
+    useAgentStore.setState({ questionCard: questionCardOf(null) })
     render(<AskUser toolCallId="call-s" result="The user provided AWS_ACCESS_KEY_ID. They chose saved values for STRIPE_SECRET_KEY. Use them in commands …" secret />)
     expect(screen.getByText('Provided: AWS_ACCESS_KEY_ID')).toBeInTheDocument()
     expect(screen.getByText('Using saved: STRIPE_SECRET_KEY')).toBeInTheDocument()

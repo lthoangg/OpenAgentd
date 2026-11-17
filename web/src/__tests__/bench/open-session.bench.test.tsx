@@ -25,6 +25,7 @@ import { AgentView } from '@/components/AgentView'
 import { useSessionBootstrap } from '@/components/AgentChatView/useSessionBootstrap'
 import type { InputComposerHandle } from '@/components/InputComposer'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 
 const BASE = process.env.OAD_BENCH_URL ?? ''
 const SESSIONS = (process.env.OAD_BENCH_SESSIONS ?? '').split(',').filter(Boolean)
@@ -104,7 +105,7 @@ function OpenSession({ sessionId, onFrame }: { sessionId: string; onFrame: (kind
     if (blocks.length > 0) onFrame('history')
     if (blocks.length > 0 && currentBlocks.length > 0) onFrame('live')
   })
-  return <AgentView blocks={blocks} currentBlocks={currentBlocks} isWorking={useAgentStore((s) => s.isAgentWorking)} />
+  return <AgentView blocks={blocks} currentBlocks={currentBlocks} isWorking={useAgentStore((s) => isRunLive(s.sessionRun))} />
 }
 
 describe('open a long session (bench)', () => {

@@ -6,8 +6,10 @@ import type {
   SessionInteractionMode,
   SessionSentFrom,
 } from '@/api/types'
-import type { PendingQuestion, QuestionItem } from '@/api/question-types'
+import type { QuestionItem } from '@/api/question-types'
 import type { OrphanToolResult } from '@/utils/messages'
+import type { QuestionCard } from './question-state'
+import type { SessionRun } from './run-state'
 
 /**
  * The session states the backend sends as ``agent_status``, in the order of
@@ -187,15 +189,16 @@ export interface AgentStoreState {
   _sessionSettingsDirty: boolean
   _sessionSettingsVersion: number
   sessionFastMode: boolean
-  isAgentWorking: boolean
   /**
-   * The question the lead is currently suspended on, or ``null``.
-   *
-   * At most one is open per session (enforced by a partial unique index
-   * server-side), so this is a single slot rather than a queue — a second
-   * ``question_asked`` replaces the first instead of stacking cards.
+   * Whether a turn is live in this session (``run-state.ts``). Read it with
+   * ``isRunLive``; change it only with ``applyRun``.
    */
-  pendingQuestion: PendingQuestion | null
+  sessionRun: SessionRun
+  /**
+   * The question the lead is suspended on (``question-state.ts``). Read it
+   * with ``openQuestion``; change it only with ``applyQuestion``.
+   */
+  questionCard: QuestionCard
   /**
    * Resolved questions, keyed by ``tool_call_id``.
    *
@@ -212,12 +215,6 @@ export interface AgentStoreState {
   pendingDraft: { content: string; attachments?: MessageAttachment[] } | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number
-  /**
-   * Session whose sidebar row was last patched to ``running: true``. Every
-   * member emits its own ``agent_status: working``, so this keeps a team turn
-   * to one patch; any ``running: false`` patch clears it.
-   */
-  _runningPatchedFor: string | null
   hasMore: boolean
   nextCursor: string | null
   /**

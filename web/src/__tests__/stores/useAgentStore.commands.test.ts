@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { AgentCommandResponse, ContentBlock } from '@/api/types'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const postAgentCommand = mock(async (): Promise<AgentCommandResponse> => ({
   status: 'accepted',
@@ -58,7 +59,7 @@ beforeEach(() => {
     liveAgentNames: null,
     sessionId: null,
     sessionInteractionMode: 'code',
-    isAgentWorking: false,
+    sessionRun: runOf(false),
     isConnected: false,
     error: null,
     pendingDraft: null,
@@ -122,7 +123,7 @@ describe('setSessionInteractionMode', () => {
   })
 
   it('refuses a session-less switch while the first message is in flight', async () => {
-    useAgentStore.setState({ sessionId: null, sessionInteractionMode: 'code', isAgentWorking: true })
+    useAgentStore.setState({ sessionId: null, sessionInteractionMode: 'code', sessionRun: runOf(true) })
 
     expect(await useAgentStore.getState().setSessionInteractionMode('plan')).toBe(false)
     expect(useAgentStore.getState().sessionInteractionMode).toBe('code')
@@ -134,7 +135,7 @@ describe('setSessionInteractionMode', () => {
     expect((postAgentChat.mock.calls[0] as unknown[])[9]).toBe('plan')
 
     postAgentChat.mockClear()
-    useAgentStore.setState({ sessionId: 'session-1', isAgentWorking: false })
+    useAgentStore.setState({ sessionId: 'session-1', sessionRun: runOf(false) })
     await useAgentStore.getState().sendMessage('next', undefined, { workspace: '/repo' })
     expect((postAgentChat.mock.calls[0] as unknown[])[9]).toBeUndefined()
   })
@@ -191,7 +192,7 @@ describe('commands completing after session navigation', () => {
             _sessionGeneration: 1,
             _workspace: '/second',
             _leadRevertTime: 1234,
-            isAgentWorking: false,
+            sessionRun: runOf(false),
             isConnected: false,
             error: null,
             pendingDraft: { content: 'second draft', attachments: [] },
@@ -228,7 +229,7 @@ describe('commands completing after session navigation', () => {
     const pending = new Promise<{ status: string; session_id: string }>((res) => { resolve = res })
     postAgentChat.mockImplementation(() => pending)
     useAgentStore.setState({
-      sessionId: 'session-1', _workspace: '/first', isAgentWorking: true,
+      sessionId: 'session-1', _workspace: '/first', sessionRun: runOf(true),
     })
     const action = useAgentStore.getState().stopAgent()
     useAgentStore.setState({ sessionId: 'session-2', _workspace: '/second', _sessionGeneration: 1 })

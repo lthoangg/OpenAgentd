@@ -27,6 +27,8 @@ const mockSessionHistory = mock(() =>
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { streamWatchClock, STREAM_SILENCE_MS, QUESTION_GRACE_MS } from '@/stores/useAgentStore/stream-slice'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
 
 type Callbacks = { onEvent: (type: string, data: unknown) => void; onDone?: () => void; onError?: (e: Error) => void }
 
@@ -65,9 +67,9 @@ beforeEach(() => {
     _workspace: '/repo',
     leadName: 'lead',
     agentNames: ['lead'],
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     isConnected: false,
-    pendingQuestion: null,
+    questionCard: questionCardOf(null),
     _abortController: null,
     _sessionGeneration: 1,
     _silentStreamAttempts: 0,
@@ -101,7 +103,7 @@ describe('stream watch', () => {
   })
 
   it('does not watch a stream when nothing is expected', async () => {
-    useAgentStore.setState({ isAgentWorking: false })
+    useAgentStore.setState({ sessionRun: runOf(false) })
     useAgentStore.getState().connectStream()
     expect(fire(STREAM_SILENCE_MS)).toBe(0)
   })
@@ -153,7 +155,7 @@ describe('stream watch', () => {
     fire(QUESTION_GRACE_MS)
     await flush()
 
-    expect(useAgentStore.getState().pendingQuestion?.id).toBe('q-1')
+    expect(openQuestion(useAgentStore.getState())?.id).toBe('q-1')
     expect(mockSessionHistory).not.toHaveBeenCalled()
   })
 })

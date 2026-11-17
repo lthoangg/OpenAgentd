@@ -23,6 +23,7 @@ import { useIsPhone } from '@/hooks/use-is-phone'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
 import type { PendingQuestion } from '@/api/question-types'
 import { parsePlanReview } from './plan-comments'
@@ -185,7 +186,7 @@ function revisionIn(text: string | undefined): number | null {
 
 /** The plan review open in this session, or ``null``. */
 function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
-  const question = state.pendingQuestion
+  const question = openQuestion(state)
   return question !== null && question.kind === 'plan_review' && state.sessionId !== null && question.sessionId === state.sessionId
     ? question
     : null

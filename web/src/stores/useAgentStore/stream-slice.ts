@@ -1,7 +1,9 @@
 import type { StateCreator } from 'zustand'
 import { postAgentChat, postAgentCommand, agentStream } from '@/api/client'
 import { restoredPromptText } from '@/lib/goal'
-import { applyQuestionResolution, applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
+import { applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
+import { NO_QUESTION, applyQuestionResolution, openQuestion } from './question-state'
+import { RUN_IDLE, applyRun, isRunLive, markRowStopped, setAgentStatus } from './run-state'
 import { applySSEDeltaBatch, isBufferedSSEDelta, type BufferedSSEDelta } from './sse-content'
 import { createSSEHandler } from './sse-reducer'
 import { isTransientNetworkError } from '@/utils/errors'
@@ -107,8 +109,8 @@ function enqueueWorkspaceInvalidation(
 export type StreamSlice = Pick<
   AgentStore,
   | 'agentStreams'
-  | 'isAgentWorking'
-  | 'pendingQuestion'
+  | 'sessionRun'
+  | 'questionCard'
   | 'resolvedQuestions'
   | 'isConnected'
   | 'error'
@@ -148,8 +150,8 @@ export const createStreamSlice: StateCreator<
   StreamSlice
 > = (set, get) => ({
   agentStreams: {},
-  isAgentWorking: false,
-  pendingQuestion: null,
+  sessionRun: RUN_IDLE,
+  questionCard: NO_QUESTION,
   resolvedQuestions: {},
   isConnected: false,
   error: null,
@@ -173,7 +175,7 @@ export const createStreamSlice: StateCreator<
     try {
       const submittedAt = Date.now()
       set((draft) => {
-        draft.isAgentWorking = true
+        applyRun(draft, { type: 'start' })
         draft.error = null
         if (draft.leadName && draft.agentStreams[draft.leadName]) {
           draft.agentStreams[draft.leadName]._turnStartedAt = submittedAt
@@ -194,7 +196,7 @@ export const createStreamSlice: StateCreator<
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft.error = err instanceof Error ? err.message : "Couldn't compact"
-        draft.isAgentWorking = false
+        applyRun(draft, { type: 'end' })
       })
     }
   },
@@ -209,7 +211,7 @@ export const createStreamSlice: StateCreator<
     // (currentBlocks gets spliced into _revertedSuffix while SSE keeps
     // pushing deltas). Force the user to /stop first — matches the
     // backend precondition in AgentSession.handle_undo.
-    if (get().isAgentWorking) {
+    if (isRunLive(get().sessionRun)) {
       set((draft) => {
         draft.error = 'Cannot undo while agents are working — /stop first'
       })
@@ -260,7 +262,7 @@ export const createStreamSlice: StateCreator<
     const index = blocks.findIndex((block) => block.id === blockId)
     const target = blocks[index]
     if (!target || !isDirectUserBlock(target)) return null
-    if (get().isAgentWorking) {
+    if (isRunLive(get().sessionRun)) {
       set((draft) => { draft.error = 'Cannot edit while agents are working — /stop first' })
       return null
     }
@@ -303,7 +305,7 @@ export const createStreamSlice: StateCreator<
       set((draft) => { draft.error = 'No active session to redo' })
       return undefined
     }
-    if (get().isAgentWorking) {
+    if (isRunLive(get().sessionRun)) {
       set((draft) => {
         draft.error = 'Cannot redo while agents are working — /stop first'
       })
@@ -355,7 +357,7 @@ export const createStreamSlice: StateCreator<
       set((draft) => { draft.error = 'No active session to redo' })
       return
     }
-    if (get().isAgentWorking) {
+    if (isRunLive(get().sessionRun)) {
       set((draft) => {
         draft.error = 'Cannot redo while agents are working — /stop first'
       })
@@ -411,9 +413,9 @@ export const createStreamSlice: StateCreator<
       if (!lead) return
       // The answer restarts the turn with no new user message, so nothing else
       // marks it live until the first token — which can be seconds away.
-      draft.isAgentWorking = true
+      applyRun(draft, { type: 'start' })
       markRestartPending(lead)
-      if (lead.status === 'waiting_input') lead.status = 'working'
+      if (lead.status === 'waiting_input') setAgentStatus(lead, 'working')
     })
     // Treat an answer as a stream handoff, even when isConnected still says
     // true. That flag is optimistic (set before fetch attaches) and can remain
@@ -425,7 +427,7 @@ export const createStreamSlice: StateCreator<
 
   stopAgent: async (options) => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
-    if (!sessionId || !get().isAgentWorking) return
+    if (!sessionId || !isRunLive(get().sessionRun)) return
 
     try {
       if (!workspace) return
@@ -434,7 +436,7 @@ export const createStreamSlice: StateCreator<
       // Reloads immediately. The interrupt POST only *signals* cancellation, so
       // the trailing `done` can still be seconds away (a cancelled shell tool
       // alone can spend 2s draining stdout plus 5s reaping) — but the reload no
-      // longer trusts the stale client-side `isAgentWorking`, so it adopts the
+      // longer trusts the stale client-side run state, so it adopts the
       // server's finished turn cleanly instead of racing that `done`.
       await get().loadSession(sessionId, workspace)
     } catch (err) {
@@ -460,7 +462,7 @@ export const createStreamSlice: StateCreator<
       draft._abortController = abort
       draft._attachReplay = true
       // The global stream may have patched the row while this one was down.
-      draft._runningPatchedFor = null
+      applyRun(draft, { type: 'row_unmarked' })
       // Every attach replays the accumulated turn text as one snapshot chunk
       // per kind before live events resume, so re-arm the replay guard for all
       // known streams. Without this a reconnect mid-turn doubles the visible
@@ -530,7 +532,7 @@ export const createStreamSlice: StateCreator<
         const decision = decideSilence({
           current: !abort.signal.aborted && s._abortController === abort,
           sameSession: s.sessionId === sessionId && s._sessionGeneration === generation,
-          working: s.isAgentWorking,
+          working: isRunLive(s.sessionRun),
           unloading: s._unloading,
         })
         if (decision.kind === 'ignore') return
@@ -542,7 +544,7 @@ export const createStreamSlice: StateCreator<
     // Attached beside a history load, frames wait for it (see `holdUntil`);
     // so does the silence check, since only the history says the turn runs.
     let phase: AttachPhase = options?.holdUntil ? { kind: 'holding', frames: [] } : { kind: 'delivering' }
-    if (phase.kind === 'delivering' && get().isAgentWorking && get().pendingQuestion === null) armWatch()
+    if (phase.kind === 'delivering' && isRunLive(get().sessionRun) && openQuestion(get()) === null) armWatch()
 
     // Reopening the moment the backend closes is right when the connection was
     // doing something — but a stream that closes having delivered nothing will
@@ -597,7 +599,7 @@ export const createStreamSlice: StateCreator<
           disarmWatch()
           if (!gapChecked && STEP_CONTENT_FRAMES.has(type)) {
             gapChecked = true
-            if (current.isAgentWorking) void current.fillAttachGap(sessionId)
+            if (isRunLive(current.sessionRun)) void current.fillAttachGap(sessionId)
           }
           if (current._reconnectAttempts > 0 || current._silentStreamAttempts > 0) {
             set((draft) => {
@@ -622,7 +624,7 @@ export const createStreamSlice: StateCreator<
             aborted: abort.signal.aborted,
             unloading: current._unloading,
             transient: isTransientNetworkError(err),
-            working: current.isAgentWorking,
+            working: isRunLive(current.sessionRun),
             hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
             message: err.message,
           })
@@ -660,7 +662,7 @@ export const createStreamSlice: StateCreator<
           const decision = decideStreamEnd({
             sameSession: isSameSession(current),
             aborted: abort.signal.aborted,
-            working: current.isAgentWorking,
+            working: isRunLive(current.sessionRun),
             unloading: current._unloading,
             receivedAnyEvent,
           })
@@ -679,12 +681,7 @@ export const createStreamSlice: StateCreator<
             // Stream closed with the session idle — the row is no longer
             // running. Patch that flag rather than refetching every loaded
             // page of the session list.
-            draft._runningPatchedFor = null
-            draft.cacheInvalidations.push({
-              kind: 'session_running',
-              sessionId,
-              running: false,
-            })
+            markRowStopped(draft, sessionId)
           })
     }
 
@@ -702,7 +699,7 @@ export const createStreamSlice: StateCreator<
         flushBufferedDeltas()
         if (queued.length > 0) get()._alignLiveWithHistory()
         const after = get()
-        if (!receivedAnyEvent && after.isAgentWorking && after.pendingQuestion === null) armWatch()
+        if (!receivedAnyEvent && isRunLive(after.sessionRun) && openQuestion(after) === null) armWatch()
       }
       void options.holdUntil.then(release, release)
     }
@@ -758,7 +755,7 @@ export const createStreamSlice: StateCreator<
     streamWatchClock.set(() => {
       const s = get()
       if (s.sessionId !== sessionId || s._sessionGeneration !== generation || s._unloading) return
-      if (s.pendingQuestion?.id === questionId) return
+      if (openQuestion(s)?.id === questionId) return
       void s.resyncStream('a question opened but its card never arrived')
     }, QUESTION_GRACE_MS)
   },
@@ -777,7 +774,7 @@ export const createStreamSlice: StateCreator<
     await get().loadSession(sessionId, workspace)
     const after = get()
     if (after.sessionId !== sessionId || after._sessionGeneration !== generation) return
-    if (after.isAgentWorking) after.connectStream()
+    if (isRunLive(after.sessionRun)) after.connectStream()
   },
 
   dismissSetupRequired: () => {

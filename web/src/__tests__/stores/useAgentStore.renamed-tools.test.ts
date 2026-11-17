@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 function primeBlock(
   agent: string,
@@ -27,7 +28,7 @@ describe("useAgentStore — renamed tools refresh what they changed", () => {
       sidebarOpen: false,
       sessionId: null,
       sessionTitle: null,
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       isConnected: false,
       error: null,
       _pendingMessages: [],

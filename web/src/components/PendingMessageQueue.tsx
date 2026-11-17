@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { useToastStore } from '@/stores/useToastStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
@@ -274,7 +275,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
   // A steer still queued after a failed turn (its files are on another
   // device, so it was not handed back) has no running turn to read it.
   const turnFailed = useAgentStore((s) => (
-    !s.isAgentWorking && Boolean(s.leadName) && s.agentStreams?.[s.leadName as string]?.status === 'error'
+    !isRunLive(s.sessionRun) && Boolean(s.leadName) && s.agentStreams?.[s.leadName as string]?.status === 'error'
   ))
 
   if (messages.length === 0) return null

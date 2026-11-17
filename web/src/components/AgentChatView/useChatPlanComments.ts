@@ -6,6 +6,7 @@
  */
 import { useCallback, type RefObject } from 'react'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import type { InputComposerHandle } from '../InputComposer'
 import { readPlanReviewDraft, writePlanReviewDraft } from '../PlanReview/plan-comments'
 import type { PlanCommentsBlock, PlanCommentsHandoff } from '../PlanReview/plan-comments-block'
@@ -28,7 +29,9 @@ export function useChatPlanComments({ isMobile, inputRef, setWorkspacePanel }: {
   // The chip's x: the comments go back to the plan they were made on, while
   // its review is still open. A closed review has nothing to take them.
   const handlePlanCommentsRemoved = useCallback((block: PlanCommentsBlock) => {
-    const { pendingQuestion: question, sessionId } = useAgentStore.getState()
+    const store = useAgentStore.getState()
+    const question = openQuestion(store)
+    const sessionId = store.sessionId
     if (!question || question.kind !== 'plan_review' || question.sessionId !== sessionId) return
     const draft = readPlanReviewDraft(question.id)
     const stamp = Date.now().toString(36)

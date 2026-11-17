@@ -11,6 +11,7 @@ import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQu
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { useToastStore } from '@/stores/useToastStore'
 
 export function useSessionWork({ sessionId, workspace, handleOpenGoal }: {
@@ -24,7 +25,7 @@ export function useSessionWork({ sessionId, workspace, handleOpenGoal }: {
   const todos = todosData?.todos ?? []
   const { data: planData } = useSessionPlanQuery(sessionId)
   const plan = planData?.plan ?? null
-  const planAwaitingReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
+  const planAwaitingReview = useAgentStore((s) => openQuestion(s)?.kind === 'plan_review')
   const { mutate: clearPlan } = useClearSessionPlanMutation()
   const handleClearPlan = useCallback(() => {
     if (!sessionId) return

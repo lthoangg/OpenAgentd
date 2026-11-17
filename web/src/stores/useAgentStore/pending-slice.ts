@@ -1,6 +1,8 @@
 import type { StateCreator } from 'zustand'
 import { cancelQueuedMessage, postAgentChat } from '@/api/client'
-import { applyQuestionResolution, revokeBlobUrlsFromBlocks } from './helpers'
+import { revokeBlobUrlsFromBlocks } from './helpers'
+import { applyQuestionResolution } from './question-state'
+import { applyRun, isRunLive, markRowRunning, setAgentStatus } from './run-state'
 import { createDefaultAgentStream } from './defaults'
 import { clearReconnectTimer } from './stream-slice'
 import type { PendingMessage, AgentStore, SendMessageOptions } from './types'
@@ -103,11 +105,30 @@ function queuedAttachmentMetas(files?: File[]) {
 function markTurnConfirmed(draft: AgentStore, leadName: string, answer: 'accepted' | 'queued') {
   const stream = draft.agentStreams[leadName]
   if (answer === 'queued' && stream?.status === 'waiting_input') return
-  if (stream) stream.status = 'working'
-  if (draft.sessionId && draft._runningPatchedFor !== draft.sessionId) {
-    draft._runningPatchedFor = draft.sessionId
-    draft.cacheInvalidations.push({ kind: 'session_running', sessionId: draft.sessionId, running: true })
-  }
+  applyRun(draft, { type: 'start' })
+  if (stream) setAgentStatus(stream, 'working')
+  markRowRunning(draft)
+}
+
+/**
+ * The server took a send, to run now or to queue: adopt the session it went
+ * to, close the question it superseded, and confirm the run settings it was
+ * sent with. Every send path calls this, so they cannot drift apart.
+ */
+function applyAccept(
+  draft: AgentStore,
+  sessionId: string,
+  settings: { model: string | null; thinkingLevel: string | null },
+  options: SendOptions | undefined,
+) {
+  draft.sessionId = sessionId
+  applyQuestionResolution(draft, null, null, 'superseded')
+  draft.sessionModel = settings.model
+  draft.sessionThinkingLevel = settings.thinkingLevel
+  draft._sessionSettingsDirty = false
+  draft._sessionSettingsVersion += 1
+  draft.error = null
+  if (options?.workspace) draft._workspace = options.workspace
 }
 
 /** Whether ``queued_turn_start`` already put the queued message ``id`` in a
@@ -164,6 +185,11 @@ export const createPendingSlice: StateCreator<
   sendMessage: async (content: string, files: File[] | undefined, options: SendOptions): Promise<boolean> => {
     const { leadName, agentStreams } = get()
     const effectiveLead = leadName || 'openagentd'
+    // The run settings this send went with, read when the server answers.
+    const sentSettings = () => ({
+      model: options?.model ?? get().sessionModel,
+      thinkingLevel: options?.thinkingLevel ?? get().sessionThinkingLevel,
+    })
     const leadWorking = agentStreams[effectiveLead]?.status === 'working'
 
     // Whether this message runs now or waits in the queue is the *backend's*
@@ -195,16 +221,9 @@ export const createPendingSlice: StateCreator<
           // message that no ``queued_turn_start`` will ever clear — and the
           // turn's own rows would then render it a second time.
           const submittedAt = Date.now()
+          const settings = sentSettings()
           set((draft) => {
-            draft.sessionId = result.session_id
-            applyQuestionResolution(draft, null, null, 'superseded')
-            draft.sessionModel = options?.model ?? get().sessionModel
-            draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
-            draft._sessionSettingsDirty = false
-            draft._sessionSettingsVersion += 1
-            draft.isAgentWorking = true
-            draft.error = null
-            if (options?.workspace) draft._workspace = options.workspace
+            applyAccept(draft, result.session_id, settings, options)
             appendOptimisticUserBlock(draft, effectiveLead, {
               id: result.message_id ?? `user-${submittedAt}`,
               content,
@@ -220,13 +239,9 @@ export const createPendingSlice: StateCreator<
         if (result.status === 'queued' && !result.message_id) {
           throw new Error('Backend did not return a queued message id')
         }
+        const settings = sentSettings()
         set((draft) => {
-          draft.sessionId = result.session_id
-          draft.sessionModel = options?.model ?? get().sessionModel
-          draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
-          draft._sessionSettingsDirty = false
-          draft._sessionSettingsVersion += 1
-          applyQuestionResolution(draft, null, null, 'superseded')
+          applyAccept(draft, result.session_id, settings, options)
           const msgId = result.message_id ?? ''
           const alreadySpliced = isSpliced(draft, msgId)
           if (!alreadySpliced) {
@@ -241,7 +256,6 @@ export const createPendingSlice: StateCreator<
               ),
             )
           }
-          draft.error = null
         })
       } catch (err) {
         set((draft) => {
@@ -264,14 +278,14 @@ export const createPendingSlice: StateCreator<
     const turnStartedBefore = leadName ? agentStreams[leadName]?._turnStartedAt ?? null : null
     // What this client showed when the message left, for the warning below.
     const shownBefore = {
-      working: get().isAgentWorking,
+      working: isRunLive(get().sessionRun),
       lead: agentStreams[effectiveLead]?.status ?? 'none',
       connected: get().isConnected,
     }
     set((draft) => {
-        draft.isAgentWorking = true
-        draft.error = null
-        draft.setupRequired = null
+      applyRun(draft, { type: 'start' })
+      draft.error = null
+      draft.setupRequired = null
       draft._leadRevertTime = null
       Object.values(draft.agentStreams).forEach((stream) => {
         stream._revertedSuffix = []
@@ -311,19 +325,12 @@ export const createPendingSlice: StateCreator<
           `(working=${shownBefore.working}, lead=${shownBefore.lead}, connected=${shownBefore.connected})`,
         )
       }
+      const settings = sentSettings()
       set((draft) => {
-        draft.sessionId = result.session_id
-        applyQuestionResolution(draft, null, null, 'superseded')
-        draft.sessionModel = options?.model ?? get().sessionModel
-        draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
-        draft._sessionSettingsDirty = false
-        draft._sessionSettingsVersion += 1
+        applyAccept(draft, result.session_id, settings, options)
         draft._pendingMessages.forEach((msg) => {
           if (msg.sessionId === null || msg.sessionId === undefined) msg.sessionId = result.session_id
         })
-        if (options?.workspace) {
-          draft._workspace = options.workspace
-        }
         if (result.status === 'queued' && result.message_id) {
           // The agent still owned an active turn server-side (typically a
           // member the lead delegated to, which this client's lead status
@@ -368,7 +375,7 @@ export const createPendingSlice: StateCreator<
     } catch (err) {
       set((draft) => {
         draft.error = err instanceof Error ? err.message : "Couldn't send message"
-        draft.isAgentWorking = false
+        applyRun(draft, { type: 'end' })
       })
       return false
     }

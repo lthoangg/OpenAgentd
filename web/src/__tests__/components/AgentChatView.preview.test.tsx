@@ -13,6 +13,7 @@ import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { OPEN_PREVIEW_EVENT } from '@/components/Preview/preview-events'
 import { previewsAvailable } from '@/api/preview'
 import type { DesignFeedback } from '@/lib/design-feedback'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 let composerProps: { onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void } = {}
 
@@ -127,7 +128,8 @@ mock.module('@/stores/useAgentStore', () => {
     activeAgent: 'code',
     agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
     agentNames: ['lead'],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
+    questionCard: { kind: 'none' as const },
     isContinuing: false,
     sessionId: 'test-session',
     sessionTitle: null,

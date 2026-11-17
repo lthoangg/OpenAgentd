@@ -152,7 +152,13 @@ fn provided(names: &[&str]) -> SecretAnswer {
 async fn b3_one_card_new_keys_and_a_different_stripe_value_for_client_b() {
     let (a, b) = (repo("client-a"), repo("client-b"));
     put("STRIPE_SECRET_KEY", "sk_test_client_a_01", &[&project(&a)]);
-    let shell = json!({"command": "echo \"key=$STRIPE_SECRET_KEY id=$AWS_ACCESS_KEY_ID\"; printf %s \"$STRIPE_SECRET_KEY\" | wc -c", "secrets": ["STRIPE_SECRET_KEY", "AWS_ACCESS_KEY_ID"]});
+    // The shell tool runs PowerShell on Windows, where `$NAME` is not the environment.
+    let command = if cfg!(windows) {
+        "Write-Output \"key=$env:STRIPE_SECRET_KEY id=$env:AWS_ACCESS_KEY_ID\"; Write-Output $env:STRIPE_SECRET_KEY.Length"
+    } else {
+        "echo \"key=$STRIPE_SECRET_KEY id=$AWS_ACCESS_KEY_ID\"; printf %s \"$STRIPE_SECRET_KEY\" | wc -c"
+    };
+    let shell = json!({"command": command, "secrets": ["STRIPE_SECRET_KEY", "AWS_ACCESS_KEY_ID"]});
     let h = harness(
         "b3",
         &b,

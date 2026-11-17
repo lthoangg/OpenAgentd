@@ -66,8 +66,8 @@ function wrap(node: ReactNode) {
 function runSettings(): RunSettings {
   return {
     agentName: 'code', agentModel: 'anthropic:claude-sonnet-4-5', agentThinkingLevel: null,
-    model: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', thinkingLevel: 'high', customized: false,
-    thinkingLevels: ['low', 'high'], models: [], modelsLoading: false, providerInfo: undefined,
+    model: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', thinkingLevel: 'high',
+    models: [], modelsLoading: false, providerInfo: undefined,
     accounts: null, credentialId: null, pinnedAccount: null, inUseAccount: null,
   }
 }

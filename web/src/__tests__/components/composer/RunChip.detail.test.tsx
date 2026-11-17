@@ -19,8 +19,8 @@ afterEach(() => {
 function settings(): RunSettings {
   return {
     agentName: 'code', agentModel: 'openai:gpt-6-luna', agentThinkingLevel: null,
-    model: 'openai:gpt-6-luna', provider: 'openai', thinkingLevel: 'low', customized: false,
-    thinkingLevels: ['low', 'high'], models: [], modelsLoading: false, providerInfo: undefined,
+    model: 'openai:gpt-6-luna', provider: 'openai', thinkingLevel: 'low',
+    models: [], modelsLoading: false, providerInfo: undefined,
     accounts: null, credentialId: null, pinnedAccount: null,
     inUseAccount: { id: 'cred-1', label: 'work' } as RunSettings['inUseAccount'],
   }

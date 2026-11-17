@@ -1,7 +1,8 @@
 /**
- * The run picker's account list follows the model picked while it is open:
- * a model from another provider lists that provider's accounts at once, so
- * one can be picked without reopening the picker.
+ * The run picker's account list is on a model's page, under its levels, and
+ * follows the model picked while the picker is open: a model from another
+ * provider lists that provider's accounts at once, so one can be picked
+ * without reopening the picker.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -18,9 +19,9 @@ import { useAgentStore } from '@/stores/useAgentStore'
 
 const WORKSPACE = '/repo'
 
-function model(id: string): ModelCatalogEntry {
+function model(id: string, levels: string[] = ['low', 'high']): ModelCatalogEntry {
   const [provider, name] = id.split(':')
-  return { id, provider, model: name, vision: false, output_image: false, output_video: false, thinking_levels: ['low', 'high'], summary_trigger_tokens: 0, fast_mode: false }
+  return { id, provider, model: name, vision: false, output_image: false, output_video: false, thinking_levels: levels, summary_trigger_tokens: 0, fast_mode: false }
 }
 
 function credential(id: string, label: string): StoredCredential {
@@ -36,7 +37,7 @@ function Harness({ onDone }: { onDone: () => void }) {
   return <RunPicker settings={settings} focus="model" onDone={onDone} />
 }
 
-function mount(onDone = () => {}) {
+function mount(onDone = () => {}, models = [model('anthropic:sonnet'), model('codex:gpt-5')]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(queryKeys.settings.providers(), {
     providers: [
@@ -44,7 +45,7 @@ function mount(onDone = () => {}) {
       provider('codex', 'Codex', [credential('x1', 'Codex Team'), credential('x2', 'Codex Personal')]),
     ],
   })
-  client.setQueryData(queryKeys.agentFiles.registry(), { models: [model('anthropic:sonnet'), model('codex:gpt-5')] })
+  client.setQueryData(queryKeys.agentFiles.registry(), { models })
   client.setQueryData(agentRegistryQueryOptions(WORKSPACE).queryKey, { agents: [{ name: 'code', model: 'anthropic:sonnet', thinking_level: 'high' }] })
   render(
     <QueryClientProvider client={client}>
@@ -68,10 +69,10 @@ afterEach(() => {
 })
 
 describe('RunPicker — accounts follow the model', () => {
-  it("lists the new provider's accounts as soon as its model is clicked", () => {
+  it("lists the new provider's accounts on its page as soon as its model is clicked", () => {
     mount()
-    expect(accountList().getAttribute('aria-label')).toBe('Claude account')
-    expect(accountNames().join('|')).toContain('Claude Work')
+    // The models page lists models only.
+    expect(screen.queryByRole('radiogroup', { name: /account/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('option', { name: /gpt-5/ }))
 
@@ -84,7 +85,7 @@ describe('RunPicker — accounts follow the model', () => {
     expect(useAgentStore.getState().sessionCredentialId).toBe('x2')
   })
 
-  it('keeps the picker open on Enter for a model of another provider with accounts, and moves to the account list', async () => {
+  it('keeps the picker open on Enter for a model of another provider, with its levels and accounts', async () => {
     const onDone = mock(() => {})
     mount(onDone)
     const search = screen.getByRole('searchbox', { name: 'Search models' })
@@ -93,8 +94,7 @@ describe('RunPicker — accounts follow the model', () => {
 
     expect(onDone).not.toHaveBeenCalled()
     expect(useAgentStore.getState().sessionModel).toBe('codex:gpt-5')
-    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
-    expect(document.activeElement).toBe(within(accountList()).getByRole('radio', { name: /Codex Team/ }))
+    expect(screen.getByRole('listbox', { name: 'Thinking for codex:gpt-5' })).toBeTruthy()
 
     // Enter on an account picks it and closes, as Enter on a model does.
     const personal = within(accountList()).getByRole('radio', { name: /Codex Personal/ })
@@ -103,10 +103,23 @@ describe('RunPicker — accounts follow the model', () => {
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
-  it('still closes on Enter for a model of the same provider', () => {
+  it("opens the running model's page on Enter, so its account changes without changing model", () => {
     const onDone = mock(() => {})
     mount(onDone)
     fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search models' }), { key: 'Enter' })
-    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(accountList().getAttribute('aria-label')).toBe('Claude account')
+    fireEvent.click(within(accountList()).getByRole('radio', { name: /Claude Home/ }))
+    expect(useAgentStore.getState().sessionCredentialId).toBe('c2')
+  })
+
+  it('opens an accounts-only page for a model with no levels, with the checked account focused', async () => {
+    mount(() => {}, [model('anthropic:sonnet'), model('codex:gpt-5', [])])
+    fireEvent.click(screen.getByRole('option', { name: /gpt-5/ }))
+
+    expect(screen.queryByRole('listbox', { name: /^Thinking for / })).toBeNull()
+    expect(accountList().getAttribute('aria-label')).toBe('Codex account')
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
+    expect(document.activeElement).toBe(within(accountList()).getByRole('radio', { name: /Codex Team/ }))
   })
 })

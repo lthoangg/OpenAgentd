@@ -75,7 +75,7 @@ const scenes = {
     // line; the btw scene shows the feature itself.
     await page.addStyleTag({ content: 'button[aria-label^="Show side questions"] { visibility: hidden }' })
     await runCommand(page, "Open Git")
-    await page.getByText("src/server.ts", { exact: true }).last().click()
+    await page.getByRole("button", { name: "Expand diff for src/server.ts" }).click()
     await settle(page)
     await scrollTranscriptToEnd(page)
     await blur(page)
@@ -141,17 +141,15 @@ const scenes = {
   async providers(page) {
     await open(page, `/${S.hero}`)
     await runCommand(page, "Open Settings")
-    await page.getByRole("dialog").getByText("Providers", { exact: true }).first().click()
-    // The OAuth filter shows subscription logins (Copilot, Codex, Grok) and avoids
-    // the usage panel of connected API-key providers, which never resolves for plain keys.
-    await page.getByRole("dialog").getByRole("button", { name: /^OAuth/ }).first().click()
+    await page.getByRole("dialog").getByText("Models", { exact: true }).first().click()
     await settle(page, 1200)
     await blur(page)
   },
 
   async "new-session"(page) {
     await open(page, `/${S.hero}`)
-    await page.getByRole("button", { name: "New session in linkly" }).click()
+    // From the hero session, so the new session starts in linkly.
+    await page.getByRole("button", { name: /^New session/ }).first().click()
     await settle(page, 1500)
     await blur(page)
   },
@@ -171,7 +169,7 @@ const scenes = {
       await open(page, `/${S.hero}`)
       await runCommand(page, "Toggle Sidebar")
       await runCommand(page, "Open Git")
-      await page.getByText("src/server.ts", { exact: true }).last().click()
+      await page.getByRole("button", { name: "Expand diff for src/server.ts" }).click()
       await settle(page)
       await scrollTranscriptToEnd(page)
       await blur(page)

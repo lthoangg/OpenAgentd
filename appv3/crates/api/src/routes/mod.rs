@@ -14,6 +14,7 @@ pub mod modules;
 pub mod plugins;
 pub mod preview;
 pub mod scheduler;
+pub mod secrets;
 pub mod server_name;
 pub mod server_update;
 pub mod settings;
@@ -35,6 +36,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/snippets", library::snippets_router())
         .nest("/api/scheduler", scheduler::router())
         .nest("/api/settings", settings::router())
+        .nest("/api/secrets", secrets::router())
         .nest("/api/mcp", mcp::router())
         .nest("/api/plugins", plugins::router())
         .nest("/api/modules", modules::router())

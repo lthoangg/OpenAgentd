@@ -12,6 +12,9 @@ import { appendSubagent, bumpSessionActivity, patchSessionGoalStatus, patchSessi
 import type { SessionGoalResponse } from '@/api/types'
 import { isSessionGoal } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { isLinkOpen } from '@/stores/useAgentStore/link-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -227,7 +230,7 @@ async function handleEvent(
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
-    if (before.isConnected && before.isAgentWorking) {
+    if (isLinkOpen(before.streamLink) && isRunLive(before.sessionRun)) {
       // Connected is what the store believes, not proof: a feed can go quiet
       // with no error. Expect updates now, and recover if none arrive.
       before.expectStreamActivity()
@@ -496,11 +499,11 @@ export async function reconcileCurrentSession(
   const after = useAgentStore.getState()
   if (connectionGeneration !== currentConnectionGeneration()) return
   if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return
-  if (!after.isAgentWorking) return
+  if (!isRunLive(after.sessionRun)) return
   // A turn suspended on the user (ask_user, plan review) produces nothing to
   // replay, so a stream that is still attached stays as it is. Re-attaching
   // it tore the stream down on every resync while the question stayed open.
-  if (after.isConnected && waitsOnlyOnUser(after)) return
+  if (isLinkOpen(after.streamLink) && waitsOnlyOnUser(after)) return
   // The chat stream recovered from the same drop by itself: it reattached
   // and replayed the turn. Attaching again aborted that fresh stream a moment
   // later, so every recovery opened it twice.
@@ -510,7 +513,7 @@ export async function reconcileCurrentSession(
 
 /** An open question, and no agent still producing output. */
 function waitsOnlyOnUser(state: ReturnType<typeof useAgentStore.getState>): boolean {
-  return state.pendingQuestion !== null && !Object.values(state.agentStreams).some((s) => s.status === 'working')
+  return openQuestion(state) !== null && !Object.values(state.agentStreams).some((s) => s.status === 'working')
 }
 
 /** App-lifetime feed for session changes occurring outside this window. */

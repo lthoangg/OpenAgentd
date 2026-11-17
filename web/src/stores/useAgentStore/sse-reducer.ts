@@ -2,7 +2,7 @@
  * The session stream's dispatch table: each event goes to its handler, kept
  * with the other events of its family in a sibling ``sse-*.ts`` module.
  */
-import { applyQuestionResolution } from './helpers'
+import { applyQuestionResolution } from './question-state'
 import { onAgentNotConfigured, onAgentStatus, onError, onProviderStatus } from './sse-agent-status'
 import { onSummarizationContent, onSummarizationEnd, onSummarizationStart } from './sse-compaction'
 import { applySSEDeltaBatch, onToolCall, onToolEnd, onToolStart } from './sse-content'

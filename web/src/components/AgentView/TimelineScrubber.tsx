@@ -194,7 +194,7 @@ export function TimelineScrubber({ scrollRef, contentRef }: {
         // As slim as the app's native scrollbars (index.css); the rail
         // around it stays wider so it is still easy to grab.
         className={cn(
-          'absolute right-0 w-[5px] rounded-full bg-(--color-border) transition-opacity duration-(--motion-fast) group-hover/scrubber:bg-(--color-text-muted)',
+          'absolute right-0 w-1.25 rounded-full bg-(--color-border) transition-opacity duration-(--motion-fast) group-hover/scrubber:bg-(--color-text-muted)',
           dragging ? 'opacity-100' : 'opacity-0 group-hover/transcript:opacity-100',
         )}
         style={{

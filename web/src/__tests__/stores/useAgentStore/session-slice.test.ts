@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from "bun:test"
 import { mockPostAgentChat, mockAgentStatus, mockSessionHistory, makeStream, resetAsyncStore } from "./async-fixture"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 
 beforeEach(resetAsyncStore)
 
@@ -80,7 +81,7 @@ describe("newSession and beginResolvedSession", () => {
     // User sends a message when sessionId is null (new session)
     void useAgentStore.getState().sendMessage("message to new session", undefined, { workspace: "/repo/app" })
 
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
     const stream = useAgentStore.getState().agentStreams["lead"]
     expect(stream.currentBlocks.some((b) => b.type === "user" && b.content === "message to new session")).toBe(true)
 
@@ -91,7 +92,7 @@ describe("newSession and beginResolvedSession", () => {
     })
 
     // Working state and optimistic block must be preserved
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
     expect(useAgentStore.getState().agentStreams["lead"].currentBlocks.some((b) => b.type === "user" && b.content === "message to new session")).toBe(true)
 
     // When postAgentChat finishes, sessionId is set correctly

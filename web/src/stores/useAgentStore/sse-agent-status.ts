@@ -4,7 +4,8 @@
  * transcript and the error banner.
  */
 import { generateBlockId } from '@/utils/blocks'
-import { anyAgentLive, appendLocalBlocks, ensureAgent } from './helpers'
+import { appendLocalBlocks, ensureAgent } from './helpers'
+import { applyRun, markRowRunning, reportAgents, setAgentStatus } from './run-state'
 import { commitLiveBlocks } from './sse-turn'
 import type { AgentError, StoreSet } from './types'
 import type { ContentBlock } from '@/api/types'
@@ -26,32 +27,29 @@ export function onAgentStatus(set: StoreSet, d: Record<string, unknown>) {
   set((draft) => {
     ensureAgent(draft, agent)
     if (status === 'working') {
-      draft.agentStreams[agent].status = 'working'
-      draft.isAgentWorking = true
+      setAgentStatus(draft.agentStreams[agent], 'working')
       if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+      reportAgents(draft)
       // Only the sidebar's ``running`` badge depends on this. Patch that
       // one field rather than invalidating the whole list — an agent turn
       // emits one agent_status per member, so invalidating here used to
       // cost (members × loaded pages) sequential refetches per turn. Patch
       // once per turn: later members find the row already marked running.
-      if (draft.sessionId && draft._runningPatchedFor !== draft.sessionId) {
-        draft._runningPatchedFor = draft.sessionId
-        draft.cacheInvalidations.push({
-          kind: 'session_running',
-          sessionId: draft.sessionId,
-          running: true,
-        })
-      }
+      markRowRunning(draft)
     } else if (status === 'waiting_input') {
       // Suspended on ask_user: still live, but no tokens are coming.
-      draft.agentStreams[agent].status = 'waiting_input'
-      draft.isAgentWorking = true
+      setAgentStatus(draft.agentStreams[agent], 'waiting_input')
+      if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+    } else if (status === 'waiting_lead') {
+      // A member whose turn ended on a question to its lead: live, not busy.
+      // Viewed as its own session (it is this view's lead), nothing runs.
+      setAgentStatus(draft.agentStreams[agent], 'waiting_lead')
       if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
     } else if (status === 'idle') {
-      draft.agentStreams[agent].status = 'idle'
+      setAgentStatus(draft.agentStreams[agent], 'idle')
       if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
     } else if (status === 'offline') {
-      draft.agentStreams[agent].status = 'offline'
+      setAgentStatus(draft.agentStreams[agent], 'offline')
       if (draft.liveAgentNames) draft.liveAgentNames = draft.liveAgentNames.filter((name) => name !== agent)
     } else if (status === 'error') {
       const meta = d.metadata as Record<string, unknown> | undefined
@@ -61,10 +59,10 @@ export function onAgentStatus(set: StoreSet, d: Record<string, unknown>) {
       const errCategory = (meta?.category as AgentError['category']) ?? (d.category as AgentError['category']) ?? undefined
       const errDetails = (meta?.details as string) ?? (d.details as string) ?? undefined
 
-      draft.agentStreams[agent].status = 'error'
+      setAgentStatus(draft.agentStreams[agent], 'error')
       draft.agentStreams[agent].lastError = lastErr
       if (draft.leadName && draft.agentStreams[draft.leadName]) {
-        draft.agentStreams[draft.leadName].status = 'error'
+        setAgentStatus(draft.agentStreams[draft.leadName], 'error')
         draft.agentStreams[draft.leadName].lastError = lastErr
       }
       if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
@@ -116,9 +114,7 @@ export function onAgentStatus(set: StoreSet, d: Record<string, unknown>) {
         }
       }
     }
-    if (status !== 'working' && status !== 'waiting_input') {
-      draft.isAgentWorking = anyAgentLive(draft.agentStreams)
-    }
+    if (status !== 'working') reportAgents(draft)
   })
 }
 
@@ -159,8 +155,7 @@ export function onError(set: StoreSet, d: Record<string, unknown>) {
     draft.error = title || code || category || agent
       ? { title, message, code, category, agent }
       : message
-    draft.isAgentWorking = false
-    draft._runningPatchedFor = null
+    applyRun(draft, { type: 'end' })
 
     const effectiveAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'lead'
     if (isProviderFailure(title, message, code, category)) {
@@ -206,13 +201,13 @@ export function onAgentNotConfigured(set: StoreSet, d: Record<string, unknown>) 
   const agent = d.agent as string
   set((draft) => {
     ensureAgent(draft, agent)
-    draft.agentStreams[agent].status = 'error'
+    setAgentStatus(draft.agentStreams[agent], 'error')
     draft.agentStreams[agent].lastError = d.message as string
     draft.setupRequired = {
       agent,
       message: d.message as string,
       action: (d.action as { type?: string; tab?: string } | undefined) ?? {},
     }
-    draft.isAgentWorking = false
+    applyRun(draft, { type: 'end' })
   })
 }

@@ -4,6 +4,7 @@ import { mock, afterEach, setDefaultTimeout } from "bun:test";
 import { readFileSync } from "node:fs";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { menuBlink } from "@/components/ui/_menu-blink";
+import { setStrictMachines } from "@/lib/machine";
 
 // A test may take 10 s (Bun's default is 5 s): the parallel run shares the
 // machine with builds, and a component test that takes 1 s alone can take 6 s
@@ -140,3 +141,6 @@ afterEach(() => {
   // previous test's tabs.
   if (typeof localStorage !== "undefined") localStorage.removeItem("oa.dockTabs.v1");
 });
+
+// A move a machine's table does not list throws in tests (`lib/machine.ts`).
+setStrictMachines(true);

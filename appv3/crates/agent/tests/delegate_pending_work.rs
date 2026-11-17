@@ -53,7 +53,7 @@ async fn a_lead_that_delegated_mid_turn_stays_busy_until_its_subagent_reports() 
     let root = tmp.path();
     setup_roots(root);
     let release = root.join("release");
-    let build = format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo built", release.display());
+    let build = common::wait_for_file(&release, "built");
     let build_args = serde_json::json!({ "command": build }).to_string();
     let delegate_args = serde_json::json!({ "profile": "worker", "task": "run the build" }).to_string();
     // The lead delegates, ends its turn, then reads the member's report.

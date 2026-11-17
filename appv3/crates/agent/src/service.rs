@@ -437,7 +437,6 @@ pub async fn dispatch_user_message(session: &AgentSession, d: Dispatch) -> Resul
         .handle_user_message(UserMessage {
             content: d.content,
             session_id: sid.clone(),
-            interrupt: false,
             attachment_metas: if metas.is_empty() { None } else { Some(metas) },
             mention_context_blocks: d.mention_context_blocks.filter(|b| !b.is_empty()),
             workspace: d.workspace,

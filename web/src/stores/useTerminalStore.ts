@@ -30,8 +30,8 @@
  *  - Closing a tab (and idle-close) DELETEs the backend session, then closes
  *    the socket; a bare socket close only detaches.
  *  - An unexpected drop reattaches with backoff (`session_id` + `since=seq`);
- *    a 404 means the shell is gone (`closedReason: 'lost'`), a 4409 means a
- *    window took it over (`closedReason: 'elsewhere'`, Reconnect reattaches).
+ *    a 404 means the shell is gone (`exited`, reason `lost`), a 4409 means a
+ *    window took it over (`exited`, reason `elsewhere`; Reconnect reattaches).
  *  - After a reload `restoreSessions` lists the workspace's shells and
  *    attaches the free ones from `since=0`. Every session's title persists in
  *    localStorage by backend session id, and each workspace's tab order and
@@ -52,6 +52,8 @@ import { TERMINAL_THEMES, type TerminalResolvedTheme } from '@/components/Termin
 import { readStoredPreference, resolveTheme } from '@/lib/theme'
 import { TERMINAL_FONT_FAMILY, terminalFontSize } from '@/lib/terminal-font'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { SHELL_CONNECTING, closedReasonOf, isShellLive, terminalShellMachine } from '@/stores/terminal-state'
+import type { TerminalClosedReason, TerminalShell, TerminalShellEvent } from '@/stores/terminal-state'
 
 export const TERMINAL_IDLE_CLOSE_MS = 15 * 60 * 1000
 const REAPER_TICK_MS = 60 * 1000
@@ -70,13 +72,7 @@ export const TERMINAL_RESTORE_WAIT_MS = 2000
 /** How long a command waits for the shell it was sent to before it is dropped. */
 export const TERMINAL_RUN_WAIT_MS = 10_000
 
-export type TerminalSessionStatus = 'connecting' | 'connected' | 'exited' | 'error'
-/**
- * Why a session is `exited`: the shell exited, was closed for idling, is gone
- * from the server (`lost`), or another window took it over (`elsewhere` —
- * the shell still runs; Reconnect takes it back).
- */
-export type TerminalClosedReason = 'exit' | 'idle' | 'lost' | 'elsewhere'
+export type { TerminalClosedReason, TerminalSessionStatus, TerminalShell } from '@/stores/terminal-state'
 
 /** The tab-overlay text for a session that is not running. */
 export function terminalClosedMessage(reason: TerminalClosedReason | undefined): string {
@@ -96,9 +92,8 @@ export interface TerminalSessionMeta {
   id: string
   contextKey: string
   title: string
-  status: TerminalSessionStatus
-  closedReason?: TerminalClosedReason
-  errorMsg?: string
+  /** Its link to the shell; changed only through ``moveShell``. */
+  shellState: TerminalShell
   /** The server-side session id (protocol v2 only; set once attached). */
   backendId?: string
   /** Wire protocol the session connected with. */
@@ -399,6 +394,13 @@ function patchSession(id: string, changes: Partial<TerminalSessionMeta>): void {
   })
 }
 
+/** The one way a session's shell state changes (``terminal-state.ts``). */
+function moveShell(id: string, event: TerminalShellEvent, extra: Partial<TerminalSessionMeta> = {}): void {
+  const meta = useTerminalStore.getState().sessions[id]
+  if (!meta) return
+  patchSession(id, { ...extra, shellState: terminalShellMachine.transition(meta.shellState, event) })
+}
+
 /** Forget a session's runtime and metadata (no server traffic). */
 function dropSession(id: string): void {
   const rt = runtimes.get(id)
@@ -420,7 +422,7 @@ function killBackendSession(backendId: string): void {
 /** Does closing this session's tab have to kill a shell on the server? */
 function holdsLiveShell(meta: TerminalSessionMeta | undefined): meta is TerminalSessionMeta & { backendId: string } {
   // `exited` covers a shell that ended and one another window now owns.
-  return meta?.protocol === 2 && !!meta.backendId && meta.status !== 'exited'
+  return meta?.protocol === 2 && !!meta.backendId && meta.shellState.kind !== 'exited'
 }
 
 /** The kind of a connect failure (see TerminalConnectError), duck-typed. */
@@ -465,11 +467,11 @@ function scheduleReattach(id: string, rt: TerminalRuntime): void {
   if (!backendId || delay === undefined) {
     // Out of tries: the user can Reconnect (which tries this shell first).
     rt.reattachAttempts = 0
-    patchSession(id, { status: 'error', errorMsg: 'Connection lost', busy: false })
+    moveShell(id, { type: 'failed', message: 'Connection lost' }, { busy: false })
     return
   }
   rt.reattachAttempts++
-  patchSession(id, { status: 'connecting', errorMsg: undefined })
+  moveShell(id, { type: 'connect' })
   rt.reattachTimer = setTimeout(() => {
     rt.reattachTimer = null
     if (runtimes.get(id) !== rt) return
@@ -525,7 +527,7 @@ async function connect(id: string, resume?: Resume): Promise<void> {
         if (live()) rt.seq = seq
       },
       onExit: () => {
-        if (live()) patch({ status: 'exited', closedReason: 'exit', busy: false })
+        if (live()) moveShell(id, { type: 'exited', reason: 'exit' }, { busy: false })
       },
       onBusy: (busy) => {
         if (!live()) return
@@ -545,24 +547,24 @@ async function connect(id: string, resume?: Resume): Promise<void> {
         if (!live()) return
         // v2: a socket error is always followed by a close, which decides.
         if (useTerminalStore.getState().sessions[id]?.protocol === 2) return
-        if (useTerminalStore.getState().sessions[id]?.status === 'connected') {
-          patch({ status: 'error', errorMsg: 'Terminal connection error', busy: false })
+        if (useTerminalStore.getState().sessions[id]?.shellState.kind === 'connected') {
+          moveShell(id, { type: 'failed', message: 'Terminal connection error' }, { busy: false })
         }
       },
       onClose: (code) => {
         if (!live()) return
         const current = useTerminalStore.getState().sessions[id]
-        if (current?.status !== 'connected') return
+        if (current?.shellState.kind !== 'connected') return
         if (current.protocol !== 2) {
-          patch({ status: 'exited', closedReason: 'exit', busy: false })
+          moveShell(id, { type: 'exited', reason: 'exit' }, { busy: false })
           return
         }
         rt.gen++ // anything else this socket says is stale
         rt.socket = null
         if (code === 4409) {
-          patch({ status: 'exited', closedReason: 'elsewhere', busy: false })
+          moveShell(id, { type: 'exited', reason: 'elsewhere' }, { busy: false })
         } else if (code === 4429) {
-          patch({ status: 'error', errorMsg: "Couldn't start the shell", busy: false })
+          moveShell(id, { type: 'failed', message: "Couldn't start the shell" }, { busy: false })
         } else {
           // Network or backend hiccup: the shell lives on, so reattach.
           scheduleReattach(id, rt)
@@ -587,13 +589,7 @@ async function connect(id: string, resume?: Resume): Promise<void> {
       rt.reattachAttempts = 0
       rt.lastActivityAt = Date.now()
       const backendId = v2 ? socket.sessionId : undefined
-      patch({
-        status: 'connected',
-        closedReason: undefined,
-        errorMsg: undefined,
-        protocol: v2 ? 2 : 1,
-        backendId,
-      })
+      moveShell(id, { type: 'attached' }, { protocol: v2 ? 2 : 1, backendId })
       if (backendId) {
         // Every title, not only renames: a reload must not renumber the tabs.
         persistTitle(backendId, rt.target.workspace, useTerminalStore.getState().sessions[id]?.title ?? '')
@@ -604,7 +600,7 @@ async function connect(id: string, resume?: Resume): Promise<void> {
       if (!live()) return
       const kind = failureKind(err)
       if (!resume) {
-        patch({ status: 'error', errorMsg: err.message })
+        moveShell(id, { type: 'failed', message: err.message })
         return
       }
       if (kind === 'gone') {
@@ -613,12 +609,12 @@ async function connect(id: string, resume?: Resume): Promise<void> {
           // Reconnect found the shell gone: start a new one in this tab.
           resetForFreshShell(id, rt)
           void connect(id)
-        } else patch({ status: 'exited', closedReason: 'lost', busy: false })
+        } else moveShell(id, { type: 'exited', reason: 'lost' }, { busy: false })
       } else if (kind === 'elsewhere') {
         if (resume.origin === 'restore') dropSession(id) // another window owns it
-        else patch({ status: 'exited', closedReason: 'elsewhere', busy: false })
+        else moveShell(id, { type: 'exited', reason: 'elsewhere' }, { busy: false })
       } else if (kind === 'spawn-failed' || resume.origin === 'manual') {
-        patch({ status: 'error', errorMsg: err.message })
+        moveShell(id, { type: 'failed', message: err.message })
       } else {
         scheduleReattach(id, rt)
       }
@@ -659,7 +655,7 @@ function createSession(
         id,
         contextKey,
         title: init.title ?? nextTitle(state.sessions, contextKey),
-        status: 'connecting',
+        shellState: SHELL_CONNECTING,
         order: nextOrder,
         ...(init.resume ? { backendId: init.resume.sessionId, protocol: 2 as const } : {}),
         ...(init.busy ? { busy: true } : {}),
@@ -731,11 +727,11 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
   reconnect: (id) => {
     const rt = runtimes.get(id)
     const meta = get().sessions[id]
-    if (!rt || !meta || meta.status === 'connected' || meta.status === 'connecting') return
+    if (!rt || !meta || isShellLive(meta.shellState)) return
     // The same shell, if the server may still have it: another window took
     // it over, or we gave up reconnecting. An ended shell starts anew.
     const sameShell =
-      meta.protocol === 2 && !!meta.backendId && (meta.closedReason === 'elsewhere' || meta.status === 'error')
+      meta.protocol === 2 && !!meta.backendId && (closedReasonOf(meta) === 'elsewhere' || meta.shellState.kind === 'error')
     rt.gen++
     if (rt.reattachTimer !== null) clearTimeout(rt.reattachTimer)
     rt.reattachTimer = null
@@ -747,7 +743,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     rt.socket = null
     rt.lastActivityAt = Date.now()
     if (!sameShell && meta.backendId) resetForFreshShell(id, rt)
-    patchSession(id, { status: 'connecting', closedReason: undefined, errorMsg: undefined })
+    moveShell(id, { type: 'connect' })
     void connect(id, sameShell ? { sessionId: meta.backendId!, since: rt.seq, origin: 'manual' } : undefined)
   },
 
@@ -823,8 +819,8 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     const settle = (): boolean => {
       const meta = get().sessions[id]
       const rt = runtimes.get(id)
-      if (!meta || !rt || meta.status === 'exited' || meta.status === 'error') return true
-      if (meta.status !== 'connected' || !rt.socket || !rt.handle) return false
+      if (!meta || !rt || meta.shellState.kind === 'exited' || meta.shellState.kind === 'error') return true
+      if (meta.shellState.kind !== 'connected' || !rt.socket || !rt.handle) return false
       // xterm's paste honours bracketed-paste mode (a multi-line block goes
       // in whole) and feeds `onData`, the same path as typing.
       rt.handle.term.paste(text)
@@ -844,7 +840,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
 
   isIdleShell: (id) => {
     const meta = get().sessions[id]
-    return meta?.status === 'connected' && meta.busy !== true && runtimes.get(id)?.busySupported === true
+    return meta?.shellState.kind === 'connected' && meta.busy !== true && runtimes.get(id)?.busySupported === true
   },
 
   sendResize: (id, rows, cols) => {
@@ -925,7 +921,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
   reapIdle: (now = Date.now()) => {
     for (const [id, rt] of runtimes) {
       const meta = get().sessions[id]
-      if (!meta || meta.status !== 'connected') continue
+      if (!meta || meta.shellState.kind !== 'connected') continue
       if (rt.attached || meta.busy) continue
       // A server that never reports `busy` (Windows) cannot tell us a dev
       // server is running, and closing kills the shell: never idle-close it.
@@ -933,7 +929,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       if (now - rt.lastActivityAt <= TERMINAL_IDLE_CLOSE_MS) continue
       if (holdsLiveShell(meta)) killBackendSession(meta.backendId)
       teardownRuntime(rt)
-      patchSession(id, { status: 'exited', closedReason: 'idle' })
+      moveShell(id, { type: 'exited', reason: 'idle' })
     }
   },
 

@@ -9,6 +9,9 @@ import { agentStatus, updateSessionInteractionMode, updateSessionRunSettings } f
 import { useToastStore } from '@/stores/useToastStore'
 import { isTransientNetworkError } from '@/utils/errors'
 import { createDefaultAgentStream } from './defaults'
+import { applyQuestion } from './question-state'
+import { applyRun, isRunLive, setAgentStatus } from './run-state'
+import { applyLink } from './link-state'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
 import type { SessionInteractionMode } from '@/api/types'
@@ -45,21 +48,22 @@ function resetSessionState(
   state._sessionSettingsDirty = false
   state._sessionSettingsVersion = (state._sessionSettingsVersion ?? 0) + 1
   state.sessionFastMode = options.fastMode ?? false
-  state.isAgentWorking = false
-  state.pendingQuestion = null
+  applyRun(state, { type: 'reset' })
+  applyQuestion(state, { type: 'reset' })
   state.resolvedQuestions = {}
-  state.isConnected = false
+  applyLink(state, { type: 'reset' })
   state.error = null
   state.setupRequired = null
   state.pendingDraft = null
   state._abortController = null
   state._pendingMessages = []
   clearReconnectTimer(state)
-  state._reconnectAttempts = 0
+  // A session whose feed failed on the shared connection got its own; the
+  // next visit tries the shared one again.
+  state._directStreamSession = null
   state._silentStreamAttempts = 0
   state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
   state.cacheInvalidations = []
-  state._runningPatchedFor = null
   state.hasMore = false
   state.nextCursor = null
   state.pinnedPrompt = null
@@ -83,7 +87,7 @@ function resetSessionState(
     state.agentStreams[name].currentBlocks = []
     state.agentStreams[name].currentText = ''
     state.agentStreams[name].currentThinking = ''
-    state.agentStreams[name].status = 'idle'
+    setAgentStatus(state.agentStreams[name], 'idle')
     state.agentStreams[name].lastError = null
     state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
     state.agentStreams[name]._turnStartedAt = null
@@ -116,7 +120,6 @@ export type SessionSlice = Pick<
   | '_sessionSettingsVersion'
   | 'sessionFastMode'
   | '_sessionGeneration'
-  | '_runningPatchedFor'
   | '_leadRevertTime'
   | 'revertKeepsFiles'
   | '_workspace'
@@ -153,7 +156,6 @@ export const createSessionSlice: StateCreator<
   _sessionSettingsVersion: 0,
   sessionFastMode: false,
   _sessionGeneration: 0,
-  _runningPatchedFor: null,
   _leadRevertTime: null,
   revertKeepsFiles: false,
   _workspace: null,
@@ -179,7 +181,7 @@ export const createSessionSlice: StateCreator<
       get().sessionId === null || get().sessionId === sessionId
     const preserveLocalSettings = staysOnSameSession && get()._sessionSettingsDirty
     const isWorkingOrHasBlocks =
-      get().isAgentWorking ||
+      isRunLive(get().sessionRun) ||
       Boolean(
         get().leadName &&
           get().agentStreams[get().leadName!]?.currentBlocks.length > 0,
@@ -224,7 +226,7 @@ export const createSessionSlice: StateCreator<
   isEmptyIdleSession: () => {
     const state = get()
     // A session whose history is still loading only looks empty.
-    if (!state.sessionId || state.isAgentWorking || state.isLoadingHistory) return false
+    if (!state.sessionId || isRunLive(state.sessionRun) || state.isLoadingHistory) return false
     return state.agentNames.every((name) => !hasVisibleBlocks(state.agentStreams[name]))
   },
 
@@ -307,7 +309,7 @@ export const createSessionSlice: StateCreator<
     if (!sessionId) {
       // New-session draft: nothing to PATCH yet. Keep the pick locally; the
       // first message sends it and the session starts in that mode.
-      if (get().isAgentWorking) return false
+      if (isRunLive(get().sessionRun)) return false
       set((draft) => {
         draft.sessionInteractionMode = mode
         draft.sessionPendingInteractionMode = null
@@ -324,7 +326,7 @@ export const createSessionSlice: StateCreator<
         // The backend queues a switch requested mid-turn rather than stopping
         // the turn, so the toggle tracks the queued mode until it lands.
         draft.sessionPendingInteractionMode = session.pending_interaction_mode ?? null
-        draft.isAgentWorking = session.running === true
+        applyRun(draft, { type: 'snapshot', live: session.running === true })
         draft.error = null
       })
       return true
@@ -367,7 +369,7 @@ export const createSessionSlice: StateCreator<
           historicalNames.forEach((name) => {
             const stream = draft.agentStreams[name]
             if (stream && name !== status.lead.name && stream.status !== 'error' && stream.status !== 'working') {
-              stream.status = 'offline'
+              setAgentStatus(stream, 'offline')
             }
           })
         })

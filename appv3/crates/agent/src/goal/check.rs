@@ -7,6 +7,7 @@
 //! what actually ran, and the task board. The verdict goes on the goal row;
 //! nothing of the check is saved to the transcript.
 
+use super::state::GoalEvent;
 use super::{end, fence, pause, plan_work, publish, reason, save, spent, GOAL_NOTE_KEY, GOAL_TURN_KEY, MAX_CHECK_FAILURES, MAX_REJECTED_CLAIMS};
 use crate::hooks::otel::{set_usage_span_attributes, GOAL_ID_ATTR, WORKSPACE_ATTR};
 use crate::session::AgentSession;
@@ -14,7 +15,7 @@ use crate::streaming::{fit_request_images, merge_consecutive_user_messages, Mode
 use anyhow::{anyhow, Result};
 use appv3_core::otel::{self, Span, SpanCtx, SpanKind};
 use appv3_db::codec::db_id;
-use appv3_db::{self as db, SessionGoal, GOAL_ACHIEVED};
+use appv3_db::{self as db, SessionGoal, GOAL_ACTIVE};
 use appv3_providers::usage::usage_to_dict;
 use appv3_providers::{AssistantMessage, ChatMessage, Kwargs, ToolCall, Usage};
 use appv3_tools::ToolContext;
@@ -403,6 +404,17 @@ impl AgentSession {
             _ => return Ok(GOAL_GONE.into()),
         }
         goal.tokens_used += tokens;
+        // The user paused it while the check ran: the pause stands, whatever
+        // the verdict, and the verdict is kept for them to read.
+        if !goal.is_active() {
+            if let Ok(v) = &checked {
+                let found = if v.met { "met" } else { "not met yet" };
+                goal.detail = Some(format!("The check finished after the pause and found the goal {found}: {}", v.reason));
+            }
+            let goal = save(&self.pool, &goal).await.map_err(err)?;
+            publish(&sid, Some(&goal));
+            return Ok(PAUSED_DURING_CHECK.into());
+        }
         let verdict = match checked {
             Ok(v) => {
                 local.check_failures = 0;
@@ -428,7 +440,7 @@ impl AgentSession {
         goal.detail = Some(verdict.reason.clone());
         tracing::info!("goal_check session_id={} goal_id={} met={}", sid, goal.id, verdict.met);
         let text = if verdict.met {
-            end(&mut goal, GOAL_ACHIEVED);
+            end(&mut goal, GoalEvent::Achieve);
             format!(
                 "The check confirmed the goal is met: {}\nThe goal is achieved. Stop goal work and give the user a short summary of what was done and how it was verified.",
                 verdict.reason
@@ -436,7 +448,11 @@ impl AgentSession {
         } else {
             reject(&mut goal, &verdict.reason)
         };
-        let goal = save(&self.pool, &goal).await.map_err(err)?;
+        // Only over the active goal re-read above: a writer outside this
+        // session's goal lock (an undo clearing it) may have moved it.
+        let Some(goal) = db::save_session_goal_if(&self.pool, &goal, GOAL_ACTIVE).await.map_err(err)? else {
+            return Ok(GOAL_GONE.into());
+        };
         publish(&sid, Some(&goal));
         Ok(text)
     }
@@ -550,6 +566,7 @@ impl AgentSession {
 
 const NO_GOAL: &str = "There is no goal. update_goal only works while a goal runs a plan the user approved with \"Keep going until done\".";
 const PAUSED_GOAL: &str = "The goal is paused, so no completion check runs until the user resumes it. Stop goal work and summarize what is done and what remains.";
+const PAUSED_DURING_CHECK: &str = "The user paused the goal while the check ran, so it stays paused. Stop goal work and summarize what is done and what remains.";
 const GOAL_GONE: &str = "The goal was cleared while the check ran. Stop goal work.";
 
 /// Count a rejected claim on `goal`, pausing it at [`MAX_REJECTED_CLAIMS`];

@@ -88,7 +88,6 @@ async fn a_turn_cut_off_by_shutdown_continues_on_the_next_start_and_a_stopped_on
     session.handle_user_message(send("second")).await.unwrap();
     wait_until_async("the second turn's mark", async || in_flight(&pool).await == std::slice::from_ref(&sid)).await;
     wait_until_async("the second model call", async || mock.calls.lock().unwrap().len() == 2).await;
-    restart_resume::begin_shutdown();
     manager::stop().await;
     assert_eq!(in_flight(&pool).await, std::slice::from_ref(&sid), "the shutdown left the turn marked");
     drop(session);

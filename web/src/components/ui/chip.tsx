@@ -37,7 +37,7 @@ export interface ChipProps extends ComponentPropsWithRef<'span'> {
 
 export function chipClass({ tone = 'neutral', mono = false }: Pick<ChipProps, 'tone' | 'mono'> = {}): string {
   return cn(
-    'inline-flex h-[18px] max-w-full shrink-0 items-center gap-1 rounded-xs px-1.5 text-meta leading-none font-medium whitespace-nowrap',
+    'inline-flex h-4.5 max-w-full shrink-0 items-center gap-1 rounded-xs px-1.5 text-meta leading-none font-medium whitespace-nowrap',
     mono && 'font-mono',
     SOFT[tone],
   )
@@ -49,7 +49,7 @@ export function Chip({ tone = 'neutral', mono = false, dot = false, spinner = fa
       {spinner ? (
         <Loader2 data-chip-spinner="" size={12} aria-hidden="true" className="shrink-0 animate-spin" />
       ) : (
-        dot && <span aria-hidden="true" className="size-[5px] shrink-0 rounded-full bg-current" />
+        dot && <span aria-hidden="true" className="size-1.25 shrink-0 rounded-full bg-current" />
       )}
       <span className="truncate">{children}</span>
     </span>

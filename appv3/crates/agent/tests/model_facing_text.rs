@@ -174,7 +174,11 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 518 for the coding prompt to say when `script` beats direct
 /// calls (and to stop reading "use a script only for…" as a ban on it):
 /// leads made 0.2% of their calls with it while shell made 47%.
-const LEAD_ALWAYS_ON_CHARS: usize = 44_356;
+/// Raised by 1817 for the `secret` tool (ask for keys by name, never see
+/// them), `shell`'s `secrets` argument, and the runtime protocol's line that
+/// sends the agent to them instead of asking for a key in chat or reading
+/// `.env`: without it, agents asked users to paste keys into the chat.
+const LEAD_ALWAYS_ON_CHARS: usize = 46_173;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

@@ -55,7 +55,7 @@ describe('useAutoFollowScroll and the soft keyboard', () => {
     render(<Harness />)
     const el = hook!.scrollRef.current!
     layOut(el, { scrollTop: 120 })
-    hook!.attachedRef.current = false
+    act(() => hook!.stopFollowing())
 
     await openKeyboardAndSettle()
 

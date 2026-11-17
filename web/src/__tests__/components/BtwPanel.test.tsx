@@ -143,7 +143,7 @@ describe('BtwPanel', () => {
   it('shows Thinking until the first text, and Stop stops the live answer', async () => {
     items = []
     useBtwStore.setState({
-      sessions: { [S]: { ...EMPTY_BTW, open: true, live: { id: 'q1', question: 'live one', text: '', status: 'streaming', error: null } } },
+      sessions: { [S]: { ...EMPTY_BTW, open: true, liveAnswer: { id: 'q1', question: 'live one', text: '', kind: 'streaming' } } },
     })
     renderPanel(false)
     expect(screen.getByText('live one')).toBeTruthy()

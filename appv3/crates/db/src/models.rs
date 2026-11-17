@@ -176,9 +176,13 @@ impl PendingQuestion {
     pub fn plan_revision(&self) -> Option<u64> {
         json_col(Some(&self.payload)).and_then(|p| p.get("plan_revision").and_then(|r| r.as_u64()))
     }
+    /// A secret request's card data (`payload.secret`): names and states, never values.
+    pub fn secret_request(&self) -> Option<Value> {
+        json_col(Some(&self.payload)).and_then(|p| p.get("secret").cloned()).filter(Value::is_object)
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ScheduledTask {
     pub id: String,
     pub name: String,

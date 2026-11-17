@@ -18,12 +18,12 @@ interface CheckboxProps extends Omit<ComponentPropsWithRef<'input'>, 'type'> {
  */
 function Checkbox({ className, onChange, onCheckedChange, checkClassName, ...props }: CheckboxProps) {
   return (
-    <span className="relative inline-flex size-[18px] shrink-0">
+    <span className="relative inline-flex size-4.5 shrink-0">
       <input
         type="checkbox"
         data-slot="checkbox"
         className={cn(
-          'peer size-[18px] appearance-none rounded-sm border-[1.5px] border-(--color-text-subtle) bg-(--bg-page) outline-none',
+          'peer size-4.5 appearance-none rounded-sm border-[1.5px] border-(--color-text-subtle) bg-(--bg-page) outline-none',
           // Fill and edge crossfade at ``fast``; the press dip is ``instant``.
           'transition-[background-color,border-color,scale] [transition-duration:var(--motion-fast),var(--motion-fast),var(--motion-instant)] ease-(--ease-out)',
           'enabled:active:scale-90',

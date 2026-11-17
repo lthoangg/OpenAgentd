@@ -23,6 +23,7 @@ export function useComposerActions({
   setValue,
   setHistoryIndex,
   setDesignFeedback,
+  clearPlanComments,
   resetDraftState,
   setMentionRange,
   setSnippetRange,
@@ -36,6 +37,8 @@ export function useComposerActions({
   setValue: Dispatch<SetStateAction<string>>
   setHistoryIndex: Dispatch<SetStateAction<number>>
   setDesignFeedback: Dispatch<SetStateAction<DesignFeedback[]>>
+  /** Drop the plan comments chip, handing its comments back to the plan. */
+  clearPlanComments: () => void
   resetDraftState: () => void
   setMentionRange: Dispatch<SetStateAction<SuggestionRange>>
   setSnippetRange: Dispatch<SetStateAction<SuggestionRange>>
@@ -78,6 +81,7 @@ export function useComposerActions({
     setDraft: (text) => {
       setValue(text)
       setDesignFeedback([])
+      clearPlanComments()
       resetDraftState()
       // Focus now, inside the gesture that asked (iOS raises the keyboard
       // only then); the caret moves to the end once the text has laid out.
@@ -88,5 +92,5 @@ export function useComposerActions({
         el?.setSelectionRange(text.length, text.length)
       })
     },
-  }), [addAllowedFiles, fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setDesignFeedback, setHistoryIndex, setMentionRange, setSnippetRange, setValue, textareaRef])
+  }), [addAllowedFiles, clearPlanComments, fileInputRef, onFileRefsNeeded, resetDraftState, resize, resizeAfterLayout, setDesignFeedback, setHistoryIndex, setMentionRange, setSnippetRange, setValue, textareaRef])
 }

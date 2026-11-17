@@ -1,4 +1,5 @@
-// size-ceiling: 1022 — types only: group them by resource, as api/client/ is
+// size-ceiling: 971 — types only: group them by resource, as api/client/ is
+import type { PendingQuestionResponse } from './question-types'
 // API Response Types
 export interface AgentToolInfo {
   name: string
@@ -967,56 +968,4 @@ export interface WorktreeRemoveResponse {
   branch_deleted?: boolean
   /** Commits on an OpenAgentd branch that no other branch holds. */
   unmerged_commits?: number
-}
-
-
-// ── ask_user ────────────────────────────────────────────────────────
-
-export interface QuestionOption {
-  label: string
-  description?: string | null
-  /** The agent's preferred choice. Renders a "Recommended" badge. */
-  recommended: boolean
-}
-
-export interface QuestionItem {
-  question: string
-  /** Very short label (<=30 chars) for the stepper tab. */
-  header: string
-  options: QuestionOption[]
-  multiple: boolean
-}
-
-/** Wire shape of a `pending_questions` row (history + `GET /{sid}/question`). */
-export interface PendingQuestionResponse {
-  id: string
-  session_id: string
-  tool_call_id: string
-  questions: QuestionItem[]
-  created_at: string
-  /** ``plan_review`` for a plan review (``plan`` with ``submit: true``); absent for ``ask_user``. */
-  kind?: string | null
-  plan_revision?: number | null
-}
-
-export interface PendingQuestionEnvelope {
-  question: PendingQuestionResponse | null
-}
-
-/** A question the lead is suspended on, awaiting the user's reply. */
-export interface PendingQuestion {
-  id: string
-  sessionId: string
-  toolCallId: string
-  questions: QuestionItem[]
-  /** ``plan_review`` when the lead waits on a plan review (``plan`` with ``submit: true``). */
-  kind?: 'plan_review'
-  /** The plan revision the review was opened for. */
-  planRevision?: number
-}
-
-export interface QuestionResolveResult {
-  status: string
-  /** False when the answer was saved but the turn could not be restarted. */
-  resumed: boolean
 }

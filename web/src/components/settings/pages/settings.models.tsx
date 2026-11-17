@@ -125,7 +125,7 @@ export function ModelsSettingsPage() {
                     <Skeleton className="h-3.5 w-36" />
                     <Skeleton className="h-3 w-24" />
                   </div>
-                  <Skeleton className="h-[18px] w-20" />
+                  <Skeleton className="h-4.5 w-20" />
                 </div>
               ))}
             </div>

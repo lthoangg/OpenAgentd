@@ -368,13 +368,16 @@ fn program_in<'a>(command: &'a str, cwd: Option<&Path>) -> std::borrow::Cow<'a, 
     }
 }
 
-async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> {
+/// `project`: the workspace of a project's server (`None` for the user's own).
+async fn connect(name: &str, cfg: &ServerConfig, project: Option<&str>) -> Result<McpClient, RunError> {
+    let secrets_of = project.map(|ws| appv3_core::agent_secrets::project_of(Path::new(ws)));
+    let secrets_of = secrets_of.as_deref();
     match cfg {
         ServerConfig::Stdio { command, args, env, cwd, .. } => {
             let command = program_in(command, cwd.as_deref());
             let command = command.as_ref();
             // References filled in first: a `PATH` stored as a secret is a `${NAME}` here.
-            let env = config::resolve_env_dict_with(env, !project::is_project_key(name));
+            let env = config::resolve_env_dict_in(env, !project::is_project_key(name), secrets_of);
             let configured = env.get("PATH").cloned();
             let mut path = match &configured {
                 Some(p) => p.clone(),
@@ -414,7 +417,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             if oauth.is_some() && oauth::interactive_oauth_allowed(name) && unresolved_client_id(cfg) {
                 return Err(RunError::AuthRequired(oauth_credentials_required_message(name)));
             }
-            let hdrs: Vec<(String, String)> = config::resolve_env_dict_with(headers, !project::is_project_key(name)).into_iter().collect();
+            let hdrs: Vec<(String, String)> = config::resolve_env_dict_in(headers, !project::is_project_key(name), secrets_of).into_iter().collect();
             // MCP authorization is discovered on a 401, so a server with no
             // `oauth` block still signs in (dynamic client registration).
             let discovered = OAuthConfig { client_id: None, client_secret: None };
@@ -476,7 +479,7 @@ async fn close_session(client: &McpClient, name: &str, keep: bool, kept: &sessio
 async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>, kept: Arc<sessions::SessionStore>) {
     let keep = || runner.keep_session.load(std::sync::atomic::Ordering::SeqCst);
     let res: Result<(), RunError> = async {
-        let client = Arc::new(connect(&name, &cfg).await?);
+        let client = Arc::new(connect(&name, &cfg, runner.project.as_ref().map(|p| p.workspace.as_str())).await?);
         let setup = open_session(&client, &name, &cfg, &kept);
         let shutdown = runner.shutdown.subscribe();
         let defs = tokio::select! {

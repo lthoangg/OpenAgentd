@@ -65,6 +65,8 @@ pub fn opens(name: &str, arguments: &str) -> bool {
     match name {
         "mcp" => matches!(action.as_str(), "save" | "remove"),
         "workspace" => action == "set_groups",
+        // Not a change to apply, but a card that pauses the turn the same way.
+        crate::tools::secret::SECRET_TOOL => action == "request",
         _ => false,
     }
 }

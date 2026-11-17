@@ -7,7 +7,6 @@ import {
   formatPlanReview,
   overlayLeft,
   parsePlanReview,
-  planReviewAnswer,
   quoteExcerpt,
   readPlanReviewDraft,
   snapshotPlanReviewDraft,
@@ -149,22 +148,5 @@ describe('review drafts', () => {
     })
 
     expect(screen.getByLabelText('other').textContent).toBe('')
-  })
-})
-
-describe('planReviewAnswer', () => {
-  it('formats comments, a half-written comment and the overall feedback as one answer', () => {
-    expect(
-      planReviewAnswer({
-        comments: [{ id: 'c1', quote: 'Step A', text: 'Split this.' }],
-        overall: 'Otherwise fine.',
-        composer: { quote: 'Step B', text: 'Add a test.' },
-      }),
-    ).toBe('**Comment 1**\n> Step A\n\nSplit this.\n\n**Comment 2**\n> Step B\n\nAdd a test.\n\n**Overall**\nOtherwise fine.')
-  })
-
-  it('leaves out a comment box nothing was typed in, and is empty for an empty draft', () => {
-    expect(planReviewAnswer({ comments: [], overall: '', composer: { quote: 'Step B', text: '  ' } })).toBe('')
-    expect(planReviewAnswer(snapshotPlanReviewDraft('q-9'))).toBe('')
   })
 })

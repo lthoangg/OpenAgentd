@@ -127,7 +127,7 @@ function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
       >
         {error
           ? (
-            <div className="flex h-[120px] w-[120px] items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">
+            <div className="flex h-30 w-30 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">
               Couldn't load
             </div>
           )
@@ -141,7 +141,7 @@ function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
               data-revealed={revealProps['data-revealed']}
               onLoad={reveal}
               onError={() => setError(true)}
-              className={cn(revealProps.className, 'max-h-[120px] max-w-[120px] rounded-md object-cover')}
+              className={cn(revealProps.className, 'max-h-30 max-w-30 rounded-md object-cover')}
             />
           )}
       </button>
@@ -162,7 +162,7 @@ function VideoCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
       >
         <video
           src={blobUrl}
-          className="h-[90px] w-[150px] object-cover"
+          className="h-22.5 w-37.5 object-cover"
           preload="metadata"
           muted
         />
@@ -205,7 +205,7 @@ function AudioCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
         <audio
           src={blobUrl}
           controls
-          className="h-7 w-[190px]"
+          className="h-7 w-47.5"
           preload="metadata"
         />
       </div>
@@ -226,7 +226,7 @@ function PdfCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
       >
         <PdfThumbnail
           src={blobUrl}
-          className="pointer-events-none flex h-[90px] w-[150px] items-center justify-center bg-(--bg-page)"
+          className="pointer-events-none flex h-22.5 w-37.5 items-center justify-center bg-(--bg-page)"
         />
         <div className="flex items-center gap-1.5 border-t border-(--color-border-subtle) px-2 py-1">
           <FileTypeIcon name={file.name} size={12} />
@@ -268,7 +268,7 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-[190px] flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="flex w-47.5 flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={`Preview ${file.name}`}
       >
         <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 py-1.5">
@@ -281,7 +281,7 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
             <TooltipContent>{file.name}</TooltipContent>
           </Tooltip>
         </div>
-        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-meta leading-relaxed text-(--color-text-muted) select-none">
+        <pre className="h-17 overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-meta leading-relaxed text-(--color-text-muted) select-none">
           {snippet ?? ''}
         </pre>
       </button>
@@ -410,7 +410,7 @@ export function FilePreviewStrip({ files, blobUrls, onRemove, filesBelow }: File
 
         {metrics.hasOverflow && (
           <div
-            className="mx-2 mt-1 h-[3px] overflow-hidden rounded-full bg-(--color-border-subtle)"
+            className="mx-2 mt-1 h-0.75 overflow-hidden rounded-full bg-(--color-border-subtle)"
             aria-hidden="true"
           >
             <div

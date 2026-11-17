@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { AgentCommandResponse, ContentBlock, MessageResponse } from '@/api/types'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const postAgentCommand = mock(async (): Promise<AgentCommandResponse> => ({
   status: 'accepted',
@@ -50,7 +51,7 @@ beforeEach(() => {
     leadName: 'lead',
     agentNames: ['lead'],
     sessionId: 'session-1',
-    isAgentWorking: false,
+    sessionRun: runOf(false),
     error: null,
     pendingDraft: null,
     _workspace: '/repo',
@@ -96,7 +97,7 @@ describe('revertToMessage', () => {
   })
 
   it('refuses while a turn is running', async () => {
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
 
     expect(await useAgentStore.getState().revertToMessage('m2')).toBeNull()
     expect(postAgentCommand).not.toHaveBeenCalled()

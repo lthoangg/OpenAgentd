@@ -13,6 +13,7 @@ import {
   settleWorkspaceTree,
   worktreeChip,
 } from './harness'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 describe('Sidebar workspace trust flow', () => {
   beforeEach(resetSidebarHarness)
@@ -52,7 +53,7 @@ describe('Sidebar workspace trust flow', () => {
     await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
     useAgentStore.setState({
       sessionId: 'session-1',
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentNames: ['lead'],
       agentStreams: { lead: createDefaultAgentStream() },
     })

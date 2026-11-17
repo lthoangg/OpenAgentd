@@ -18,6 +18,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { queryKeys } from '@/queries/keys'
 import type { SessionGoal, SessionPlan } from '@/api/types'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const WORKSPACE = '/repo/project'
 
@@ -240,7 +241,7 @@ describe('Review dock "+" menu', () => {
   })
 
   it('opens the Goal tab, titled with how far the goal has got', async () => {
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     try {
       const client = await renderPanel({ goal: GOAL })
       await screen.findByRole('button', { name: 'Plan' })
@@ -256,7 +257,7 @@ describe('Review dock "+" menu', () => {
       })
       expect((await screen.findByRole('button', { name: 'Goal paused' })).getAttribute('aria-current')).toBe('true')
     } finally {
-      useAgentStore.setState({ isAgentWorking: false })
+      useAgentStore.setState({ sessionRun: runOf(false) })
     }
   })
 

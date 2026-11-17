@@ -18,9 +18,12 @@ view; find code paths in the source when you need them.
 | [Settings](settings.md) | `settings` | Search lands on the setting it names; a changed setting applies and survives a reload |
 | [Seen on a screen](notify-seen.md) | `notify-seen` | A session on screen is reported seen when it opens and when its turn's notification arrives |
 | [Connectors](connectors.md) | `connectors`, `connectors-remote` | Context7 turns on from the gallery and an agent calls it in a session; Connect opens Notion's sign-in, Cancel ends it; `oauth-done.html` refuses a stale code. From another device, Linear's sign-in returns through the callback page, which waits for Continue, to `oauth-done.html` and the server's token exchange |
+| [Secrets](secrets.md) | `secrets` | The agent asks for keys on a card; a pasted value reaches only the store, a command uses it as `$NAME` with its output masked, and Settings → Secrets lists it |
 | [Agent preview without the tab](preview.md) | `preview` | After the Preview tab closes and the app reloads on another session, the first session's agent still clicks and reads its page |
+| [Plan review](plan-review.md) | `plan-review` | A comment on a submitted plan goes to the chat box with Reply in chat and is sent as a message with a Plan comments card the model reads; a resubmitted plan is approved with Keep going |
+| [Failure, loading and confirm states](ui-states.md) | `ui-states` | A failed folder list and a failed session lookup say so with Retry; a TypeScript-tools line and a loading session title in Usage and a loading Read row; Usage stays closed after a relaunch; a group delete asks with Cancel; the QR scanner's focus and Escape; ✎'s hold opens an action sheet on a phone |
 
-Not mapped yet: plan mode and plan review, subagents, scheduled tasks, the
+Not mapped yet: switching to Plan mode, subagents, scheduled tasks, the
 command palette, attachments, web preview, undo, the account and remote
 computers, and everything native. Add a file and a journey when you change
 one of them.

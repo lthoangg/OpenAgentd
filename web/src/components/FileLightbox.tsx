@@ -30,6 +30,7 @@ import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { Button } from '@/components/ui/button'
 import { CloseButton } from '@/components/ui/close-button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
 import { useImageReveal } from '@/hooks/useImageReveal'
@@ -269,22 +270,30 @@ export function FileLightboxPdf({ item }: { item: FileLightboxItem }) {
 
 // ── FileLightboxText ───────────────────────────────────────────────────────────
 
+/** Widths of the skeleton lines a text file shows while it loads. */
+const TEXT_SKELETON_WIDTHS = ['w-11/12', 'w-4/5', 'w-full', 'w-2/3', 'w-5/6', 'w-1/2']
+
 export function FileLightboxText({ item }: { item: FileLightboxItem }) {
+  // ``null`` while loading; ``failed`` once it could not load.
   const [content, setContent] = useState<string | null>(item.textContent ?? null)
+  const [failed, setFailed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const touchStartRef = useRef({ x: 0, y: 0 })
   const gestureLockRef = useRef<'horizontal' | 'vertical' | null>(null)
 
   useEffect(() => {
-    if (content !== null) return
+    if (content !== null || failed) return
     if (!item.src) return
     let cancelled = false
     fetch(item.src)
-      .then((r) => r.text())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.text()
+      })
       .then((t) => { if (!cancelled) setContent(t) })
-      .catch(() => { if (!cancelled) setContent('(failed to load)') })
+      .catch(() => { if (!cancelled) setFailed(true) })
     return () => { cancelled = true }
-  }, [item.src, content])
+  }, [item.src, content, failed])
 
   useEffect(() => {
     const el = containerRef.current
@@ -335,9 +344,18 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
       <div className="flex shrink-0 items-center border-b border-(--color-border-subtle) px-4 py-2">
         <span className="text-xs text-(--color-text-muted)">{extOf(item.name).toUpperCase() || 'TEXT'}</span>
       </div>
-      <pre className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
-        {content === null ? 'Loading…' : content}
-      </pre>
+      {failed ? (
+        <p className="p-4 text-xs text-(--color-error)" role="alert">Couldn't load {item.name}.</p>
+      ) : content === null ? (
+        // DESIGN.md → Rulebook 10: loading shows a skeleton, not the word.
+        <div role="status" aria-label={`Loading ${item.name}`} className="flex flex-col gap-2.5 p-4">
+          {TEXT_SKELETON_WIDTHS.map((width) => <Skeleton key={width} className={`h-3 ${width}`} />)}
+        </div>
+      ) : (
+        <pre className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
+          {content}
+        </pre>
+      )}
     </div>
   )
 }

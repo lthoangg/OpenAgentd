@@ -73,7 +73,7 @@ async fn the_lead_interrupts_one_member_and_stops_another() {
     // Both members start a command that blocks until the test releases it.
     let block = |name: &str| {
         let file = root.join(name);
-        serde_json::json!({ "command": format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo done", file.display()) }).to_string()
+        serde_json::json!({ "command": common::wait_for_file(&file, "done") }).to_string()
     };
     let lead_mock = Arc::new(MockProvider::new(vec![]));
     let worker_mock = Arc::new(MockProvider::new(vec![MockProvider::tool_call("call_w", "shell", &block("never-w")), MockProvider::text("redirected report")]));

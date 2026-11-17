@@ -15,6 +15,7 @@ import { Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 
 import type { WorkspaceGroup } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
@@ -51,7 +52,7 @@ const ROW_ACTION_CLASS = cn(
 )
 
 /** Indent that lines content up with the group name, past the colour dot. */
-const TEXT_COLUMN = 'pl-[22px]'
+const TEXT_COLUMN = 'pl-5.5'
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong'
@@ -224,6 +225,9 @@ export function WorkspaceGroupsSettings() {
     setCreating(true)
   }
 
+  const deleting = groups.find((group) => group.id === confirmDelete)
+  const deletingMembers = deleting ? repositories.filter((repo) => tagsOf(repo.path).includes(deleting.id)).length : 0
+
   return (
     <div>
       {groups.length === 0 && !creating && (
@@ -283,62 +287,41 @@ export function WorkspaceGroupsSettings() {
                   </div>
                 </div>
 
-                {confirmDelete === group.id ? (
-                  <div className={cn(TEXT_COLUMN, 'max-sm:pl-0')}>
-                    <div className="flex flex-wrap items-center gap-2 rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) px-3 py-2.5">
-                      <p className="min-w-0 flex-1 text-xs leading-relaxed text-(--color-text)">
-                        Delete <span className="font-medium">{group.name}</span>?
-                        {members.length > 0 && ` It is removed from ${workspaces(members.length)}.`}
-                      </p>
-                      <Button type="button" size="sm" onClick={() => setConfirmDelete(null)}>Keep</Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        disabled={deleteGroup.isPending}
-                        onClick={() => { void run(() => deleteGroup.mutateAsync(group.id)).then(() => setConfirmDelete(null)) }}
-                      >
-                        Delete group
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={cn(TEXT_COLUMN, 'flex flex-wrap items-center gap-1.5')}>
-                    {members.length > 0 && (
-                      <ul className="contents" aria-label={`Members of ${group.name}`}>
-                        {members.map((repo) => (
-                          <li key={repo.path} title={repo.path} className="inline-flex h-7 items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-card) pr-1 pl-2.5 text-xs text-(--color-text-2) pointer-coarse:h-9 pointer-coarse:pr-0">
-                            <span className="max-w-40 truncate">{repo.name}</span>
-                            <button
-                              type="button"
-                              aria-label={`Remove ${repo.name} from ${group.name}`}
-                              onClick={() => setMember(group, repo.path, false)}
-                              className="inline-flex size-6 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-9"
-                            >
-                              <X size={ICON_SIZE_INLINE} aria-hidden="true" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {others.length > 0 && (
-                      <Dropdown
-                        trigger={<><Plus size={ICON_SIZE_INLINE} aria-hidden="true" />Add workspace</>}
-                        aria-label={`Add a workspace to ${group.name}`}
-                        className="h-7 border-dashed px-2.5 text-xs text-(--color-text-muted)"
-                      >
-                        {others.map((repo) => (
-                          <DropdownItem key={repo.path} title={repo.path} onSelect={() => setMember(group, repo.path, true)}>
-                            {repo.name}
-                          </DropdownItem>
-                        ))}
-                      </Dropdown>
-                    )}
-                    {members.length === 0 && others.length === 0 && (
-                      <span className={TEXT.subtle}>Open another workspace to add it here.</span>
-                    )}
-                  </div>
-                )}
+                <div className={cn(TEXT_COLUMN, 'flex flex-wrap items-center gap-1.5')}>
+                  {members.length > 0 && (
+                    <ul className="contents" aria-label={`Members of ${group.name}`}>
+                      {members.map((repo) => (
+                        <li key={repo.path} title={repo.path} className="inline-flex h-7 items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-card) pr-1 pl-2.5 text-xs text-(--color-text-2) pointer-coarse:h-9 pointer-coarse:pr-0">
+                          <span className="max-w-40 truncate">{repo.name}</span>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${repo.name} from ${group.name}`}
+                            onClick={() => setMember(group, repo.path, false)}
+                            className="inline-flex size-6 cursor-pointer items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none disabled:cursor-default disabled:opacity-50 pointer-coarse:size-9"
+                          >
+                            <X size={ICON_SIZE_INLINE} aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {others.length > 0 && (
+                    <Dropdown
+                      trigger={<><Plus size={ICON_SIZE_INLINE} aria-hidden="true" />Add workspace</>}
+                      aria-label={`Add a workspace to ${group.name}`}
+                      className="h-7 border-dashed px-2.5 text-xs text-(--color-text-muted)"
+                    >
+                      {others.map((repo) => (
+                        <DropdownItem key={repo.path} title={repo.path} onSelect={() => setMember(group, repo.path, true)}>
+                          {repo.name}
+                        </DropdownItem>
+                      ))}
+                    </Dropdown>
+                  )}
+                  {members.length === 0 && others.length === 0 && (
+                    <span className={TEXT.subtle}>Open another workspace to add it here.</span>
+                  )}
+                </div>
               </li>
             )
           })}
@@ -371,6 +354,17 @@ export function WorkspaceGroupsSettings() {
           New group
         </button>
       )}
+
+      <ConfirmDialog
+        open={deleting !== undefined}
+        onOpenChange={(open) => { if (!open) setConfirmDelete(null) }}
+        title={`Delete ${deleting?.name ?? 'group'}?`}
+        description={deletingMembers > 0 ? `It is removed from ${workspaces(deletingMembers)}.` : undefined}
+        confirmLabel="Delete group"
+        onConfirm={() => {
+          if (deleting) void run(() => deleteGroup.mutateAsync(deleting.id)).then(() => setConfirmDelete(null))
+        }}
+      />
 
       {error && (
         <p role="alert" className="border-t border-(--color-border-subtle) px-4 py-3 text-meta leading-relaxed text-(--color-error)">

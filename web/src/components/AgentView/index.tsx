@@ -404,8 +404,8 @@ export function AgentView({
     scrollRef,
     contentRef,
     anchorRef,
-    attachedRef,
-    syncAnchor,
+    isFollowing,
+    stopFollowing,
     showScrollBtn,
     jumpToLatest: jumpToEnd,
     isScrollAtRest,
@@ -553,7 +553,7 @@ export function AgentView({
     if (!touchHistory || !root || viewHoldRef.current || promptJumpRef.current || !isScrollAtRest()) return
     const more = hiddenTurnCountRef.current > 0 || useAgentStore.getState().hasMore
     const current = runwayPx()
-    const target = more && !attachedRef.current ? RUNWAY_SCREENS * root.clientHeight : 0
+    const target = more && !isFollowing() ? RUNWAY_SCREENS * root.clientHeight : 0
     if (more ? target > current : current > 0) {
       // Resized with the view held by hand: native anchoring (on while
       // reading) must not shift it as well.
@@ -566,7 +566,7 @@ export function AgentView({
     }
     if (root.scrollTop - runwayPx() > olderZonePx(root.clientHeight, true)) return
     if (loadOlderOnTouch(false)) requestAnimationFrame(() => fillAtRestRef.current())
-  }, [attachedRef, isScrollAtRest, loadOlderOnTouch, runwayPx, scrollRef, setRunwayPx, touchHistory])
+  }, [isFollowing, isScrollAtRest, loadOlderOnTouch, runwayPx, scrollRef, setRunwayPx, touchHistory])
   useEffect(() => {
     fillAtRestRef.current = fillAtRest
   })
@@ -604,13 +604,12 @@ export function AgentView({
     const distance = prompt.getBoundingClientRect().top - view.top - PROMPT_JUMP_MARGIN
     // Past a couple of screens a smooth scroll only paints the turns in between.
     const smooth = Math.abs(distance) <= 2 * view.height && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    attachedRef.current = false
-    syncAnchor()
+    stopFollowing()
     root.scrollTo({ top: root.scrollTop + distance, behavior: smooth ? 'smooth' : 'auto' })
     pendingJumpRef.current = prompt.dataset.promptId
       ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
       : null
-  }, [attachedRef, scrollRef, syncAnchor])
+  }, [scrollRef, stopFollowing])
 
   /** Start a jump that lands once a reveal or load renders its turns; call the result when that has settled. */
   const beginPromptJump = useCallback((targetId: string | null) => {

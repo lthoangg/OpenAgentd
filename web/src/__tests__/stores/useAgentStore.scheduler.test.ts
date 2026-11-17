@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 /**
  * Scheduler invalidation is driven by tool_end events whose tool is in
@@ -49,8 +51,8 @@ describe("useAgentStore — scheduler invalidation", () => {
       sidebarOpen: false,
       sessionId: null,
       sessionTitle: null,
-      isAgentWorking: false,
-      isConnected: false,
+      sessionRun: runOf(false),
+      streamLink: linkOf(false),
       error: null,
       _pendingMessages: [],
       _sessionGeneration: 0,

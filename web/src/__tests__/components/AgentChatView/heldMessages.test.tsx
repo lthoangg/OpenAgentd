@@ -23,6 +23,7 @@ import {
 } from '@/components/AgentChatView/heldMessages'
 import { useToastStore } from '@/stores/useToastStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const INITIAL_AGENT_STATE = useAgentStore.getState()
 const REAL_FETCH = globalThis.fetch
@@ -41,6 +42,7 @@ function fakeComposer() {
     addFiles: (files) => { added.push(...files) },
     restoreLastSubmission: () => {},
     addDesignFeedback: () => {},
+    addPlanComments: () => {},
   }
   return { ref: { current: handle }, appended, added }
 }
@@ -48,7 +50,7 @@ function fakeComposer() {
 /** Stands in for the store's send, which marks the agent working before it awaits. */
 function sendThatStartsATurn(delivered = true) {
   return mock(async (..._args: unknown[]) => {
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     return delivered
   })
 }
@@ -81,7 +83,7 @@ beforeEach(() => {
   }) as unknown as typeof fetch
   useAgentStore.setState({
     sessionId: 's1',
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     _syncedThrough: '2026-01-01T00:00:00Z',
     leadName: 'lead',
     agentStreams: {},
@@ -104,7 +106,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const composer = fakeComposer()
 
     renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
-    await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
+    await act(async () => { useAgentStore.setState({ sessionRun: runOf(false) }) })
 
     expect(sendMessage).not.toHaveBeenCalled()
     expect(removePendingMessage).not.toHaveBeenCalled()
@@ -122,7 +124,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const composer = fakeComposer()
 
     renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
-    await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
+    await act(async () => { useAgentStore.setState({ sessionRun: runOf(false) }) })
 
     expect(sendMessage).not.toHaveBeenCalled()
     // Mentions come back too, so the files are still attached when resent.
@@ -134,7 +136,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const removePendingMessage = cancelThatSucceeds()
     useAgentStore.setState({
       removePendingMessage,
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       _syncedThrough: null,
       agentStreams: { lead: { ...createDefaultAgentStream(), status: 'error' } },
       _pendingMessages: [heldMessage('h1', 'then do this')],
@@ -166,7 +168,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const composer = fakeComposer()
 
     renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
-    await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
+    await act(async () => { useAgentStore.setState({ sessionRun: runOf(false) }) })
 
     expect(removePendingMessage.mock.calls.map((c) => c[0])).toEqual(['q1', 'h3'])
     expect(composer.appended).toEqual([{ text: 'steer it\n\nthen do this', paragraph: true }])
@@ -184,7 +186,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const composer = fakeComposer()
 
     renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
-    await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
+    await act(async () => { useAgentStore.setState({ sessionRun: runOf(false) }) })
 
     expect(composer.appended).toEqual([{ text: 'steer it', paragraph: true }])
   })
@@ -202,7 +204,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const composer = fakeComposer()
 
     renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
-    await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
+    await act(async () => { useAgentStore.setState({ sessionRun: runOf(false) }) })
 
     expect(removePendingMessage).not.toHaveBeenCalled()
     expect(composer.appended).toEqual([])
@@ -218,7 +220,7 @@ describe('useReturnQueuedAfterFailure', () => {
     const composer = fakeComposer()
 
     renderHook(() => useReturnQueuedAfterFailure({ sessionId: 's1', composerRef: composer.ref }))
-    await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
+    await act(async () => { useAgentStore.setState({ sessionRun: runOf(false) }) })
 
     expect(composer.appended).toEqual([])
   })
@@ -331,7 +333,7 @@ describe('stopTurn', () => {
 describe('deliverFromComposer', () => {
   it('offers Resume after a Stop, which sends "Continue"', async () => {
     const sendMessage = sendThatStartsATurn()
-    useAgentStore.setState({ sendMessage, isAgentWorking: false })
+    useAgentStore.setState({ sendMessage, sessionRun: runOf(false) })
     useToastStore.setState({ toasts: [] })
     pushStoppedToast('/repo', () => fakeComposer().ref.current)
 
@@ -371,7 +373,7 @@ describe('deliverFromComposer', () => {
 
   it('sends straight away when there is no turn to wait for', async () => {
     const sendMessage = sendThatStartsATurn()
-    useAgentStore.setState({ sendMessage, isAgentWorking: false })
+    useAgentStore.setState({ sendMessage, sessionRun: runOf(false) })
     const composer = fakeComposer()
 
     await deliverFromComposer('/repo', composer.ref.current, { content: 'hello' }, 'after-turn')
@@ -437,7 +439,7 @@ describe('deliverFromComposer', () => {
   // On a phone a light tap confirms the message left the composer, whether it
   // goes now or waits for the turn.
   it('taps once as a message leaves the composer', async () => {
-    useAgentStore.setState({ sendMessage: sendThatStartsATurn(), isAgentWorking: false })
+    useAgentStore.setState({ sendMessage: sendThatStartsATurn(), sessionRun: runOf(false) })
     const composer = fakeComposer()
 
     await deliverFromComposer('/repo', composer.ref.current, { content: 'hello' }, 'steer')
@@ -449,11 +451,11 @@ describe('deliverFromComposer', () => {
   // A send that never lands is felt as an error, as a failed git action is.
   it('buzzes an error when the message never lands, and not when it does', async () => {
     const composer = fakeComposer()
-    useAgentStore.setState({ sendMessage: sendThatStartsATurn(true), isAgentWorking: false })
+    useAgentStore.setState({ sendMessage: sendThatStartsATurn(true), sessionRun: runOf(false) })
     await deliverFromComposer('/repo', composer.ref.current, { content: 'fine' }, 'steer')
     expect(outcomeHapticFeedback).not.toHaveBeenCalled()
 
-    useAgentStore.setState({ sendMessage: mock(async () => false), isAgentWorking: false })
+    useAgentStore.setState({ sendMessage: mock(async () => false), sessionRun: runOf(false) })
     await deliverFromComposer('/repo', composer.ref.current, { content: 'broken' }, 'steer')
     expect(outcomeHapticFeedback.mock.calls).toEqual([['error']])
   })

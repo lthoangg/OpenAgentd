@@ -9,6 +9,7 @@ import { readBlocks } from '@/utils/blocks'
 import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { adoptLiveBlockIds } from './helpers'
+import { applyRun, isRunLive } from './run-state'
 import { dropSnapshotAlignedPrefix } from './history-alignment'
 import { deltaRows, holdsUnseenRows, messagesBeforeTime, newestMessageAt, queuedMessagesFromHistory, toolResultsOf } from './history-rows'
 import { forgetInflightLoad, loadSessionOnce } from './load-session'
@@ -136,7 +137,7 @@ export const createHistorySlice: StateCreator<
     const since = state._syncedThrough
     // Nothing to diff against, a turn that may have started while away, or a
     // compaction (its summary cannot be spliced): the full page decides.
-    if (since === null || !state.isAgentWorking || Object.values(state.agentStreams).some(hasUnsyncedCompaction)) {
+    if (since === null || !isRunLive(state.sessionRun) || Object.values(state.agentStreams).some(hasUnsyncedCompaction)) {
       return 'reload'
     }
     const gen = state._sessionGeneration
@@ -187,7 +188,7 @@ export const createHistorySlice: StateCreator<
     if (
       state.sessionId !== sessionId ||
       since === null ||
-      state.isAgentWorking ||
+      isRunLive(state.sessionRun) ||
       Object.values(state.agentStreams).some(hasUnsyncedCompaction)
     ) {
       await reload()
@@ -209,7 +210,7 @@ export const createHistorySlice: StateCreator<
 
     // Too far behind to stitch, or a new turn started while the delta was in
     // flight (its blocks postdate this snapshot).
-    if (delta.truncated || get().isAgentWorking) {
+    if (delta.truncated || isRunLive(get().sessionRun)) {
       await reload()
       return
     }
@@ -238,7 +239,7 @@ export const createHistorySlice: StateCreator<
         draft.sessionModel = delta.lead.model ?? draft.sessionModel
         draft.sessionThinkingLevel = delta.lead.thinking_level ?? draft.sessionThinkingLevel
       }
-      draft.isAgentWorking = delta.lead.running === true
+      applyRun(draft, { type: 'snapshot', live: delta.lead.running === true })
       draft.error = null
 
       const revertTime = draft._leadRevertTime

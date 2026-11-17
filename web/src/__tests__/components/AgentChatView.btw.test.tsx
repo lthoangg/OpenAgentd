@@ -11,6 +11,8 @@ import type React from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const setValueMock = mock((..._args: unknown[]) => {})
 const setFilesMock = mock((..._args: unknown[]) => {})
@@ -131,7 +133,8 @@ mock.module('@/stores/useAgentStore', () => {
     activeAgent: 'code',
     agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
     agentNames: ['lead'],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
+    questionCard: { kind: 'none' as const },
     isContinuing: false,
     sessionId: 'test-session' as string | null,
     sessionTitle: null,
@@ -139,7 +142,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

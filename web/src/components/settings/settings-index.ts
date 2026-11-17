@@ -72,6 +72,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'workspaces', label: 'Let agents message other workspaces', keywords: ['cross workspace', 'send message', 'agents talk'] },
   { section: 'workspaces', label: 'Groups', keywords: ['workspace group', 'notes for agents', 'repos', 'color'] },
   { section: 'blocked_files', label: 'Blocked patterns', keywords: ['block', 'deny', 'denied patterns', 'gitignore', 'glob', 'files', 'folders', 'forbidden'], anchor: 'Blocked files' },
+  { section: 'secrets', label: 'Secrets', keywords: ['api key', 'token', 'env', '.env', 'replace key', 'delete key'], anchor: 'Secrets' },
   { section: 'media', label: 'Image generation', keywords: ['image model', 'aspect ratio', 'size', 'output format', 'quality', 'picture'] },
   { section: 'media', label: 'Video generation', keywords: ['video model', 'resolution', 'duration', 'aspect ratio'] },
   // Models

@@ -78,6 +78,8 @@ export function TaskDetailView({
   }
 
   const state = taskState(task)
+  // ``failed`` with no next run: its last allowed run failed and it stopped (``taskState``).
+  const stoppedByFailure = task.status === 'failed' && !task.next_fire_at
   const nextRun = nextRunLabel(task)
   const cron =
     task.schedule_type === 'cron' && task.cron_expression
@@ -249,7 +251,15 @@ export function TaskDetailView({
             <DetailRow label="Updated">{formatRelativeDate(task.updated_at)}</DetailRow>
           </PanelSection>
           {task.last_error && (
-            <Callout tone="error" title="Last run failed">
+            // Its last allowed run failed: it has stopped, and says how to go on.
+            <Callout
+              tone="error"
+              role="status"
+              title={stoppedByFailure ? 'Stopped: its last run failed' : 'Last run failed'}
+              action={stoppedByFailure ? (
+                <Button type="button" size="sm" onClick={triggerTask} disabled={triggerMutation.isPending}>Run again</Button>
+              ) : undefined}
+            >
               <p className="whitespace-pre-wrap break-words font-mono">{task.last_error}</p>
             </Callout>
           )}

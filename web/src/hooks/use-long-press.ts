@@ -20,6 +20,32 @@ import type React from 'react'
 
 export const LONG_PRESS_MS = 520
 export const LONG_PRESS_MOVE_TOLERANCE = 10
+/** How long the click a touch release raises may take to arrive. */
+const RELEASE_CLICK_MS = 600
+
+/**
+ * Swallow the click a touch release raises, wherever it lands, until the
+ * next press. After a hold the release's click goes to whatever the hold
+ * put under the finger (a row of the sheet it opened), and Chromium sends
+ * it there; a press is a new tap and ends the swallow, so a real tap always
+ * goes through. Returns the function that ends it early.
+ */
+export function swallowReleaseClick(): () => void {
+  const swallow = (click: MouseEvent) => {
+    stop()
+    click.preventDefault()
+    click.stopPropagation()
+  }
+  const timer = window.setTimeout(() => stop(), RELEASE_CLICK_MS)
+  function stop() {
+    window.clearTimeout(timer)
+    document.removeEventListener('click', swallow, true)
+    document.removeEventListener('pointerdown', stop, true)
+  }
+  document.addEventListener('click', swallow, true)
+  document.addEventListener('pointerdown', stop, true)
+  return stop
+}
 
 export interface LongPressHandlers {
   onPointerDown: (event: React.PointerEvent) => void
@@ -37,11 +63,14 @@ export function useLongPress(
 ): LongPressHandlers {
   const timerRef = useRef<number | null>(null)
   const startRef = useRef<{ x: number; y: number } | null>(null)
+  // The hold fired during this press: its release's click is not a tap.
+  const firedRef = useRef(false)
 
   const clear = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current)
     timerRef.current = null
     startRef.current = null
+    firedRef.current = false
     onPressChange?.(false)
   }, [onPressChange])
 
@@ -49,10 +78,12 @@ export function useLongPress(
     (event: React.PointerEvent) => {
       if (!enabled || event.pointerType === 'mouse') return
       startRef.current = { x: event.clientX, y: event.clientY }
+      firedRef.current = false
       onPressChange?.(true)
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null
         startRef.current = null
+        firedRef.current = true
         onPressChange?.(false)
         onLongPress()
       }, LONG_PRESS_MS)
@@ -77,7 +108,10 @@ export function useLongPress(
   return {
     onPointerDown,
     onPointerMove,
-    onPointerUp: clear,
+    onPointerUp: () => {
+      if (firedRef.current) swallowReleaseClick()
+      clear()
+    },
     onPointerCancel: clear,
     onPointerLeave: clear,
     onContextMenu: (event: React.MouseEvent) => {

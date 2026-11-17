@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test"
 import { useAgentStore, isAwaitingRestartOutput } from "@/stores/useAgentStore"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 /**
  * ``ask_user`` store behaviour.
@@ -38,9 +41,9 @@ function resetStore() {
     agentNames: ["openagentd"],
     liveAgentNames: null,
     sessionId: SESSION_ID,
-    isAgentWorking: false,
-    isConnected: true,
-    pendingQuestion: null,
+    sessionRun: runOf(false),
+    streamLink: linkOf(true),
+    questionCard: questionCardOf(null),
     resolvedQuestions: {},
     cacheInvalidations: [],
     connectStream: () => new AbortController(),
@@ -63,7 +66,7 @@ describe("useAgentStore — ask_user", () => {
   it("stores the question payload on question_asked", () => {
     ask()
 
-    const pending = useAgentStore.getState().pendingQuestion
+    const pending = openQuestion(useAgentStore.getState())
     expect(pending).not.toBeNull()
     expect(pending!.id).toBe(QUESTION_ID)
     expect(pending!.toolCallId).toBe("call-1")
@@ -92,7 +95,7 @@ describe("useAgentStore — ask_user", () => {
 
     const state = useAgentStore.getState()
     expect(state.agentStreams.openagentd.status).toBe("waiting_input")
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
   })
 
   it("clears the question when it is answered elsewhere", () => {
@@ -104,7 +107,7 @@ describe("useAgentStore — ask_user", () => {
       answers: [["pnpm"]],
     })
 
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
   })
 
   /**
@@ -119,15 +122,15 @@ describe("useAgentStore — ask_user", () => {
     ask()
 
     const asked = useAgentStore.getState()
-    expect(asked.pendingQuestion?.toolCallId).toBe("call-1")
+    expect(openQuestion(asked)?.toolCallId).toBe("call-1")
     expect(asked.agentStreams.openagentd.status).toBe("working")
 
     emit("question_answered", { question_id: QUESTION_ID, session_id: SESSION_ID, answers: [["pnpm"]] })
 
     const answered = useAgentStore.getState()
-    expect(answered.pendingQuestion).toBeNull()
+    expect(openQuestion(answered)).toBeNull()
     expect(answered.resolvedQuestions["call-1"]?.answers).toEqual([["pnpm"]])
-    expect(answered.isAgentWorking).toBe(true)
+    expect(isRunLive(answered.sessionRun)).toBe(true)
     expect(answered.agentStreams.openagentd.status).toBe("working")
     const shell = answered.agentStreams.openagentd.currentBlocks.find((b) => b.toolCallId === "call-shell")
     expect(shell?.toolDone).not.toBe(true)
@@ -222,7 +225,7 @@ describe("useAgentStore — ask_user", () => {
     })
 
     const state = useAgentStore.getState()
-    expect(state.pendingQuestion).toBeNull()
+    expect(openQuestion(state)).toBeNull()
     expect(state.resolvedQuestions["call-1"]).toMatchObject({ answers: null, reason: null })
   })
 
@@ -235,13 +238,13 @@ describe("useAgentStore — ask_user", () => {
       reason: "superseded",
     })
 
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
   })
 
   it("keeps a plan review's kind and revision", () => {
     ask({ kind: "plan_review", plan_revision: 2 })
 
-    const pending = useAgentStore.getState().pendingQuestion
+    const pending = openQuestion(useAgentStore.getState())
     expect(pending?.kind).toBe("plan_review")
     expect(pending?.planRevision).toBe(2)
   })
@@ -249,7 +252,7 @@ describe("useAgentStore — ask_user", () => {
   it("leaves an ask_user question without a kind", () => {
     ask({ kind: "something_else", plan_revision: 2 })
 
-    const pending = useAgentStore.getState().pendingQuestion
+    const pending = openQuestion(useAgentStore.getState())
     expect(pending?.kind).toBeUndefined()
     expect(pending?.planRevision).toBeUndefined()
   })
@@ -291,7 +294,7 @@ describe("useAgentStore — ask_user", () => {
     useAgentStore.getState()._handleSSEEvent("session", { session_id: SESSION_ID })
 
     const state = useAgentStore.getState()
-    expect(state.pendingQuestion).toBeNull()
+    expect(openQuestion(state)).toBeNull()
     expect(state.resolvedQuestions["call-1"].reason).toBe("superseded")
     expect(state.resolvedQuestions["call-1"].answers).toBeNull()
   })
@@ -306,7 +309,7 @@ describe("useAgentStore — ask_user", () => {
     // fully answerable. Closing it here would show "No longer relevant" for a
     // question the server is still waiting on.
     const state = useAgentStore.getState()
-    expect(state.pendingQuestion?.id).toBe(QUESTION_ID)
+    expect(openQuestion(state)?.id).toBe(QUESTION_ID)
     expect(state.resolvedQuestions["call-1"]).toBeUndefined()
   })
 
@@ -319,14 +322,14 @@ describe("useAgentStore — ask_user", () => {
       answers: [["bun"]],
     })
 
-    expect(useAgentStore.getState().pendingQuestion?.id).toBe(QUESTION_ID)
+    expect(openQuestion(useAgentStore.getState())?.id).toBe(QUESTION_ID)
   })
 
   it("replaces an earlier question rather than stacking cards", () => {
     ask()
     ask({ question_id: "018f0000-0000-7000-8000-0000000000dd", tool_call_id: "call-2" })
 
-    const pending = useAgentStore.getState().pendingQuestion
+    const pending = openQuestion(useAgentStore.getState())
     expect(pending!.id).toBe("018f0000-0000-7000-8000-0000000000dd")
   })
 
@@ -360,7 +363,7 @@ describe("useAgentStore — ask_user", () => {
       const stream = useAgentStore.getState().agentStreams.openagentd
       expect(stream.status).toBe("working")
       expect(awaitingRestart()).toBe(true)
-      expect(useAgentStore.getState().isAgentWorking).toBe(true)
+      expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
     })
 
     it("stops awaiting the restart once the turn produces text", () => {
@@ -456,7 +459,7 @@ describe("useAgentStore — ask_user", () => {
      */
     it("reopens the stream when the answer lands while disconnected", () => {
       const connectStream = mock(() => new AbortController())
-      useAgentStore.setState({ isConnected: false, connectStream } as never)
+      useAgentStore.setState({ streamLink: linkOf(false), connectStream } as never)
       suspend()
 
       useAgentStore.getState().markTurnResuming()
@@ -466,7 +469,7 @@ describe("useAgentStore — ask_user", () => {
 
     it("replaces even a nominally connected stream when the answer lands", () => {
       const connectStream = mock(() => new AbortController())
-      useAgentStore.setState({ isConnected: true, connectStream } as never)
+      useAgentStore.setState({ streamLink: linkOf(true), connectStream } as never)
       suspend()
 
       useAgentStore.getState().markTurnResuming()
@@ -480,6 +483,6 @@ describe("useAgentStore — ask_user", () => {
 
     useAgentStore.getState()._handleSSEEvent("session", { session_id: SESSION_ID })
 
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
   })
 })

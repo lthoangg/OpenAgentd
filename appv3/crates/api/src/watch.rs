@@ -300,8 +300,8 @@ fn warn_limit(ctx: &Ctx, dirs: usize) {
     }
 }
 
-fn start(root: PathBuf, backend: Backend) -> notify::Result<(Arc<Ctx>, SharedWatcher)> {
-    let ctx = Arc::new(Ctx {
+fn new_ctx(root: PathBuf, backend: Backend) -> Arc<Ctx> {
+    Arc::new(Ctx {
         gitignore: RwLock::new(load_gitignore(&root)),
         big_dirs: Mutex::default(),
         root,
@@ -310,7 +310,23 @@ fn start(root: PathBuf, backend: Backend) -> notify::Result<(Arc<Ctx>, SharedWat
         sessions: Mutex::default(),
         limit_warned: Default::default(),
         generation: AtomicU64::new(next_generation()),
-    });
+    })
+}
+
+/// Test-only: register `root` as watched, with no OS watcher behind it, so
+/// a test of what the listing cache does with a watched root does not wait
+/// on the system's file events (slow when many test processes start
+/// watchers at once). Its generation moves only when the test moves it.
+#[cfg(test)]
+pub(crate) fn watch_without_events(root: &Path) -> PathBuf {
+    let root = dunce::canonicalize(root).unwrap();
+    let entry = Entry { ctx: Some(new_ctx(root.clone(), Backend::Recursive)), _watcher: None, last_touch: Instant::now() };
+    registry().lock().unwrap().insert(root.clone(), entry);
+    root
+}
+
+fn start(root: PathBuf, backend: Backend) -> notify::Result<(Arc<Ctx>, SharedWatcher)> {
+    let ctx = new_ctx(root, backend);
     let (tx, rx) = channel::<Msg>();
     let (hctx, htx) = (ctx.clone(), tx);
     let handler = move |res: notify::Result<Event>| handle(&hctx, &htx, res);
@@ -557,8 +573,13 @@ mod tests {
     }
 
     /// Collect `workspace_files_changed` events for `root` until `done` holds.
+    /// Events come within a second alone, and far later while the whole
+    /// suite starts watchers at once: a generous budget, left as soon as
+    /// `done` holds.
+    const EVENT_WAIT: Duration = Duration::from_secs(60);
+
     async fn wait_for(sub: &mut broadcaster::GlobalSubscription, root: &Path, seen: &mut Vec<Value>, done: impl Fn(&[Value]) -> bool) -> bool {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+        let deadline = tokio::time::Instant::now() + EVENT_WAIT;
         while !done(seen) {
             let Ok(Some(ev)) = tokio::time::timeout_at(deadline, sub.next()).await else { return false };
             if ev.event != EVENT {
@@ -652,7 +673,7 @@ mod tests {
         let generation = || ctx.generation.load(Ordering::Acquire);
         let before = generation();
         std::fs::create_dir(root.join("fresh")).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + EVENT_WAIT;
         while generation() == before {
             assert!(Instant::now() < deadline, "no event for fresh/");
             std::thread::sleep(Duration::from_millis(1));

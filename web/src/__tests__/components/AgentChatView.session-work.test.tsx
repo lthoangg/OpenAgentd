@@ -10,6 +10,8 @@ import { forwardRef, useImperativeHandle } from 'react'
 import type React from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import type { SessionGoal } from '@/api/types'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const clears: string[] = []
 let clearFails = false
@@ -144,7 +146,8 @@ mock.module('@/stores/useAgentStore', () => {
     activeAgent: 'code',
     agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
     agentNames: ['lead'],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
+    questionCard: { kind: 'none' as const },
     isContinuing: false,
     sessionId: 'test-session',
     sessionTitle: null,
@@ -152,7 +155,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(

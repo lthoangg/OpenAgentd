@@ -32,7 +32,7 @@ const GLYPH = {
   close: '\uE8BB',
 } as const
 
-const BUTTON = 'flex h-full w-[46px] items-center justify-center transition-colors duration-(--motion-instant) focus-visible:outline-none'
+const BUTTON = 'flex h-full w-11.5 items-center justify-center transition-colors duration-(--motion-instant) focus-visible:outline-none'
 
 export function WindowCaptionButtons() {
   const platform = usePlatform()

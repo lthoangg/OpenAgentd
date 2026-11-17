@@ -86,7 +86,6 @@ async fn a_member_cut_off_by_a_restart_resumes_by_its_handle() {
 
     // The server shuts down mid-task, and the next process starts with no
     // members in memory.
-    restart_resume::begin_shutdown();
     subagents::stop_all_members(Duration::from_secs(10)).await;
     manager::stop().await;
     subagents::cleanup_lead_session(&sid);

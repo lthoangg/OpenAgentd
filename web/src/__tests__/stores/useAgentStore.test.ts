@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { useAgentStore } from "@/stores/useAgentStore";
 import type { ContentBlock } from "@/api/types";
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { linkOf, isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 // Me reset store before each test
 const INITIAL = {
@@ -10,13 +12,12 @@ const INITIAL = {
   liveAgentNames: null,
   sidebarOpen: false,
   sessionId: null,
-  isAgentWorking: false,
+  sessionRun: runOf(false),
   isContinuing: false,
-  isConnected: false,
+  streamLink: linkOf(false),
   error: null,
   _pendingMessages: [] as import('@/stores/useAgentStore').PendingMessage[],
   _sessionGeneration: 0,
-  _runningPatchedFor: null,
   isLoadingHistory: false,
   cacheInvalidations: [],
   _abortController: null,
@@ -45,11 +46,11 @@ function makeStream(overrides: object = {}) {
 
 describe("newSession", () => {
   it("clears sessionId and resets working state", () => {
-    useAgentStore.setState({ sessionId: "old-sid", isAgentWorking: true });
+    useAgentStore.setState({ sessionId: "old-sid", sessionRun: runOf(true) });
     useAgentStore.getState().newSession();
     const s = useAgentStore.getState();
     expect(s.sessionId).toBeNull();
-    expect(s.isAgentWorking).toBe(false);
+    expect(isRunLive(s.sessionRun)).toBe(false);
   });
 
   it("resets agent blocks and returns the live roster to the lead", () => {
@@ -79,7 +80,7 @@ describe("newSession", () => {
     const abort = new AbortController();
     useAgentStore.setState({
       sessionId: "streaming-session",
-      isConnected: true,
+      streamLink: linkOf(true),
       _abortController: abort,
     });
 
@@ -88,7 +89,7 @@ describe("newSession", () => {
     const s = useAgentStore.getState();
     expect(abort.signal.aborted).toBe(true);
     expect(s._abortController).toBeNull();
-    expect(s.isConnected).toBe(false);
+    expect(isLinkOpen(s.streamLink)).toBe(false);
   });
 });
 
@@ -100,7 +101,7 @@ describe("beginResolvedSession", () => {
       sessionId: "old-sid",
       sessionModel: "old:model",
       sessionThinkingLevel: "low",
-      isConnected: true,
+      streamLink: linkOf(true),
     });
 
     useAgentStore.getState().beginResolvedSession("new-sid", {
@@ -113,7 +114,7 @@ describe("beginResolvedSession", () => {
     expect(s.sessionId).toBe("new-sid");
     expect(s.sessionModel).toBe("openai:gpt-5.5");
     expect(s.sessionThinkingLevel).toBe("high");
-    expect(s.isConnected).toBe(false);
+    expect(isLinkOpen(s.streamLink)).toBe(false);
   });
 
   it("keeps settings picked before a background session resolve completes", () => {
@@ -138,8 +139,8 @@ describe("beginResolvedSession", () => {
       sessionTitle: "Session A",
       leadName: "lead",
       agentNames: ["lead"],
-      isAgentWorking: true,
-      isConnected: true,
+      sessionRun: runOf(true),
+      streamLink: linkOf(true),
       _abortController: abort,
       agentStreams: {
         lead: makeStream({
@@ -154,7 +155,7 @@ describe("beginResolvedSession", () => {
 
     const s = useAgentStore.getState();
     expect(s.sessionId).toBe("session-b");
-    expect(s.isAgentWorking).toBe(false);
+    expect(isRunLive(s.sessionRun)).toBe(false);
     expect(s.sessionTitle).toBeNull();
     expect(s.agentStreams.lead.currentBlocks).toHaveLength(0);
     expect(s.agentStreams.lead.currentText).toBe("");
@@ -167,7 +168,7 @@ describe("beginResolvedSession", () => {
       sessionId: "session-a",
       leadName: "lead",
       agentNames: ["lead"],
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           status: "working",
@@ -179,7 +180,7 @@ describe("beginResolvedSession", () => {
     useAgentStore.getState().beginResolvedSession("session-a", { workspace: "/repo/app" });
 
     const s = useAgentStore.getState();
-    expect(s.isAgentWorking).toBe(true);
+    expect(isRunLive(s.sessionRun)).toBe(true);
     expect(s.agentStreams.lead.currentBlocks).toHaveLength(1);
   });
 
@@ -212,7 +213,7 @@ describe("isEmptyIdleSession", () => {
   it("returns true for a persisted idle session with no visible blocks", () => {
     useAgentStore.setState({
       sessionId: "empty-sid",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentNames: ["lead", "worker"],
       agentStreams: {
         lead: makeStream(),
@@ -226,7 +227,7 @@ describe("isEmptyIdleSession", () => {
   it("ignores compaction markers when checking visible blocks", () => {
     useAgentStore.setState({
       sessionId: "empty-sid",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentNames: ["lead"],
       agentStreams: {
         lead: makeStream({ blocks: [{ id: "c1", type: "compaction" as const, content: "summary" }] }),
@@ -239,7 +240,7 @@ describe("isEmptyIdleSession", () => {
   it("returns false when the session has a visible message", () => {
     useAgentStore.setState({
       sessionId: "active-sid",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentNames: ["lead"],
       agentStreams: {
         lead: makeStream({ blocks: [{ id: "u1", type: "user" as const, content: "hello" }] }),
@@ -253,7 +254,7 @@ describe("isEmptyIdleSession", () => {
     // Only looks empty: New session must still leave it.
     useAgentStore.setState({
       sessionId: "loading-sid",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       isLoadingHistory: true,
       agentNames: ["lead"],
       agentStreams: { lead: makeStream() },
@@ -456,14 +457,14 @@ describe("_handleSSEEvent: agent_status", () => {
     // Lead + worker both working
     useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "working" });
     useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "working" });
-    expect(useAgentStore.getState().isAgentWorking).toBe(true);
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true);
 
     // Worker goes idle — lead still working, global flag must stay true
     useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "idle" });
     const s = useAgentStore.getState();
     expect(s.agentStreams.worker.status).toBe("idle");
     expect(s.agentStreams.lead.status).toBe("working");
-    expect(s.isAgentWorking).toBe(true);
+    expect(isRunLive(s.sessionRun)).toBe(true);
   });
 
   it("clears isAgentWorking when the last working agent goes idle", () => {
@@ -471,7 +472,7 @@ describe("_handleSSEEvent: agent_status", () => {
     useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "working" });
     useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "worker", status: "idle" });
     useAgentStore.getState()._handleSSEEvent("agent_status", { agent: "lead", status: "idle" });
-    expect(useAgentStore.getState().isAgentWorking).toBe(false);
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(false);
   });
 
   it("clears isAgentWorking when the last working agent errors out", () => {
@@ -481,7 +482,7 @@ describe("_handleSSEEvent: agent_status", () => {
       status: "error",
       metadata: { message: "boom" },
     });
-    expect(useAgentStore.getState().isAgentWorking).toBe(false);
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(false);
   });
 });
 
@@ -490,7 +491,7 @@ describe("_handleSSEEvent: agent_status", () => {
 describe("_handleSSEEvent: done", () => {
   it("flushes currentBlocks into blocks and clears working flag", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       leadName: "lead",
       agentStreams: {
         lead: makeStream({
@@ -501,14 +502,14 @@ describe("_handleSSEEvent: done", () => {
     });
     useAgentStore.getState()._handleSSEEvent("done", {});
     const s = useAgentStore.getState();
-    expect(s.isAgentWorking).toBe(false);
+    expect(isRunLive(s.sessionRun)).toBe(false);
     expect(s.agentStreams.lead.blocks).toHaveLength(1);
     expect(s.agentStreams.lead.currentBlocks).toHaveLength(0);
   });
 
   it("flushes worker blocks too", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       leadName: "lead",
       agentStreams: {
         worker: makeStream({
@@ -525,7 +526,7 @@ describe("_handleSSEEvent: done", () => {
 
   it("sets all agent statuses to idle", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       leadName: "lead",
       agentStreams: {
         lead: makeStream({ status: "working" as const }),
@@ -539,7 +540,7 @@ describe("_handleSSEEvent: done", () => {
 
   it("preserves offline status on done", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       leadName: "lead",
       agentStreams: {
         worker: makeStream({ status: "offline" as const }),
@@ -1023,7 +1024,7 @@ describe("_handleSSEEvent: summarization", () => {
 
   it("done flushes currentBlocks AFTER compaction block — order preserved", () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           blocks: [

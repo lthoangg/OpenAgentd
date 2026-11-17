@@ -135,7 +135,7 @@ describe('SideQuestionsTabView', () => {
   it('shows Thinking for the live answer, and its Stop stops it', async () => {
     items = []
     useBtwStore.setState({
-      sessions: { [S]: { ...EMPTY_BTW, live: { id: 'q1', question: 'live one', text: '', status: 'streaming', error: null } } },
+      sessions: { [S]: { ...EMPTY_BTW, liveAnswer: { id: 'q1', question: 'live one', text: '', kind: 'streaming' } } },
     })
     renderTab()
     expect(screen.getByText('live one')).toBeTruthy()

@@ -42,6 +42,8 @@ import { useAgentStore } from "@/stores/useAgentStore"
 import { applyRevertBoundary } from "@/stores/useAgentStore/helpers"
 import type { AgentStream } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 function block(
   id: string,
@@ -93,9 +95,9 @@ const INITIAL_STATE = {
   sidebarOpen: false,
   sessionId: null,
   sessionTitle: null,
-  isAgentWorking: false,
+  sessionRun: runOf(false),
   isContinuing: false,
-  isConnected: false,
+  streamLink: linkOf(false),
   error: null,
   setupRequired: null,
   _pendingMessages: [] as import("@/stores/useAgentStore").PendingMessage[],
@@ -510,7 +512,7 @@ describe("undoAgent — blocks while team is working (anti-ghost-block guard)", 
     useAgentStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
@@ -543,7 +545,7 @@ describe("undoAgent — blocks while team is working (anti-ghost-block guard)", 
     useAgentStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentStreams: {
         lead: makeStream({
           blocks: [
@@ -577,7 +579,7 @@ describe("undoAgent — blocks while team is working (anti-ghost-block guard)", 
     useAgentStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
-      isAgentWorking: false, // bypass the guard
+      sessionRun: runOf(false), // bypass the guard
       agentStreams: {
         lead: makeStream({
           blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],

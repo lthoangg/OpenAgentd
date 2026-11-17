@@ -21,6 +21,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { useNavigate } from '@tanstack/react-router'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { applyLink, isLinkOpen } from '@/stores/useAgentStore/link-state'
 import { useUIStore } from '@/stores/useUIStore'
 import { workspaceLabel } from '@/utils/workspace'
 import { draftComposerKey, startNewSession } from '@/lib/new-session'
@@ -120,7 +122,7 @@ export function useSessionBootstrap({
     if (
       activeController &&
       store.sessionId === sessionId &&
-      (store.isConnected || store.isAgentWorking)
+      (isLinkOpen(store.streamLink) || isRunLive(store.sessionRun))
     ) {
       abortRef.current = activeController
       return
@@ -232,15 +234,15 @@ export function useSessionBootstrap({
             : null
       if (
         !backgroundSuspendsSockets() &&
-        state.isConnected &&
-        (state.isAgentWorking || active !== null)
+        isLinkOpen(state.streamLink) &&
+        (isRunLive(state.sessionRun) || active !== null)
       ) {
         return
       }
 
       // Mobile webviews may freeze a fetch-based SSE connection while the app
-      // is backgrounded without closing it. In that case isConnected remains
-      // true even though the stream can no longer deliver events. Always
+      // is backgrounded without closing it. In that case the link still reads
+      // open even though the stream can no longer deliver events. Always
       // catch up with persisted history and replace the stream on foreground:
       // a running turn from the rows saved since the last sync (the attach
       // replays the step in progress), anything else from the full page.
@@ -249,7 +251,11 @@ export function useSessionBootstrap({
       abortRef.current?.abort()
       state._abortController?.abort()
       abortRef.current = null
-      useAgentStore.setState({ _unloading: false, isConnected: false, _abortController: null })
+      useAgentStore.setState((s) => {
+        s._unloading = false
+        applyLink(s, { type: 'close' })
+        s._abortController = null
+      })
       const attach = () => {
         const controller = connectStream()
         if (controller) abortRef.current = controller
@@ -265,7 +271,7 @@ export function useSessionBootstrap({
         await loadSession(sessionId, agentWorkspace)
         const current = useAgentStore.getState()
         if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
-        if (current.isAgentWorking) attach()
+        if (isRunLive(current.sessionRun)) attach()
       }).finally(() => {
         resumeInFlightRef.current = false
       })
@@ -294,7 +300,7 @@ export function useSessionBootstrap({
     const store = useAgentStore.getState()
     // Already on an empty draft here, or on a saved session with nothing in
     // it yet: there is nothing new to start.
-    if (!sessionId && !store.sessionId && !store.isAgentWorking) return
+    if (!sessionId && !store.sessionId && !isRunLive(store.sessionRun)) return
     if (isEmptyIdleSession()) return
     abortRef.current?.abort()
     abortRef.current = null

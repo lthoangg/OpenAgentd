@@ -10,6 +10,7 @@
  * behind.
  */
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { saveLastWorkspace } from '@/utils/workspace'
 
 export type NewSessionNavigate = (args: { to: '/'; search: { workspace: string }; replace?: boolean }) => unknown
@@ -33,12 +34,12 @@ export function startNewSession({ navigate, workspace, current, replace = false 
     && !current.sessionId
     && current.workspace === workspace
     && !state.sessionId
-    && !state.isAgentWorking
+    && !isRunLive(state.sessionRun)
   if (onSameDraft) return false
   const { sessionModel, sessionThinkingLevel } = state
   // Switching a draft's folder keeps the Code / Plan pick; a new draft from a
   // session starts in Code.
-  const draftInteractionMode = !state.sessionId && !state.isAgentWorking ? state.sessionInteractionMode : undefined
+  const draftInteractionMode = !state.sessionId && !isRunLive(state.sessionRun) ? state.sessionInteractionMode : undefined
   // A full reset first: a draft whose first message is still in flight is
   // also session-less, and ``beginResolvedSession(null)`` alone would keep
   // that turn on the new screen.

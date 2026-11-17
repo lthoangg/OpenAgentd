@@ -2,13 +2,23 @@ import type {
   ContentBlock,
   AgentUsage,
   MessageAttachment,
-  PendingQuestion,
-  QuestionItem,
   AgentCommandResponse,
   SessionInteractionMode,
   SessionSentFrom,
 } from '@/api/types'
+import type { QuestionItem } from '@/api/question-types'
 import type { OrphanToolResult } from '@/utils/messages'
+import type { QuestionCard } from './question-state'
+import type { SessionRun } from './run-state'
+import type { StreamLink } from './link-state'
+
+/**
+ * The session states the backend sends as ``agent_status``, in the order of
+ * ``appv3/crates/agent/data/session_states.json`` (held to it by
+ * ``__tests__/api/session-states-contract.test.ts``).
+ */
+export const SESSION_STATUSES = ['idle', 'working', 'waiting_input', 'waiting_lead', 'error', 'offline'] as const
+export type SessionStatus = (typeof SESSION_STATUSES)[number]
 
 export interface AgentError {
   title?: string
@@ -86,9 +96,10 @@ export interface AgentStream {
    * ``waiting_input`` mirrors the backend's ``waiting_input`` member state: the
    * agent is suspended on an ``ask_user`` call. It is *live* (the turn
    * has not ended) but not *working* (no tokens are coming), so spinners should
-   * treat it as busy while progress indicators should not.
+   * treat it as busy while progress indicators should not. ``waiting_lead``
+   * is a member whose turn ended on a question to its lead: not working.
    */
-  status: 'idle' | 'working' | 'waiting_input' | 'offline' | 'error'
+  status: SessionStatus
   usage: AgentUsage
   _turnStartedAt?: number | null
   /**
@@ -179,15 +190,16 @@ export interface AgentStoreState {
   _sessionSettingsDirty: boolean
   _sessionSettingsVersion: number
   sessionFastMode: boolean
-  isAgentWorking: boolean
   /**
-   * The question the lead is currently suspended on, or ``null``.
-   *
-   * At most one is open per session (enforced by a partial unique index
-   * server-side), so this is a single slot rather than a queue — a second
-   * ``question_asked`` replaces the first instead of stacking cards.
+   * Whether a turn is live in this session (``run-state.ts``). Read it with
+   * ``isRunLive``; change it only with ``applyRun``.
    */
-  pendingQuestion: PendingQuestion | null
+  sessionRun: SessionRun
+  /**
+   * The question the lead is suspended on (``question-state.ts``). Read it
+   * with ``openQuestion``; change it only with ``applyQuestion``.
+   */
+  questionCard: QuestionCard
   /**
    * Resolved questions, keyed by ``tool_call_id``.
    *
@@ -198,18 +210,16 @@ export interface AgentStoreState {
    * immediately, from structured data rather than by re-parsing a sentence.
    */
   resolvedQuestions: Record<string, ResolvedQuestion>
-  isConnected: boolean
+  /**
+   * The session's live link (``link-state.ts``). Read it with ``isLinkOpen``;
+   * change it only with ``applyLink``.
+   */
+  streamLink: StreamLink
   error: AgentError | string | null
   setupRequired: SetupRequiredNotice | null
   pendingDraft: { content: string; attachments?: MessageAttachment[] } | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number
-  /**
-   * Session whose sidebar row was last patched to ``running: true``. Every
-   * member emits its own ``agent_status: working``, so this keeps a team turn
-   * to one patch; any ``running: false`` patch clears it.
-   */
-  _runningPatchedFor: string | null
   hasMore: boolean
   nextCursor: string | null
   /**
@@ -239,7 +249,6 @@ export interface AgentStoreState {
   _resolvedSessionReadyId: string | null
   _unloading: boolean
   _reconnectTimer: ReturnType<typeof setTimeout> | null
-  _reconnectAttempts: number
   /**
    * Consecutive times this session's live feed was found silent when it
    * should have been talking (see ``resyncStream``). Reset by any frame.

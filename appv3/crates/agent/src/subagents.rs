@@ -2,12 +2,13 @@
 
 pub(crate) mod report;
 pub(crate) mod stall;
+mod state;
 
 use crate::agent::Agent;
 use crate::broadcaster;
 use crate::events::Envelope;
 use crate::loader::{self, ProviderFactory, DEFAULT_NEW_USER_MODEL};
-use crate::session::{AgentSession, UserMessage};
+use crate::session::{AgentSession, StopCause, UserMessage};
 use crate::stream_store::store;
 use appv3_core::settings::settings;
 use appv3_db::{self as db, DbPool};
@@ -17,6 +18,8 @@ use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+
+use state::MemberEvent;
 
 pub const MAX_CONCURRENT_MEMBERS: usize = 20;
 pub const MAX_SUBAGENT_OUTPUT_CHARS: usize = 32_000;
@@ -45,7 +48,7 @@ pub struct SubagentInstance {
     pub lead_session_id: String,
     pub session_id: String,
     pub session: Arc<AgentSession>,
-    /// Its lifecycle; only this module and [`Self::wait_on_lead`] move it.
+    /// Its lifecycle; only [`Self::apply`] (`subagents/state.rs`) moves it.
     status: MemberStatus,
     pub last_result: Option<String>,
     pub pending_lead_question: Option<Value>,
@@ -92,24 +95,13 @@ impl SubagentInstance {
     /// `ask_lead` suspends its turn on `question`: it waits for the lead's
     /// answer, which arrives through [`send_subagent_message`].
     pub fn wait_on_lead(&mut self, question: Value, tool_call_id: Option<String>) {
-        self.pending_lead_question = Some(question);
-        self.status = MemberStatus::WaitingLead;
-        if tool_call_id.is_some() {
-            self.pending_tool_call_id = tool_call_id;
-        }
+        let _ = self.apply(MemberEvent::AskLead { question, tool_call_id });
     }
 
     /// The lead sent it new work: it is working again, and nothing is owed
     /// from its earlier turns.
     fn start_follow_up(&mut self) {
-        self.status = MemberStatus::Working;
-        self.stopped_by_restart = false;
-        self.question_delivered = false;
-        self.result_delivered = false;
-        self.last_error = None;
-        self.stall = None;
-        self.working_since = Some(std::time::Instant::now());
-        self.reported_at = None;
+        let _ = self.apply(MemberEvent::FollowUp);
     }
 
     /// Whether it can leave memory at `now`: its turn completed, the report
@@ -385,8 +377,7 @@ fn publish_both(lead: &str, event: &str, payload: Value) {
 /// it: record the failure, or it stays listed as working for good.
 fn mark_turn_refused(lead: &str, handle: &str, child: &str, error: &str) {
     with_instance(lead, handle, |i| {
-        i.status = MemberStatus::Error;
-        i.last_error = Some(error.to_string());
+        let _ = i.apply(MemberEvent::Refused { error: error.to_string() });
     });
     publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": MemberStatus::Error.as_str()}));
 }
@@ -683,11 +674,10 @@ pub async fn stop_subagent(lead: &str, member_id: &str, pool: &DbPool) -> Result
     }
     with_instance(lead, &handle, |i| {
         if active {
-            i.status = MemberStatus::Stopped;
+            let _ = i.apply(MemberEvent::Stop);
+        } else {
+            i.settle_stopped();
         }
-        i.stall = None;
-        i.working_since = None;
-        i.pending_lead_question = None;
     });
     if active {
         publish_both(lead, "subagent_status", json!({"lead_session_id": lead, "session_id": child, "handle": handle, "status": MemberStatus::Stopped.as_str()}));
@@ -845,17 +835,27 @@ pub async fn list_subagents(lead: &str, pool: &DbPool) -> Value {
 
 /// `stop_all_subagents`.
 pub async fn stop_all_subagents(lead: &str) {
+    stop_subagents(lead, StopCause::User).await
+}
+
+/// Stop `lead`'s members; at shutdown with the shutdown token, so their
+/// turns are continued by the next start.
+pub(crate) async fn stop_subagents(lead: &str, cause: StopCause) {
     let insts: Vec<SubagentInstance> = reg().lock().unwrap().live.get(lead).map(|m| m.values().cloned().collect()).unwrap_or_default();
     for i in &insts {
         // The session, not the registry status, knows whether a turn runs:
         // a status set by an earlier stop must not shield a turn still going.
-        i.session.handle_stop().await;
+        match cause {
+            StopCause::User => i.session.handle_stop().await,
+            StopCause::Shutdown => i.session.handle_stop_for_shutdown().await,
+        };
         with_instance(lead, &i.handle, |x| {
             if x.status.is_active() {
-                x.status = MemberStatus::Stopped;
+                let _ = x.apply(MemberEvent::Stop);
+            } else {
+                x.stall = None;
+                x.working_since = None;
             }
-            x.stall = None;
-            x.working_since = None;
         });
     }
     tracing::info!("stopped_all_subagents lead_session_id={}", lead);
@@ -867,7 +867,7 @@ pub async fn stop_all_subagents(lead: &str) {
 pub async fn stop_all_members(limit: std::time::Duration) {
     let sessions: Vec<Arc<AgentSession>> = reg().lock().unwrap().live.values().flat_map(|m| m.values().map(|i| i.session.clone())).collect();
     for s in &sessions {
-        s.handle_stop().await;
+        s.handle_stop_for_shutdown().await;
     }
     let waits = sessions.iter().map(|s| s.wait_for_stop(limit));
     let settled = futures::future::join_all(waits).await;

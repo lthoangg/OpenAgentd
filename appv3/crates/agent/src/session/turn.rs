@@ -6,6 +6,7 @@
 
 use super::control::{SessionStatus, Transition, TurnExit};
 use super::provider::{forget_provider_credentials, forget_retired_model, provider_error_to_agent};
+use super::questions::Suspension;
 use super::{agent_only_since, session_workspace_dir, AgentSession, RuntimeProvider, TurnOptions, TURN_FLOOR_META};
 use crate::agent::RunOptions;
 use crate::broadcaster;
@@ -57,9 +58,8 @@ impl AgentSession {
                 tracing::warn!("turn_in_flight_mark_failed session_id={} error={}", sid, e);
             }
         }
-        self.transition(Transition::StartTurn);
-        *self.question_suspended.lock().unwrap() = None;
-        *self.lead_suspended.lock().unwrap() = None;
+        self.transition(Transition::TurnStarted);
+        *self.turn_suspension.lock().unwrap() = Suspension::None;
         self.emit("agent_status", Some("working"), None);
         if !sid.is_empty() {
             let mut p = json!({"session_id": sid, "started_at": db::codec::py_isoformat(&chrono::Utc::now())});
@@ -152,7 +152,12 @@ impl AgentSession {
         // Held to the end, so an answer arriving now either finds this turn
         // still running (and is read below) or finds it paused (and resumes it).
         let _gate = self.question_gate.lock().await;
-        let mut qs = self.question_suspended.lock().unwrap().clone();
+        let suspension = self.turn_suspension.lock().unwrap().clone();
+        let (mut qs, ls): (Option<Value>, Option<Value>) = match suspension {
+            Suspension::Question(q) => (Some(q), None),
+            Suspension::Lead(l) => (None, Some(l)),
+            Suspension::None => (None, None),
+        };
         // The question opened before the reply's other tool calls finished,
         // so it may be closed already: answered (the turn continues with the
         // answer) or superseded or dismissed (the turn ends without pausing).
@@ -162,14 +167,13 @@ impl AgentSession {
                 if row.status != "pending" {
                     tracing::info!("question_closed_before_pause session_id={} question_id={} status={}", sid, qid, row.status);
                     qs = None;
-                    *self.question_suspended.lock().unwrap() = None;
+                    self.turn_suspension.lock().unwrap().clear_question();
                     if row.status == "answered" {
                         answered_question = Some(row.id);
                     }
                 }
             }
         }
-        let ls = self.lead_suspended.lock().unwrap().clone();
         let exit = TurnExit::decide(status == SessionStatus::Error, qs, ls);
         // A turn that continues with an early answer is accounted like one
         // that paused and resumed.
@@ -202,13 +206,13 @@ impl AgentSession {
         }
         match &exit {
             TurnExit::Question(q) => {
-                self.transition(Transition::WaitForQuestion);
+                self.transition(Transition::WaitForQuestion(q.clone()));
                 let mut e = Map::new();
                 e.insert("question_id".into(), json!(crate::pystr::py_str(&q["question_id"])));
                 self.emit("agent_status", Some("waiting_input"), Some(e));
             }
             TurnExit::Lead(data) => {
-                self.transition(Transition::WaitForLead);
+                self.transition(Transition::WaitForLead(data.clone()));
                 self.emit("agent_status", Some("waiting_lead"), data.as_object().cloned());
                 if let Some(lead) = &self.parent_session_id {
                     crate::subagents::report::on_subagent_question_asked(lead, &sid, data, &self.pool).await;
@@ -218,15 +222,14 @@ impl AgentSession {
                 if continues {
                     // The answer's own resume call may still be on its way.
                     *self.continued_question.lock().unwrap() = answered_question.take();
-                    self.clear_cancel();
-                    self.transition(Transition::ClaimTurn);
+                    self.transition(Transition::Claim);
                     self.spawn_turn(TurnOptions { question_resume: true, ..Default::default() });
                     activated = true;
                 } else if exit.may_activate_queue(self.cancel.is_set(), !sid.is_empty()) {
                     activated = self.activate_queued_user_messages(&sid).await;
                 }
                 if !activated {
-                    self.transition(Transition::BecomeIdle);
+                    self.transition(Transition::Finish);
                     self.emit("agent_status", Some("idle"), None);
                     self.close_turn(&sid, "completed", notify, opts.idle_compaction, goal_id.as_deref()).await;
                     completed = true;
@@ -240,7 +243,7 @@ impl AgentSession {
             // A turn the server's own shutdown stopped stays marked, so the
             // next start continues it; every other end clears the mark
             // (before the turn reads as over, so a new turn's mark survives).
-            let stopped_by_shutdown = self.cancel.is_set() && crate::restart_resume::is_shutting_down();
+            let stopped_by_shutdown = self.stopped_for_shutdown();
             if tracks_in_flight && !stopped_by_shutdown {
                 if let Err(e) = db::clear_turn_in_flight(&self.pool, &marked_sid).await {
                     tracing::warn!("turn_in_flight_clear_failed session_id={} error={}", marked_sid, e);
@@ -426,18 +429,12 @@ impl AgentSession {
         let cancelled_hard = matches!(result, Err(AgentError::Cancelled));
         match result {
             Ok(out) => {
-                if let Some(Value::Object(q)) = out.metadata.get("question_suspended") {
-                    let mut qs = self.question_suspended.lock().unwrap();
-                    if qs.is_none() {
-                        *qs = Some(json!({"question_id": q.get("question_id"), "session_id": q.get("session_id")}));
-                    }
-                }
-                if let Some(l @ Value::Object(_)) = out.metadata.get("lead_suspended") {
-                    let mut ls = self.lead_suspended.lock().unwrap();
-                    if ls.is_none() {
-                        *ls = Some(l.clone());
-                    }
-                }
+                let question = match out.metadata.get("question_suspended") {
+                    Some(Value::Object(q)) => Some(json!({"question_id": q.get("question_id"), "session_id": q.get("session_id")})),
+                    _ => None,
+                };
+                let lead = out.metadata.get("lead_suspended").filter(|l| l.is_object()).cloned();
+                self.turn_suspension.lock().unwrap().record(question, lead);
             }
             Err(AgentError::Cancelled) => {}
             Err(e) => return Err(e),

@@ -68,6 +68,8 @@ function historyWithQuestion(overrides: object = {}) {
 }))
 
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 
 beforeEach(() => {
   mockSessionHistory.mockClear()
@@ -80,7 +82,7 @@ describe('loadSession — pending question hydration', () => {
   it('restores the card from the history response', async () => {
     await useAgentStore.getState().loadSession('lead-sess')
 
-    const pending = useAgentStore.getState().pendingQuestion
+    const pending = openQuestion(useAgentStore.getState())
     expect(pending).not.toBeNull()
     expect(pending!.id).toBe('q-1')
     expect(pending!.toolCallId).toBe('call-1')
@@ -95,7 +97,7 @@ describe('loadSession — pending question hydration', () => {
     expect(state.agentStreams.lead.status).toBe('waiting_input')
     // The durable row outranks running=false, or the UI would look finished
     // with an unanswered question on screen.
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
   })
 
   it('does not start a progress timer for a turn that is not producing tokens', async () => {
@@ -111,13 +113,13 @@ describe('loadSession — pending question hydration', () => {
 
     await useAgentStore.getState().loadSession('lead-sess')
 
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
     expect(useAgentStore.getState().agentStreams.lead.status).toBe('idle')
   })
 
   it('records a card the server already closed as resolved elsewhere, so it does not go back to waiting', async () => {
     await useAgentStore.getState().loadSession('lead-sess')
-    expect(useAgentStore.getState().pendingQuestion?.id).toBe('q-1')
+    expect(openQuestion(useAgentStore.getState())?.id).toBe('q-1')
     // Closed from another window, or by a stop this client never heard about.
     mockSessionHistory.mockImplementation(() =>
       Promise.resolve(historyWithQuestion({ pending_question: null })),
@@ -126,7 +128,7 @@ describe('loadSession — pending question hydration', () => {
     await useAgentStore.getState().loadSession('lead-sess')
 
     const state = useAgentStore.getState()
-    expect(state.pendingQuestion).toBeNull()
+    expect(openQuestion(state)).toBeNull()
     expect(state.resolvedQuestions['call-1']).toMatchObject({ answers: null, reason: 'resolved_elsewhere' })
     expect(state.resolvedQuestions['call-1'].questions[0].question).toBe('Which package manager?')
   })
@@ -198,7 +200,7 @@ describe('loadSession — pending question hydration', () => {
 
     await useAgentStore.getState().loadSession('lead-sess')
 
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
     expect(useAgentStore.getState().agentStreams.lead.status).toBe('idle')
   })
 
@@ -221,7 +223,7 @@ describe('loadSession — pending question hydration', () => {
 
     await useAgentStore.getState().loadSession('lead-sess')
 
-    const pending = useAgentStore.getState().pendingQuestion
+    const pending = openQuestion(useAgentStore.getState())
     expect(pending?.kind).toBe('plan_review')
     expect(pending?.planRevision).toBe(3)
     expect(useAgentStore.getState().agentStreams.lead.status).toBe('waiting_input')
@@ -264,7 +266,7 @@ describe('loadSession — pending question hydration', () => {
       await useAgentStore.getState().loadSession('lead-sess')
 
       const state = useAgentStore.getState()
-      expect(state.pendingQuestion?.id).toBe('q-live')
+      expect(openQuestion(state)?.id).toBe('q-live')
       expect(state.agentStreams.lead.status).toBe('waiting_input')
     })
 
@@ -279,7 +281,7 @@ describe('loadSession — pending question hydration', () => {
 
       await useAgentStore.getState().loadSession('lead-sess')
 
-      expect(useAgentStore.getState().pendingQuestion).toBeNull()
+      expect(openQuestion(useAgentStore.getState())).toBeNull()
     })
   })
 })

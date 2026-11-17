@@ -13,6 +13,8 @@ import { GoalTabView } from '@/components/WorkspacePanel/GoalTabView'
 import { queryKeys } from '@/queries/keys'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 const originalFetch = globalThis.fetch
 
@@ -66,8 +68,8 @@ beforeEach(() => {
   setApiBaseUrl('')
   useAgentStore.setState({
     sessionId: 's1',
-    isAgentWorking: false,
-    pendingQuestion: null,
+    sessionRun: runOf(false),
+    questionCard: questionCardOf(null),
     sessionInteractionMode: 'code',
     sessionPendingInteractionMode: null,
     _pendingMessages: [],
@@ -77,12 +79,12 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   globalThis.fetch = originalFetch
-  useAgentStore.setState({ sessionId: null, isAgentWorking: false, _pendingMessages: [] })
+  useAgentStore.setState({ sessionId: null, sessionRun: runOf(false), _pendingMessages: [] })
 })
 
 describe('GoalTabView', () => {
   it('shows the running turn and progress, and pauses the goal', async () => {
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     const calls: { url: string; method?: string }[] = []
     globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
       calls.push({ url: String(input), method: (init as RequestInit | undefined)?.method })
@@ -140,31 +142,31 @@ describe('GoalTabView', () => {
   })
 
   it('names what the goal waits for in the session', () => {
-    useAgentStore.setState({ isAgentWorking: true, pendingQuestion: { kind: 'ask_user', id: 'q1' } as never })
+    useAgentStore.setState({ sessionRun: runOf(true), questionCard: questionCardOf({ kind: 'ask_user', id: 'q1' } as never) })
     renderTab(makeGoal())
     expect(now()?.dataset.goalNow).toBe('wait')
     expect(now()?.textContent).toContain('Needs you · a question')
     cleanup()
 
-    useAgentStore.setState({ isAgentWorking: false, pendingQuestion: null, sessionPendingInteractionMode: 'plan' })
+    useAgentStore.setState({ sessionRun: runOf(false), questionCard: questionCardOf(null), sessionPendingInteractionMode: 'plan' })
     renderTab(makeGoal())
     expect(now()?.textContent).toContain('Waiting for Code mode')
     cleanup()
 
-    useAgentStore.setState({ isAgentWorking: true, sessionPendingInteractionMode: null, _pendingMessages: [{ id: 'm1', content: 'also fix lint' }] })
+    useAgentStore.setState({ sessionRun: runOf(true), sessionPendingInteractionMode: null, _pendingMessages: [{ id: 'm1', content: 'also fix lint' }] })
     renderTab(makeGoal())
     expect(now()?.textContent).toBe("Working · turn 7/501 queued message runs before the goal's next turn.")
   })
 
   it('waits for plan approval while a plan review is open', () => {
-    useAgentStore.setState({ pendingQuestion: { kind: 'plan_review', id: 'q1' } as never })
+    useAgentStore.setState({ questionCard: questionCardOf({ kind: 'plan_review', id: 'q1' } as never) })
     renderTab(makeGoal())
     expect(now()?.dataset.goalNow).toBe('wait')
     expect(now()?.textContent).toContain('Needs you · a plan to review')
   })
 
   it('shows the plan the goal runs as one line, with its status and a link, and the next task', async () => {
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     const onOpenPlan = mock(() => {})
     const user = userEvent.setup()
     renderTab(makeGoal(), 's1', { plan: PLAN, todos: TODOS, onOpenPlan })

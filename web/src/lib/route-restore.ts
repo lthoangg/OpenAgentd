@@ -22,8 +22,20 @@ export function closestRestorableRoute(route: string): string {
   return trimmed
 }
 
+/**
+ * Links that open an overlay (Usage, Scheduled) and hand the address back
+ * to ``/`` at once. They are not places to come back to: saved, every later
+ * launch at ``/`` reopened the overlay the user had closed.
+ */
+const HANDOFF_PATHS = new Set(['/telemetry', '/scheduler'])
+
+/** Whether the root saves this path as the one to reopen at the next launch. */
+export function shouldRememberRoute(pathname: string): boolean {
+  return pathname !== '/' && pathname !== '/index.html' && !HANDOFF_PATHS.has(pathname)
+}
+
 function isUsableSavedRoute(route: string | null): route is string {
-  return !!route && route !== '/' && route !== '/index.html'
+  return !!route && shouldRememberRoute(route.match(/^[^?#]*/)?.[0] ?? route)
 }
 
 /**

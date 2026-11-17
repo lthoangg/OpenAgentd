@@ -155,7 +155,7 @@ describe('WorkspacePanel terminal tabs', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
     const [session] = useTerminalStore.getState().sessionsForContext(WORKSPACE)
     act(() => {
-      useTerminalStore.setState((state) => ({ sessions: { ...state.sessions, [session.id]: { ...state.sessions[session.id], status: 'exited' } } }))
+      useTerminalStore.setState((state) => ({ sessions: { ...state.sessions, [session.id]: { ...state.sessions[session.id], shellState: { kind: 'exited', reason: 'exit' } } } }))
     })
 
     await pressCtrlW()
@@ -169,7 +169,7 @@ describe('WorkspacePanel terminal tabs', () => {
     const [session] = useTerminalStore.getState().sessionsForContext(WORKSPACE)
     act(() => {
       useTerminalStore.setState((state) => ({
-        sessions: { ...state.sessions, [session.id]: { ...state.sessions[session.id], status: 'connected', busy: true } },
+        sessions: { ...state.sessions, [session.id]: { ...state.sessions[session.id], shellState: { kind: 'connected' }, busy: true } },
       }))
     })
 
@@ -271,7 +271,7 @@ describe('WorkspacePanel run in terminal', () => {
     rt.socket = { protocol: 2, sendInput: (data: string) => { input.push(data) }, sendResize: () => {}, close: () => {} } as unknown as typeof rt.socket
     rt.busySupported = busy !== undefined
     useTerminalStore.setState((state) => ({
-      sessions: { ...state.sessions, [id]: { ...state.sessions[id], status: 'connected', busy: busy === true } },
+      sessions: { ...state.sessions, [id]: { ...state.sessions[id], shellState: { kind: 'connected' }, busy: busy === true } },
     }))
     return { id, input }
   }

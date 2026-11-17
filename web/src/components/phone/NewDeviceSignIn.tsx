@@ -224,7 +224,7 @@ export function NewDeviceSignIn({ status, initialView = 'scan' }: {
 /** No code yet: getting one, or why not and Try again. */
 function CodeUnavailable({ blocked, busy, onRetry }: { blocked: boolean; busy: boolean; onRetry: () => void }) {
   if (!blocked) {
-    return <div role="status" className="grid h-[232px] w-[232px] place-items-center rounded-lg border border-(--color-border) text-xs text-(--color-text-muted)">Getting a code…</div>
+    return <div role="status" className="grid h-58 w-58 place-items-center rounded-lg border border-(--color-border) text-xs text-(--color-text-muted)">Getting a code…</div>
   }
   return (
     <div role="status" className="space-y-3">

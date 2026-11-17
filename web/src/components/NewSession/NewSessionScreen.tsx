@@ -27,6 +27,7 @@ import { queryKeys } from '@/queries/keys'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { ChatNote, RecentSessionsList } from '../WorkspaceInfoCard'
+import { DockLoadError } from '../WorkspacePanel/DockLoadError'
 import { WorkspacePicker } from './WorkspacePicker'
 
 const RECENT_SESSIONS = 3
@@ -69,12 +70,17 @@ export function NewSessionScreen({
   onOpenFolder: () => void
 }) {
   const reducedMotion = useReducedMotion()
-  const { data: tree } = useQuery({
+  const { data: tree, isError: treeFailed, isFetching: treeFetching, refetch: refetchTree } = useQuery({
     queryKey: queryKeys.coding.tree(),
     queryFn: getCodingWorkspaceTree,
     staleTime: 30_000,
   })
   const repositories = tree?.repositories ?? NO_REPOSITORIES
+  // A failed load is not "no folders": say so (DESIGN.md → Rulebook 10). The
+  // chip still opens the picker, so Open workspace… stays in reach.
+  const treeError = treeFailed && !tree
+    ? <DockLoadError message="Couldn't load folders." onRetry={() => { void refetchTree() }} retrying={treeFetching} className="" />
+    : null
   const { data: here } = useWorkspaceSessionsQuery(workspace)
 
   const recentSessions = (here?.pages.flatMap((page) => page.data) ?? [])
@@ -118,6 +124,7 @@ export function NewSessionScreen({
         <div className="flex w-full flex-col gap-4 px-4 pt-4 pb-4">
           {/* The chip reads "in <folder>" itself. */}
           <div className="flex min-w-0 items-center">{picker}</div>
+          {treeError}
           {setup && <div className="w-full">{setup}</div>}
           {chatNote}
         </div>
@@ -139,18 +146,19 @@ export function NewSessionScreen({
           </h1>
           <div className={`flex max-w-full flex-wrap items-center gap-2 ${isMobile ? 'self-start' : 'justify-center'}`}>
             {picker}
+            {treeError}
           </div>
-          {setup && <div className="mx-auto mt-2 w-full max-w-[640px]">{setup}</div>}
+          {setup && <div className="mx-auto mt-2 w-full max-w-160">{setup}</div>}
           {/* ``text-left``: the hero is centered, and the composer's
               textarea, chips and menus must not inherit it. */}
           {composer && <div className="mt-2 w-full text-left">{composer}</div>}
-          {chatNote && <div className="mx-auto mt-1 w-full max-w-[640px] text-left">{chatNote}</div>}
+          {chatNote && <div className="mx-auto mt-1 w-full max-w-160 text-left">{chatNote}</div>}
           {leaving && composerPlaceholderHeight !== undefined && (
             <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
           )}
         </div>
 
-        <div className={`mx-auto mt-8 flex w-full flex-col gap-6 ${isMobile ? 'mt-6' : 'max-w-[640px]'}`}>
+        <div className={`mx-auto mt-8 flex w-full flex-col gap-6 ${isMobile ? 'mt-6' : 'max-w-160'}`}>
           {recentSessions.length > 0 && (
             <RecentSessionsList
               sessions={recentSessions}

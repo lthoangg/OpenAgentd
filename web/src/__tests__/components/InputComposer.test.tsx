@@ -5,6 +5,7 @@ import { createRef } from "react"
 import { InputComposer } from "@/components/InputComposer"
 import type { InputComposerHandle } from "@/components/InputComposer"
 import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
+import { composeWithPlanComments, type PlanCommentsBlock } from "@/components/PlanReview/plan-comments-block"
 import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer/files"
 import { buildHistoryEntries } from "@/components/InputComposer/history"
 import {
@@ -557,6 +558,67 @@ describe("InputComposer — design feedback chips", () => {
     act(() => { ref.current?.appendValue(composeWithDesignFeedback("held", [feedback]), { paragraph: true }) })
     expect(textarea.value).toBe("held")
     expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
+  })
+})
+
+describe("InputComposer — plan comments chip", () => {
+  const block: PlanCommentsBlock = {
+    path: ".agents/plans/ship-it-0000abcd.md",
+    revision: 2,
+    comments: [{ quote: "Write the migration", text: "Make it reversible." }],
+  }
+  const more: PlanCommentsBlock = { ...block, comments: [{ quote: "Wire the endpoint", text: "Add a test." }] }
+
+  it("merges added comments into one chip and sends them after the typed text", () => {
+    const ref = createRef<InputComposerHandle>()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    const onPlanCommentsChange = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={onSubmit} ref={ref} onPlanCommentsChange={onPlanCommentsChange} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => { ref.current?.addPlanComments(block) })
+    act(() => { ref.current?.addPlanComments(more) })
+    expect(screen.getByText("Plan comments · 2 comments")).toBeTruthy()
+    expect(screen.getByText("rev 2")).toBeTruthy()
+    expect((screen.getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(false)
+    expect(onPlanCommentsChange.mock.calls.at(-1)?.[0]).toEqual({ ...block, comments: [...block.comments, ...more.comments] })
+
+    fireEvent.change(textarea, { target: { value: "Also keep the old path" } })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+    expect(onSubmit.mock.calls[0][0]).toBe(composeWithPlanComments("Also keep the old path", { ...block, comments: [...block.comments, ...more.comments] }))
+    expect(screen.queryByText("Plan comments · 2 comments")).toBeNull()
+    expect(onPlanCommentsChange.mock.calls.at(-1)?.[0]).toBeNull()
+  })
+
+  it("sends the comments alone, and its x hands them back instead of losing them", () => {
+    const ref = createRef<InputComposerHandle>()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    const onPlanCommentsRemoved = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={onSubmit} ref={ref} onPlanCommentsRemoved={onPlanCommentsRemoved} />)
+    act(() => { ref.current?.addPlanComments(block) })
+    fireEvent.click(screen.getByRole("button", { name: "Put the comments back in the plan" }))
+    expect(onPlanCommentsRemoved.mock.calls).toEqual([[block]])
+    expect(screen.queryByText("Plan comments · 1 comment")).toBeNull()
+
+    act(() => { ref.current?.addPlanComments(more) })
+    fireEvent.keyDown(screen.getByLabelText("Message input"), { key: "Enter" })
+    expect(onSubmit.mock.calls[0][0]).toBe(composeWithPlanComments("", more))
+  })
+
+  it("brings the chip back for a restored message, beside design feedback", () => {
+    const ref = createRef<InputComposerHandle>()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={onSubmit} ref={ref} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    const feedback: DesignFeedback = { where: "http://localhost:5173/", device: "Desktop", items: [{ n: 1, element: "<h1>", text: "", selector: "h1", source: null, html: "<h1>", styles: "", page: null, comment: "Bigger" }] }
+    const sent = composeWithPlanComments(composeWithDesignFeedback("Edit me", [feedback]), block)
+
+    act(() => { ref.current?.setValue(sent) })
+    expect(textarea.value).toBe("Edit me")
+    expect(screen.getByText("Plan comments · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
+    fireEvent.keyDown(textarea, { key: "Enter" })
+    expect(onSubmit.mock.calls[0][0]).toBe(sent)
   })
 })
 

@@ -84,6 +84,8 @@ async function runJourney(browser, name, run, width, report) {
     history,
     seedSession,
     demo: `${DRIVE_DIR}/code/demo`,
+    /** The server's sandbox: its config, data, state (OTEL spans) and log, for side-effect checks. */
+    sandbox: DRIVE_DIR,
     open: async (path = "/") => {
       await page.goto(WEB_URL + path, { waitUntil: "load" })
     },

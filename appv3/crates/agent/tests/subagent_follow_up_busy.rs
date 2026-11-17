@@ -61,7 +61,7 @@ async fn a_follow_up_to_a_working_member_waits_for_its_turn() {
     let root = tmp.path();
     setup_roots(root);
     let release = root.join("release");
-    let build = format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo built", release.display());
+    let build = common::wait_for_file(&release, "built");
     let args = serde_json::json!({ "command": build }).to_string();
     // Lead turn, the member's blocking build, then whatever model call comes
     // next parks on a quota wait, and a last plain reply.

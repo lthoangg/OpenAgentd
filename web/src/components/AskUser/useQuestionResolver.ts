@@ -6,8 +6,8 @@
  */
 import { useState } from 'react'
 
-import { answerQuestion } from '@/api/client'
-import type { PendingQuestion } from '@/api/types'
+import { answerQuestion, answerSecretRequest, saveSecret } from '@/api/client'
+import type { PendingQuestion, SecretAnswer } from '@/api/question-types'
 import { softHapticFeedback } from '@/lib/haptics'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -97,5 +97,25 @@ export function useQuestionResolver(question: PendingQuestion | null) {
       softHapticFeedback()
       void resolve(question.id, () => answerQuestion(sessionId, question.id, answers, options), "Couldn't send the answer.", answers)
     },
+    /**
+     * Answer a secret card: each value goes to the secret store first
+     * (``saves``), then the card is answered with names only. ``summary``
+     * is what the transcript shows (one line each, names only).
+     */
+    answerSecret: (saves: SecretSave[], secret: SecretAnswer, summary: string[]) => {
+      if (!question || !sessionId) return
+      softHapticFeedback()
+      const run = async () => {
+        for (const s of saves) await saveSecret(s.name, { ...s.body, source: 'chat' })
+        return answerSecretRequest(sessionId, question.id, secret)
+      }
+      void resolve(question.id, run, "Couldn't save the secrets.", [summary])
+    },
   }
+}
+
+/** One value to store before a secret card is answered (``PUT /api/secrets``). */
+export interface SecretSave {
+  name: string
+  body: { value: string; projects?: string[]; id?: string }
 }

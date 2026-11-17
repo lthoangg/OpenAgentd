@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test"
 import { mockSendDesktopNotification, makeStream, resetAsyncStore } from "./async-fixture"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 beforeEach(resetAsyncStore)
 
@@ -75,7 +76,7 @@ describe("queued_turn_start: the steers a turn takes in", () => {
 
     const blocks = useAgentStore.getState().agentStreams.lead.currentBlocks
     expect(blocks.map((block) => block.content)).toEqual(["first queued", "second queued"])
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
     expect(useAgentStore.getState().agentStreams.lead.status).toBe("working")
     expect(useAgentStore.getState()._pendingMessages).toHaveLength(0)
   })
@@ -104,7 +105,7 @@ describe("queued_turn_start: the steers a turn takes in", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentStreams: {
         lead: makeStream({ status: "idle" as const }),
       },
@@ -118,7 +119,7 @@ describe("queued_turn_start: the steers a turn takes in", () => {
     useAgentStore.getState()._handleSSEEvent("message", { agent: "lead", text: "continued" })
 
     const state = useAgentStore.getState()
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
     expect(state.error).toBeNull()
     expect(state.agentStreams.lead.status).toBe("working")
     expect(state.agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
@@ -146,7 +147,7 @@ describe("queued_turn_start: the steers a turn takes in", () => {
 
     const blocks = useAgentStore.getState().agentStreams.lead.currentBlocks
     expect(blocks.map((block) => block.content)).toEqual(["just say hi", "hi"])
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
   })
 
   it("splices queued messages when agent name is openagentd and leadName is unset", () => {
@@ -172,7 +173,7 @@ describe("queued_turn_start: the steers a turn takes in", () => {
     useAgentStore.getState()._handleSSEEvent("message", { agent: "openagentd", text: "answering queued" })
 
     const state = useAgentStore.getState()
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
     const stream = state.agentStreams.openagentd
     expect(stream).toBeDefined()
     expect(stream.status).toBe("working")
@@ -425,7 +426,7 @@ describe("done: notifications", () => {
       agentStreams: {
         lead: makeStream({ status: "working" as const }),
       },
-      isAgentWorking: true,
+      sessionRun: runOf(true),
     })
 
     useAgentStore.getState()._handleSSEEvent("done", {})
@@ -447,7 +448,7 @@ describe("ghost message regression: queued_turn_start after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       _leadRevertTime: revertTime,
       agentStreams: {
         lead: makeStream({ status: "idle" as const }),
@@ -469,7 +470,7 @@ describe("ghost message regression: queued_turn_start after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       _leadRevertTime: revertTime,
       agentStreams: {
         lead: makeStream({ status: "idle" as const }),
@@ -491,7 +492,7 @@ describe("ghost message regression: queued_turn_start after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       _leadRevertTime: null,
       agentStreams: {
         lead: makeStream({ status: "idle" as const }),
@@ -515,7 +516,7 @@ describe("ghost message regression: done event after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _leadRevertTime: revertTime,
       agentStreams: {
         lead: makeStream({
@@ -547,7 +548,7 @@ describe("ghost message regression: done event after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _leadRevertTime: revertTime,
       agentStreams: {
         lead: makeStream({
@@ -573,7 +574,7 @@ describe("ghost message regression: done event after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       _leadRevertTime: null,
       agentStreams: {
         lead: makeStream({
@@ -597,7 +598,7 @@ describe("ghost message regression: done event after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           status: "working" as const,
@@ -625,7 +626,7 @@ describe("ghost message regression: done event after /undo", () => {
     useAgentStore.setState({
       sessionId: "session-a",
       leadName: "lead",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           status: "working" as const,

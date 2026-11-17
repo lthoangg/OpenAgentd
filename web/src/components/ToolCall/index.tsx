@@ -57,7 +57,7 @@ import { useToolArguments, useToolResult } from './useToolResult'
 import { toolFileTargets } from './fileTargets'
 import { formatMetaDuration } from '@/components/ui/meta-row'
 import type { ToolCallState } from './types'
-import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
+import { canonicalToolName, isPlanSubmission, isSecretRequest, opensConfirmation } from '@/utils/tool-names'
 import { GoalClaimCard } from '../GoalClaimCard'
 import { UPDATE_GOAL_TOOL } from '@/lib/goal'
 import { lazySurface } from '@/lib/lazy-surface'
@@ -210,6 +210,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const awaitingArgs = argsOnServer && fullArgs === undefined
   // A change to OpenAgentd's setup waits on the user's Apply / Cancel.
   const confirmationCard = useShowsConfirmationCard(opensConfirmation(name, args ?? undefined), toolCallId, result)
+  // A secret request owns a card while it waits and keeps a names-only
+  // summary once the user answered it (a result that starts "The user").
+  const secretRequest = isSecretRequest(name, args ?? undefined)
+  const secretCard = useShowsConfirmationCard(secretRequest, toolCallId, result) || (secretRequest && (result ?? '').startsWith('The user '))
 
   // Status: start (name only) → running (args) → done. No success/failure:
   // the agent reads its tools' output and acts on a failure itself.
@@ -371,6 +375,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // persisted "waiting for the user" placeholder as a finished tool result.
   if (name === ASK_USER || confirmationCard) {
     return <AskUser toolCallId={toolCallId} args={args} result={result} />
+  }
+  if (secretCard) {
+    return <AskUser toolCallId={toolCallId} args={args} result={result} secret />
   }
   // A plan submission is reviewed in the Plan tab; its card records the outcome.
   if (isPlanSubmission(name, args)) {

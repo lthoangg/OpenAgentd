@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 type RunBody = { model?: string | null; thinking_level?: string | null; credential_id?: string | null }
 const saveRunSettings = async (...args: unknown[]) => {
@@ -35,7 +36,7 @@ beforeEach(() => {
     sessionModel: 'agy:claude',
     sessionThinkingLevel: null,
     sessionCredentialId: null,
-    isAgentWorking: false,
+    sessionRun: runOf(false),
     error: null,
     _pendingMessages: [],
     _abortController: null,

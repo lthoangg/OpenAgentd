@@ -6,6 +6,7 @@ import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { OPEN_SESSION_EVENT } from '@/utils/workspace-messages'
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 const { Composer } = await import('@/components/composer/Composer')
@@ -547,7 +548,7 @@ describe('PendingMessageQueue', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
       leadName: 'lead',
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentStreams: {
         lead: { blocks: [], currentBlocks: [], status: 'error', usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0 } } as never,
       },

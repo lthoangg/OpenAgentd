@@ -16,7 +16,9 @@ mock.module('@/api/client', () => ({ answerQuestion, agentStream }))
 import { ToolCall } from '@/components/ToolCall'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 const SAVE_ARGS = JSON.stringify({ action: 'save', server: 'excalidraw', config: { transport: 'http', url: 'https://mcp.excalidraw.com', enabled: true } })
@@ -41,12 +43,12 @@ const CONFIRM: PendingQuestion = {
 beforeEach(() => {
   answerQuestion.mockClear()
   clearQuestionDrafts()
-  useAgentStore.setState({ sessionId: 's-1', isConnected: true, pendingQuestion: CONFIRM, resolvedQuestions: {} })
+  useAgentStore.setState({ sessionId: 's-1', streamLink: linkOf(true), questionCard: questionCardOf(CONFIRM), resolvedQuestions: {} })
 })
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {} })
 })
 
 describe('confirming tool calls', () => {
@@ -62,18 +64,18 @@ describe('confirming tool calls', () => {
   })
 
   it('shows the card for workspace set_groups and mcp remove too', () => {
-    useAgentStore.setState({ pendingQuestion: { ...CONFIRM, toolCallId: 'call-groups' } })
+    useAgentStore.setState({ questionCard: questionCardOf({ ...CONFIRM, toolCallId: 'call-groups' }) })
     render(<ToolCall name="workspace" args='{"action":"set_groups","workspace":"api","join":["x"]}' result={PLACEHOLDER} done toolCallId="call-groups" />)
     expect(screen.getByRole('radio', { name: /Apply/ })).toBeInTheDocument()
     cleanup()
 
-    useAgentStore.setState({ pendingQuestion: { ...CONFIRM, toolCallId: 'call-remove' } })
+    useAgentStore.setState({ questionCard: questionCardOf({ ...CONFIRM, toolCallId: 'call-remove' }) })
     render(<ToolCall name="mcp" args='{"action":"remove","server":"x"}' result={PLACEHOLDER} done toolCallId="call-remove" />)
     expect(screen.getByRole('radio', { name: /Apply/ })).toBeInTheDocument()
   })
 
   it('keeps the ordinary row once the call settled, or when it never opened a card', () => {
-    useAgentStore.setState({ pendingQuestion: null })
+    useAgentStore.setState({ questionCard: questionCardOf(null) })
     render(<ToolCall name="mcp" args={SAVE_ARGS} result="The user applied the change. Server 'excalidraw' is ready." done toolCallId="call-save" />)
     expect(screen.queryByText('Needs you · a question')).not.toBeInTheDocument()
     expect(screen.queryByText('Your input')).not.toBeInTheDocument()
@@ -84,7 +86,7 @@ describe('confirming tool calls', () => {
   })
 
   it('leaves read-only mcp actions as ordinary rows', () => {
-    useAgentStore.setState({ pendingQuestion: { ...CONFIRM, toolCallId: 'call-list' } })
+    useAgentStore.setState({ questionCard: questionCardOf({ ...CONFIRM, toolCallId: 'call-list' }) })
     render(<ToolCall name="mcp" args='{"action":"servers"}' result={PLACEHOLDER} done toolCallId="call-list" />)
     expect(screen.queryByRole('radio', { name: /Apply/ })).not.toBeInTheDocument()
   })

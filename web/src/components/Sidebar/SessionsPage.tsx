@@ -5,8 +5,9 @@
  * the workspaces) is the sidebar's own. It is the middle level of the
  * phone's stack: ‹ Servers goes down to the Servers screen.
  */
-import { useEffect, useRef, useState, type Ref } from 'react'
-import { Activity, Clock, Search, Settings, SquarePen, X, type LucideIcon } from 'lucide-react'
+import { useRef, useState, type Ref } from 'react'
+import { Activity, Clock, Search, Settings, SquarePen, type LucideIcon } from 'lucide-react'
+import { ActionSheet } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { HealthDot } from '@/components/HealthDot'
 import { PhoneBackButton } from '@/components/phone/PhoneNavBar'
@@ -138,15 +139,13 @@ interface ToolbarItem {
   ariaLabel?: string
 }
 
-/** A row of ✎'s hold menu: a workspace to start a new session in. */
+/** A row of ✎'s hold sheet: a workspace to start a new session in. */
 export interface NewSessionChoice {
   path: string
   label: string
   /** The workspace a tap on ✎ starts in. */
   current?: boolean
 }
-
-const WORKSPACE_PREFIX = 'ws:'
 
 /**
  * The bottom toolbar, floating over the end of the list as iOS 26's does:
@@ -159,10 +158,9 @@ const WORKSPACE_PREFIX = 'ws:'
  *
  * Both take iOS's press-and-slide (``usePressSlide``): a finger on the pill
  * can slide across it, the highlight and a bubble naming the button follow,
- * and lifting runs the one under it. Holding ✎ opens the workspaces above
- * it and turns ✎ into ✕: slide to one and lift to start there; lift on ✕ or
- * outside to cancel. A hold lifted where it began keeps the menu open for a
- * tap, as iOS's long-press menus do. Taps, a mouse and a keyboard work as
+ * and lifting runs the one under it. Holding ✎ opens "New session in…",
+ * an action sheet of the workspaces (DESIGN.md → Menus are action sheets):
+ * tap one to start there, or Cancel. Taps, a mouse and a keyboard work as
  * plain buttons.
  */
 export function SessionsPageToolbar({
@@ -210,69 +208,38 @@ export function SessionsPageToolbar({
     onCancel: () => { pillTicking.current = false },
   })
 
-  // ✎ and its hold menu. A ref mirrors the state for the gesture's callbacks,
-  // which run before React has re-rendered with the menu open.
-  const [menuOpen, setMenuOpenState] = useState(false)
-  const menuOpenRef = useRef(false)
-  const setMenuOpen = (open: boolean) => {
-    menuOpenRef.current = open
-    setMenuOpenState(open)
+  // ✎ and its hold sheet. A ref mirrors the state for the gesture's
+  // callbacks, which run before React has re-rendered with the sheet open.
+  const [pickerOpen, setPickerOpenState] = useState(false)
+  const pickerOpenRef = useRef(false)
+  const setPickerOpen = (open: boolean) => {
+    pickerOpenRef.current = open
+    setPickerOpenState(open)
   }
   const canPickWorkspace = Boolean(onNewSessionIn) && newSessionChoices.length > 0
-  const pickWorkspace = (path: string) => {
-    setMenuOpen(false)
-    onNewSessionIn?.(path)
-  }
   const newSlide = usePressSlide({
-    canHold: (id) => id === 'new' && canPickWorkspace && !menuOpenRef.current,
+    canHold: (id) => id === 'new' && canPickWorkspace && !pickerOpenRef.current,
     onHold: () => {
       mediumHapticFeedback()
-      setMenuOpen(true)
+      setPickerOpen(true)
     },
-    onChange: (id) => {
-      if (menuOpenRef.current && id?.startsWith(WORKSPACE_PREFIX)) selectionHapticFeedback()
+    // The release that ends the hold leaves the sheet up for a tap.
+    onRelease: (id) => {
+      if (!pickerOpenRef.current && id === 'new') onNewSession()
     },
-    onRelease: (id, { moved, held }) => {
-      if (!menuOpenRef.current) {
-        if (id === 'new') onNewSession()
-        return
-      }
-      if (id?.startsWith(WORKSPACE_PREFIX)) pickWorkspace(id.slice(WORKSPACE_PREFIX.length))
-      // A hold lifted where it began leaves the menu up for a tap.
-      else if (!(held && !moved)) setMenuOpen(false)
-    },
-    onCancel: () => setMenuOpen(false),
   })
-  useEffect(() => {
-    if (!menuOpen) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [menuOpen])
 
   return (
     <div
       data-sessions-page-toolbar=""
       className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 bg-gradient-to-t from-(--bg-page) from-40% to-transparent px-4 pt-8 pb-safe"
     >
-      {menuOpen && (
-        // Behind the menu: a tap outside it cancels.
-        <div
-          aria-hidden="true"
-          data-sessions-new-scrim=""
-          onClick={() => setMenuOpen(false)}
-          className="pointer-events-auto fixed inset-0 bg-(--color-overlay) opacity-30"
-        />
-      )}
       <div
         role="toolbar"
         aria-label="Sessions"
         {...pill.handlers}
         className={cn(
-          'relative flex touch-none select-none items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card)/90 p-1 shadow-(--shadow-depth) backdrop-blur-md transition-opacity duration-(--motion-fast) [-webkit-touch-callout:none]',
-          menuOpen ? 'pointer-events-none opacity-50' : 'pointer-events-auto',
+          'pointer-events-auto relative flex touch-none select-none items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card)/90 p-1 shadow-(--shadow-depth) backdrop-blur-md [-webkit-touch-callout:none]',
         )}
       >
         {items.map(({ label, icon: Icon, onClick, ariaLabel }) => {
@@ -313,54 +280,38 @@ export function SessionsPageToolbar({
         data-sessions-new-area=""
         className="pointer-events-auto relative touch-none select-none [-webkit-touch-callout:none]"
       >
-        {menuOpen && (
-          <div
-            role="menu"
-            aria-label="New session in"
-            data-sessions-new-menu=""
-            className="oa-menu-bloom absolute bottom-full right-0 mb-3 w-60 origin-bottom-right rounded-2xl border border-(--color-border) bg-(--bg-card) p-1.5 shadow-(--shadow-depth)"
-          >
-            <p className="px-2.5 pb-1 pt-1.5 text-xs text-(--color-text-muted)">New session in…</p>
-            {newSessionChoices.map((choice) => {
-              const id = `${WORKSPACE_PREFIX}${choice.path}`
-              return (
-                <button
-                  key={choice.path}
-                  type="button"
-                  role="menuitem"
-                  data-slide-id={id}
-                  data-active={newSlide.active === id ? '' : undefined}
-                  onClick={() => pickWorkspace(choice.path)}
-                  className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-(--color-text) data-active:bg-(--color-fill-key-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
-                >
-                  <span className="min-w-0 truncate">{choice.label}</span>
-                  {choice.current && <span className="ml-auto shrink-0 text-xs text-(--color-text-muted)">current</span>}
-                </button>
-              )
-            })}
-          </div>
-        )}
         <Button
           type="button"
-          variant={menuOpen ? 'default' : 'primary'}
+          variant="primary"
           size="icon"
-          onClick={menuOpen ? () => setMenuOpen(false) : onNewSession}
-          aria-label={menuOpen ? 'Cancel' : 'New session'}
-          aria-haspopup={canPickWorkspace ? 'menu' : undefined}
-          aria-expanded={canPickWorkspace ? menuOpen : undefined}
+          onClick={onNewSession}
+          aria-label="New session"
+          aria-haspopup={canPickWorkspace ? 'dialog' : undefined}
+          aria-expanded={canPickWorkspace ? pickerOpen : undefined}
           data-sessions-new=""
           data-slide-id="new"
-          data-active={menuOpen && newSlide.active === 'new' ? '' : undefined}
           // A finger on ✎ presses it in, as an iOS button gives; the hold
-          // that opens the menu lets it spring back (the snappy spring
-          // overshoots a little) while ✕ springs into its place.
-          data-pressed={!menuOpen && newSlide.active === 'new' ? '' : undefined}
+          // that opens the sheet lets it spring back (the snappy spring
+          // overshoots a little).
+          data-pressed={!pickerOpen && newSlide.active === 'new' ? '' : undefined}
           // Round and 52px, as the mockup: ``!`` beats the icon size's square 36px.
           className="size-13! min-h-13! min-w-13! rounded-full! shadow-(--shadow-depth) transition-[scale,background-color,color] duration-(--motion-base) ease-(--ease-spring-snappy) data-active:scale-105 data-pressed:scale-[0.88] data-pressed:duration-(--motion-fast) data-pressed:ease-(--ease-out)"
         >
-          {menuOpen ? <X key="x" className="oa-icon-in size-5" aria-hidden="true" /> : <SquarePen key="new" className="size-5" aria-hidden="true" />}
+          <SquarePen className="size-5" aria-hidden="true" />
         </Button>
       </div>
+      <ActionSheet
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title="New session in…"
+        cancel
+        items={newSessionChoices.map((choice) => ({
+          id: choice.path,
+          label: choice.label,
+          detail: choice.current ? 'current' : undefined,
+          run: () => onNewSessionIn?.(choice.path),
+        }))}
+      />
     </div>
   )
 }

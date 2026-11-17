@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useToastStore } from '@/stores/useToastStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import {
   cleanupSidebarHarness,
@@ -168,6 +169,35 @@ describe('Sidebar workspace trust flow', () => {
       await renderSidebarForSessions('session-1')
 
       fireEvent.click(await screen.findByRole('button', { name: 'Open workspace empty' }))
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false }))
+    })
+
+    it('says so, with Retry, when a workspace’s sessions could not load, instead of opening a blank draft', async () => {
+      twoWorkspaces()
+      fx.worktreesByRepo = {}
+      useToastStore.setState({ toasts: [] })
+      let failList = true
+      const baseFetch = globalThis.fetch
+      globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+        const url = String(input)
+        if (url.includes('/api/agent/workspace/tree')) {
+          const tree = workspaceTreeResponse()
+          return new Response(JSON.stringify({ ...tree, repositories: [...tree.repositories, { path: '/repo/empty', name: 'empty', worktrees: [], group_ids: [] }] }))
+        }
+        if (url.includes('/api/agent/sessions?') && url.includes('empty')) {
+          if (failList) return new Response(JSON.stringify({ detail: 'boom' }), { status: 500 })
+          return new Response(JSON.stringify({ data: [], has_more: false, next_cursor: null }))
+        }
+        return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+      }) as typeof fetch
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Open workspace empty' }))
+      await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.title)).toEqual(["Couldn't open the last session"]))
+      expect(navigate).not.toHaveBeenCalled()
+
+      failList = false
+      act(() => { useToastStore.getState().toasts[0].action?.onAction() })
       await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false }))
     })
 

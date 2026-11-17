@@ -54,6 +54,8 @@ interface ChatComposerProps {
   expandUserCommand: (content: string) => Promise<string>
   historyPrompts: string[]
   onDesignFeedbackRemoved: ComposerProps['onDesignFeedbackRemoved']
+  onPlanCommentsRemoved: ComposerProps['onPlanCommentsRemoved']
+  onPlanCommentsChange: ComposerProps['onPlanCommentsChange']
   onValueChange: ComposerProps['onValueChange']
   fileRefs: ComposerProps['fileRefs']
   onFileRefsNeeded: () => void
@@ -100,6 +102,8 @@ export function ChatComposer({
   expandUserCommand,
   historyPrompts,
   onDesignFeedbackRemoved,
+  onPlanCommentsRemoved,
+  onPlanCommentsChange,
   onValueChange,
   fileRefs,
   onFileRefsNeeded,
@@ -225,6 +229,8 @@ export function ChatComposer({
       historyPrompts={historyPrompts}
       onHistoryRecall={handleHistoryRecall}
       onDesignFeedbackRemoved={onDesignFeedbackRemoved}
+      onPlanCommentsRemoved={onPlanCommentsRemoved}
+      onPlanCommentsChange={onPlanCommentsChange}
       onValueChange={onValueChange}
       fileRefs={fileRefs}
       onFileRefsNeeded={onFileRefsNeeded}

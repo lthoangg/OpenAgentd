@@ -5,7 +5,8 @@
     "read", "grep", "glob", "patch", "shell", "web_search", "web_fetch",
     "generate_image", "generate_video",
     "mcp",
-    "ask_user", "team", "plan", "update_goal", "preview", "ask_lead", "workspace"
+    "ask_user", "team", "plan", "update_goal", "preview", "ask_lead", "workspace",
+    "secret"
   ],
   "former_names": {
     "todo_manage": "todo",

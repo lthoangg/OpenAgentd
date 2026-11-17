@@ -21,6 +21,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { LspInstallPrompt } from '@/components/LspInstallPrompt'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { lspAsking, lspRequestOf } from '@/stores/lsp-prompt-state'
 import { useToastStore } from '@/stores/useToastStore'
 
 beforeEach(() => {
@@ -29,7 +30,7 @@ beforeEach(() => {
   installError = null
   installGate = null
   useToastStore.setState({ toasts: [] })
-  useLspInstallStore.setState({ request: { workspace: '/project', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' } })
+  useLspInstallStore.setState({ lspPrompt: lspAsking({ workspace: '/project', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' }) })
 })
 
 afterEach(cleanup)
@@ -39,7 +40,7 @@ const toasts = () => useToastStore.getState().toasts
 it('asks in one line, naming the workspace, and installs after consent', async () => {
   render(<LspInstallPrompt />)
 
-  const line = screen.getByRole('dialog', { name: 'Install TypeScript language tools' })
+  const line = screen.getByRole('status', { name: 'Install TypeScript language tools' })
   expect(line).toHaveTextContent('Install TypeScript tools for project?')
   expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Later', 'Install'])
   fireEvent.click(screen.getByRole('button', { name: 'Install' }))
@@ -47,7 +48,7 @@ it('asks in one line, naming the workspace, and installs after consent', async (
   await waitFor(() => expect(installTypeScriptLsp).toHaveBeenCalledTimes(1))
   // Done: the line leaves and a toast says so.
   await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(['TypeScript tools are ready']))
-  expect(useLspInstallStore.getState().request).toBeNull()
+  expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull()
 })
 
 it('keeps where the tools go, the folder and the versions as the line\'s detail', () => {
@@ -74,7 +75,7 @@ it('says "Installing TypeScript tools…" with nothing to press while it install
 it('does not carry a finished install into a later request from another computer', async () => {
   render(<LspInstallPrompt />)
   fireEvent.click(screen.getByRole('button', { name: 'Install' }))
-  await waitFor(() => expect(useLspInstallStore.getState().request).toBeNull())
+  await waitFor(() => expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull())
 
   act(() => {
     setApiBaseUrl('http://127.0.0.1:4002')
@@ -96,8 +97,23 @@ it('keeps the line with Retry and says why in a toast when the install fails', a
 
   await waitFor(() => expect(toasts().map((t) => t.title)).toEqual(["Couldn't install TypeScript tools"]))
   expect(toasts()[0].description).toBe('The download was refused by the registry.')
-  expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(screen.getByRole('status')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+})
+
+it('an install that finishes after another folder asks leaves that folder\'s line', async () => {
+  let finish: () => void = () => {}
+  installGate = new Promise((resolve) => { finish = resolve })
+  render(<LspInstallPrompt />)
+  fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+  await waitFor(() => expect(installTypeScriptLsp).toHaveBeenCalledTimes(1))
+
+  const other = { workspace: '/other', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' }
+  act(() => { useLspInstallStore.getState().requestInstall(other) })
+  await act(async () => { finish() })
+
+  expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toEqual(other)
+  expect(await screen.findByText('Install TypeScript tools for other?')).toBeInTheDocument()
 })
 
 it('dismisses without installing', () => {
@@ -106,14 +122,14 @@ it('dismisses without installing', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Later' }))
 
   expect(installTypeScriptLsp).not.toHaveBeenCalled()
-  expect(useLspInstallStore.getState().request).toBeNull()
-  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull()
+  expect(screen.queryByRole('status')).toBeNull()
 })
 
-it('uses narrow-layout-safe dialog markup', () => {
+it('uses narrow-layout-safe markup', () => {
   render(<LspInstallPrompt />)
 
-  expect(screen.getByRole('dialog')).toHaveAttribute('data-swipe-ignore')
+  expect(screen.getByRole('status')).toHaveAttribute('data-swipe-ignore')
 })
 
 it('renders as a non-blocking line that does not interfere with chat', () => {
@@ -123,7 +139,7 @@ it('renders as a non-blocking line that does not interfere with chat', () => {
   // only has to stay click-through outside its panel.
   const aside = container.querySelector('aside')
   expect(aside).toHaveClass('pointer-events-none')
-  expect(screen.getByRole('dialog')).toHaveClass('pointer-events-auto')
+  expect(screen.getByRole('status')).toHaveClass('pointer-events-auto')
 
   // No blocking modal backdrop overlay
   expect(container.querySelector('[data-slot="dialog-overlay"]')).toBeNull()

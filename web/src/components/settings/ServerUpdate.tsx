@@ -67,9 +67,9 @@ function Note({ tone, children }: { tone: 'hint' | 'warn' | 'ok'; children: Reac
 /** The button that goes in the Server row, when there is one. */
 export function ServerUpdateButton({ onRequest, ownApp = false }: { onRequest: () => void; ownApp?: boolean }) {
   const { data } = useServerUpdateQuery()
-  const phase = useServerUpdateStore((s) => s.phase)
+  const phase = useServerUpdateStore((s) => s.updatePhase)
   if (ownApp) return null
-  if (phase.kind === 'updating') {
+  if (phase.kind === 'starting' || phase.kind === 'updating') {
     return (
       <Button size="sm" variant="default" disabled>
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -126,7 +126,7 @@ export function ServerUpdateConfirm({ flow }: { flow: ReturnType<typeof useServe
 /** The note under the Server row: what the update will do, or did. */
 export function ServerUpdateNote({ ownApp = false }: { ownApp?: boolean }) {
   const { data } = useServerUpdateQuery()
-  const phase = useServerUpdateStore((s) => s.phase)
+  const phase = useServerUpdateStore((s) => s.updatePhase)
   const byDesktopApp = data?.method === 'desktop_app'
 
   const releaseLink = data?.release_url ? (
@@ -208,7 +208,7 @@ function OnRowOfKnownServer() {
 
 function OnRow() {
   const { data } = useServerUpdateQuery()
-  const phase = useServerUpdateStore((s) => s.phase)
+  const phase = useServerUpdateStore((s) => s.updatePhase)
   const flow = useServerUpdateFlow()
   const ownApp = useOwnAppServer()
   if (phase.kind === 'idle' && !data?.available) return null

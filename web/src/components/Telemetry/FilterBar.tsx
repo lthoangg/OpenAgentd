@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { useIsPhone } from '@/hooks/use-is-phone'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { TELEMETRY_RANGES, type TelemetryRange } from '@/stores/useTelemetryStore'
@@ -159,7 +160,7 @@ export function FilterBar({
       {session !== null && (
         <span className="flex h-7 max-w-64 shrink-0 items-center gap-1 rounded-sm bg-(--bg-key) pr-0.5 pl-2 text-xs text-(--color-text)">
           <span className="text-(--color-text-muted)">Session</span>
-          <span className="min-w-0 truncate font-medium">{sessionLabel ?? 'Loading…'}</span>
+          {sessionLabel ? <span className="min-w-0 truncate font-medium">{sessionLabel}</span> : <Skeleton role="status" aria-label="Loading the session's title" tone="filled" className="h-3 w-20" />}
           <button
             type="button"
             onClick={() => onSessionChange(null)}
@@ -256,7 +257,7 @@ export function FilterBar({
       {session !== null && (
         <span className="flex h-7 max-w-64 shrink-0 items-center gap-1 rounded-sm bg-(--bg-key) pr-0.5 pl-2 text-xs text-(--color-text)">
           <span className="text-(--color-text-muted)">Session</span>
-          <span className="min-w-0 truncate font-medium">{sessionLabel ?? 'Loading…'}</span>
+          {sessionLabel ? <span className="min-w-0 truncate font-medium">{sessionLabel}</span> : <Skeleton role="status" aria-label="Loading the session's title" tone="filled" className="h-3 w-20" />}
           <button
             type="button"
             onClick={() => onSessionChange(null)}

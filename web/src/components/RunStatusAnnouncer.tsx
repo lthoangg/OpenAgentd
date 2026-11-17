@@ -6,11 +6,13 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 
 export function RunStatusAnnouncer() {
   const sessionId = useAgentStore((s) => s.sessionId)
-  const working = useAgentStore((s) => s.isAgentWorking)
-  const question = useAgentStore((s) => s.pendingQuestion)
+  const working = useAgentStore((s) => isRunLive(s.sessionRun))
+  const question = useAgentStore(openQuestion)
   const [message, setMessage] = useState('')
   const last = useRef({ sessionId, working, questionId: question?.id ?? null })
 

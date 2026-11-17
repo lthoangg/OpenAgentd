@@ -276,11 +276,14 @@ describe('AppFooter terminals', () => {
   const realFetch = globalThis.fetch
 
   /** Metadata only: no PTY, no socket, so the footer is the only thing under test. */
-  function seedTerminals(...sessions: Array<{ contextKey: string; status: TerminalSessionMeta['status'] }>) {
+  function seedTerminals(...sessions: Array<{ contextKey: string; status: TerminalSessionMeta['shellState']['kind'] }>) {
     useTerminalStore.setState({
       sessions: Object.fromEntries(sessions.map((session, i) => {
         const id = `term-${i + 1}`
-        return [id, { id, title: `Terminal ${i + 1}`, order: i + 1, ...session }]
+        const shellState = session.status === 'exited' ? { kind: 'exited' as const, reason: 'exit' as const }
+          : session.status === 'error' ? { kind: 'error' as const, message: 'boom' }
+          : { kind: session.status }
+        return [id, { id, title: `Terminal ${i + 1}`, order: i + 1, contextKey: session.contextKey, shellState }]
       })),
     })
   }

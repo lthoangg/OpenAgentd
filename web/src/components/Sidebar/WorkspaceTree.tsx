@@ -221,7 +221,7 @@ export function WorkspaceTree({
                 tabIndex={-1}
                 data-sidebar-workspace-toggle=""
                 onClick={() => toggleWorkspaceExpanded(path)}
-                className="flex h-full shrink-0 items-center rounded-sm pl-1.5 pr-1 text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:pr-[19px]"
+                className="flex h-full shrink-0 items-center rounded-sm pl-1.5 pr-1 text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:pr-4.75"
                 aria-expanded={sourceIsExpanded}
                 aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} workspace ${sourceLabel}`}
               >

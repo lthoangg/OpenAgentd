@@ -200,6 +200,14 @@ describe('TaskDetailView tiles', () => {
     expect(screen.getAllByText('Last run failed')).toHaveLength(2)
     expect(screen.getByText('Model unavailable')).toBeInTheDocument()
   })
+
+  it('says a task stopped because its last allowed run failed, with the error and Run again', async () => {
+    renderDetail({ status: 'failed', run_count: 3, max_runs: 3, last_error: 'Model unavailable', next_fire_at: null })
+    const callout = screen.getByText('Stopped: its last run failed').closest('[role="status"]') as HTMLElement
+    expect(within(callout).getByText('Model unavailable')).toBeInTheDocument()
+    fireEvent.click(within(callout).getByRole('button', { name: 'Run again' }))
+    await waitFor(() => expect(requests.some((r) => r.method === 'POST' && r.url.endsWith('/scheduler/tasks/daily-standup/trigger'))).toBe(true))
+  })
 })
 
 describe('TaskDetailView schedule', () => {

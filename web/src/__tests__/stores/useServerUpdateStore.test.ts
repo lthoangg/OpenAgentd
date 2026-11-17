@@ -44,7 +44,7 @@ beforeEach(() => {
   startRefusal = null
   startServerUpdate.mockClear()
   getServerUpdate.mockClear()
-  useServerUpdateStore.setState({ phase: { kind: 'idle' } })
+  useServerUpdateStore.setState({ updatePhase: { kind: 'idle' } })
   // Poll without waiting two seconds a round.
   globalThis.setTimeout = ((fn: () => void) => realSetTimeout(fn, 0)) as typeof setTimeout
 })
@@ -94,11 +94,11 @@ describe('useServerUpdateStore.start', () => {
     answers.push(status({}), new Error('connection refused'), new Error('connection refused'), status({ current: '3.51.0' }))
     const settled = mock(() => {})
     const phases: unknown[] = []
-    const unsubscribe = useServerUpdateStore.subscribe((s) => { phases.push(s.phase) })
+    const unsubscribe = useServerUpdateStore.subscribe((s) => { phases.push(s.updatePhase) })
     await useServerUpdateStore.getState().start({ onSettled: settled })
     unsubscribe()
-    expect(phases[0]).toEqual({ kind: 'updating', from: '3.50.0', target: '3.51.0' })
-    expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'done', from: '3.50.0', to: '3.51.0' })
+    expect(phases.slice(0, 2)).toEqual([{ kind: 'starting' }, { kind: 'updating', from: '3.50.0', target: '3.51.0' }])
+    expect(useServerUpdateStore.getState().updatePhase).toEqual({ kind: 'done', from: '3.50.0', to: '3.51.0' })
     expect(getServerUpdate).toHaveBeenCalledTimes(4)
     expect(settled).toHaveBeenCalledTimes(1)
   })
@@ -106,13 +106,32 @@ describe('useServerUpdateStore.start', () => {
   it('says why when the server refuses to start an update', async () => {
     startRefusal = new Error('Already on the latest release (v3.51.0).')
     await useServerUpdateStore.getState().start()
-    expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'failed', message: 'Already on the latest release (v3.51.0).' })
+    expect(useServerUpdateStore.getState().updatePhase).toEqual({ kind: 'failed', message: 'Already on the latest release (v3.51.0).' })
     expect(getServerUpdate).not.toHaveBeenCalled()
   })
 
   it('ignores a second start while one runs', async () => {
-    useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
     await useServerUpdateStore.getState().start()
     expect(startServerUpdate).not.toHaveBeenCalled()
+  })
+
+  it('sends one update request for two quick clicks', async () => {
+    answers.push(status({ current: '3.51.0' }))
+    const first = useServerUpdateStore.getState().start()
+    const second = useServerUpdateStore.getState().start()
+    await Promise.all([first, second])
+    expect(startServerUpdate).toHaveBeenCalledTimes(1)
+    expect(useServerUpdateStore.getState().updatePhase).toEqual({ kind: 'done', from: '3.50.0', to: '3.51.0' })
+  })
+
+  it('reset ends the wait: a later answer does not bring the update back', async () => {
+    const following = useServerUpdateStore.getState().start()
+    await new Promise((r) => realSetTimeout(r, 5))
+    expect(useServerUpdateStore.getState().updatePhase.kind).toBe('updating')
+    useServerUpdateStore.getState().reset()
+    answers.push(status({ current: '3.51.0' }))
+    await following
+    expect(useServerUpdateStore.getState().updatePhase).toEqual({ kind: 'idle' })
   })
 })

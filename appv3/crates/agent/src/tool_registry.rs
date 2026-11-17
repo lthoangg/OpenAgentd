@@ -130,6 +130,17 @@ pub static TOOLS: &[ToolEntry] = &[
             some(crate::tools::workspace::WorkspaceTool::new(s.sid.to_string(), s.pool.clone()))
         }),
     },
+    // Last, so the cached tools block before it keeps its order.
+    ToolEntry {
+        name: "secret",
+        plan_mode: false,
+        offer: Offer::Session(|s| {
+            if !(s.is_lead() && !s.workspace.is_empty()) {
+                return None;
+            }
+            some(crate::tools::secret::SecretTool { session_id: s.sid.to_string(), pool: s.pool.clone() })
+        }),
+    },
 ];
 
 fn entry(name: &str) -> Option<&'static ToolEntry> {

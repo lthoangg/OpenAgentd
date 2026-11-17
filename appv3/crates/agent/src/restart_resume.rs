@@ -25,7 +25,6 @@
 use crate::session::TurnOptions;
 use appv3_db::{self as db, DbPool, NewMessage};
 use serde_json::{json, Map};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// `extra` key of the note a restart leaves in the transcript:
@@ -50,17 +49,6 @@ pub const MAX_RESUMES: i64 = 1;
 /// Pause between two continued sessions, so a restart with many running
 /// sessions does not send every request to the provider at once.
 const RESUME_SPACING: Duration = Duration::from_millis(250);
-
-static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
-
-/// The server is shutting down: turns it stops from now on stay marked.
-pub fn begin_shutdown() {
-    SHUTTING_DOWN.store(true, Ordering::SeqCst);
-}
-
-pub fn is_shutting_down() -> bool {
-    SHUTTING_DOWN.load(Ordering::SeqCst)
-}
 
 /// What [`resume_after_restart`] did, by session id (API form).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

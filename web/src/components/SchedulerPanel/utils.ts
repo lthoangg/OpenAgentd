@@ -80,8 +80,9 @@ export function sentenceCase(text: string): string {
 /**
  * What the task is doing, as one chip in the shared vocabulary
  * (``lib/status``). The backend's ``pending`` means "waiting for its next
- * run", and ``failed`` on a repeating task only means the last run failed:
- * it still runs again.
+ * run". ``failed`` with a next run means only the last run failed and the
+ * task runs again; without one, the task's last allowed run failed and it
+ * has stopped until Run now or Resume.
  */
 export function taskState(task: Pick<ScheduledTaskResponse, 'status' | 'enabled' | 'next_fire_at'>): StatusView {
   switch (task.status) {

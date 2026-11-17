@@ -29,6 +29,10 @@ Everything stays local. No third-party telemetry SaaS.
   telemetry are credited to their session's workspace. Only spend whose session
   was deleted, or that ran outside a session, shows as **Not recorded**
   `[v3.21.0]`.
+  A `/telemetry` link opens Usage once: closed, it stays closed when the app
+  opens again (before `[v3.59.0]` every later launch reopened it). While a
+  session filter's title loads, its chip shows a visible placeholder
+  `[v3.59.0]`.
 - **Model speed in telemetry** `[v3.0.0]` — every streamed model call records
   its time to first token and its output speed in tokens per second. The
   overview shows the median first token (with p95) and the median output speed

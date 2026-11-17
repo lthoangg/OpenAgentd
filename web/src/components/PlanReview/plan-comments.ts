@@ -2,8 +2,10 @@
  * Comments on the session plan during a review.
  *
  * Selecting plan text in the Plan tab offers Comment; each comment keeps the
- * passage it is about, which stays highlighted in the plan. Request changes
- * sends every comment, plus any overall feedback, as one Markdown answer:
+ * passage it is about, which stays highlighted in the plan. Reply in chat
+ * moves every comment to the chat composer, and the message carries them in
+ * this Markdown form (inside a ``<plan-comments>`` block, see
+ * ``plan-comments-block.ts``):
  *
  *     **Comment 1**
  *     > the passage
@@ -13,9 +15,10 @@
  *     **Overall**
  *     anything else
  *
- * The Plan-mode prompt asks the agent to address comments on quoted parts of
- * the plan (`> …`). The transcript card parses the same text back to show the
- * comments rather than a flattened quote.
+ * The ``**Overall**`` part is only in answers from before Reply in chat. The
+ * Plan-mode prompt asks the agent to address comments on quoted parts of
+ * the plan (`> …`). The transcript card parses an older answer back to show
+ * the comments rather than a flattened quote.
  */
 import { useCallback, useEffect, useState, useSyncExternalStore, type RefObject } from 'react'
 import { createPersistedDraftMap } from '@/lib/persisted-drafts'
@@ -36,9 +39,6 @@ export interface ParsedPlanReview {
 const QUOTE_MAX = 300
 const COMMENT_HEADING = /^\*\*Comment \d+\*\*$/
 const OVERALL_HEADING = '**Overall**'
-
-/** Mirrors the server's ``PLAN_REVIEW_MAX_ANSWER_CHARS``: the whole review must fit. */
-export const PLAN_FEEDBACK_MAX_CHARS = 8000
 
 function tidy(text: string): string {
   return text.replace(/\r\n?/g, '\n').trim()
@@ -214,6 +214,7 @@ export interface PlanCommentDraft {
 
 export interface PlanReviewDraft {
   comments: PlanComment[]
+  /** Feedback from the former feedback box; only drafts saved before it went hold any. */
   overall: string
   composer?: PlanCommentDraft | null
 }
@@ -258,12 +259,6 @@ export function usePlanReviewDraft(questionId: string | null): PlanReviewDraft {
     () => snapshotPlanReviewDraft(questionId),
     () => EMPTY_PLAN_REVIEW_DRAFT,
   )
-}
-
-/** The Markdown answer a draft sends with Request changes, a half-written comment included. */
-export function planReviewAnswer(draft: PlanReviewDraft): string {
-  const pending = draft.composer?.text.trim() ? [{ quote: draft.composer.quote, text: draft.composer.text }] : []
-  return formatPlanReview([...draft.comments, ...pending], draft.overall)
 }
 
 export function readPlanReviewDraft(questionId: string | null): PlanReviewDraft {

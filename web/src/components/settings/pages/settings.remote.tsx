@@ -21,7 +21,7 @@
  * Only this computer may change its account; anyone else (a phone viewing a
  * remote server) sees the status and a hint.
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useReducer, useState, type ReactNode } from 'react'
 
 import { APPROVE_ELSEWHERE, REMOVE_ELSEWHERE, cloudRenameDevice, type CloudPending, type CloudStatus, type RelayState } from '@/api/cloud'
 import { deviceLabel, pendingLabel } from '@/api/phone-cloud'
@@ -48,6 +48,16 @@ import {
   UnavailableCopy,
 } from '@/components/settings/pages/remote-copy'
 import { InvitedCopy, JoinWithLink } from '@/components/settings/pages/join-with-link'
+import {
+  PAIRING_NONE,
+  browserWayOpen,
+  codeOpen,
+  linkOpen,
+  otherWaysOpen,
+  pairingStep,
+  sheetOf,
+  signOutAsked,
+} from '@/components/settings/pages/pairing-ui-state'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Collapsible } from '@/components/ui/collapsible'
@@ -220,15 +230,23 @@ export function RemoteSettingsPage() {
   const confirmRecovery = useCloudConfirmRecovery()
   const recover = useCloudRecover()
   const recoveredAck = useCloudRecoveredAck()
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false)
-  const [otherWays, setOtherWays] = useState(false)
-  const [withLink, setWithLink] = useState(false)
-  const [withCode, setWithCode] = useState(false)
-  const [browserWay, setBrowserWay] = useState(false)
-  const [reviewing, setReviewing] = useState<CloudPending | null>(null)
-  const [adding, setAdding] = useState(false)
 
   const status: CloudStatus | undefined = statusQ.data
+  // What the page has open, kept per screen (``pairing-ui-state.ts``). It
+  // follows the status in render, so a new screen never paints with the
+  // last one's folds open.
+  const [pairingUi, sendPairing] = useReducer(pairingStep, PAIRING_NONE)
+  const [seenStatus, setSeenStatus] = useState<CloudStatus | undefined>(undefined)
+  if (status !== seenStatus) {
+    setSeenStatus(status)
+    if (status) sendPairing({ type: 'status', status })
+  }
+  const otherWays = otherWaysOpen(pairingUi)
+  const withLink = linkOpen(pairingUi)
+  const withCode = codeOpen(pairingUi)
+  const browserWay = browserWayOpen(pairingUi)
+  const sheet = sheetOf(pairingUi)
+  const askSignOut = () => sendPairing({ type: 'signOut', open: true })
   const connected = status?.state === 'connected'
   // Shared with the devices list (one query): for the sign-out warning.
   const devicesQ = useCloudDevicesQuery(connected)
@@ -248,22 +266,10 @@ export function RemoteSettingsPage() {
     if (state === 'guest') signIn(COMPUTER_ROLES)
   }, [connectRequested, state, signIn])
 
-  // A wrong recovery code: the form opens again, to try once more.
-  const guestNotice = status?.state === 'guest' ? status.notice : null
-  const [seenNotice, setSeenNotice] = useState(guestNotice)
-  if (guestNotice !== seenNotice) {
-    setSeenNotice(guestNotice)
-    if (guestNotice === 'wrong_recovery_code') {
-      setOtherWays(true)
-      setWithCode(true)
-    }
-  }
-
   /** From a waiting step: stop it, and open the recovery code under Other ways. */
   const useRecoveryCode = () => {
+    sendPairing({ type: 'recoveryNext' })
     cancel.mutate()
-    setOtherWays(true)
-    setWithCode(true)
   }
   const lostPhone = !readOnly && (
     <p>
@@ -276,7 +282,7 @@ export function RemoteSettingsPage() {
     <Button size="sm" disabled={busy} onClick={() => cancel.mutate()}>Cancel</Button>
   )
   const signOutButton = (
-    <Button size="sm" disabled={busy} onClick={() => setConfirmingSignOut(true)}>Sign out</Button>
+    <Button size="sm" disabled={busy} onClick={askSignOut}>Sign out</Button>
   )
 
   let content: ReactNode = null
@@ -300,7 +306,7 @@ export function RemoteSettingsPage() {
                         {status.notice === 'expired' ? 'Sign in again' : 'Sign in'}
                       </Button>
                     </div>
-                    <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => setOtherWays((open) => !open)}>
+                    <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={otherWays} onClick={() => sendPairing({ type: 'otherWays' })}>
                       Other ways to sign in
                     </Button>
                     <Collapsible open={otherWays} innerClassName="space-y-4">
@@ -313,7 +319,7 @@ export function RemoteSettingsPage() {
                       ) : (
                         <p>
                           Have an invitation link?{' '}
-                          <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithLink(true)}>
+                          <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => sendPairing({ type: 'withLink' })}>
                             Join with a link
                           </Button>
                         </p>
@@ -323,11 +329,11 @@ export function RemoteSettingsPage() {
                           device="computer"
                           busy={busy}
                           onRecover={(code) => recover.mutate({ code, roles: COMPUTER_ROLES })}
-                          onCancel={() => setWithCode(false)}
+                          onCancel={() => sendPairing({ type: 'withCode', open: false })}
                         />
                       ) : (
                         <p>
-                          <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => setWithCode(true)}>
+                          <Button variant="link" size="sm" className="h-auto px-0!" disabled={busy} onClick={() => sendPairing({ type: 'withCode', open: true })}>
                             Lost your phone? Use your recovery code
                           </Button>
                         </p>
@@ -362,7 +368,7 @@ export function RemoteSettingsPage() {
                     {!readOnly && cancelButton}
                   </div>
                 </div>
-                <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={browserWay} onClick={() => setBrowserWay((open) => !open)}>
+                <Button variant="link" size="sm" className="h-auto px-0!" aria-expanded={browserWay} onClick={() => sendPairing({ type: 'browserWay' })}>
                   Can&apos;t use your phone? Sign in in the browser
                 </Button>
                 <Collapsible open={browserWay} innerClassName="space-y-3">
@@ -472,8 +478,8 @@ export function RemoteSettingsPage() {
       ) : (
         <>
           {status.recovered && <RecoveredNote device="computer" busy={recoveredAck.isPending} onDone={() => recoveredAck.mutate()} />}
-          <DevicesSection status={status} onAdd={() => setAdding(true)} onSignOut={() => setConfirmingSignOut(true)} busy={busy} />
-          {status.signer && <PendingSection onReview={setReviewing} />}
+          <DevicesSection status={status} onAdd={() => sendPairing({ type: 'sheet', sheet: { kind: 'add' } })} onSignOut={askSignOut} busy={busy} />
+          {status.signer && <PendingSection onReview={(row: CloudPending) => sendPairing({ type: 'sheet', sheet: { kind: 'review', row } })} />}
         </>
       )
       break
@@ -517,11 +523,11 @@ export function RemoteSettingsPage() {
         <Callout tone="error" role="alert" title="That didn't work">{failure.message}</Callout>
       )}
       {content}
-      {reviewing && <DesktopApprovalSheet row={reviewing} onClose={() => setReviewing(null)} />}
-      {adding && <DesktopAddDeviceSheet onClose={() => setAdding(false)} />}
+      {sheet.kind === 'review' && <DesktopApprovalSheet row={sheet.row} onClose={() => sendPairing({ type: 'sheet', sheet: { kind: 'none' } })} />}
+      {sheet.kind === 'add' && <DesktopAddDeviceSheet onClose={() => sendPairing({ type: 'sheet', sheet: { kind: 'none' } })} />}
       <ConfirmDialog
-        open={confirmingSignOut}
-        onOpenChange={setConfirmingSignOut}
+        open={signOutAsked(pairingUi)}
+        onOpenChange={(open) => sendPairing({ type: 'signOut', open })}
         title="Sign out of your account?"
         description={
           <>

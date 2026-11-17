@@ -1,0 +1,4 @@
+{
+  "about": "The session lifecycle states the backend sends as agent_status.status (and the session status the API reports). Rust: session/control.rs SessionStatus. Web: stores/useAgentStore/types.ts SESSION_STATUSES, written by setAgentStatus in run-state.ts. Both test against this list.",
+  "agent_status": ["idle", "working", "waiting_input", "waiting_lead", "error", "offline"]
+}

@@ -66,6 +66,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openPlanReview } from '@/stores/useAgentStore/question-state'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -632,9 +633,8 @@ export function useOverlayState({
     setDockViewRequest((prev) => ({ view: 'goal', key: (prev?.key ?? 0) + 1 }))
   }, [closeOtherMobileOverlays, isMobile, workspace])
 
-  // A new plan review brings the plan forward on desktop, once per review.
-  // Phones leave the chat on screen; the transcript card opens the plan.
-  const planReviewId = useAgentStore((s) => (s.pendingQuestion?.kind === 'plan_review' ? s.pendingQuestion.id : null))
+  // A new plan review brings the plan forward on desktop, once per review; on phones the transcript card opens it.
+  const planReviewId = useAgentStore((s) => openPlanReview(s)?.id ?? null)
   const autoOpenedReviewRef = useRef<string | null>(null)
   useEffect(() => {
     if (!dockViewsEnabled || !planReviewId || autoOpenedReviewRef.current === planReviewId) return

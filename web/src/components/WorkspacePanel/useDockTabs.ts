@@ -19,6 +19,7 @@ import { appShortcut, useAppShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { DOCK_TAB_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, dockTabStepKeys } from '@/lib/app-shortcuts'
 import { getPlatform } from '@/hooks/use-platform'
 import { takeTerminalShowRequest, useTerminalStore } from '@/stores/useTerminalStore'
+import { isShellLive } from '@/stores/terminal-state'
 
 import type { ChangedFileInfo } from './diff-helpers'
 import {
@@ -123,8 +124,8 @@ const AXIS_OF_SIDE: Record<SplitSide, Axis> = { left: 'row', right: 'row', up: '
 /** A terminal whose shell still runs: closing it asks first. */
 function isRunningTerminal(tab: DockTab | undefined): boolean {
   if (tab?.type !== 'terminal') return false
-  const status = useTerminalStore.getState().sessions[tab.termId]?.status
-  return status === 'connected' || status === 'connecting'
+  const meta = useTerminalStore.getState().sessions[tab.termId]
+  return meta !== undefined && isShellLive(meta.shellState)
 }
 
 /** A terminal with a command running in it: even its × asks first. */

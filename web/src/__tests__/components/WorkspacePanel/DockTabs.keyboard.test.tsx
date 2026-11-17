@@ -75,7 +75,7 @@ async function renderDock({ open = true, exited = false, terminals = 3, git = tr
   for (let i = 0; i < terminals; i++) useTerminalStore.getState().open({ workspace: WORKSPACE }, WORKSPACE)
   if (exited) {
     useTerminalStore.setState((state) => ({
-      sessions: Object.fromEntries(Object.entries(state.sessions).map(([id, meta]) => [id, { ...meta, status: 'exited' as const }])),
+      sessions: Object.fromEntries(Object.entries(state.sessions).map(([id, meta]) => [id, { ...meta, shellState: { kind: 'exited' as const, reason: 'exit' as const } }])),
     }))
   }
   const { WorkspacePanel } = await import('@/components/WorkspacePanel')

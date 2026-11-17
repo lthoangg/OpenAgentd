@@ -1,4 +1,4 @@
-// size-ceiling: 803 — the chat route's layout and its wiring: move the session hooks it composes into their own module
+// size-ceiling: 813 — the chat route's layout and its wiring: move the session hooks it composes into their own module
 /**
  * AgentChatView — top-level layout for the agent chat route.
  *
@@ -36,6 +36,7 @@ import { useReportShownSession } from '@/lib/island-setting'
 import { useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { previewsAvailable } from '@/api/preview'
 import { useChatPreview } from './useChatPreview'
+import { useChatPlanComments } from './useChatPlanComments'
 import { useDockCover } from './useDockCover'
 import { useSessionLinks } from './useSessionLinks'
 import { useLeadModel } from './useLeadModel'
@@ -363,6 +364,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   } = useChatPreview({ workspace, isMobile, inputRef, setWorkspacePanel, handleOpenPreview })
 
   const {
+    handleSendPlanComments,
+    handlePlanCommentsRemoved,
+    handlePlanCommentsChange,
+  } = useChatPlanComments({ isMobile, inputRef, setWorkspacePanel })
+
+  const {
     slashCommands,
     snippetCommands,
     handleSlashCommand,
@@ -494,6 +501,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       expandUserCommand={expandUserCommand}
       historyPrompts={historyPrompts}
       onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
+      onPlanCommentsRemoved={handlePlanCommentsRemoved}
+      onPlanCommentsChange={handlePlanCommentsChange}
       onValueChange={handleDraftValueChange}
       onMount={handleComposerMount}
       fileRefs={fileRefs}
@@ -757,6 +766,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               launcherFocusKey={dockLauncherFocusKey}
               handledLauncherFocusKeyRef={handledDockLauncherFocusKeyRef}
               onSendPreviewComments={handleSendPreviewComments}
+              onSendPlanComments={handleSendPlanComments}
               onActiveViewChange={setDockActiveView}
               todos={todos}
               sessionId={sessionIdState}

@@ -8,27 +8,21 @@
  */
 import { create } from 'zustand'
 import { askSideQuestion, clearSideQuestions, stopSideQuestion } from '@/api/client'
-import type { SideQuestionStatus } from '@/api/types'
+import { btwAnswerMachine, streamingAnswer, type BtwAnswerEvent, type BtwLive } from '@/stores/btw-state'
 
-export interface BtwLive {
-  /** Server id, known from ``btw_start`` on. */
-  id: string | null
-  question: string
-  text: string
-  status: SideQuestionStatus
-  error: string | null
-}
+export type { BtwLive } from '@/stores/btw-state'
 
 export interface BtwSessionState {
   open: boolean
   /** Index into the panel's exchanges; ``null`` follows the newest. */
   view: number | null
-  live: BtwLive | null
+  /** The answer streaming in this tab (``btw-state.ts``). */
+  liveAnswer: BtwLive | null
   /** Bumped whenever stored side questions changed. */
   revision: number
 }
 
-export const EMPTY_BTW: BtwSessionState = { open: false, view: null, live: null, revision: 0 }
+export const EMPTY_BTW: BtwSessionState = { open: false, view: null, liveAnswer: null, revision: 0 }
 
 interface BtwStore {
   sessions: Record<string, BtwSessionState>
@@ -64,8 +58,8 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
     sessions: {},
 
     ask: async (sessionId, question) => {
-      const previous = get().sessions[sessionId]?.live
-      if (previous?.status === 'streaming') {
+      const previous = get().sessions[sessionId]?.liveAnswer
+      if (previous?.kind === 'streaming') {
         await get().stop(sessionId)
         controllers.get(sessionId)?.abort()
       }
@@ -73,14 +67,14 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
       controllers.set(sessionId, controller)
       const current = () => controllers.get(sessionId) === controller
       // Only the newest ask of a session writes its live answer.
-      const update = (fn: (live: BtwLive) => Partial<BtwLive>) => {
+      const update = (event: BtwAnswerEvent) => {
         if (!current()) return
-        patch(sessionId, (cur) => (cur.live ? { live: { ...cur.live, ...fn(cur.live) } } : {}))
+        patch(sessionId, (cur) => (cur.liveAnswer ? { liveAnswer: btwAnswerMachine.transition(cur.liveAnswer, event) } : {}))
       }
       patch(sessionId, () => ({
         open: true,
         view: null,
-        live: { id: null, question, text: '', status: 'streaming', error: null },
+        liveAnswer: streamingAnswer(question),
       }))
       try {
         await askSideQuestion(
@@ -90,20 +84,16 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
             switch (event.type) {
               case 'btw_start':
                 // Also sent when a retry restarts the answer.
-                update(() => ({ id: event.id, text: '' }))
+                update({ type: 'start', id: event.id })
                 break
               case 'btw_delta':
-                update((live) => ({ text: live.text + event.text }))
+                update({ type: 'delta', text: event.text })
                 break
               case 'btw_done':
-                update(() => ({ text: event.answer, status: 'done' }))
+                update({ type: 'done', answer: event.answer })
                 break
               case 'btw_error':
-                update(() => ({
-                  text: event.answer,
-                  status: event.status,
-                  error: event.status === 'error' ? event.message : null,
-                }))
+                update({ type: 'ended', status: event.status, message: event.message, answer: event.answer })
                 break
             }
           },
@@ -112,11 +102,11 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
         // The stream ended without a final event (the connection dropped):
         // the server still finishes and stores the answer, so show the
         // stored row from here on.
-        if (current() && get().sessions[sessionId]?.live?.status === 'streaming') {
-          patch(sessionId, () => ({ live: null }))
+        if (current() && get().sessions[sessionId]?.liveAnswer?.kind === 'streaming') {
+          patch(sessionId, () => ({ liveAnswer: null }))
         }
       } catch (err) {
-        update(() => ({ status: 'error', error: err instanceof Error ? err.message : String(err) }))
+        update({ type: 'failed', message: err instanceof Error ? err.message : String(err) })
       } finally {
         if (current()) controllers.delete(sessionId)
         bump(sessionId)
@@ -130,18 +120,20 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
     setView: (sessionId, view) => patch(sessionId, () => ({ view })),
 
     stop: async (sessionId) => {
-      const live = get().sessions[sessionId]?.live
-      if (!live || live.status !== 'streaming') return
+      const live = get().sessions[sessionId]?.liveAnswer
+      if (!live || live.kind !== 'streaming') return
       if (live.id) {
         // The open stream then ends with ``btw_error`` (stopped) and the
         // partial answer.
         const stopped = await stopSideQuestion(sessionId, live.id).catch(() => false)
         if (stopped) return
       }
-      // Not started yet, or already over on the server: end it here.
+      // Not started yet, or already over on the server: end it here. An
+      // answer that finished meanwhile (``btw_done`` crossed the stop)
+      // stays done: only a streaming answer becomes stopped (``btw-state.ts``).
       controllers.get(sessionId)?.abort()
       controllers.delete(sessionId)
-      patch(sessionId, (cur) => (cur.live ? { live: { ...cur.live, status: 'stopped' } } : {}))
+      patch(sessionId, (cur) => (cur.liveAnswer ? { liveAnswer: btwAnswerMachine.transition(cur.liveAnswer, { type: 'stop' }) } : {}))
       bump(sessionId)
     },
 
@@ -156,7 +148,7 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
       try {
         await clearSideQuestions(sessionId)
       } finally {
-        patch(sessionId, (cur) => ({ live: null, view: null, revision: cur.revision + 1 }))
+        patch(sessionId, (cur) => ({ liveAnswer: null, view: null, revision: cur.revision + 1 }))
       }
     },
   }

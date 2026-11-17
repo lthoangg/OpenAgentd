@@ -67,6 +67,8 @@ const mockAgentStream = mock((_sid: any, _cbs: any, _signal?: any, _options?: an
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import { handleGlobalEvent } from '@/hooks/use-global-event-stream'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
+import { isLinkOpen } from '@/stores/useAgentStore/link-state'
 
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
 const store = () => useAgentStore.getState()
@@ -99,7 +101,7 @@ afterEach(() => {
 describe('a session the server is running reads as running before any stream frame', () => {
   it('starts idle, with no stream and no row patch', () => {
     expect(lead().status).toBe('idle')
-    expect(store().isAgentWorking).toBe(false)
+    expect(isRunLive(store().sessionRun)).toBe(false)
     expect(rowPatches()).toEqual([])
   })
 
@@ -111,7 +113,7 @@ describe('a session the server is running reads as running before any stream fra
 
     // No frame has arrived: the stream mock never delivers one.
     expect(lead().status).toBe('working')
-    expect(store().isAgentWorking).toBe(true)
+    expect(isRunLive(store().sessionRun)).toBe(true)
     expect(rowPatches()).toEqual([{ kind: 'session_running', sessionId: 'sess-1', running: true }])
   })
 
@@ -175,7 +177,7 @@ describe('a session the server is running reads as running before any stream fra
     mockSessionHistory.mockImplementation(() => Promise.resolve(history({ running: false })))
     await store().loadSession('sess-1', '/repo')
 
-    expect(store().isAgentWorking).toBe(false)
+    expect(isRunLive(store().sessionRun)).toBe(false)
     expect(rowPatches().at(-1)).toEqual({ kind: 'session_running', sessionId: 'sess-1', running: false })
   })
 
@@ -200,9 +202,9 @@ describe('a send the server queues behind a turn this client had not seen', () =
     expect(store()._pendingMessages.map((m) => m.id)).toEqual(['q-1'])
     expect(lead().currentBlocks).toEqual([])
     expect(lead().status).toBe('working')
-    expect(store().isAgentWorking).toBe(true)
+    expect(isRunLive(store().sessionRun)).toBe(true)
     expect(rowPatches()).toEqual([{ kind: 'session_running', sessionId: 'sess-1', running: true }])
-    expect(store().isConnected).toBe(true)
+    expect(isLinkOpen(store().streamLink)).toBe(true)
     // What this client showed when the message left, for the next report.
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0][0])).toContain('queued a message this client sent as a new turn (working=false, lead=idle, connected=false)')
@@ -252,7 +254,7 @@ describe('a turn that ended still reads as ended', () => {
     store()._handleSSEEvent('done', {})
 
     expect(lead().status).toBe('idle')
-    expect(store().isAgentWorking).toBe(false)
+    expect(isRunLive(store().sessionRun)).toBe(false)
     expect(rowPatches().at(-1)).toEqual({ kind: 'session_running', sessionId: 'sess-1', running: false })
   })
 

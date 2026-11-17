@@ -5,6 +5,8 @@
  */
 import { readBlocks } from '@/utils/blocks'
 import { appendLocalBlocks, ensureAgent, revokeBlobUrlsFromBlocks } from './helpers'
+import { openQuestion } from './question-state'
+import { applyRun, markRowStopped, reportAgents, setAgentStatus } from './run-state'
 import type { AgentStore, StoreGet, StoreSet } from './types'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
@@ -110,9 +112,9 @@ export function onQueuedTurnStart(set: StoreSet, get: StoreGet, d: Record<string
   set((draft) => {
     const targetAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
     ensureAgent(draft, targetAgent)
-    draft.isAgentWorking = true
+    applyRun(draft, { type: 'start' })
     draft.error = null
-    draft.agentStreams[targetAgent].status = 'working'
+    setAgentStatus(draft.agentStreams[targetAgent], 'working')
     const queued = draft._pendingMessages.filter((msg) => {
       if (draft.sessionId && msg.sessionId && msg.sessionId !== draft.sessionId) return false
       return messageIds === null || messageIds.has(msg.id)
@@ -304,28 +306,23 @@ export function onQueuedTurnStart(set: StoreSet, get: StoreGet, d: Record<string
 export function onDone(set: StoreSet) {
   set((draft) => {
     endAttachReplay(draft)
-    draft.isAgentWorking = false
     // An open question deliberately survives `done`. The suspension is
     // durable: the row stays `pending`, and a reload brings the card back
     // fully answerable, so closing it here would show a resolution the
     // server never made. Real endings (answer, dismiss, supersede, stop)
-    // all broadcast their own resolution.
+    // all broadcast their own resolution. Until then the lead waits on the
+    // answer and the turn stays live, as a reload shows it.
+    const asking = openQuestion(draft) !== null
     const completedAtMs = Date.now()
     Object.keys(draft.agentStreams).forEach((name) => {
       const stream = draft.agentStreams[name]
       commitLiveBlocks(draft, stream, completedAtMs)
       stream._turnStartedAt = null
-      if (stream.status !== 'error' && stream.status !== 'offline') {
-        stream.status = 'idle'
-      }
+      if (name === draft.leadName && asking) setAgentStatus(stream, 'waiting_input')
+      else if (stream.status !== 'error' && stream.status !== 'offline') setAgentStatus(stream, 'idle')
     })
-    if (draft.sessionId) {
-      draft._runningPatchedFor = null
-      draft.cacheInvalidations.push({
-        kind: 'session_running',
-        sessionId: draft.sessionId,
-        running: false,
-      })
-    }
+    reportAgents(draft)
+    // A session waiting on an answer keeps its row's needs-input mark.
+    if (!asking) markRowStopped(draft)
   })
 }

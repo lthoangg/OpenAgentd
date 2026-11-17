@@ -50,9 +50,11 @@ waiting or stopped turn, the undo notice): one `border-subtle` frame, no
 icon before the title, nothing framed inside. The decision sits on the card:
 a question has only **Back** and **Next**, with **Send** in Next's place on
 the last (or only) question (unanswered questions go out as skipped, the
-caption says how many) and keys 1–9 for its options; a plan review has **Approve** (or **Approve
-and keep going (N turns)** while a goal would start), **Request changes**,
-which opens a focused comment box at once, and **Open plan**. A waiting or
+caption says how many) and keys 1–9 for its options. A plan review is the
+exception: its card shows the outcome and **Open plan**, and the decision is
+in the Plan tab: **Approve** (or **Approve and keep going (N turns)** while a
+goal would start) and **Reply in chat**, which moves the comments to the chat
+box as a chip, sent as a normal message with a **Plan comments** card. A waiting or
 stopped turn says why and since when, lists its ways forward and has
 **Copy details**. Content text in cards is at least 12px (`text-xs`);
 `text-meta` is for chips and meta lines.

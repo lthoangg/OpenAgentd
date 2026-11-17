@@ -70,6 +70,10 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   built-in server the row points to the app's **Updates** section, which
   updates both. The app's install dialog now says that running agents resume
   after the restart (they always did).
+  When the app on that computer doesn't pick up the request within a
+  minute (it is closed, or asleep), the device that asked says "Couldn't
+  start the update" with **Retry**, instead of "Updating…" for a quarter of
+  an hour. `[v3.59.0]`
 - **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `agentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. Since `[v3.29.0]` the desktop app never connects to a saved server on its own: launch always starts the builtin backend, and saved servers are listed with Online/Offline and Connect, joining only the window where you click Connect (the next launch is back on builtin). The mobile app, which has no builtin backend, still reconnects to its last server.

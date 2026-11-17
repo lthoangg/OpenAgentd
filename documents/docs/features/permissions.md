@@ -33,6 +33,13 @@ Single-user trust model. The host is trusted. The operator is the user.
   `OPENAGENTD_*` variables `[v3.32.0]`: a project reading `APP_ENV` no longer
   sees the app's `production`, and a development build started from the
   agent's shell no longer opens the installed app's database.
+- **Stored credentials masked in tool output** `[v3.59.0]` — any value in
+  `credentials.yaml` (the agent's secrets, provider keys, connector secrets,
+  OAuth tokens) that shows up in a tool's result or live output reads
+  `[secret NAME]` before the model, the transcript, the event stream or
+  telemetry sees it, including a value split across output chunks. Values
+  under 8 characters are not masked, and a value the agent deliberately
+  encodes is not caught.
 - **`credentials.yaml` secret store** `[v3.30.0]` — every saved API key, OAuth
   login, and MCP client secret lives in one versioned `credentials.yaml` in the
   config dir, written atomically under a file lock with owner-only (`0600`)

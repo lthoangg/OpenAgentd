@@ -13,6 +13,8 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { FileRefContext } from '../FileRefLink'
 import { findCommittedMentions } from '../InputComposer/mentions'
 import { DesignFeedbackCard } from '../DesignFeedbackViews'
+import { PlanCommentsCard } from '../PlanReview/PlanCommentsViews'
+import { splitPlanComments } from '../PlanReview/plan-comments-block'
 import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
@@ -312,7 +314,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
         aria-label={`Preview ${item.name}`}
       >
         {imgError
-          ? <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">Couldn't load</div>
+          ? <div className="flex h-30 w-30 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">Couldn't load</div>
           : (
             <img
               src={item.src}
@@ -325,7 +327,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
               onError={() => setImgError(true)}
               // Held at the failed tile's 120px until the first load, so the
               // bubble does not grow from 0px under the reader.
-              className={cn('h-auto max-h-[200px] max-w-[200px] rounded-sm object-cover', box.pending && 'min-h-[120px] min-w-[120px] bg-(--bg-key)')}
+              className={cn('h-auto max-h-50 max-w-50 rounded-sm object-cover', box.pending && 'min-h-30 min-w-30 bg-(--bg-key)')}
             />
           )
         }
@@ -344,7 +346,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
       <span className="shrink-0 text-(--color-text-muted)">
         <FileTypeIcon name={item.name} size={14} />
       </span>
-      <span className="max-w-[160px] truncate font-medium">{item.name}</span>
+      <span className="max-w-40 truncate font-medium">{item.name}</span>
     </button>
   )
 }
@@ -410,9 +412,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     setActionsOpen(true)
   })
 
-  // Design feedback from the Preview tab shows as cards, not raw text; the
-  // collapse and mention rendering below only see the typed text.
-  const { text, blocks: feedbackBlocks } = splitDesignFeedback(content)
+  // Design feedback from the Preview tab and comments from the Plan tab show
+  // as cards, not raw text; the collapse and mention rendering below only
+  // see the typed text.
+  const { text: withoutPlan, block: planComments } = splitPlanComments(content)
+  const { text, blocks: feedbackBlocks } = splitDesignFeedback(withoutPlan)
   const lines = text.split('\n')
   const renderedLines = useRenderedLines(textRef, text)
   const needsCollapse = (renderedLines ?? estimateWrappedLines(text)) > USER_COLLAPSE_AFTER_LINES
@@ -617,6 +621,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
          {feedbackBlocks.map((feedback, index) => (
            <DesignFeedbackCard key={index} feedback={feedback} onMentionFileOpen={onMentionFileOpen} />
          ))}
+         {planComments && <PlanCommentsCard block={planComments} />}
 
          {/* The prompt's row: model, Edit, Copy, time. Always rendered: Copy and
              Edit do not depend on the metadata, and a pending prompt has neither

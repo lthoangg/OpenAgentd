@@ -641,6 +641,14 @@ pub fn resolve_secret_refs(value: &str) -> String {
 /// keys are not consulted (a project's server: only the environment and
 /// the named secrets its approval card listed).
 pub fn resolve_secret_refs_with(value: &str, providers: bool) -> String {
+    resolve_secret_refs_in(value, providers, None)
+}
+
+/// [`resolve_secret_refs_with`], then the secrets the user gave the agent:
+/// for a project's server (`project` set), the value that project uses; for
+/// the user's own servers, which run for every project, only the value
+/// saved for every project.
+pub fn resolve_secret_refs_in(value: &str, providers: bool, project: Option<&str>) -> String {
     if !env_ref_re().is_match(value) {
         return value.to_string();
     }
@@ -651,9 +659,18 @@ pub fn resolve_secret_refs_with(value: &str, providers: bool) -> String {
                 return v;
             }
             let stored = if providers { appv3_core::credentials::stored(None, name) } else { appv3_core::credentials::stored_secret(name) };
-            stored.unwrap_or_else(|| c[0].to_string())
+            stored.or_else(|| agent_secret(name, project)).unwrap_or_else(|| c[0].to_string())
         })
         .into_owned()
+}
+
+fn agent_secret(name: &str, project: Option<&str>) -> Option<String> {
+    let f = appv3_core::credentials::snapshot();
+    let hit = match project {
+        Some(p) => appv3_core::agent_secrets::resolve(&f, name, p),
+        None => f.agent_secrets.get(name).and_then(|l| l.iter().find(|s| s.for_all() && !s.value.is_empty())),
+    };
+    hit.map(|s| s.value.clone())
 }
 
 pub fn resolve_env_dict(env: &IndexMap<String, String>) -> IndexMap<String, String> {
@@ -661,7 +678,12 @@ pub fn resolve_env_dict(env: &IndexMap<String, String>) -> IndexMap<String, Stri
 }
 
 pub fn resolve_env_dict_with(env: &IndexMap<String, String>, providers: bool) -> IndexMap<String, String> {
-    env.iter().map(|(k, v)| (k.clone(), resolve_secret_refs_with(v, providers))).collect()
+    resolve_env_dict_in(env, providers, None)
+}
+
+/// [`resolve_env_dict_with`] with the agent's secrets of `project` (see [`resolve_secret_refs_in`]).
+pub fn resolve_env_dict_in(env: &IndexMap<String, String>, providers: bool, project: Option<&str>) -> IndexMap<String, String> {
+    env.iter().map(|(k, v)| (k.clone(), resolve_secret_refs_in(v, providers, project))).collect()
 }
 
 #[cfg(test)]

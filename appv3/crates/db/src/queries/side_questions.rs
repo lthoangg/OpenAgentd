@@ -7,12 +7,56 @@
 use crate::codec::{api_dt, api_uuid, db_id, json_col, json_db, new_id, now_db};
 use crate::pool::DbPool;
 use anyhow::Result;
+use appv3_core::machine::Machine;
 use serde_json::{json, Value};
 
 pub const SIDE_STREAMING: &str = "streaming";
 pub const SIDE_DONE: &str = "done";
 pub const SIDE_ERROR: &str = "error";
 pub const SIDE_STOPPED: &str = "stopped";
+
+/// A side question's status column (`appv3/AGENTS.md` → State machines): it
+/// streams, then ends once. The row is the state; [`finish_side_question`]
+/// makes the one move, guarded in SQL by `status = 'streaming'`.
+pub struct SideStatusMachine;
+
+/// Ending a side question with a status.
+pub struct Finish<'a>(pub &'a str);
+
+impl Machine for SideStatusMachine {
+    const NAME: &'static str = "side question";
+    const TRANSITIONS: &'static [(&'static str, &'static str, &'static str)] =
+        &[("streaming", "finish:done", "done"), ("streaming", "finish:error", "error"), ("streaming", "finish:stopped", "stopped")];
+    type State = &'static str;
+    type Event = Finish<'static>;
+
+    fn state_kind(s: &&'static str) -> &'static str {
+        s
+    }
+
+    fn event_kind(e: &Finish<'static>) -> &'static str {
+        match e.0 {
+            SIDE_DONE => "finish:done",
+            SIDE_ERROR => "finish:error",
+            SIDE_STOPPED => "finish:stopped",
+            _ => "finish:streaming",
+        }
+    }
+
+    fn step(s: &&'static str, e: &Finish<'static>) -> Option<&'static str> {
+        match (*s, e.0) {
+            (SIDE_STREAMING, SIDE_DONE) => Some(SIDE_DONE),
+            (SIDE_STREAMING, SIDE_ERROR) => Some(SIDE_ERROR),
+            (SIDE_STREAMING, SIDE_STOPPED) => Some(SIDE_STOPPED),
+            _ => None,
+        }
+    }
+}
+
+/// The final status `status` names, if it is one a side question may end with.
+fn final_status(status: &str) -> Option<&'static str> {
+    [SIDE_DONE, SIDE_ERROR, SIDE_STOPPED].into_iter().find(|s| *s == status).and_then(|s| SideStatusMachine::step(&SIDE_STREAMING, &Finish(s)))
+}
 
 #[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct SideQuestion {
@@ -83,20 +127,28 @@ pub struct SideOutcome<'a> {
     pub usage: Option<&'a Value>,
 }
 
-/// Write the final state of a side question. Returns whether a row matched.
+/// Write the final state of a side question that is still streaming.
+/// Returns whether it was (`false`: it had already ended, or is gone).
 pub async fn finish_side_question(pool: &DbPool, session_id: &str, id: &str, out: SideOutcome<'_>) -> Result<bool> {
+    let Some(status) = final_status(out.status) else {
+        anyhow::bail!("illegal_transition machine=side question from=streaming event=finish:{}", out.status);
+    };
     let usage = out.usage.map(|u| json_db(Some(u)));
-    let res = sqlx::query("UPDATE side_questions SET status = ?, answer = ?, error = ?, model = ?, usage = ?, updated_at = ? WHERE session_id = ? AND id = ?")
-        .bind(out.status)
-        .bind(out.answer)
-        .bind(out.error)
-        .bind(out.model)
-        .bind(usage)
-        .bind(now_db())
-        .bind(db_id(session_id))
-        .bind(db_id(id))
-        .execute(pool)
-        .await?;
+    // Streaming is the only state a side question leaves, once: a finished
+    // answer is never overwritten (a list healing a row it read as
+    // streaming just before the answer landed).
+    let res =
+        sqlx::query("UPDATE side_questions SET status = ?, answer = ?, error = ?, model = ?, usage = ?, updated_at = ? WHERE session_id = ? AND id = ? AND status = 'streaming'")
+            .bind(status)
+            .bind(out.answer)
+            .bind(out.error)
+            .bind(out.model)
+            .bind(usage)
+            .bind(now_db())
+            .bind(db_id(session_id))
+            .bind(db_id(id))
+            .execute(pool)
+            .await?;
     Ok(res.rows_affected() > 0)
 }
 
@@ -153,6 +205,41 @@ mod tests {
 
     const SID: &str = "0190f2a8-7c1e-7d3a-9b2c-111111111111";
     const OTHER: &str = "0190f2a8-7c1e-7d3a-9b2c-222222222222";
+
+    #[test]
+    fn the_statuses_are_the_ones_the_database_accepts() {
+        assert_eq!([SIDE_STREAMING, SIDE_DONE, SIDE_ERROR, SIDE_STOPPED], crate::migrations::status_values("side_questions"));
+    }
+
+    #[test]
+    fn a_side_question_moves_only_from_streaming_to_an_end() {
+        appv3_core::machine::check_table::<SideStatusMachine>(
+            &[SIDE_STREAMING, SIDE_DONE, SIDE_ERROR, SIDE_STOPPED],
+            &[Finish(SIDE_DONE), Finish(SIDE_ERROR), Finish(SIDE_STOPPED), Finish(SIDE_STREAMING)],
+        );
+    }
+
+    #[tokio::test]
+    async fn finishing_with_streaming_is_refused() {
+        let (_d, pool) = pool().await;
+        let q = insert_side_question(&pool, SID, "why?").await.unwrap();
+        let out = SideOutcome { status: SIDE_STREAMING, answer: "", ..Default::default() };
+        assert!(finish_side_question(&pool, SID, &q.id, out).await.unwrap_err().to_string().contains("illegal_transition"));
+        assert_eq!(list_side_questions(&pool, SID, 10).await.unwrap()[0].status, SIDE_STREAMING);
+    }
+
+    #[tokio::test]
+    async fn a_side_question_finishes_once() {
+        let (_d, pool) = pool().await;
+        let q = insert_side_question(&pool, SID, "why?").await.unwrap();
+        let done = SideOutcome { status: SIDE_DONE, answer: "because", ..Default::default() };
+        assert!(finish_side_question(&pool, SID, &q.id, done).await.unwrap());
+        // A list that read it as streaming before the answer landed heals it late.
+        let stale = SideOutcome { status: SIDE_STOPPED, answer: "", ..Default::default() };
+        assert!(!finish_side_question(&pool, SID, &q.id, stale).await.unwrap());
+        let row = list_side_questions(&pool, SID, 10).await.unwrap().remove(0);
+        assert_eq!((row.status.as_str(), row.answer.as_str()), (SIDE_DONE, "because"));
+    }
 
     #[tokio::test]
     async fn insert_finish_list_count_clear() {

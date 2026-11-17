@@ -2,7 +2,46 @@
 //! own binary and uses only some of them.
 #![allow(dead_code)]
 
+use std::path::Path;
 use std::time::{Duration, Instant};
+
+/// A shell command that waits until `file` exists, then prints `then`. The
+/// shell tool runs PowerShell on Windows, where the POSIX loop is a syntax
+/// error that ends at once, so the command differs there.
+pub fn wait_for_file(file: &Path, then: &str) -> String {
+    if cfg!(windows) {
+        format!("while (-not (Test-Path '{}')) {{ Start-Sleep -Milliseconds 50 }}; '{then}'", file.display())
+    } else {
+        format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo {then}", file.display())
+    }
+}
+
+/// Point every settings root, `HOME` and the agents folder at `root`, with
+/// title generation off and one `code` agent on the mock model. Settings are
+/// process-wide, so call it once per test binary.
+pub fn setup_roots(root: &std::path::Path) {
+    for (k, d) in [
+        ("OPENAGENTD_DATA_DIR", "data"),
+        ("OPENAGENTD_CONFIG_DIR", "config"),
+        ("OPENAGENTD_STATE_DIR", "state"),
+        ("OPENAGENTD_CACHE_DIR", "cache"),
+        ("OPENAGENTD_WORKSPACE_DIR", "ws"),
+    ] {
+        std::env::set_var(k, root.join(d));
+    }
+    std::env::set_var("HOME", root.join("home"));
+    std::env::set_var("USERPROFILE", root.join("home"));
+    std::env::remove_var("CHAT_WORKSPACE_DIR");
+    std::env::remove_var("AGENTS_DIR");
+    std::env::set_var("OPENAGENTD_SHELL_SNAPSHOT", "false");
+    std::fs::create_dir_all(root.join("home")).unwrap();
+    std::fs::create_dir_all(root.join("config")).unwrap();
+    std::fs::write(root.join("config").join("settings.yaml"), "title_generation:\n  enabled: false\n").unwrap();
+    appv3_core::settings::install(appv3_core::settings::Settings::from_env());
+    let agents = appv3_core::settings::settings().agents_dir.clone();
+    std::fs::create_dir_all(&agents).unwrap();
+    std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:mock\ntools: []\n---\nYou are the coding agent.\n").unwrap();
+}
 
 /// How long a test waits for something the runtime does in the background.
 /// Far longer than it takes, so a loaded machine does not fail the test.

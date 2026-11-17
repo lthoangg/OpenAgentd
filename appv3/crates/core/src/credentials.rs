@@ -34,6 +34,9 @@ pub struct CredentialsFile {
     pub providers: IndexMap<String, Vec<Credential>>,
     #[serde(default, deserialize_with = "scalar_map")]
     pub secrets: IndexMap<String, String>,
+    /// Secrets the user gave the agent, by name (see [`crate::agent_secrets`]).
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty", deserialize_with = "null_default")]
+    pub agent_secrets: IndexMap<String, Vec<crate::agent_secrets::AgentSecret>>,
 }
 
 fn default_version() -> u32 {
@@ -98,7 +101,12 @@ impl std::fmt::Debug for Credential {
 
 impl std::fmt::Debug for CredentialsFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CredentialsFile").field("version", &self.version).field("providers", &self.providers).field("secrets", &self.secrets.keys().collect::<Vec<_>>()).finish()
+        f.debug_struct("CredentialsFile")
+            .field("version", &self.version)
+            .field("providers", &self.providers)
+            .field("secrets", &self.secrets.keys().collect::<Vec<_>>())
+            .field("agent_secrets", &self.agent_secrets.keys().collect::<Vec<_>>())
+            .finish()
     }
 }
 

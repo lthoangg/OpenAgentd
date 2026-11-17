@@ -5,6 +5,7 @@ import {
   LAST_ROUTE_KEY,
   lastRouteStorageKey,
   resolveStartupRoute,
+  shouldRememberRoute,
 } from '@/lib/route-restore'
 import { router } from '@/router'
 
@@ -108,6 +109,24 @@ describe('resolveStartupRoute', () => {
     expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/'), savedRoute: '/abc' })).toBe('/abc')
     expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/'), savedRoute: '/' })).toBeNull()
     expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/abc'), savedRoute: '/def' })).toBeNull()
+  })
+})
+
+describe('Usage and Scheduled links', () => {
+  const at = (fullPath: string) => ({ pathname: fullPath.replace(/[?#].*$/, ''), fullPath })
+
+  it('are not remembered: they open an overlay and hand the address back to /', () => {
+    expect(shouldRememberRoute('/telemetry')).toBe(false)
+    expect(shouldRememberRoute('/scheduler')).toBe(false)
+    expect(shouldRememberRoute('/')).toBe(false)
+    expect(shouldRememberRoute('/index.html')).toBe(false)
+    expect(shouldRememberRoute('/abc')).toBe(true)
+  })
+
+  it('saved by an older build, do not reopen the overlay on every launch', () => {
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/'), savedRoute: '/telemetry?session=s1' })).toBeNull()
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/'), savedRoute: '/scheduler?task=t1' })).toBeNull()
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/index.html'), savedRoute: '/telemetry' })).toBe('/')
   })
 })
 

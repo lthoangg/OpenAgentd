@@ -39,17 +39,22 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   `submit_plan` tool before `[v3.32.0]`), which pauses the turn for review in the **Plan** tab of the
   review dock (full screen on mobile; it opens by itself on desktop). The tab
   shows the rendered plan and its status, and offers **Approve** and
-  **Request changes**. Select plan text and choose **Comment** to attach a
-  comment to that passage: commented passages stay highlighted, the review
-  footer lists your comments (click one to jump to its passage, or remove it),
-  and an optional box takes overall feedback. **Request changes** sends every
-  comment with its quoted passage plus the overall feedback in one answer;
+  **Reply in chat**. Select plan text and choose **Comment** to attach a
+  comment to that passage: commented passages stay highlighted, and the review
+  footer lists your comments (click one to jump to its passage, or remove it);
   unsent comments survive switching tabs. Approving carries on implementing
-  the plan (switching the session to Code mode if in Plan mode); requesting
-  changes resumes with your feedback in the current mode. The transcript shows a
-  plan review card with the outcome, your comments and a button that opens
-  the plan; **Open Plan** in the command palette (⌘K) does the same whenever
-  the session has a plan. Replying in chat instead supersedes the review.
+  the plan (switching the session to Code mode if in Plan mode). Changes go
+  through the chat `[v3.59.0]`: **Reply in chat (N)** moves your comments into
+  the chat box as one **Plan comments** chip (its × puts them back in the
+  plan), you add anything else there, and you send a normal message. The
+  message shows in the chat with a **Plan comments** card listing each quoted
+  passage and your comment, and it closes the review as superseded; the agent
+  revises the plan and submits it again. Approve waits until no comment is
+  left unsent. Before v3.59.0 the tab had its own feedback box and
+  **Request changes** answered the review out of sight. The transcript shows
+  a plan review card with the outcome and a button that opens the plan;
+  **Open Plan** in the command palette (⌘K) does the same whenever the
+  session has a plan.
   Older `<proposed_plan>` answers still render as read-only cards.
   A saved `plan` call in the transcript has **View plan**, which opens the
   Plan tab `[v3.22.0]`. The tab shows the plan once it is saved; v3.21.0
@@ -73,8 +78,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     Since `[v3.32.0]` the plan reads **Done** once its goal is achieved or,
     without a goal, once every task is finished, and approving a plan asks
     the agent for one task per milestone, named after it.
-    Since `[v3.49.0]` the review footer (comments, feedback, Approve and
-    Request changes) lines up with the plan's text column instead of
+    Since `[v3.49.0]` the review footer (comments and its actions) lines up
+    with the plan's text column instead of
     stretching across a wide or maximized Review panel.
   - **Keep going until done** `[v3.32.0]` — the plan review footer has a
     **Keep going until done** checkbox and, beside it, the turns for this
@@ -98,7 +103,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     later edits. Claiming again with nothing run since a rejection is turned
     down without another check. A check that fails to give a verdict neither
     accepts nor rejects the claim, so the agent can claim again; three such
-    failures in a row pause the goal. Goal turns run unattended by default: the
+    failures in a row pause the goal. If you pause the goal while a check
+    runs, the pause stands even when the check finds it met, and the Goal
+    tab shows the verdict under why it paused `[v3.59.0]`. Goal turns run unattended by default: the
     agent decides instead of asking and notes each choice, and a plan it
     submits is saved without opening a review. **Settings → Sessions** sets
     whether Keep going starts ticked and the turn limit, and allows questions
@@ -238,12 +245,16 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     **Send** on the last one. Keys 1–9 pick an option (the next number is
     "Type your own answer") and Enter sends. Double-clicking an answer
     picks it and sends (or goes to the next question).
+  - A turn that ends while its question is still open keeps reading as
+    waiting for your answer (Stop stays, the sidebar row keeps its
+    needs-input mark), the same as after a reload; it used to read as
+    finished until the page was reloaded. `[v3.59.0]`
   - An open tool row's arguments and output show in full, no longer cut at
     its edges.
   - A plan review is decided in the Plan tab: **Approve** (or **Approve and
     keep going (N turns)** when a goal would start, with the real count) and
-    **Request changes**; select text there to comment on it. Its card in
-    the chat shows the outcome and **Open plan**.
+    **Reply in chat** (**Request changes** before v3.59.0); select text there
+    to comment on it. Its card in the chat shows the outcome and **Open plan**.
   - Each queued message has **Remove**, and the notice that follows has
     **Undo**.
   - The undo notice is one card: "Last 2 messages undone. Redo brings them

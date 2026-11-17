@@ -53,17 +53,17 @@ describe('Switch', () => {
     press(10)
     expect(toggle().hasAttribute('data-pressed')).toBe(true)
     // Off: it grows rightwards from the left edge.
-    expect(thumb().className).toContain('w-[22px]')
+    expect(thumb().className).toContain('w-5.5')
     expect(thumb().className).toContain('translate-x-0')
     fireEvent.pointerUp(toggle(), { clientX: 10, pointerId: 1 })
     expect(toggle().hasAttribute('data-pressed')).toBe(false)
 
     rerender(<Switch checked aria-label="Wi-Fi" />)
-    expect(thumb().className).toContain('translate-x-[18px]')
+    expect(thumb().className).toContain('translate-x-4.5')
     press(10)
     // On: it grows leftwards from the right edge (22px thumb rests at 12px).
-    expect(thumb().className).toContain('w-[22px]')
-    expect(thumb().className).toContain('translate-x-[12px]')
+    expect(thumb().className).toContain('w-5.5')
+    expect(thumb().className).toContain('translate-x-3')
   })
 
   it('drags to the other side and sets it on release', () => {
@@ -71,7 +71,7 @@ describe('Switch', () => {
     render(<Switch checked={false} onCheckedChange={onCheckedChange} aria-label="Wi-Fi" />)
     press(10)
     fireEvent.pointerMove(toggle(), { clientX: 30, pointerId: 1 })
-    expect(thumb().className).toContain('translate-x-[12px]')
+    expect(thumb().className).toContain('translate-x-3')
     fireEvent.pointerUp(toggle(), { clientX: 30, pointerId: 1 })
     expect(onCheckedChange).toHaveBeenCalledTimes(1)
     expect(onCheckedChange).toHaveBeenCalledWith(true)

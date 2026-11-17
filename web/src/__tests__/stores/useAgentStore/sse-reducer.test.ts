@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 beforeEach(() => {
   useAgentStore.setState({
@@ -11,7 +12,7 @@ beforeEach(() => {
     leadName: null,
     agentNames: [],
     sessionId: "sid-1",
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     error: null,
     setupRequired: null,
     sessionInteractionMode: "code",
@@ -47,7 +48,7 @@ describe("agent_not_configured", () => {
     expect(s.agentStreams.lead.status).toBe("error")
     expect(s.agentStreams.lead.lastError).toBe("No model is set")
     expect(s.agentNames).toEqual(["lead"])
-    expect(s.isAgentWorking).toBe(false)
+    expect(isRunLive(s.sessionRun)).toBe(false)
     expect(s.setupRequired).toEqual({
       agent: "lead",
       message: "No model is set",

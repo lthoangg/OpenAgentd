@@ -3,8 +3,11 @@
  * with ``submit: true`` (or the former ``submit_plan`` tool).
  *
  * It marks where the agent submitted the plan, says how the review ended, and
- * opens the plan. It never decides the review: Approve and Request changes
- * live only in the Plan panel, which this card opens.
+ * opens the plan. It never decides the review: Approve and Reply in chat
+ * live only in the Plan panel, which this card opens. Comments sent with
+ * Reply in chat close the review as superseded and show in the user's
+ * message; an older review answered with Request changes still shows its
+ * comments here.
  *
  * The outcome comes from the store while this client saw the review close,
  * and otherwise from the persisted tool result, which is all a cold load has.
@@ -20,8 +23,9 @@ import { useIsPhone } from '@/hooks/use-is-phone'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 import { parsePlanReview } from './plan-comments'
 
 /** Mirrors the pending-question placeholder the server writes as the result. */
@@ -182,7 +186,7 @@ function revisionIn(text: string | undefined): number | null {
 
 /** The plan review open in this session, or ``null``. */
 function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
-  const question = state.pendingQuestion
+  const question = openQuestion(state)
   return question !== null && question.kind === 'plan_review' && state.sessionId !== null && question.sessionId === state.sessionId
     ? question
     : null
@@ -193,7 +197,7 @@ function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
  * stays in sight (phone mockup J6, desktop 6.3). View opens the plan: full
  * screen on a phone, the Plan tab on desktop (which a new review already
  * brought forward once, but may since be closed or covered). Approve and
- * Request changes stay in the plan itself.
+ * Reply in chat stay in the plan itself.
  */
 export function PinnedPlanReview() {
   const isPhone = useIsPhone()

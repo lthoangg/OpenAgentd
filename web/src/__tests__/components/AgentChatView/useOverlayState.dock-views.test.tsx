@@ -16,7 +16,8 @@ import { useOverlayState, type UseOverlayStateArgs } from '@/components/AgentCha
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
@@ -37,12 +38,12 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 
 beforeEach(() => {
   useUIStore.setState({ schedulerOpen: false, runPickerOpen: false, paletteOpen: false, quickOpenOpen: false })
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ questionCard: questionCardOf(null) })
   useBtwStore.setState({ sessions: {} })
 })
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ questionCard: questionCardOf(null) })
 })
 
 const planReview = (id: string): PendingQuestion => ({
@@ -176,22 +177,22 @@ describe('useOverlayState Plan view', () => {
   it('brings the plan forward once per new plan review on desktop', () => {
     const { result } = renderOverlay()
 
-    act(() => useAgentStore.setState({ pendingQuestion: planReview('q-1') }))
+    act(() => useAgentStore.setState({ questionCard: questionCardOf(planReview('q-1')) }))
     expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 1 })
 
     // The user closes the dock; the same review must not reopen it.
     act(() => result.current.setWorkspacePanel(null))
-    act(() => useAgentStore.setState({ pendingQuestion: { ...planReview('q-1') } }))
+    act(() => useAgentStore.setState({ questionCard: questionCardOf({ ...planReview('q-1') }) }))
     expect(result.current.workspacePanel).toBeNull()
 
-    act(() => useAgentStore.setState({ pendingQuestion: planReview('q-2') }))
+    act(() => useAgentStore.setState({ questionCard: questionCardOf(planReview('q-2')) }))
     expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 2 })
   })
 
   it('leaves the chat on screen for a plan review on mobile', () => {
     const { result } = renderOverlay({ isMobile: true })
 
-    act(() => useAgentStore.setState({ pendingQuestion: planReview('q-1') }))
+    act(() => useAgentStore.setState({ questionCard: questionCardOf(planReview('q-1')) }))
 
     expect(result.current.dockViewRequest).toBeNull()
     expect(result.current.workspacePanel).toBeNull()
@@ -200,7 +201,7 @@ describe('useOverlayState Plan view', () => {
   it('does not open the dock for an ask_user question', () => {
     const { result } = renderOverlay()
 
-    act(() => useAgentStore.setState({ pendingQuestion: { ...planReview('q-1'), kind: undefined } }))
+    act(() => useAgentStore.setState({ questionCard: questionCardOf({ ...planReview('q-1'), kind: undefined }) }))
 
     expect(result.current.dockViewRequest).toBeNull()
   })

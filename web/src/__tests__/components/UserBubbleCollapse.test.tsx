@@ -6,6 +6,7 @@ import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
 import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
+import { composeWithPlanComments, type PlanCommentsBlock } from "@/components/PlanReview/plan-comments-block"
 
 // Seed sessionId so AgentView workspace links work
 beforeEach(() => {
@@ -705,6 +706,39 @@ describe("AgentView — design feedback in user messages", () => {
     const content = composeWithDesignFeedback("", [feedback])
     const { container } = render(<AgentView blocks={[{ id: "u2", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
     expect(screen.getByRole("region", { name: "Preview comments · 2 comments" })).toBeTruthy()
+    expect(container.querySelector(".selectable-text")).toBeNull()
+  })
+})
+
+describe("AgentView — plan comments in user messages", () => {
+  const block: PlanCommentsBlock = {
+    path: ".agents/plans/ship-it-0000abcd.md",
+    revision: 3,
+    comments: [
+      { quote: "Approach: 3 to 7 milestones", text: "Split milestone 2 in two" },
+      { quote: "Risks: the agent only sees", text: "Add a test for this" },
+    ],
+  }
+
+  it("shows the typed text in the bubble and the comments as a card under it", () => {
+    const content = composeWithPlanComments("Also keep the old path", block)
+    render(<AgentView blocks={[{ id: "u1", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
+    expect(screen.getByText("Also keep the old path")).toBeTruthy()
+    const card = screen.getByRole("region", { name: "Plan comments · 2 comments" })
+    expect(card.textContent).toContain("rev 3")
+    expect(card.textContent).toContain("Approach: 3 to 7 milestones")
+    expect(card.textContent).toContain("Split milestone 2 in two")
+    expect(card.textContent).toContain("Add a test for this")
+    expect(screen.queryByText(/<plan-comments/)).toBeNull()
+    expect(screen.queryByLabelText("Expand")).toBeNull()
+  })
+
+  it("renders a comments-only message without an empty bubble, beside design feedback", () => {
+    const feedback: DesignFeedback = { where: "http://localhost:5173/", device: "Desktop", items: [{ n: 1, element: "<h1>", text: "", selector: "h1", source: null, html: "<h1>", styles: "", page: null, comment: "Bigger" }] }
+    const content = composeWithPlanComments(composeWithDesignFeedback("", [feedback]), block)
+    const { container } = render(<AgentView blocks={[{ id: "u2", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
+    expect(screen.getByRole("region", { name: "Plan comments · 2 comments" })).toBeTruthy()
+    expect(screen.getByRole("region", { name: "Preview comments · 1 comment" })).toBeTruthy()
     expect(container.querySelector(".selectable-text")).toBeNull()
   })
 })

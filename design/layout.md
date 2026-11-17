@@ -19,6 +19,13 @@ horizontal: a 12px-tall row typically pairs `py-1.5` with `px-3`.
 Management surfaces use a roomier panel rhythm: 16px card insets, 8px from a
 label to its control, 20px between fields, and 32px between sections.
 
+**Sizes are steps of the scale.** A spacing or size is a quarter step of the
+4px scale (`w-30` is 120px, `pr-4.75` is 19px, `-top-1` is −4px), never an
+arbitrary `w-[120px]`. The scale is rem, so on iOS it follows Dynamic Type;
+geometry the OS fixes in points (the phone switch, the 270pt alert) is a named
+`--spacing-*` token in `index.css`, in px, with its reason beside it.
+`design-lint` (`px-size`) fails on a px literal in a spacing or size class.
+
 ### Mobile-first authoring is mandatory
 
 **Mobile-first authoring is mandatory.** Base (unprefixed) styles target the

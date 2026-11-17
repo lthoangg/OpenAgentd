@@ -234,14 +234,15 @@ describe('WorkspaceGroupsSettings', () => {
     await waitFor(() => expect(screen.queryByText('web = frontend')).toBeNull())
   })
 
-  it('asks once more before deleting a group', async () => {
+  it('asks once more before deleting a group, in a confirm whose dismiss says Cancel', async () => {
     const user = userEvent.setup()
     await renderSettings()
     await user.click(screen.getByRole('button', { name: 'Delete group shared' }))
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
-    expect(screen.getByText(/It is removed from 1 workspace\./)).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Keep' }))
-    expect(screen.queryByRole('button', { name: 'Delete group' })).toBeNull()
+    const confirm = screen.getByRole('dialog', { name: 'Delete shared?' })
+    expect(within(confirm).getByText(/It is removed from 1 workspace\./)).toBeTruthy()
+    await user.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete group' })).toBeNull())
     await user.click(screen.getByRole('button', { name: 'Delete group shared' }))
     await user.click(screen.getByRole('button', { name: 'Delete group' }))
     await waitFor(() => expect(calls.find((c) => c.method === 'DELETE')?.url.endsWith('/agent/workspace/groups/g-shared')).toBe(true))

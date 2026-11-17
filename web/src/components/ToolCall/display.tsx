@@ -20,6 +20,7 @@ import { pathBasename } from '@/utils/workspace'
 import { parsePartialJSON } from './displayText'
 import { canonicalToolName } from '@/utils/tool-names'
 import { scriptSource } from './scriptTrace'
+import { secretHeaderLabel } from './secretArgs'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -753,6 +754,11 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       headerTitle: `→ ${target}${waits}`,
       formattedArgs: str(parsed, 'message'),
     }
+  }
+
+  if (name === 'secret') { // a request has its own card; this is its row
+    const label = trunc(secretHeaderLabel(parsed))
+    return { header: <Arg>{label}</Arg>, headerTitle: label, formattedArgs: null }
   }
 
   // ── mcp: one tool for every MCP server — search, or call server · tool ──

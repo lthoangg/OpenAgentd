@@ -16,6 +16,7 @@ const mockSessionHistory = mock(async () => { throw new Error("a resume must not
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
+import { runOf } from '@/stores/useAgentStore/run-state'
 
 const SYNCED = "01a18c00-0000-7000-8000-000000000001"
 
@@ -50,7 +51,7 @@ beforeEach(() => {
     _workspace: "/repo",
     leadName: "lead",
     agentNames: ["lead"],
-    isAgentWorking: true,
+    sessionRun: runOf(true),
     _syncedThrough: SYNCED,
     agentStreams: {
       lead: {
@@ -131,7 +132,7 @@ describe("catchUpLiveTurn", () => {
   it("asks for the full page without a sync point or with the session idle", async () => {
     useAgentStore.setState({ _syncedThrough: null })
     expect(await useAgentStore.getState().catchUpLiveTurn("s1", "/repo")).toBe("reload")
-    useAgentStore.setState({ _syncedThrough: SYNCED, isAgentWorking: false })
+    useAgentStore.setState({ _syncedThrough: SYNCED, sessionRun: runOf(false) })
     expect(await useAgentStore.getState().catchUpLiveTurn("s1", "/repo")).toBe("reload")
     expect(mockSessionHistorySince).not.toHaveBeenCalled()
   })

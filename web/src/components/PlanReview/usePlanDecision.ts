@@ -1,22 +1,21 @@
 /**
- * The decision on an open plan review — one place for the Plan tab and the
- * transcript card, so Approve and Request changes send exactly the same
- * answer from either.
+ * The decision on an open plan review: the Plan tab's Approve and Keep going.
+ * Changes are not an answer here: the tab's Reply in chat moves the comments
+ * to the chat composer, and the message the user sends closes the review.
  *
  * "Keep going until done" starts a goal that runs the plan turn after turn.
  * Whenever it is on, the approve label says so and how many turns
  * (``Approve and keep going (10 turns)``): a multi-turn run is never behind
- * a bare "Approve". The tick and the turns are shared by both surfaces for the
- * review's lifetime, starting from Settings → Sessions.
+ * a bare "Approve". The tick and the turns last for the review's lifetime
+ * (the Plan tab may unmount and come back), starting from Settings → Sessions.
  */
 import { create } from 'zustand'
 
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 import { useGoalSettingsQuery } from '@/queries/useGoalSettingsQuery'
 import { useQuestionResolver } from '../AskUser/useQuestionResolver'
 
 export const APPROVE = 'Approve'
-export const REQUEST_CHANGES = 'Request changes'
 
 /** Matches ``appv3_core::runtime_settings::MAX_GOAL_MAX_TURNS``. */
 export const MAX_GOAL_TURNS = 1000
@@ -101,8 +100,6 @@ export function usePlanDecision({
       const maxTurns = Number(turnsText)
       resolver.answer([[APPROVE]], { keepGoing: maxTurns === defaultTurns ? {} : { maxTurns } })
     },
-    /** ``text`` is the formatted review; empty sends the bare option. */
-    requestChanges: (text: string) => resolver.answer([[text.trim() || REQUEST_CHANGES]]),
     keepGoingHint: canKeepGoing
       ? "The goal is the plan's Done when. A check confirms it before the goal ends."
       : 'Add a Done when to the plan to keep going',

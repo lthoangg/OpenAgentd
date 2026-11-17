@@ -53,6 +53,7 @@ import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { useGoalControls, useSessionGoalQuery } from '@/queries/useSessionGoalQuery'
 import { goalTabTitle } from '@/lib/goal'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
@@ -65,6 +66,7 @@ import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
+import type { PlanCommentsHandoff } from './PlanReview/plan-comments-block'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { PhoneReviewBar } from './WorkspacePanel/PhoneReviewBar'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
@@ -153,6 +155,7 @@ export function WorkspacePanel({
   onFileSelect,
   onAddComment,
   onSendPreviewComments,
+  onSendPlanComments,
   chatWorkspace = false,
   onRequestClose,
   slideIn = false,
@@ -214,6 +217,8 @@ export function WorkspacePanel({
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   /** Adds a preview's design comments to the composer as a chip. */
   onSendPreviewComments?: (feedback: DesignFeedback) => void
+  /** Moves the plan review's comments to the composer as a chip (Plan tab: Reply in chat). */
+  onSendPlanComments?: (handoff: PlanCommentsHandoff) => void
   /**
    * True when ``workspace`` is the chat root (see ``useChatWorkspace``).
    * Chat workspaces are not repositories: the Git review tab is hidden and its
@@ -397,7 +402,7 @@ export function WorkspacePanel({
   const { data: goalData } = useSessionGoalQuery(sessionId)
   const goal = goalData?.goal ?? null
   const goalControls = useGoalControls(sessionId)
-  const agentWorking = useAgentStore((s) => s.isAgentWorking)
+  const agentWorking = useAgentStore((s) => isRunLive(s.sessionRun))
   const goalTitle = goalTabTitle(goal, agentWorking)
   const stripTabs = useMemo(
     () => Object.fromEntries(Object.entries(strips).map(([pane, strip]) => [pane, strip.some((tab) => tab.type === 'goal' && tab.title !== goalTitle)
@@ -410,7 +415,7 @@ export function WorkspacePanel({
   // Side questions once the session has one (the palette opens either before).
   const hasGoal = goal !== null && goal.status !== 'cleared'
   const sideQuestions = useSideQuestions(sessionId, { countEnabled: open && !mobile, listEnabled: false })
-  const hasSideQuestions = sideQuestions.total > 0 || sideQuestions.live !== null
+  const hasSideQuestions = sideQuestions.total > 0 || sideQuestions.liveAnswer !== null
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
   // above the chat on phones, so only desktop lists them here; the plan and
@@ -575,6 +580,7 @@ export function WorkspacePanel({
             onOpenFile={openChangedFile}
             onOpenPreview={canPreview ? openFilePreview : undefined}
             workspace={workspace}
+            onSendPlanComments={onSendPlanComments}
           />
         )
       case 'btw':

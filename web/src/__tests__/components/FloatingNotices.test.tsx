@@ -20,17 +20,18 @@ beforeAll(async () => {
   await prefetchSurfaces()
 })
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { LSP_NONE, lspAsking } from '@/stores/lsp-prompt-state'
 import { useToastStore } from '@/stores/useToastStore'
 
 beforeEach(() => {
   useToastStore.setState({ toasts: [{ id: 't-1', tone: 'info', title: 'Saved', durationMs: 60_000 }] })
-  useLspInstallStore.setState({ request: { workspace: '/project', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' } })
+  useLspInstallStore.setState({ lspPrompt: lspAsking({ workspace: '/project', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' }) })
 })
 
 afterEach(() => {
   cleanup()
   useToastStore.setState({ toasts: [] })
-  useLspInstallStore.setState({ request: null })
+  useLspInstallStore.setState({ lspPrompt: LSP_NONE })
 })
 
 it('stacks toasts, the TypeScript tools prompt and the update card in one column', () => {
@@ -39,7 +40,7 @@ it('stacks toasts, the TypeScript tools prompt and the update card in one column
   const column = container.querySelector('[data-floating-notices]') as HTMLElement
   expect(column).not.toBeNull()
   expect(within(column).getByText('Saved')).toBeInTheDocument()
-  expect(within(column).getByRole('dialog', { name: 'Install TypeScript language tools' })).toBeInTheDocument()
+  expect(within(column).getByRole('status', { name: 'Install TypeScript language tools' })).toBeInTheDocument()
   expect(within(column).getByTestId('update-card')).toBeInTheDocument()
 })
 
@@ -48,7 +49,7 @@ it('positions the column once, so the cards cannot overlap each other', () => {
 
   const column = container.querySelector('[data-floating-notices]') as HTMLElement
   expect(column).toHaveClass('fixed')
-  const lspCard = screen.getByRole('dialog').closest('aside') as HTMLElement
+  const lspCard = screen.getByRole('status', { name: 'Install TypeScript language tools' }).closest('aside') as HTMLElement
   expect(lspCard).not.toHaveClass('fixed')
 })
 
@@ -78,7 +79,7 @@ it('lists toasts first, then the tools prompt and the update card', () => {
   const column = container.querySelector('[data-floating-notices]') as HTMLElement
   const order = [
     screen.getByText('Saved'),
-    screen.getByRole('dialog', { name: 'Install TypeScript language tools' }),
+    screen.getByRole('status', { name: 'Install TypeScript language tools' }),
     screen.getByTestId('update-card'),
   ]
 

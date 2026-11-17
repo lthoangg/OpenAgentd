@@ -155,6 +155,7 @@ export const STEP_KIND: Record<string, StepKind> = {
   mcp: 'mcpCalls',
   generate_image: 'generations',
   generate_video: 'generations',
+  secret: 'questions',
   [UPDATE_GOAL_TOOL]: 'checks',
 }
 

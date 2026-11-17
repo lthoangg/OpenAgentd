@@ -14,6 +14,9 @@
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const realLoadSession = useAgentStore.getState().loadSession
 afterAll(() => useAgentStore.setState({ loadSession: realLoadSession }))
@@ -27,8 +30,8 @@ beforeEach(() => {
     agentNames: [],
     leadName: "lead",
     sessionId: "s1",
-    isAgentWorking: false,
-    isConnected: false,
+    sessionRun: runOf(false),
+    streamLink: linkOf(false),
     cacheInvalidations: [],
   })
 })
@@ -342,9 +345,9 @@ describe("attach replay of an injected queued message", () => {
     emit("agent_status", { agent: "lead", status: "waiting_input" })
 
     const state = useAgentStore.getState()
-    expect(state.pendingQuestion?.id).toBe("q-1")
+    expect(openQuestion(state)?.id).toBe("q-1")
     expect(state.agentStreams.lead.status).toBe("waiting_input")
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
   })
 
   it("updates ask_user to resolved on reconnect when question was resolved elsewhere", () => {
@@ -360,7 +363,7 @@ describe("attach replay of an injected queued message", () => {
     emit("question_answered", { question_id: "q-2", answers: [["Yes"]] })
 
     const state = useAgentStore.getState()
-    expect(state.pendingQuestion).toBeNull()
+    expect(openQuestion(state)).toBeNull()
     expect(state.resolvedQuestions["tc-ask-2"]?.answers).toEqual([["Yes"]])
   })
 })

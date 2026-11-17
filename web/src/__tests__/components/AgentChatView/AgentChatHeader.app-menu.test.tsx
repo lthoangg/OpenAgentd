@@ -172,8 +172,8 @@ describe('AgentChatHeader as the Windows title bar', () => {
   // still lines up with the panel's.
   it('leaves the three caption buttons room at its right end in the Windows app', () => {
     const { container } = renderHeader()
-    expect(container.querySelector('[data-header-cap="dock"]')).toHaveClass('pr-[138px]')
-    expect(container.querySelector('header')).not.toHaveClass('pr-[138px]')
+    expect(container.querySelector('[data-header-cap="dock"]')).toHaveClass('pr-34.5')
+    expect(container.querySelector('header')).not.toHaveClass('pr-34.5')
   })
 
   const framed: [string, { isTauri: boolean; os: string; isFullscreen?: boolean }][] = [
@@ -184,7 +184,7 @@ describe('AgentChatHeader as the Windows title bar', () => {
   it.each(framed)('keeps its usual right edge in the %s', (_name, value) => {
     platform = value
     const { container } = renderHeader()
-    expect(container.querySelector('header')).not.toHaveClass('pr-[138px]')
-    expect(container.querySelector('[data-header-cap="dock"]')).not.toHaveClass('pr-[138px]')
+    expect(container.querySelector('header')).not.toHaveClass('pr-34.5')
+    expect(container.querySelector('[data-header-cap="dock"]')).not.toHaveClass('pr-34.5')
   })
 })

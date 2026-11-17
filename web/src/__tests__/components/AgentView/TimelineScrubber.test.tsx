@@ -103,7 +103,7 @@ describe('TimelineScrubber', () => {
     const { container } = render(<Harness scrollTop={500} />)
 
     const thumb = container.querySelector<HTMLElement>('[data-scrubber-thumb]')!
-    expect(thumb.className.split(' ')).toContain('w-[5px]')
+    expect(thumb.className.split(' ')).toContain('w-1.25')
     expect(thumb.className).not.toContain('inset-x-')
   })
 

@@ -24,19 +24,23 @@ import { GlobalEventStream, handleGlobalEvent, invalidateGlobalEventQueries, rec
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { LSP_NONE, lspRequestOf } from '@/stores/lsp-prompt-state'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { isFreshAutoTitle } from '@/lib/auto-title'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { questionCardOf } from '@/stores/useAgentStore/question-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 const INITIAL = {
   sessionId: null as string | null,
   sessionTitle: null as string | null,
   _workspace: null as string | null,
   _sessionGeneration: 0,
-  isConnected: false,
+  streamLink: linkOf(false),
   // Settled by default — most tests exercise the non-racing completion path
   // where the local stream's `done` has already landed before the global
   // `session_turn_completed` notification does.
-  isAgentWorking: false,
+  sessionRun: runOf(false),
   agentStreams: {} as import('@/stores/useAgentStore').AgentStore['agentStreams'],
 }
 
@@ -49,7 +53,7 @@ beforeEach(() => {
   globalEventStream.mockClear()
   globalCallbacks = null
   globalSignals = []
-  useLspInstallStore.setState({ request: null })
+  useLspInstallStore.setState({ lspPrompt: LSP_NONE })
   useUnreadStore.setState({ ids: [], failed: [] })
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })
@@ -122,12 +126,12 @@ it('replaces the global stream on a backend switch and ignores old-backend LSP e
     component: 'typescript', workspace: '/old-backend', downloads_enabled: true,
     language_server_version: '4.3.3', typescript_version: '5.8.2',
   })
-  await waitFor(() => expect(useLspInstallStore.getState().request).toBeNull())
+  await waitFor(() => expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull())
 })
 
 it('reconciles the active session whenever the global connection opens', async () => {
   const client = new QueryClient()
-  const loadSession = mock(async () => { useAgentStore.setState({ isAgentWorking: true }) })
+  const loadSession = mock(async () => { useAgentStore.setState({ sessionRun: runOf(true) }) })
   const connectStream = mock(() => new AbortController())
   useAgentStore.setState({ sessionId: 'current', loadSession, connectStream })
   render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))
@@ -338,8 +342,8 @@ describe('handleGlobalEvent', () => {
     useAgentStore.setState({
       sessionId: 'current',
       _sessionGeneration: 1,
-      isConnected: true,
-      isAgentWorking: true,
+      streamLink: linkOf(true),
+      sessionRun: runOf(true),
       loadSession,
       connectStream,
       expectStreamActivity,
@@ -360,8 +364,8 @@ describe('handleGlobalEvent', () => {
       sessionId: 'lead-sess',
       _workspace: '/workspace',
       _sessionGeneration: 1,
-      isConnected: false,
-      isAgentWorking: false,
+      streamLink: linkOf(false),
+      sessionRun: runOf(false),
       loadSession,
       connectStream,
     })
@@ -420,7 +424,7 @@ describe('handleGlobalEvent', () => {
     useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
-      isAgentWorking: true, // local `done` hasn't landed yet
+      sessionRun: runOf(true), // local `done` hasn't landed yet
       reconcileTurnTail,
       loadSession,
     })
@@ -518,13 +522,13 @@ describe('handleGlobalEvent', () => {
   })
 
   it('reconciles the active session on resume and attaches its stream only when REST reports it working', async () => {
-    const loadSession = mock(async () => { useAgentStore.setState({ isAgentWorking: true }) })
+    const loadSession = mock(async () => { useAgentStore.setState({ sessionRun: runOf(true) }) })
     const connectStream = mock(() => new AbortController())
     useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
       _sessionGeneration: 4,
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       loadSession,
       connectStream,
     })
@@ -540,13 +544,13 @@ describe('handleGlobalEvent', () => {
   // as the question stayed open.
   it('keeps a connected stream when the session only waits on the user', async () => {
     const question = { id: 'q1', sessionId: 'current', toolCallId: 'call-1', questions: [], kind: 'plan_review' }
-    const loadSession = mock(async () => { useAgentStore.setState({ isAgentWorking: true }) })
+    const loadSession = mock(async () => { useAgentStore.setState({ sessionRun: runOf(true) }) })
     const connectStream = mock(() => new AbortController())
     useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
-      isConnected: true,
-      pendingQuestion: question as unknown as import('@/stores/useAgentStore').AgentStore['pendingQuestion'],
+      streamLink: linkOf(true),
+      questionCard: questionCardOf(question as unknown as import('@/api/question-types').PendingQuestion),
       loadSession,
       connectStream,
     })
@@ -559,13 +563,13 @@ describe('handleGlobalEvent', () => {
 
   it('attaches the stream of a session waiting on the user when none is connected', async () => {
     const question = { id: 'q1', sessionId: 'current', toolCallId: 'call-1', questions: [] }
-    const loadSession = mock(async () => { useAgentStore.setState({ isAgentWorking: true }) })
+    const loadSession = mock(async () => { useAgentStore.setState({ sessionRun: runOf(true) }) })
     const connectStream = mock(() => new AbortController())
     useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
-      isConnected: false,
-      pendingQuestion: question as unknown as import('@/stores/useAgentStore').AgentStore['pendingQuestion'],
+      streamLink: linkOf(false),
+      questionCard: questionCardOf(question as unknown as import('@/api/question-types').PendingQuestion),
       loadSession,
       connectStream,
     })
@@ -998,13 +1002,13 @@ describe('handleGlobalEvent', () => {
     }
 
     expect(await handleGlobalEvent(client, 'lsp_install_required', payload, 1, () => 1)).toBe(true)
-    expect(useLspInstallStore.getState().request).toEqual({
+    expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toEqual({
       workspace: '/workspace', languageServerVersion: '4.3.3', typeScriptVersion: '5.8.2',
     })
 
     useLspInstallStore.getState().dismiss()
     expect(await handleGlobalEvent(client, 'lsp_install_required', { ...payload, downloads_enabled: false }, 1, () => 1)).toBe(false)
-    expect(useLspInstallStore.getState().request).toBeNull()
+    expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull()
   })
 
   it('deduplicates replayed desktop notifications by notification_id', async () => {
@@ -1178,7 +1182,7 @@ describe('a global connection replaced while a session reload is pending', () =>
   function pendingLoad() {
     let finish!: () => void
     const loadSession = mock(() => new Promise<void>((resolve) => {
-      finish = () => { useAgentStore.setState({ isAgentWorking: true }); resolve() }
+      finish = () => { useAgentStore.setState({ sessionRun: runOf(true) }); resolve() }
     }))
     return { loadSession, finish: async () => { finish(); await Promise.resolve(); await Promise.resolve() } }
   }

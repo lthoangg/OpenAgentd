@@ -52,3 +52,15 @@ export function opensConfirmation(name: string | undefined, args: string | undef
   }
   return typeof action === 'string' && actions.includes(action.trim())
 }
+
+/** Whether a call asks the user for secrets on a card (``secret`` with ``action: 'request'``). */
+export function isSecretRequest(name: string | undefined, args: string | undefined): boolean {
+  if (name !== 'secret' || !args) return false
+  let action: unknown
+  try {
+    action = (JSON.parse(args) as { action?: unknown } | null)?.action
+  } catch {
+    action = /^\s*\{\s*"action"\s*:\s*"([^"]*)"/.exec(args)?.[1]
+  }
+  return typeof action === 'string' && action.trim() === 'request'
+}

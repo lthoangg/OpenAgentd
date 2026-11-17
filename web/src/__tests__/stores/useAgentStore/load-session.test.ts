@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test"
 import { mockPostAgentChat, mockTeamStream, mockAgentStatus, mockSessionHistory, makeStream, makeMessageResponse, resetAsyncStore } from "./async-fixture"
 import { useAgentStore } from "@/stores/useAgentStore"
 import { useToastStore } from "@/stores/useToastStore"
+import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 
 beforeEach(resetAsyncStore)
 
@@ -441,7 +442,7 @@ describe("loadSession", () => {
 
     await useAgentStore.getState().loadSession("sess-1")
 
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
     expect(useAgentStore.getState().agentStreams.lead.status).toBe("working")
   })
 
@@ -499,7 +500,7 @@ describe("loadSession", () => {
     afterEach(() => useToastStore.setState({ toasts: [] }))
 
     it("shows no toast for a running turn, and catches up once the connection is back", async () => {
-      useAgentStore.setState({ sessionId: "sess-1", isAgentWorking: true })
+      useAgentStore.setState({ sessionId: "sess-1", sessionRun: runOf(true) })
       let callbacks!: { onError: (err: Error) => void }
       mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
       useAgentStore.getState().connectStream()
@@ -514,7 +515,7 @@ describe("loadSession", () => {
       expect(toasts()).toEqual([])
       expect(useAgentStore.getState().error).toBeNull()
       // Still a running turn, with a reconnect waiting.
-      expect(useAgentStore.getState().isAgentWorking).toBe(true)
+      expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
       expect(useAgentStore.getState()._reconnectTimer).not.toBeNull()
 
       mockSessionHistory.mockImplementation(() => Promise.resolve(history([reply])))
@@ -525,7 +526,7 @@ describe("loadSession", () => {
     })
 
     it("shows no toast for an idle chat, and catches up once the connection is back", async () => {
-      useAgentStore.setState({ sessionId: "sess-1", isAgentWorking: false })
+      useAgentStore.setState({ sessionId: "sess-1", sessionRun: runOf(false) })
       mockSessionHistory.mockImplementation(() => Promise.reject(new TypeError("Load failed")))
       await useAgentStore.getState().loadSession("sess-1")
       expect(toasts()).toEqual([])
@@ -668,7 +669,7 @@ describe("loadSession", () => {
     })
 
     const state = useAgentStore.getState()
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
     expect(state.agentStreams["lead"].status).toBe("working")
     expect(state.agentStreams["lead"].currentBlocks).toHaveLength(1)
     expect(state.agentStreams["lead"].currentBlocks[0].content).toBe(
@@ -711,7 +712,7 @@ describe("loadSession", () => {
     // Simulate session A mid-stream
     useAgentStore.setState({
       sessionId: "session-a",
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({ status: "working" as const }),
       },
@@ -720,7 +721,7 @@ describe("loadSession", () => {
     // User switches to session B
     await useAgentStore.getState().loadSession("session-b")
 
-    expect(useAgentStore.getState().isAgentWorking).toBe(false)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(false)
   })
 
   it("never reduces estimatedCostUsd or completionTokens on loadSession for the same session", async () => {
@@ -749,7 +750,7 @@ describe("loadSession", () => {
     )
     useAgentStore.setState({
       sessionId: "sess-1",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentStreams: {
         lead: makeStream({
           usage: {
@@ -806,7 +807,7 @@ describe("loadSession", () => {
     )
     useAgentStore.setState({
       sessionId: "sess-1",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentStreams: {},
     })
 
@@ -849,7 +850,7 @@ describe("loadSession", () => {
     )
     useAgentStore.setState({
       sessionId: "sess-1",
-      isAgentWorking: false,
+      sessionRun: runOf(false),
       agentStreams: {},
     })
 
@@ -862,7 +863,7 @@ describe("loadSession", () => {
 
   it("resets lead agent status to idle when switching away from streaming session", async () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({ status: "working" as const }),
       },
@@ -891,7 +892,7 @@ describe("loadSession", () => {
       })
     )
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({ status: "working" as const }),
         worker: makeStream({ status: "working" as const }),
@@ -905,7 +906,7 @@ describe("loadSession", () => {
 
   it("clears currentText scratch buffer when switching sessions mid-stream", async () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           status: "working" as const,
@@ -921,7 +922,7 @@ describe("loadSession", () => {
 
   it("clears currentThinking scratch buffer when switching sessions mid-stream", async () => {
     useAgentStore.setState({
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: makeStream({
           status: "working" as const,
@@ -948,7 +949,7 @@ describe("loadSession", () => {
     // Switch to a new session (bumps generation) — now the inflight load is stale
     useAgentStore.getState().newSession()
     // New session correctly resets isAgentWorking; don't override that
-    expect(useAgentStore.getState().isAgentWorking).toBe(false)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(false)
 
     resolveHistory({
       lead: {
@@ -1086,7 +1087,7 @@ describe("loadSession", () => {
       sessionId: "sess-1",
       leadName: "lead",
       agentNames: ["lead"],
-      isAgentWorking: true,
+      sessionRun: runOf(true),
       agentStreams: {
         lead: {
           ...makeStream(),
@@ -1162,7 +1163,7 @@ describe("loadSession", () => {
     await useAgentStore.getState().loadSession("sess-running")
 
     const state = useAgentStore.getState()
-    expect(state.isAgentWorking).toBe(true)
+    expect(isRunLive(state.sessionRun)).toBe(true)
     expect(state.agentStreams.worker?.status).toBe("working")
   })
 })

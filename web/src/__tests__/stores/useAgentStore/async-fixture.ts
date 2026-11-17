@@ -10,6 +10,8 @@
 import { mock } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 // NOTE on isolation: ``mock.module("@/api/client", …)`` below patches
 // Bun's global module registry and ``mock.restore()`` does NOT undo
@@ -82,9 +84,9 @@ export const INITIAL_STATE = {
   sessionId: null,
   _sessionSettingsDirty: false,
   _sessionSettingsVersion: 0,
-  isAgentWorking: false,
+  sessionRun: runOf(false),
   isContinuing: false,
-  isConnected: false,
+  streamLink: linkOf(false, 0),
   error: null,
   _pendingMessages: [] as import('@/stores/useAgentStore').PendingMessage[],
   _sessionGeneration: 0,
@@ -101,7 +103,6 @@ export const INITIAL_STATE = {
   _resolvedSessionReadyId: null,
   _unloading: false,
   _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
-  _reconnectAttempts: 0,
   cacheInvalidations: [],
 }
 

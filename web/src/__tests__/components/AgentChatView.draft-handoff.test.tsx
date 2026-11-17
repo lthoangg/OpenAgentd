@@ -4,6 +4,8 @@ import { forwardRef } from 'react'
 import { AgentChatView } from '@/components/AgentChatView'
 import { HANDOFF_ACTIVE_MS } from '@/components/AgentChatView/useDraftHandoff'
 import type { ComposerHandoff } from '@/components/composer/Composer'
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 // What AgentChatView last handed its composer.
 let latestCapture: ((snapshot: ComposerHandoff) => void) | undefined
@@ -114,7 +116,8 @@ mock.module('@/stores/useAgentStore', () => {
     activeAgent: 'code',
     agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
     agentNames: ['lead'],
-    isAgentWorking: false,
+    sessionRun: runOf(false),
+    questionCard: { kind: 'none' as const },
     isContinuing: false,
     sessionId: null as string | null,
     sessionTitle: null,
@@ -122,7 +125,7 @@ mock.module('@/stores/useAgentStore', () => {
     sessionThinkingLevel: null,
     sessionFastMode: false,
     leadName: 'lead',
-    isConnected: false,
+    streamLink: linkOf(false),
   }
   return {
     useAgentStore: Object.assign(
@@ -188,7 +191,7 @@ beforeEach(() => {
   latestCapture = undefined
   latestEnterFrom = undefined
   latestPlacement = undefined
-  useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+  useAgentStore.setState({ sessionId: null, sessionRun: runOf(false) })
 })
 
 describe('AgentChatView draft → chat hand-off', () => {
@@ -201,7 +204,7 @@ describe('AgentChatView draft → chat hand-off', () => {
     // send ends the draft.
     latestCapture?.(snapshot)
     timers = useFakeTimers()
-    useAgentStore.setState({ isAgentWorking: true })
+    useAgentStore.setState({ sessionRun: runOf(true) })
     rerender(<AgentChatView workspace="/repo/handoff" />)
 
     expect(latestPlacement).toBe('docked')

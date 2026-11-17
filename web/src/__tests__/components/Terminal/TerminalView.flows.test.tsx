@@ -88,7 +88,7 @@ function device(kind: 'phone' | 'desktop') {
 async function openTerminal() {
   const id = useTerminalStore.getState().open({ workspace: '/repo' }, '/repo')
   render(<TerminalView sessionId={id} />)
-  await waitFor(() => expect(useTerminalStore.getState().sessions[id]?.status).toBe('connected'))
+  await waitFor(() => expect(useTerminalStore.getState().sessions[id]?.shellState.kind).toBe('connected'))
   return id
 }
 
@@ -141,7 +141,10 @@ describe('phone: select part of the output', () => {
     // Held past the long-press threshold.
     await act(() => new Promise((resolve) => setTimeout(resolve, 600)))
     fireEvent.pointerUp(surface, { pointerType: 'touch' })
-    fireEvent.click(await screen.findByRole('button', { name: 'Select Text' }))
+    // A tap of its own (a press, then the click): the release's click is swallowed.
+    const selectText = await screen.findByRole('button', { name: 'Select Text' })
+    fireEvent.pointerDown(selectText, { pointerType: 'touch' })
+    fireEvent.click(selectText)
 
     // The output as text, nothing selected yet; the soft keyboard goes away.
     const text = await screen.findByTestId('terminal-text')

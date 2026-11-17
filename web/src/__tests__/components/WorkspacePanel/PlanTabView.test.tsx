@@ -1,9 +1,10 @@
 /**
  * PlanTabView — the session plan tab in the review dock.
  *
- * The footer exists only while a plan review is open; its two buttons answer
- * the review question. Comments stay anchored to the passage they are about
- * and go out together with Request changes. Edits go through the PUT route
+ * The footer exists only while a plan review is open: Approve answers the
+ * review question, and Reply in chat moves the comments (anchored to the
+ * passages they are about) to the chat composer, where the user sends them
+ * as a normal message. Edits go through the PUT route
  * with the revision the editor opened, so a plan that moved on underneath is a
  * conflict, not an overwrite.
  */
@@ -14,13 +15,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { PlanTabView } from '@/components/WorkspacePanel/PlanTabView'
+import { PlanTabView, REPLY_HINT, UNSENT_COMMENTS_HINT } from '@/components/WorkspacePanel/PlanTabView'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts, readPlanReviewDraft, writePlanReviewDraft } from '@/components/PlanReview/plan-comments'
+import type { PlanCommentsHandoff } from '@/components/PlanReview/plan-comments-block'
+import { usePlanCommentsInChat } from '@/components/PlanReview/plan-comments-in-chat'
 import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import type { ContentBlock, PendingQuestion, SessionGoal, SessionPlan } from '@/api/types'
+import type { ContentBlock, SessionGoal, SessionPlan } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
+import { questionCardOf, openQuestion } from '@/stores/useAgentStore/question-state'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',
@@ -75,8 +80,9 @@ beforeEach(() => {
   clearQuestionDrafts()
   clearPlanReviewDrafts()
   resetPlanDecisionChoice()
+  usePlanCommentsInChat.setState({ block: null })
   useToastStore.setState({ toasts: [] })
-  useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {}, markTurnResuming })
+  useAgentStore.setState({ sessionId: 's-1', questionCard: questionCardOf(null), resolvedQuestions: {}, markTurnResuming })
   globalThis.fetch = mock(async (input: unknown, rawInit?: unknown) => {
     const init = rawInit as RequestInit | undefined
     const url = String(input)
@@ -99,7 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null, resolvedQuestions: {}, leadName: null, agentStreams: {} })
+  useAgentStore.setState({ questionCard: questionCardOf(null), resolvedQuestions: {}, leadName: null, agentStreams: {} })
 })
 
 /** Put the lead's ``plan`` call in the current turn, as the stream builds it. */
@@ -117,9 +123,16 @@ function renderTab(props: Partial<React.ComponentProps<typeof PlanTabView>> = {}
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <PlanTabView plan={PLAN} sessionId="s-1" {...props} />
+      <PlanTabView plan={PLAN} sessionId="s-1" onSendPlanComments={sendPlanComments} {...props} />
     </QueryClientProvider>,
   )
+}
+
+const sendPlanComments = mock((..._args: unknown[]) => {})
+beforeEach(() => sendPlanComments.mockClear())
+
+function handoffs(): PlanCommentsHandoff[] {
+  return sendPlanComments.mock.calls.map(([handoff]) => handoff as PlanCommentsHandoff)
 }
 
 function selectText(node: Node) {
@@ -197,26 +210,25 @@ describe('PlanTabView', () => {
   })
 
   it('shows the review footer while a plan review is open', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     expect(screen.getByText('Awaiting review')).toBeTruthy()
-    expect(screen.getByLabelText('Feedback on the plan')).toBeTruthy()
-    expect(screen.getByText('Or reply in chat to redirect the agent.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Reply in chat' })).toBeTruthy()
+    expect(screen.getByText(REPLY_HINT)).toBeTruthy()
+    // Feedback is written in the chat composer: no box of its own.
+    expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('keeps the review footer in the plan column while its band runs the dock width', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     const band = container.querySelector('[data-plan-review-footer]') as HTMLElement
     // index.css: `.oa-review-column` is the column's 46rem, 88ch in a maximized dock.
     const column = band.firstElementChild as HTMLElement
     expect(column.className).toContain('oa-review-column')
-    // The chat composer's shape: the feedback and the actions share one framed box.
-    const box = screen.getByLabelText('Feedback on the plan').parentElement as HTMLElement
-    expect(box.className).toContain('rounded-lg')
-    expect(box.contains(screen.getByRole('button', { name: 'Approve' }))).toBe(true)
     for (const control of [
-      screen.getByLabelText('Feedback on the plan'),
+      screen.getByRole('button', { name: 'Reply in chat' }),
       screen.getByRole('button', { name: 'Approve' }),
     ]) {
       expect(column.contains(control)).toBe(true)
@@ -224,52 +236,55 @@ describe('PlanTabView', () => {
   })
 
   it('ignores an ask_user question: only plan reviews get the footer', () => {
-    useAgentStore.setState({ pendingQuestion: { ...REVIEW, kind: undefined } })
+    useAgentStore.setState({ questionCard: questionCardOf({ ...REVIEW, kind: undefined }) })
     renderTab()
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
   })
 
   it('answers Approve and marks the turn as resuming', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
     await waitFor(() => expect(answerCalls()).toHaveLength(1))
     expect(answerCalls()[0]?.body).toEqual({ answers: [['Approve']] })
     await waitFor(() => expect(markTurnResuming).toHaveBeenCalledTimes(1))
-    expect(useAgentStore.getState().pendingQuestion).toBeNull()
+    expect(openQuestion(useAgentStore.getState())).toBeNull()
   })
 
-  it('sends the feedback with Request changes', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+  it('with no comments, Reply in chat only takes the user to the chat box and answers nothing', async () => {
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
-    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: '  Split step 2.  ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in chat' }))
 
-    await waitFor(() => expect(answerCalls()).toHaveLength(1))
-    expect(answerCalls()[0]?.body).toEqual({ answers: [['Split step 2.']] })
+    expect(handoffs()).toEqual([{ block: null, text: '' }])
+    expect(answerCalls()).toHaveLength(0)
+    expect(openQuestion(useAgentStore.getState())).toEqual(REVIEW)
   })
 
-  it('enables Request changes only once there is a comment or feedback to send', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
-    renderTab()
-    const request = () => screen.getByRole('button', { name: 'Request changes' }) as HTMLButtonElement
-    expect(request().disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: '   ' } })
-    expect(request().disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: 'Split step 2.' } })
-    expect(request().disabled).toBe(false)
+  it('offers Reply in chat only where there is a chat to reply in', () => {
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
+    renderTab({ onSendPlanComments: undefined })
+    expect((screen.getByRole('button', { name: 'Reply in chat' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('disables Approve while there is feedback', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+  it('disables Approve while plan comments wait unsent in the chat box', () => {
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
-    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: 'Needs tests' } })
+    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(false)
+    act(() => {
+      usePlanCommentsInChat.setState({ block: { path: null, revision: 2, comments: [{ quote: 'Write the migration', text: 'Reversible' }] } })
+    })
     expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(UNSENT_COMMENTS_HINT)).toBeTruthy()
+    act(() => {
+      usePlanCommentsInChat.setState({ block: null })
+    })
+    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('disables Approve while the plan has unsaved edits', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.click(screen.getByRole('button', { name: 'Edit plan' }))
     fireEvent.change(screen.getByLabelText('Plan Markdown'), { target: { value: `${PLAN.content}\n3. Test it` } })
@@ -279,7 +294,7 @@ describe('PlanTabView', () => {
   })
 
   it('comments on a selected passage and lists the comment under it', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
@@ -293,30 +308,38 @@ describe('PlanTabView', () => {
     const list = screen.getByRole('list', { name: 'Comments on the plan' })
     expect(list.textContent).toContain('Write the migration')
     expect(list.textContent).toContain('Make it reversible.')
-    // The feedback box stays free for anything else.
-    expect((screen.getByLabelText('Feedback on the plan') as HTMLTextAreaElement).value).toBe('')
   })
 
-  it('sends every comment and the overall feedback together with Request changes', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+  it('moves every comment, a half-written one too, to the chat box and empties the draft', () => {
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     comment(container, 'Write the migration', 'Make it reversible.')
-    comment(container, 'Wire the endpoint', 'Add a test.')
-    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: 'Otherwise fine.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Request changes (2)' }))
+    selectText(planItem(container, 'Wire the endpoint'))
+    fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
+    fireEvent.change(screen.getByLabelText('Comment'), { target: { value: '  Add a test.  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in chat (2)' }))
 
-    await waitFor(() => expect(answerCalls()).toHaveLength(1))
-    expect(answerCalls()[0]?.body).toEqual({
-      answers: [[
-        '**Comment 1**\n> Write the migration\n\nMake it reversible.\n\n' +
-          '**Comment 2**\n> Wire the endpoint\n\nAdd a test.\n\n' +
-          '**Overall**\nOtherwise fine.',
-      ]],
-    })
+    expect(handoffs()).toEqual([{
+      block: {
+        path: '.agents/plans/ship-it-0000abcd.md',
+        revision: 2,
+        comments: [
+          { quote: 'Write the migration', text: 'Make it reversible.' },
+          { quote: 'Wire the endpoint', text: 'Add a test.' },
+        ],
+      },
+      text: '',
+    }])
+    // Nothing is answered here: the message sent from the chat closes the review.
+    expect(answerCalls()).toHaveLength(0)
+    expect(screen.queryByRole('list', { name: 'Comments on the plan' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'New comment' })).toBeNull()
+    expect(readPlanReviewDraft('q-1').comments).toEqual([])
+    expect(screen.getByRole('button', { name: 'Reply in chat' })).toBeTruthy()
   })
 
   it('removes a comment', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     comment(container, 'Write the migration', 'Make it reversible.')
     fireEvent.click(screen.getByRole('button', { name: 'Remove comment 1' }))
@@ -326,7 +349,7 @@ describe('PlanTabView', () => {
   })
 
   it('disables Approve while there are comments, or one is still being written', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
@@ -336,11 +359,11 @@ describe('PlanTabView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
     expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText('Your comments go with Request changes')).toBeTruthy()
+    expect(screen.getByText(UNSENT_COMMENTS_HINT)).toBeTruthy()
   })
 
   it('cancels a comment with Escape', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
@@ -351,7 +374,7 @@ describe('PlanTabView', () => {
   })
 
   it('keeps the comments when the tab remounts during the review', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const first = renderTab()
     comment(first.container, 'Write the migration', 'Make it reversible.')
     first.unmount()
@@ -404,7 +427,7 @@ describe('PlanTabView', () => {
 
   it('disables Clear while the plan is awaiting review', () => {
     const onClearPlan = mock(() => {})
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ onClearPlan })
     expect((screen.getByRole('button', { name: 'Clear plan…' }) as HTMLButtonElement).disabled).toBe(true)
   })
@@ -459,7 +482,7 @@ describe('PlanTabView — Run as goal', () => {
     expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
     cleanup()
 
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: APPROVED })
     expect(screen.queryByRole('button', { name: 'Run as goal' })).toBeNull()
   })
@@ -473,7 +496,7 @@ describe('PlanTabView — Keep going until done', () => {
   }
 
   it('is disabled with a hint when the plan has no Done when', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     expect(keepGoingBox().hasAttribute('disabled')).toBe(true)
     // The reason is a tooltip on the control (a native title does not show on touch or by keyboard).
@@ -481,7 +504,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('explains why it is disabled when the control is hovered', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
     fireEvent.mouseOver(screen.getByText('Keep going until done'))
 
@@ -490,7 +513,7 @@ describe('PlanTabView — Keep going until done', () => {
 
   it('starts ticked when Settings say so, with the default turns, and approves with them', async () => {
     goalSettings = { ...goalSettings, keep_going_default: true, max_turns: 30 }
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     await waitFor(() => expect(keepGoingBox().checked).toBe(true))
     expect((screen.getByLabelText('Turns for this goal') as HTMLInputElement).value).toBe('30')
@@ -501,7 +524,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('starts unticked by default, and plain Approve starts no goal', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     await waitFor(() => expect(calls.some((call) => call.url.includes('/settings/goals'))).toBe(true))
     expect(keepGoingBox().checked).toBe(false)
@@ -513,7 +536,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('sends turns changed right before Approve', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     fireEvent.click(keepGoingBox())
     fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '20' } })
@@ -525,7 +548,7 @@ describe('PlanTabView — Keep going until done', () => {
   })
 
   it('blocks Approve on turns out of range', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
     fireEvent.click(keepGoingBox())
     fireEvent.change(screen.getByLabelText('Turns for this goal'), { target: { value: '0' } })
@@ -534,7 +557,7 @@ describe('PlanTabView — Keep going until done', () => {
 
   it('never reads a bare "Approve" while a goal would start', async () => {
     goalSettings = { ...goalSettings, keep_going_default: true, max_turns: 30 }
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab({ plan: WITH_DONE_WHEN })
 
     await screen.findByRole('button', { name: 'Approve and keep going (30 turns)' })
@@ -620,7 +643,7 @@ describe('PlanTabView — links, images and the Appendix', () => {
   })
 
   it('takes comments on Appendix text and opens the Appendix to show one', async () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab({ plan: VISUAL_PLAN })
     const toggle = screen.getByRole('button', { name: /^Appendix/ })
     fireEvent.click(toggle)
@@ -631,14 +654,13 @@ describe('PlanTabView — links, images and the Appendix', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add a reversal test' }))
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Request changes (1)' }))
-    await waitFor(() => expect(answerCalls()).toHaveLength(1))
-    expect(JSON.stringify(answerCalls()[0].body)).toContain('Add a reversal test')
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in chat (1)' }))
+    expect(handoffs()[0]?.block?.comments).toEqual([{ quote: 'Add a reversal test', text: 'Cover the down migration.' }])
   })
 })
 describe('PlanTabView — no Comment action per block', () => {
   it('puts no Comment button on each heading, paragraph or list item; selecting text is how to comment', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
 
     expect(screen.queryAllByRole('button', { name: /^Comment on: / })).toEqual([])
@@ -647,27 +669,32 @@ describe('PlanTabView — no Comment action per block', () => {
 })
 
 describe('PlanTabView — one review draft for the tab and the card', () => {
-  it('shows the overall feedback typed on the transcript card', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+  it('carries feedback left in a draft from the former feedback box into the chat box', () => {
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     renderTab()
 
     act(() => {
-      writePlanReviewDraft('q-1', { comments: [], overall: 'Typed on the card.' })
+      writePlanReviewDraft('q-1', { comments: [], overall: 'Typed before the update.' })
     })
 
-    expect((screen.getByLabelText('Feedback on the plan') as HTMLTextAreaElement).value).toBe('Typed on the card.')
-    expect((screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in chat' }))
+    expect(handoffs()).toEqual([{ block: null, text: 'Typed before the update.' }])
+    expect(readPlanReviewDraft('q-1').overall).toBe('')
   })
 
-  it('keeps a comment on the card draft when the tab edits its own part', () => {
-    useAgentStore.setState({ pendingQuestion: REVIEW })
+  it('keeps its comments in the review draft, which others can add to', () => {
+    useAgentStore.setState({ questionCard: questionCardOf(REVIEW) })
     const { container } = renderTab()
     comment(container, 'Write the migration', 'Make it reversible.')
 
     expect(readPlanReviewDraft('q-1').comments.map((c) => c.text)).toEqual(['Make it reversible.'])
-    fireEvent.change(screen.getByLabelText('Feedback on the plan'), { target: { value: 'Otherwise fine.' } })
-    expect(readPlanReviewDraft('q-1').comments.map((c) => c.text)).toEqual(['Make it reversible.'])
-    expect(readPlanReviewDraft('q-1').overall).toBe('Otherwise fine.')
+    // The chat chip's x puts comments back in the draft.
+    act(() => {
+      const draft = readPlanReviewDraft('q-1')
+      writePlanReviewDraft('q-1', { ...draft, comments: [...draft.comments, { id: 'back-1', quote: 'Wire the endpoint', text: 'Add a test.' }] })
+    })
+    expect(screen.getByRole('list', { name: 'Comments on the plan' }).textContent).toContain('Add a test.')
+    expect(screen.getByRole('button', { name: 'Reply in chat (2)' })).toBeTruthy()
   })
 })
 

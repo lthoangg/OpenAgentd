@@ -52,7 +52,7 @@ function setup(scrollTop: number) {
   const el = hook!.scrollRef.current!
   const scroller = fakeScroller(el)
   scroller.box.scrollTop = scrollTop
-  hook!.attachedRef.current = false
+  act(() => hook!.stopFollowing())
   return { ...view, el, ...scroller }
 }
 

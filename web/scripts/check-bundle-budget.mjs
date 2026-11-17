@@ -119,7 +119,14 @@ export const LAZY_SURFACES = ['SettingsModal', 'TelemetryOverlay', 'settings.plu
 // v3.58.0: work since v3.57.0 (connector gallery, deep links) took the index
 // chunk to 1.183 MB, 3.3 kB over. It sat just above the measured size, so it
 // now gets the same ~3.5% headroom as the startup limits.
-export const LIMITS = { eagerBytes: 2_200_000, eagerGzipBytes: 715_000, largestChunkBytes: 1_225_000 }
+// v3.59.0 (the state machines and their tables, the secret request card,
+// plan comments sent as a message, the visible loading states) took the
+// startup path from 2.182 MB / 712.1 kB at v3.58.0 to 2.211 MB / 721.7 kB,
+// nearly all of it in the index chunk (1.211 MB). It is the transcript, the
+// composer and the session's run state, all on the first screen, and the
+// cards for questions and secrets stay eager for the reason above. The
+// limits rose to the same ~3.5% headroom.
+export const LIMITS = { eagerBytes: 2_290_000, eagerGzipBytes: 747_000, largestChunkBytes: 1_255_000 }
 
 /** Each lazy surface must have a chunk of its own, outside the startup path. */
 export function lazySurfaceFailures(directory, names = LAZY_SURFACES) {

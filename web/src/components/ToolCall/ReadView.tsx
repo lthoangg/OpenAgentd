@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { Collapsible } from '@/components/ui/collapsible'
+import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from './CopyButton'
 import { truncateForDisplay, parsePartialJSON } from './displayText'
 
@@ -11,6 +12,8 @@ interface ReadViewProps {
   loading?: boolean
   onCollapse?: () => void
 }
+
+const LOADING_LINE_WIDTHS = ['w-3/5', 'w-4/5', 'w-2/5']
 
 function parseArgs(args: string): { path: string } {
   const parsed = parsePartialJSON(args)
@@ -65,7 +68,7 @@ export function ReadView({ args, result, loading = false, onCollapse }: ReadView
           <span className="truncate">{path}</span>
         </button>
         <span className="shrink-0 px-1 font-sans text-meta font-normal tabular-nums text-(--color-text-muted)">
-          {loading ? 'Loading…' : label}
+          {loading ? <Skeleton role="status" aria-label="Loading lines" tone="filled" className="inline-block h-3 w-16 align-middle" /> : label}
         </span>
         <CopyButton label="Copy read result" text={body} />
       </div>
@@ -77,7 +80,12 @@ export function ReadView({ args, result, loading = false, onCollapse }: ReadView
          * 56/80 minus the header bar. */}
         <div className="max-h-48 sm:max-h-72 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
           <div className="min-w-0">
-            {lines.map((line, idx) => (
+            {loading && !result ? (
+              // DESIGN.md → Rulebook 10: the lines on their way show as a skeleton, not an empty line 1.
+              <div aria-hidden="true" className="flex flex-col gap-2 px-3 py-2">
+                {LOADING_LINE_WIDTHS.map((width) => <Skeleton key={width} className={`h-3 ${width}`} />)}
+              </div>
+            ) : lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch text-(--color-text)">
                 <div className="sticky left-0 z-1 flex shrink-0 select-none border-r border-(--color-border)/40 bg-(--bg-input) text-right text-xs md:text-meta text-(--color-text-subtle)">
                   <span className="w-9 py-0.5 pr-1.5">{startLine + idx}</span>

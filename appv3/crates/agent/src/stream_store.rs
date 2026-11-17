@@ -532,6 +532,9 @@ impl StreamStore {
         let questions = row.questions();
         let env = match (row.kind().as_deref(), row.plan_revision()) {
             (Some(crate::plan::PLAN_REVIEW_KIND), Some(revision)) => events::plan_review_asked(&qid, session_id, &row.tool_call_id, &questions, revision),
+            (Some(crate::secret_request::SECRET_KIND), _) => {
+                events::secret_request_asked(&qid, session_id, &row.tool_call_id, &questions, &row.secret_request().unwrap_or_default())
+            }
             _ => events::question_asked(&qid, session_id, &row.tool_call_id, &questions),
         };
         let mut turns = self.turns.lock().unwrap();

@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test"
 import { mockPostAgentChat, mockTeamStream, makeStream, resetAsyncStore } from "./async-fixture"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 
 beforeEach(resetAsyncStore)
 
@@ -91,7 +92,7 @@ describe("sendMessage", () => {
     )
 
     const promise = useAgentStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
-    expect(useAgentStore.getState().isAgentWorking).toBe(true)
+    expect(isRunLive(useAgentStore.getState().sessionRun)).toBe(true)
 
     resolvePost({ status: "ok", session_id: "team-sid" })
     await promise
@@ -138,7 +139,7 @@ describe("sendMessage", () => {
 
     const state = useAgentStore.getState()
     expect(state.error).toBe("Network failure")
-    expect(state.isAgentWorking).toBe(false)
+    expect(isRunLive(state.sessionRun)).toBe(false)
   })
 
   it("sets fallback error message for non-Error throws", async () => {

@@ -15,7 +15,7 @@ import { MacTitleBar } from '@/components/MacTitleBar'
 import { WindowCaptionButtons } from '@/components/WindowCaptionButtons'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { isDesktopShell } from '@/lib/desktop-shell'
-import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
+import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute, shouldRememberRoute } from '@/lib/route-restore'
 import { PENDING_OPEN_EVENT, takePendingSessionOpen } from '@/lib/pending-session-open'
 import { isPageReload } from '@/lib/page-reload'
 import { useAppShortcut } from '@/lib/keyboard/hooks'
@@ -150,12 +150,11 @@ export function Root() {
 
   useEffect(() => {
     const fullPath = window.location.pathname + window.location.search + window.location.hash
-    const pathname = window.location.pathname
     // Root is never saved, so a reload from the hub always lands on the last
     // content route rather than the hub. That is the intended trade: users
     // reload to recover a session far more often than to reach the hub, which
     // is one click away from anywhere.
-    if (pathname !== '/' && pathname !== '/index.html') {
+    if (shouldRememberRoute(window.location.pathname)) {
       localStorage.setItem(lastRouteStorageKey(), fullPath)
     }
   }, [location])

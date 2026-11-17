@@ -3,6 +3,7 @@
 //! and the delivery that queues an agent-authored row on the lead and
 //! starts its turn when it is idle.
 
+use super::state::MemberEvent;
 use super::{find_by_session, publish_both, MemberStatus, MAX_SUBAGENT_OUTPUT_CHARS};
 use appv3_db::{self as db, DbPool};
 use serde_json::{json, Value};
@@ -116,16 +117,9 @@ pub(crate) async fn on_subagent_turn_completed(lead: &str, child: &str, status: 
         };
     let next = end.after_turn(follow_up_queued);
     let st = next.as_str();
+    let message = error.and_then(|e| e.get("message")).and_then(Value::as_str).map(str::to_string);
     let inst = find_by_session(lead, child, |i| {
-        i.status = next;
-        i.stall = None;
-        i.working_since = (next == MemberStatus::Working).then(std::time::Instant::now);
-        i.reported_at = None;
-        if end == MemberStatus::Error {
-            if let Some(m) = error.and_then(|e| e.get("message")).and_then(Value::as_str).filter(|m| !m.is_empty()) {
-                i.last_error = Some(m.to_string());
-            }
-        }
+        let _ = i.apply(MemberEvent::TurnEnded { end, follow_up_queued, error: message.clone() });
         i.clone()
     });
     let effective_handle = match &inst {

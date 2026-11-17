@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DURATIONS_S, prefersReducedMotion } from '@/lib/motion'
+import { FOLLOWING, followMachine, followsEnd, type FollowEvent, type FollowMode } from './follow-state'
 
 const SCROLL_THRESHOLD = 40
 /** Sending from up to this many screens above the end glides there; further jumps. */
@@ -125,7 +126,9 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const anchorRef = useRef<HTMLDivElement>(null)
-  const attachedRef = useRef(true)
+  // Following the end, reading, or a fold settling (``follow-state.ts``);
+  // changed only through ``move``.
+  const followMode = useRef<FollowMode>(FOLLOWING)
   const isProgrammaticScrollRef = useRef(false)
   const lastScrollTopRef = useRef(0)
   const lastScrollHeightRef = useRef(0)
@@ -137,10 +140,8 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   // ``showScrollBtn`` for the listeners, which must not re-render to read it.
   const chipRef = useRef(false)
-  // A fold is closing in place while the transcript followed its end: the
-  // view is the fold's until it lands, with no chip, then following resumes.
-  const quietRef = useRef(false)
-  const quietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Lands a fold closing in place (the ``settling`` mode).
+  const foldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sessionIdRef = useRef(sessionId)
   // A return to a session left scrolled up, until its anchor renders.
   const pendingRestoreRef = useRef<(SavedPosition & { until: number }) | null>(null)
@@ -172,12 +173,24 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   //   browser holds the first visible block still when content above it
   //   grows or shrinks (an image, KaTeX, a late highlight, a tool row).
   const syncAnchor = useCallback(() => {
+    const following = followsEnd(followMode.current)
     const el = scrollRef.current
-    if (el) el.dataset.follow = attachedRef.current ? 'live' : 'reading'
+    if (el) el.dataset.follow = following ? 'live' : 'reading'
     const anchor = anchorRef.current
     if (!anchor) return
-    anchor.style.overflowAnchor = attachedRef.current ? 'auto' : 'none'
+    anchor.style.overflowAnchor = following ? 'auto' : 'none'
   }, [])
+
+  /** The one way the follow mode changes; leaving ``settling`` drops its timer. */
+  const move = useCallback((event: FollowEvent) => {
+    const prev = followMode.current
+    followMode.current = followMachine.transition(prev, event)
+    if (followMode.current.kind !== 'settling' && foldTimerRef.current) {
+      clearTimeout(foldTimerRef.current)
+      foldTimerRef.current = null
+    }
+    syncAnchor()
+  }, [syncAnchor])
 
   /**
    * "Jump to latest" shows while the view is away from the end and not
@@ -190,21 +203,11 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     setShowScrollBtn(shown)
   }, [])
 
-  const endQuiet = useCallback(() => {
-    quietRef.current = false
-    if (quietTimerRef.current) {
-      clearTimeout(quietTimerRef.current)
-      quietTimerRef.current = null
-    }
-  }, [])
-
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
     if (!el) return
     const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
-    endQuiet()
-    attachedRef.current = true
-    syncAnchor()
+    move({ type: 'follow' })
     userScrollIntentUntilRef.current = 0
     setChip(false)
     if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
@@ -228,7 +231,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
         }
         el.removeEventListener('scrollend', finish)
         // The reader scrolled against the glide: they stay where they went.
-        if (attachedRef.current) {
+        if (followsEnd(followMode.current)) {
           const target = Math.max(0, el.scrollHeight - el.clientHeight)
           if (Math.abs(el.scrollTop - target) > 1) {
             el.scrollTop = target
@@ -252,7 +255,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       el.scrollTop = bottom
       lastScrollTopRef.current = el.scrollTop
     }
-  }, [endQuiet, setChip, syncAnchor])
+  }, [move, setChip])
 
   /**
    * Jump to latest: a glide from up to two screens away, as a send makes.
@@ -326,29 +329,26 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
         // the transcript (a turn's end-of-turn sync closing the folds they
         // opened) can clamp them onto the bottom, and following from there
         // would pull them away from what they were reading.
-        if (Date.now() >= userScrollIntentUntilRef.current && (attachedRef.current || !layoutShrank)) {
-          endQuiet()
-          attachedRef.current = true
-          syncAnchor()
+        if (Date.now() >= userScrollIntentUntilRef.current && (followsEnd(followMode.current) || !layoutShrank)) {
+          move({ type: 'follow' })
           setChip(false)
-        } else if (layoutShrank && !attachedRef.current) {
+        } else if (layoutShrank && !followsEnd(followMode.current)) {
           // Set down on the end, the reader has nothing left to jump to.
           // They follow again once they scroll down themselves.
           setChip(false)
         }
-      } else if (attachedRef.current) {
+      } else if (followsEnd(followMode.current)) {
         if (!layoutShrank && !document.documentElement.hasAttribute('data-keyboard-open')) {
           const isScrollUp = currentScrollTop < prevScrollTop
           if (isScrollUp) {
-            attachedRef.current = false
-            syncAnchor()
+            move({ type: 'leave' })
             setChip(true)
           }
         }
-      } else if (quietRef.current) {
+      } else if (followMode.current.kind === 'settling') {
         // While a fold closes, only the reader moves the view up without a shrink.
         if (!layoutShrank && currentScrollTop < prevScrollTop) {
-          endQuiet()
+          move({ type: 'leave' })
           setChip(true)
         }
       } else {
@@ -375,7 +375,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       saveFrameRef.current = requestAnimationFrame(() => {
         saveFrameRef.current = 0
         if (!sid || sid !== sessionIdRef.current || pendingRestoreRef.current) return
-        if (attachedRef.current) {
+        if (followsEnd(followMode.current)) {
           savedPositions.delete(sid)
           return
         }
@@ -390,10 +390,9 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       pendingRestoreRef.current = null
       userScrollIntentUntilRef.current = Date.now() + USER_SCROLL_INTENT_MS
       if (el.scrollHeight - el.clientHeight <= 1) return
-      endQuiet()
-      if (attachedRef.current) {
-        attachedRef.current = false
-        syncAnchor()
+      const wasFollowing = followsEnd(followMode.current)
+      move({ type: 'leave' })
+      if (wasFollowing) {
         // A glide to the end is under way: the reader took the view back.
         // Chromium keeps a scripted glide running through the wheel; an
         // instant scroll to where it is now stops it.
@@ -410,12 +409,10 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     // A scroll down at the end moves nothing and fires no scroll event: the
     // reader is back at the end, so the transcript follows again.
     const resumeAtEnd = () => {
-      if (attachedRef.current) return
+      if (followsEnd(followMode.current)) return
       if (el.scrollHeight - el.clientHeight - el.scrollTop > SCROLL_THRESHOLD) return
       pendingRestoreRef.current = null
-      endQuiet()
-      attachedRef.current = true
-      syncAnchor()
+      move({ type: 'follow' })
       setChip(false)
     }
 
@@ -461,31 +458,28 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
 
     // A fold closing in place shifts the view through here (``shiftTranscriptView``).
     const settleFold = () => {
-      quietTimerRef.current = null
-      if (!quietRef.current) return
+      foldTimerRef.current = null
+      if (followMode.current.kind !== 'settling') return
       // Everything after the fold was on screen, so it has landed with the
       // end in view; anything that streamed in meanwhile is followed now.
       scrollToBottom()
     }
     viewShifters.set(el, (dy) => {
-      const following = attachedRef.current
+      const following = followsEnd(followMode.current)
       el.scrollTop += dy
       lastScrollTopRef.current = el.scrollTop
       if (!following) return
       // Pinning the end while the fold closes would pull its header off the
       // place it was pressed; the fold has the view until it lands.
-      attachedRef.current = false
-      syncAnchor()
-      endQuiet()
-      quietRef.current = true
-      quietTimerRef.current = setTimeout(settleFold, FOLD_SETTLE_MS)
+      move({ type: 'fold' })
+      foldTimerRef.current = setTimeout(settleFold, FOLD_SETTLE_MS)
     })
 
     const onPointerDown = () => { pointerDownRef.current = true }
     const onPointerUp = () => {
       if (!pointerDownRef.current) return
       pointerDownRef.current = false
-      if (!attachedRef.current) return
+      if (!followsEnd(followMode.current)) return
       el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
       lastScrollTopRef.current = el.scrollTop
     }
@@ -514,11 +508,12 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       window.removeEventListener('pointercancel', onPointerUp)
       document.removeEventListener('keydown', onKeyDown)
       viewShifters.delete(el)
-      endQuiet()
+      // A fold mid-close when the transcript goes: its timer goes with it.
+      if (followMode.current.kind === 'settling') move({ type: 'leave' })
       cancelAnimationFrame(saveFrameRef.current)
       saveFrameRef.current = 0
     }
-  }, [endQuiet, scrollToBottom, setChip, syncAnchor])
+  }, [move, scrollToBottom, setChip])
 
   /** Put a returning session back where it was left; false until its anchor renders. */
   const tryRestore = useCallback((): boolean => {
@@ -532,13 +527,12 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     const anchor = findBlock(el, pending.anchorId)
     if (!anchor) return false
     pendingRestoreRef.current = null
-    attachedRef.current = false
-    syncAnchor()
+    move({ type: 'leave' })
     el.scrollTop += anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - pending.offset
     lastScrollTopRef.current = el.scrollTop
     setChip(true)
     return true
-  }, [setChip, syncAnchor])
+  }, [move, setChip])
 
   // Before paint, so a scroll event the swap causes is neither saved under
   // the session being left nor saved over the one being entered.
@@ -555,11 +549,10 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
   useLayoutEffect(() => {
     if (tryRestore()) return
     // Until a returning session's anchor renders, follow the bottom.
-    attachedRef.current = true
-    syncAnchor()
+    move({ type: 'follow' })
     setChip(false)
     scrollToBottom()
-  }, [sessionId, scrollToBottom, setChip, syncAnchor, tryRestore])
+  }, [sessionId, move, scrollToBottom, setChip, tryRestore])
 
   useLayoutEffect(() => {
     let behavior: ScrollBehavior = 'auto'
@@ -569,14 +562,14 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       // a jump from further back.
       pendingRestoreRef.current = null
       const el = scrollRef.current
-      if (!attachedRef.current && el && !prefersReducedMotion()) {
+      if (!followsEnd(followMode.current) && el && !prefersReducedMotion()) {
         const distance = el.scrollHeight - el.clientHeight - el.scrollTop
         if (distance <= el.clientHeight * SMOOTH_SEND_SCREENS) behavior = 'smooth'
       }
-      attachedRef.current = true
+      move({ type: 'follow' })
     }
     if (pendingRestoreRef.current && tryRestore()) return
-    if (attachedRef.current) {
+    if (followsEnd(followMode.current)) {
       syncAnchor()
       // A glide to the end is under way (Jump to latest, a send): a delta
       // must not cut it short with an instant write; it lands on the end
@@ -584,16 +577,14 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (behavior === 'auto' && smoothScrollFinishRef.current) return
       scrollToBottom(behavior)
     }
-  }, [totalLen, lastContent, isUserMessage, scrollToBottom, syncAnchor, tryRestore])
+  }, [totalLen, lastContent, isUserMessage, move, scrollToBottom, syncAnchor, tryRestore])
 
   useEffect(() => {
     if (!isEmpty) return
-    endQuiet()
-    attachedRef.current = true
-    syncAnchor()
+    move({ type: 'follow' })
     setChip(false)
     if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [endQuiet, isEmpty, setChip, syncAnchor])
+  }, [isEmpty, move, setChip])
 
   const hasContent = !isEmpty
   useEffect(() => {
@@ -611,9 +602,9 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       lastContentHeightRef.current = nextContentHeight
       lastScrollHeightRef.current = el.scrollHeight
       lastScrollTopRef.current = el.scrollTop
-      if (!attachedRef.current) {
+      if (!followsEnd(followMode.current)) {
         // Content arrived below a reader set down on the end: the way back is open again.
-        if (!quietRef.current && el.scrollHeight - el.clientHeight - el.scrollTop > SCROLL_THRESHOLD) setChip(true)
+        if (followMode.current.kind === 'reading' && el.scrollHeight - el.clientHeight - el.scrollTop > SCROLL_THRESHOLD) setChip(true)
         return
       }
       if (pointerDownRef.current) return
@@ -649,7 +640,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     const repin = () => {
       timer = null
       vv?.removeEventListener('resize', settle)
-      if (attachedRef.current) scrollToBottom()
+      if (followsEnd(followMode.current)) scrollToBottom()
     }
     function settle() {
       if (timer) clearTimeout(timer)
@@ -671,12 +662,17 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     }
   }, [scrollToBottom])
 
+  /** The end is kept in view as content arrives. */
+  const isFollowing = useCallback(() => followsEnd(followMode.current), [])
+  /** The app moved the view away from the end (a prompt jump): stop following it. */
+  const stopFollowing = useCallback(() => move({ type: 'leave' }), [move])
+
   return {
     scrollRef,
     contentRef,
     anchorRef,
-    attachedRef,
-    syncAnchor,
+    isFollowing,
+    stopFollowing,
     showScrollBtn,
     scrollToBottom,
     jumpToLatest,

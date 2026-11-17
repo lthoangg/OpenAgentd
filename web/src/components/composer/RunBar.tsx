@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import type { ContentBlock } from '@/api/types'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { useSimpleDetail } from '@/stores/useDisplayPrefsStore'
 import { SessionStatusMark } from '@/components/Sidebar/SessionStatusMark'
 
@@ -70,7 +71,7 @@ export function turnStartedAt(stream: TurnStream, pinnedPrompt: ContentBlock | n
 export function RunBar() {
   const isPhone = useIsPhone()
   const simple = useSimpleDetail()
-  const working = useAgentStore((s) => s.isAgentWorking && s.leadName != null && s.agentStreams[s.leadName]?.status === 'working')
+  const working = useAgentStore((s) => isRunLive(s.sessionRun) && s.leadName != null && s.agentStreams[s.leadName]?.status === 'working')
   const startedAt = useAgentStore((s) => {
     const stream = s.leadName ? s.agentStreams[s.leadName] : undefined
     return stream ? turnStartedAt(stream, s.pinnedPrompt) : null

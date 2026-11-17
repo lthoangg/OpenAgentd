@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from "bun:test"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { runOf } from '@/stores/useAgentStore/run-state'
+import { linkOf } from '@/stores/useAgentStore/link-state'
 
 /**
  * todo_manage tool rendering and todos-event tests.
@@ -51,8 +53,8 @@ describe("useAgentStore — todo_manage rendering and event emission", () => {
       sidebarOpen: false,
       sessionId: "sess-123",
       sessionTitle: null,
-      isAgentWorking: false,
-      isConnected: false,
+      sessionRun: runOf(false),
+      streamLink: linkOf(false),
       error: null,
       _pendingMessages: [],
       _sessionGeneration: 0,

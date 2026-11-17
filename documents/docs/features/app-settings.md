@@ -7,6 +7,12 @@ description: "The Settings dialog: its pages, search, and how changes are saved.
 
 Part of the [feature catalogue](../features.md), under *1. The desktop coding workspace*. The index explains the version tags.
 
+- **Secrets page** `[v3.59.0]` — Settings → Secrets lists the keys you
+  gave the agent, one row per value, with the projects that use it (or All
+  projects), when it was saved and whether from chat or Settings, and a
+  **folder missing** tag for a project that moved. Add a key, replace a
+  value, change its projects, or delete it; a value is never shown again
+  after saving. Connectors can use a saved key as `${NAME}`.
 - **Plugins page and live settings refresh (v3)** `[v3.0.0]` — Settings →
   Plugins lists each plugin with its provider, tool hooks and load errors,
   and flags v2 Python plugins that have no TypeScript port (v3 does not run

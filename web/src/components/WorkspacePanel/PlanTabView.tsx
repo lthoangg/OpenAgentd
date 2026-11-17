@@ -4,11 +4,12 @@
  *
  * The lead writes the plan with the ``plan`` tool and submits it with the
  * same tool (``submit: true``); while that review is open the footer offers Approve and
- * Request changes. Selecting plan text offers Comment: each comment stays
+ * Reply in chat. Selecting plan text offers Comment: each comment stays
  * anchored to its passage (highlighted in the plan, listed in the footer) and
- * Request changes sends them all, with any overall feedback, as one answer.
- * The transcript card decides the same review with the same actions
- * (``usePlanDecision``).
+ * Reply in chat moves them all into the chat composer as one chip, where the
+ * user adds anything else and sends them as a normal message (the review
+ * closes as superseded, and the message shows in the chat). The chip's x
+ * puts them back here. Approve waits until no comment is left unsent.
  * The user can also edit the plan here (or in any editor): the server notices
  * the change by content and tells the agent once.
  *
@@ -51,6 +52,7 @@ import { isLiveGoal } from '@/lib/goal'
 import { useSessionGoalQuery, useStartGoalMutation } from '@/queries/useSessionGoalQuery'
 import { useUpdateSessionPlanMutation } from '@/queries/useUpdateSessionPlanMutation'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { openQuestion } from '@/stores/useAgentStore/question-state'
 import { useToastStore } from '@/stores/useToastStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { workspaceRelativePath } from '@/utils/file-refs'
@@ -58,14 +60,12 @@ import { MarkdownBlock } from '@/utils/markdown'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { KeepGoingControl, KeepGoingToggle } from '../PlanReview/KeepGoingControl'
 import { CommentButton, CommentComposer, CommentList, showPassage, useCommentHighlights } from '../PlanReview/PlanComments'
-import { REVIEW_DECK_BUTTON_CLASS, ReviewDeck, ReviewPill, ReviewTextarea } from '../PlanReview/ReviewPill'
+import { REVIEW_DECK_BUTTON_CLASS, ReviewDeck } from '../PlanReview/ReviewPill'
 import { readAppendixOpen, splitPlanAppendix, writeAppendixOpen } from '../PlanReview/plan-appendix'
 import {
   findTextRange,
   forgetPlanReviewDraft,
-  formatPlanReview,
   passageAnchor,
-  PLAN_FEEDBACK_MAX_CHARS,
   snapshotPlanReviewDraft,
   usePlanSelection,
   usePlanReviewDraft,
@@ -73,6 +73,8 @@ import {
   type PlanReviewDraft,
   type PlanSelection,
 } from '../PlanReview/plan-comments'
+import type { PlanCommentsHandoff } from '../PlanReview/plan-comments-block'
+import { usePlanCommentsInChat } from '../PlanReview/plan-comments-in-chat'
 import { usePlanDecision } from '../PlanReview/usePlanDecision'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -90,9 +92,16 @@ const STATUS_CHIP_CLASS: Record<PlanStatus, string> = {
 
 const HTML_FILE = /\.html?$/i
 
-/** The review footer's band, as the chat composer's: the page under a framed box. */
+/** A phone's band for the comment being written and the selection's Comment, as the chat composer's: the page under a framed box. */
 const FOOTER_BAND_MOBILE = 'shrink-0 bg-(--bg-page) px-2 pt-1.5 pb-safe'
-const FOOTER_BAND_DESKTOP = 'shrink-0 bg-(--bg-page) px-3 pt-1 pb-3'
+/** The review's own band: a hairline over it, as there is no framed box to set it off. */
+const REVIEW_BAND_MOBILE = 'shrink-0 border-t border-(--color-border-subtle) bg-(--bg-page) px-2 pt-2 pb-safe'
+const REVIEW_BAND_DESKTOP = 'shrink-0 border-t border-(--color-border-subtle) bg-(--bg-page) px-3 pt-2 pb-3'
+
+/** Approve's hint while comments wait to be sent, here or in the chat composer. */
+export const UNSENT_COMMENTS_HINT = 'Send or remove your plan comments first'
+/** The footer's hint while nothing waits. */
+export const REPLY_HINT = 'Select plan text to comment, or reply in chat'
 
 /**
  * How long a touch selection is remembered after iOS collapses it, so a tap
@@ -156,6 +165,8 @@ export interface PlanTabViewProps {
   workspace?: string | null
   /** The task board, so a plan whose tasks are all finished reads Done. */
   todos?: readonly TodoItem[]
+  /** Reply in chat: moves the review's comments into the chat composer and focuses it. */
+  onSendPlanComments?: (handoff: PlanCommentsHandoff) => void
 }
 
 /** How plan links open workspace files: HTML in Preview, the rest as file tabs. */
@@ -177,13 +188,15 @@ export function planFileOpener(
   }
 }
 
-export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPreview, workspace = null, todos }: PlanTabViewProps) {
-  const pendingQuestion = useAgentStore((s) => s.pendingQuestion)
+export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPreview, workspace = null, todos, onSendPlanComments }: PlanTabViewProps) {
+  const pendingQuestion = useAgentStore((s) => openQuestion(s))
   const review = pendingQuestion?.kind === 'plan_review' ? pendingQuestion : null
   const reviewId = review?.id ?? null
   const { data: goalData } = useSessionGoalQuery(sessionId)
-  // Approve, Request changes and Keep going are the card's too (see ``usePlanDecision``).
+  // Approve and Keep going (see ``usePlanDecision``).
   const decision = usePlanDecision({ review, doneWhen: plan?.done_when })
+  // Comments already moved to the chat composer and not yet sent.
+  const commentsInChat = usePlanCommentsInChat((s) => s.block?.comments.length ?? 0)
   const startGoal = useStartGoalMutation()
   const queryClient = useQueryClient()
   const update = useUpdateSessionPlanMutation()
@@ -350,18 +363,17 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const unsavedEdits = editing && draft !== plan.content
   const { comments, overall } = reviewDraft
   const pendingComment = composer?.text.trim() ? [{ quote: composer.quote, text: composer.text }] : []
-  const answerText = formatPlanReview([...comments, ...pendingComment], overall)
-  // Request changes needs something to send: a comment or some feedback.
-  const hasFeedback = comments.length + pendingComment.length > 0 || overall.trim().length > 0
-  const tooLong = answerText.length > PLAN_FEEDBACK_MAX_CHARS
+  const unsentHere = comments.length + pendingComment.length
+  // Approve waits for every comment to be sent: still here, or moved to the
+  // chat composer and not sent yet.
   const approveHint = unsavedEdits
     ? 'Save or cancel your edits first'
     : pendingComment.length
       ? 'Add or cancel your comment first'
-      : comments.length || overall.trim()
-        ? 'Your comments go with Request changes'
+      : comments.length || commentsInChat
+        ? UNSENT_COMMENTS_HINT
         : decision.turnsProblem
-  const footerHint = tooLong ? 'Too long to send — shorten your comments' : approveHint
+  const footerHint = approveHint ?? REPLY_HINT
 
   const approve = () => {
     if (mobile) dismissKeyboard()
@@ -432,10 +444,18 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     persist(next, null)
   }
 
-  const requestChanges = () => {
-    if (composer) addComment()
-    if (mobile) dismissKeyboard()
-    decision.requestChanges(answerText)
+  // Reply in chat: every comment (a half-written one included) and any
+  // feedback left from the former feedback box move to the chat composer,
+  // and the draft here empties. With none, it only takes the user there.
+  const replyInChat = () => {
+    if (!onSendPlanComments) return
+    const all = [...comments.map(({ quote, text }) => ({ quote, text })), ...pendingComment.map(({ quote, text }) => ({ quote, text: text.trim() }))]
+    const block = all.length > 0
+      ? { path: plan.workspace_path ?? plan.path ?? null, revision: review?.planRevision ?? plan.revision ?? null, comments: all }
+      : null
+    setComposer(null)
+    persist({ comments: [], overall: '' }, null)
+    onSendPlanComments({ block, text: overall })
   }
 
   const copy = () => {
@@ -674,13 +694,14 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           </div>
         </div>
       ) : review && (
-        // The chat composer's shape: what waits on the review sits above the
-        // box (comments, the turns, a hint), the box holds the feedback and
-        // the actions. Always open; on a phone the deck keeps to one row that
-        // fits a 320pt screen. The band runs the dock's width; its content
-        // keeps the plan's column (``oa-review-column``, index.css), so a wide
-        // or maximized dock does not stretch the box across the screen.
-        <div data-plan-review-footer="" className={mobile ? FOOTER_BAND_MOBILE : FOOTER_BAND_DESKTOP}>
+        // What waits on the review sits above the actions (comments, the
+        // turns, a hint). Feedback is written in the chat composer, so there
+        // is no box here: Reply in chat takes the comments there. On a phone
+        // the deck keeps to one row that fits a 320pt screen. The band runs
+        // the dock's width; its content keeps the plan's column
+        // (``oa-review-column``, index.css), so a wide or maximized dock does
+        // not stretch it across the screen.
+        <div data-plan-review-footer="" className={mobile ? REVIEW_BAND_MOBILE : REVIEW_BAND_DESKTOP}>
           <div className="oa-review-column space-y-1.5">
             {comments.length > 0 && (!compactFooter || showComments) && (
               <CommentList
@@ -693,7 +714,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               <button
                 type="button"
                 aria-expanded={showComments}
-                // Keep focus (and the keyboard) in the feedback box.
+                // Keep focus (and the keyboard) in the turns field.
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => setShowComments((open) => !open)}
                 className="inline-flex items-center gap-1 rounded-full bg-(--bg-key) px-3 py-0.5 text-meta text-(--color-text-2) pointer-coarse:min-h-9"
@@ -709,71 +730,46 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             {mobile && decision.keepGoing && showKeepGoing && (
               <KeepGoingControl turnsOnly decision={decision} onTurnsFocusChange={setTurnsFocused} />
             )}
-            {mobile && footerHint && (!compactFooter || tooLong || turnsFocused) && (
+            {/* Its own line, so the actions keep to one row in a narrow dock. */}
+            {(!compactFooter || turnsFocused) && (
               <p className="text-meta text-(--color-text-muted)">{footerHint}</p>
             )}
             {decision.error && (
               <p role="alert" className="text-meta text-(--color-error)">{decision.error}</p>
             )}
-            <ReviewPill>
-              <ReviewTextarea
-                aria-label="Feedback on the plan"
-                placeholder={
-                  comments.length
-                    ? 'Anything else? (optional)'
-                    : mobile
-                      ? 'What should change?'
-                      : 'What should change? Select plan text to comment on it.'
-                }
-                value={overall}
-                maxLength={PLAN_FEEDBACK_MAX_CHARS}
-                onChange={(event) => changeDraft({ ...reviewDraft, overall: event.target.value })}
-                // While typing on a phone, cap the box to a share of the
-                // visible area so the plan above stays readable.
-                className={compactFooter ? 'max-h-[min(6lh,calc(var(--app-vh,100svh)*0.25))]' : undefined}
-              />
-              <ReviewDeck className={mobile ? undefined : 'flex-wrap'}>
-                {mobile ? (
-                  <KeepGoingToggle decision={decision} />
-                ) : (
-                  <KeepGoingControl decision={decision} onTurnsFocusChange={setTurnsFocused} />
-                )}
-                <span className="min-w-0 flex-1" aria-hidden="true" />
-                {!mobile && footerHint && (
-                  <span className="min-w-0 truncate text-meta text-(--color-text-muted)" title={footerHint}>{footerHint}</span>
-                )}
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  className={cn('min-w-0', REVIEW_DECK_BUTTON_CLASS)}
-                  title={hasFeedback ? undefined : 'Add a comment or feedback first'}
-                  disabled={decision.submitting || tooLong || !hasFeedback}
-                  onClick={requestChanges}
-                >
-                  <span className="truncate">
-                    {comments.length + pendingComment.length > 0
-                      ? `Request changes (${comments.length + pendingComment.length})`
-                      : 'Request changes'}
-                  </span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  className={cn('shrink-0', REVIEW_DECK_BUTTON_CLASS)}
-                  // A phone's deck has no room for "and keep going (N turns)":
-                  // the toggle beside it says so, the name still does.
-                  aria-label={decision.approveLabel}
-                  title={approveHint ?? undefined}
-                  disabled={decision.submitting || approveHint !== null}
-                  onClick={approve}
-                >
-                  {mobile ? 'Approve' : decision.approveLabel}
-                </Button>
-              </ReviewDeck>
-            </ReviewPill>
-            {!mobile && <p className="text-meta text-(--color-text-muted)">Or reply in chat to redirect the agent.</p>}
+            <ReviewDeck className={cn('mt-0', mobile ? undefined : 'flex-wrap')}>
+              {mobile ? (
+                <KeepGoingToggle decision={decision} />
+              ) : (
+                <KeepGoingControl decision={decision} onTurnsFocusChange={setTurnsFocused} />
+              )}
+              <span className="min-w-0 flex-1" aria-hidden="true" />
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className={cn('min-w-0', REVIEW_DECK_BUTTON_CLASS)}
+                title={unsentHere > 0 ? 'Move your comments to the chat box, then send them from there' : 'Write what should change in the chat box'}
+                disabled={decision.submitting || !onSendPlanComments}
+                onClick={replyInChat}
+              >
+                <span className="truncate">{unsentHere > 0 ? `Reply in chat (${unsentHere})` : 'Reply in chat'}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className={cn('shrink-0', REVIEW_DECK_BUTTON_CLASS)}
+                // A phone's deck has no room for "and keep going (N turns)":
+                // the toggle beside it says so, the name still does.
+                aria-label={decision.approveLabel}
+                title={approveHint ?? undefined}
+                disabled={decision.submitting || approveHint !== null}
+                onClick={approve}
+              >
+                {mobile ? 'Approve' : decision.approveLabel}
+              </Button>
+            </ReviewDeck>
           </div>
         </div>
       )}

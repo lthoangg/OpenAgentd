@@ -9,6 +9,14 @@ import type {
 import type { PendingQuestion, QuestionItem } from '@/api/question-types'
 import type { OrphanToolResult } from '@/utils/messages'
 
+/**
+ * The session states the backend sends as ``agent_status``, in the order of
+ * ``appv3/crates/agent/data/session_states.json`` (held to it by
+ * ``__tests__/api/session-states-contract.test.ts``).
+ */
+export const SESSION_STATUSES = ['idle', 'working', 'waiting_input', 'waiting_lead', 'error', 'offline'] as const
+export type SessionStatus = (typeof SESSION_STATUSES)[number]
+
 export interface AgentError {
   title?: string
   message: string
@@ -85,9 +93,10 @@ export interface AgentStream {
    * ``waiting_input`` mirrors the backend's ``waiting_input`` member state: the
    * agent is suspended on an ``ask_user`` call. It is *live* (the turn
    * has not ended) but not *working* (no tokens are coming), so spinners should
-   * treat it as busy while progress indicators should not.
+   * treat it as busy while progress indicators should not. ``waiting_lead``
+   * is a member whose turn ended on a question to its lead: not working.
    */
-  status: 'idle' | 'working' | 'waiting_input' | 'offline' | 'error'
+  status: SessionStatus
   usage: AgentUsage
   _turnStartedAt?: number | null
   /**

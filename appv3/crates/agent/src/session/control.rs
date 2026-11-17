@@ -16,6 +16,9 @@ pub(super) enum SessionStatus {
 }
 
 impl SessionStatus {
+    /// Every status, in `data/session_states.json` order.
+    pub(super) const ALL: [Self; 6] = [Self::Idle, Self::Working, Self::WaitingInput, Self::WaitingLead, Self::Error, Self::Offline];
+
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Idle => "idle",
@@ -149,6 +152,20 @@ impl TurnWork {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The web reads the same list (`web/src/__tests__/api/session-states-contract.test.ts`).
+    #[test]
+    fn the_statuses_are_the_ones_the_contract_lists() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!("../../data/session_states.json")).unwrap();
+        let listed: Vec<&str> = contract["agent_status"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(SessionStatus::ALL.map(SessionStatus::as_str).to_vec(), listed);
+        // `ALL` is every variant: a new one must be added there (and to the contract).
+        for status in SessionStatus::ALL {
+            match status {
+                SessionStatus::Idle | SessionStatus::Working | SessionStatus::WaitingInput | SessionStatus::WaitingLead | SessionStatus::Error | SessionStatus::Offline => {}
+            }
+        }
+    }
 
     #[test]
     fn status_and_ownership_have_distinct_busy_projections() {

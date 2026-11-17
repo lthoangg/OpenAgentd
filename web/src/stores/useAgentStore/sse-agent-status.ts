@@ -47,6 +47,12 @@ export function onAgentStatus(set: StoreSet, d: Record<string, unknown>) {
       draft.agentStreams[agent].status = 'waiting_input'
       draft.isAgentWorking = true
       if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+    } else if (status === 'waiting_lead') {
+      // A member whose turn ended on a question to its lead: live, not busy.
+      // Viewed as its own session (it is this view's lead), nothing runs.
+      draft.agentStreams[agent].status = 'waiting_lead'
+      if (agent === draft.leadName) draft.isAgentWorking = false
+      if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
     } else if (status === 'idle') {
       draft.agentStreams[agent].status = 'idle'
       if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)

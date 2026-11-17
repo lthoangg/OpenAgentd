@@ -6,6 +6,13 @@
 #   scripts/readme-shots/run.sh capture   take light + dark screenshots into documents/assets/readme/
 #   scripts/readme-shots/run.sh down      stop the sandbox servers
 #
+# Then `bun scripts/readme-shots/banner.mjs` rebuilds the README banner from the new capture.
+#
+# Needs: cwebp (brew install webp), bun, and an OpenAI key in $SHOTS_ENV_FILE for the
+# default MODEL (openai:gpt-6-luna; any tool-calling model works). `stage` runs five real
+# sessions, a few cents in total. A capture step that times out usually means a UI label
+# changed: fix the selector in capture.mjs and rerun `capture <scene>`.
+#
 # Isolation: the backend runs with HOME and every OPENAGENTD_* directory inside
 # $SHOTS_DIR, so your sessions, settings, skills, memory, shell rc files and git
 # identity never reach a screenshot. Only provider API keys are read, from
@@ -98,5 +105,5 @@ case "${1:-}" in
   stage) cmd_stage ;;
   capture) shift; cmd_capture "$@" ;;
   down) cmd_down ;;
-  *) sed -n '2,12p' "$0"; exit 1 ;;
+  *) sed -n '2,19p' "$0"; exit 1 ;;
 esac

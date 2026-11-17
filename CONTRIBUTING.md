@@ -68,10 +68,14 @@ openagentd/
 │   └── report/             # Wire and on-disk compatibility log (REPORT.md is its index)
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── desktop/, mobile/       # Tauri shells (desktop bundles the appv3 binary)
-├── design/                 # Design system chapters (DESIGN.md holds the tokens and the map)
+├── native/                 # Rust shared by the shells: shell-core, cloud (remote control)
+├── DESIGN.md               # Design tokens and the map of the design chapters
+├── design/                 # Design system chapters
+├── account-pages/          # Static pages of account.openagentd.dev (connector gallery, sign-in return)
 ├── scripts/                # Release, docs, and code-health tools (+ tests/)
 ├── documents/              # Feature catalogue and assets
 │   └── docs/               # Version-cited shipped features, one file per area
+├── .agents/                # Skills, commands, plans and backlog for agents working on this repo
 └── .github/                # Issue templates, PR template, CI workflows
 ```
 

@@ -1,7 +1,7 @@
 // What a screen says when something fails or is still loading, and the
 // shared confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 10): a folder
 // list that failed, a workspace whose sessions could not be read, the
-// TypeScript tools line, a title loading in Usage, deleting a workspace
+// TypeScript tools line, a title loading in Usage and in a Read row, deleting a workspace
 // group, the QR scanner's focus, and ✎'s sheet on a phone.
 // Feature notes: ../../features/ui-states.md
 export default async function uiStates({ page, expect, step, open, phone, run, demo, seedSession, newSessionInDemo, hold }) {
@@ -14,8 +14,8 @@ export default async function uiStates({ page, expect, step, open, phone, run, d
     await back.or(sessions).first().waitFor()
     if (await back.isVisible()) await back.click()
   }
-  /** Wait for the page's finite animations (a toast or a sheet coming in), so the photo shows it settled. */
-  const settled = () => page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished)))
+  /** Wait for the page's finite animations (a toast or a sheet coming in), so the photo shows it settled. A cancelled one counts as done. */
+  const settled = () => page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))))
   const down = (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "The server is busy." }) })
 
   await step("a folder list that fails to load says so, with Retry", async () => {
@@ -105,6 +105,31 @@ export default async function uiStates({ page, expect, step, open, phone, run, d
     const saved = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("oa-last-route")).map((k) => localStorage.getItem(k)))
     expect(saved.some((route) => route?.startsWith("/telemetry"))).toBe(false)
     await expect(page.getByRole("dialog", { name: "Usage" })).toHaveCount(0)
+  })
+
+  await step("a Read row's line count loading shows a skeleton, not a word", async () => {
+    const id = await seedSession(`Read for ${run}\ndrive:read {"path": "README.md"}`)
+    // Hold the result the row fetches once opened, so the loading state stays to be seen.
+    await page.route("**/tool-results/**", async (route) => {
+      await new Promise((r) => setTimeout(r, 6000))
+      await route.continue().catch(() => {})
+    })
+    await open(`/${id}`)
+    // The turn's tool calls may be folded into one line, "1 read", first.
+    const folded = page.getByRole("button", { name: "1 read", exact: true })
+    const row = page.getByRole("button", { name: "Expand read details", exact: true })
+    await folded.or(row).first().waitFor()
+    if (await folded.isVisible()) await folded.click()
+    await row.click()
+    await expect(page.getByRole("status", { name: "Loading lines" })).toBeVisible()
+    await expect(page.getByText("Loading…")).toHaveCount(0)
+  })
+
+  await step("then the lines it read", async () => {
+    // A whole-file read has no range to count, so the lines themselves show.
+    await expect(page.getByText("A repository the drive journeys change.")).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole("status", { name: "Loading lines" })).toHaveCount(0)
+    await page.unroute("**/tool-results/**")
   })
 
   const group = `Group ${run}`

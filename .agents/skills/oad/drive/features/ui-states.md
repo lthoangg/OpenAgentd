@@ -15,6 +15,8 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   session's title loads, not a word. Once closed, Usage stays closed when
   the app opens again (the `/telemetry` link is not saved as the route to
   reopen).
+- A Read row opened while its lines load: a skeleton in the header and in
+  the body, not the word or an empty line 1.
 - Deleting a workspace group: the shared confirm, with Cancel.
 - The QR scanner: focus lands on Cancel, Escape cancels it, and focus goes
   back to the button that opened it.
@@ -29,6 +31,8 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   needs the tools it does not have.
 - **Usage on a session:** a turn's footer → its usage, or a
   `/telemetry?session=<id>` link (phone: Filters shows the chip).
+- **Read row:** a turn that read a file, reopened; open the row (it may be
+  folded into "1 read" first).
 - **Groups:** Settings → Workspaces → New group, then the row's trash button.
 - **QR scanner (phone app only):** Computers (Back from Sessions) → Scan QR code
   under the list.
@@ -44,6 +48,9 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   `/events/stream` (the route then lets the real stream through).
 - The Usage skeleton stays on screen because `/observability/summary` is
   held for 6 s.
+- The Read row comes from the stub's `drive:read {"path": "README.md"}`;
+  its result is fetched once the row opens, and that `tool-results` request
+  is held for 6 s.
 - The QR scanner is mounted beside an "Open the scanner" button by the
   journey, from the dev server's own `QrScanOverlay.tsx` and React.
 
@@ -54,10 +61,10 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   "Couldn't load workspaces." with Retry. A phone also reopens the last
   session at `/`: the journey goes Back to Sessions first.
 - The app retries a failed read a few times (about 7 s) before it says so.
-- The lightbox and Read-row skeletons are not driven: a text attachment
-  comes with its text, so the gallery never waits, and a Read row's count
-  lasts a moment. `FileLightbox.test.tsx` and `ToolCall/ReadView.test.tsx`
-  cover them.
+- The lightbox skeleton is not driven: a text attachment comes with its
+  text, so the gallery never waits. `FileLightbox.test.tsx` covers it.
+- A whole-file read has no range, so its header shows no line count once
+  loaded; the step checks the file's text instead.
 - The server's own TypeScript announcement cannot fire in the drive: the
   machine's `/etc/paths.d` puts `typescript-language-server` on the
   backend's PATH, so the tools are never missing. Hence the faked frame.

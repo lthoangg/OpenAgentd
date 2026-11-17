@@ -79,6 +79,24 @@ def test_the_script_directive_becomes_a_script_call_with_the_code(server: str, p
 
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
+def test_the_read_directive_becomes_a_read_call_with_its_arguments(server: str, protocol: str) -> None:
+    prompt = 'drive:read {"path": "README.md"}'
+    body = user_turn(protocol, prompt)
+    body["tools"] = body["tools"] + [READ_TOOL[protocol]]
+    assert stub.plan(protocol, body) == ("read", '{"path": "README.md"}')
+    assert stub.plan(protocol, user_turn(protocol, prompt))[0] == "text"
+    events = stream_events(post(server + PATHS[protocol], body))
+    assert tool_call(protocol, events) == ("read", {"path": "README.md"})
+
+
+READ_TOOL = {
+    "chat": {"type": "function", "function": {"name": "read"}},
+    "responses": {"type": "function", "name": "read"},
+    "messages": {"name": "read", "input_schema": {}},
+}
+
+
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_a_tool_result_ends_the_turn_instead_of_repeating_the_call(protocol: str) -> None:
     assert stub.plan(protocol, after_tool(protocol)) == ("text", f"Stub ({protocol}): the tool finished.")
 

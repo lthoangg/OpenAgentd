@@ -1,8 +1,9 @@
-//! A turn clears the in-flight mark of the session it ran for, even when
-//! the AgentSession was bound to another session while it ran (two scheduled
-//! runs sharing one AgentSession did that). The leftover mark made the next
-//! server start continue a turn that had finished hours before. The manager
-//! is process-wide, so this file is its own test binary.
+//! A message sent to an AgentSession whose turn is still running for
+//! another session is refused: it neither starts a second turn nor rebinds
+//! the session under the running one. Two scheduled runs sharing one
+//! AgentSession used to do both, and the first run's in-flight mark was left
+//! behind, so the next server start continued a turn that had finished hours
+//! before. The manager is process-wide, so this file is its own test binary.
 
 mod common;
 
@@ -82,7 +83,7 @@ async fn answered(pool: &appv3_db::DbPool, sid: &str) -> bool {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_turn_clears_its_own_mark_after_its_agent_session_moved_to_another_session() {
+async fn a_second_session_cannot_take_over_a_running_turn_and_its_mark_is_cleared() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     setup_roots(root);
@@ -101,13 +102,13 @@ async fn a_turn_clears_its_own_mark_after_its_agent_session_moved_to_another_ses
     let first = uuid::Uuid::now_v7().to_string();
     let second = uuid::Uuid::now_v7().to_string();
 
-    // The first run waits on its model call; the second binds the same
-    // AgentSession to its own session and finishes first.
+    // The first run waits on its model call; a second session's message to
+    // the same AgentSession is refused and leaves it bound to the first.
     session.handle_user_message(send(&first)).await.unwrap();
     wait_until_async("the first run's model call", async || provider.calls.load(Ordering::SeqCst) >= 1).await;
     assert_eq!(in_flight(&pool).await, vec![first.clone()]);
-    session.handle_user_message(send(&second)).await.unwrap();
-    wait_until_async("the second run's answer", async || answered(&pool, &second).await).await;
+    assert!(session.handle_user_message(send(&second)).await.is_err(), "a busy session started a second turn");
+    assert_eq!(session.session_id(), first, "the refused message rebound the running session");
 
     // The first run answers and ends: no mark is left behind.
     provider.gate.notify_one();

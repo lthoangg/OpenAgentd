@@ -158,10 +158,7 @@ mod tests {
 
     #[test]
     fn check_table_passes_when_step_and_the_table_agree() {
-        check_table::<DoorMachine>(
-            &[Door::Open, Door::Closed, Door::Locked { key: 3 }],
-            &[DoorEvent::Close, DoorEvent::Open, DoorEvent::Lock(3), DoorEvent::Unlock(3)],
-        );
+        check_table::<DoorMachine>(&[Door::Open, Door::Closed, Door::Locked { key: 3 }], &[DoorEvent::Close, DoorEvent::Open, DoorEvent::Lock(3), DoorEvent::Unlock(3)]);
     }
 
     #[test]

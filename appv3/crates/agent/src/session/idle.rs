@@ -2,7 +2,6 @@
 //! the timer a completed lead turn arms, and the background `/compact` it
 //! runs when the session stayed idle and its context grew large enough.
 
-use super::control::Transition;
 use super::{AgentSession, TurnOptions};
 use crate::hooks::summarization::resolve_prompt_token_threshold;
 use crate::idle_compaction::{idle_prompt_tokens, resumed_delay, should_compact};
@@ -110,10 +109,10 @@ impl AgentSession {
             return skip("below_percent");
         }
         tracing::info!("idle_compaction_started session_id={} tokens={} threshold={} percent={}", sid, tokens, threshold, percent);
+        if !self.try_begin_turn() {
+            return skip("not_idle");
+        }
         store().init_turn(&sid, true);
-        self.transition(Transition::StartTurn);
-        self.clear_cancel();
-        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { force_compaction: true, idle_compaction: true, ..Default::default() });
     }
 }

@@ -5,7 +5,7 @@ mod idle;
 mod provider;
 mod turn;
 
-use self::control::{ControlState, SessionStatus, Transition, TurnWork};
+use self::control::{Control, ControlState, SessionStatus, Transition, TurnWork};
 use self::provider::TurnSettings;
 use crate::agent::Agent;
 use crate::events::{self, Envelope};
@@ -15,6 +15,7 @@ use crate::interaction_mode;
 use crate::loader::{self, ProviderFactory};
 use crate::stream_store::store;
 use crate::util::Event;
+use appv3_core::machine::{self, Machine};
 use appv3_core::settings::settings;
 use appv3_db::{self as db, DbPool, NewMessage};
 use appv3_providers::LlmProvider;
@@ -101,7 +102,6 @@ impl TurnOptions {
 pub struct UserMessage {
     pub content: String,
     pub session_id: String,
-    pub interrupt: bool,
     pub attachment_metas: Option<Vec<Value>>,
     pub mention_context_blocks: Option<Vec<String>>,
     pub workspace: Option<String>,
@@ -152,8 +152,10 @@ pub struct AgentSession {
     active_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     turn_generation: tokio::sync::watch::Sender<u64>,
     config_dirty: AtomicBool,
-    question_suspended: Mutex<Option<Value>>,
-    lead_suspended: Mutex<Option<Value>>,
+    /// What the running turn will pause on when it ends, from its run
+    /// metadata (an `ask_user` question wins over an `ask_lead` request).
+    /// Cleared when a turn starts; moved into the status when it pauses.
+    turn_suspension: Mutex<Suspension>,
     /// Held while a turn that asked a question decides how it ends, and
     /// while an answer decides whether to start the resumed turn: a question
     /// opens before the reply's other tool calls finish, so its answer can
@@ -248,8 +250,7 @@ impl AgentSession {
             active_task: Mutex::new(None),
             turn_generation: tokio::sync::watch::channel(0).0,
             config_dirty: AtomicBool::new(false),
-            question_suspended: Mutex::new(None),
-            lead_suspended: Mutex::new(None),
+            turn_suspension: Mutex::new(Suspension::None),
             question_gate: tokio::sync::Mutex::new(()),
             continued_question: Mutex::new(None),
             last_error: Mutex::new(None),
@@ -333,63 +334,79 @@ impl AgentSession {
     }
 
     fn status(&self) -> SessionStatus {
-        self.control.lock().unwrap().status()
+        self.control.lock().unwrap().status().clone()
     }
 
     fn owns_turn(&self) -> bool {
         self.control.lock().unwrap().owns_turn()
     }
 
+    /// Make `event`, which must be legal ([`machine::apply`]: an illegal one
+    /// is logged, panics in debug builds, and changes nothing).
     fn transition(&self, event: Transition) {
-        let (from, to, owns_turn) = {
+        self.move_by(event, true);
+    }
+
+    /// Make `event` when the table allows it now; `false`, and nothing
+    /// changes, when it does not (a refusal that is an ordinary answer).
+    fn try_transition(&self, event: Transition) -> bool {
+        self.move_by(event, false)
+    }
+
+    fn move_by(&self, event: Transition, must: bool) -> bool {
+        let (from, to, owns_turn, moved) = {
             let mut control = self.control.lock().unwrap();
-            let from = control.status();
-            control.apply(event);
-            (from, control.status(), control.owns_turn())
+            let from = Control::state_kind(&control);
+            let moved = if must {
+                machine::apply::<Control>(&mut control, &event).is_ok()
+            } else if let Some(next) = Control::step(&control, &event) {
+                *control = next;
+                true
+            } else {
+                false
+            };
+            // A new claim starts with no Stop pending. Under the control lock,
+            // so `is_stopping` never sees the claim with the last Stop still set.
+            if moved && matches!(event, Transition::Begin | Transition::Resume | Transition::Claim) {
+                self.clear_cancel();
+            }
+            (from, Control::state_kind(&control), control.owns_turn(), moved)
         };
-        if event.touches_turn_activity() {
+        if moved && event.touches_turn_activity() {
             *self.last_turn_activity.lock().unwrap() = std::time::Instant::now();
             self.turn_generation.send_modify(|generation| *generation += 1);
         }
-        tracing::debug!(session_id = %self.session_id(), ?event, from = from.as_str(), to = to.as_str(), owns_turn, "session_transition");
+        tracing::debug!(session_id = %self.session_id(), event = Control::event_kind(&event), from, to, owns_turn, moved, "session_transition");
+        moved
     }
 
-    /// Claim a free session for a new turn: the busy check, `StartTurn` and
-    /// `ClaimTurn` happen under one lock, so two commands sent together cannot
-    /// both start a turn. `false` when the session is busy (nothing changes).
-    /// A claim whose setup then fails is handed back with [`Self::abandon_turn`].
+    /// Claim a free session for a new turn (`Begin`): the busy check and the
+    /// claim are one step, so two commands sent together cannot both start a
+    /// turn. `false` when the session is busy. A claim whose setup then fails
+    /// is handed back with [`Self::abandon_turn`].
     fn try_begin_turn(&self) -> bool {
-        {
-            let mut control = self.control.lock().unwrap();
-            if control.is_busy() {
-                return false;
-            }
-            // Under the control lock, so `is_stopping` never sees the new
-            // claim with the previous turn's Stop still set.
-            self.clear_cancel();
-            control.apply(Transition::StartTurn);
-        }
-        self.transition(Transition::ClaimTurn);
-        true
+        self.try_transition(Transition::Begin)
     }
 
     /// Hand back a claim from [`Self::try_begin_turn`] whose turn never started.
     fn abandon_turn(&self) {
-        self.transition(Transition::BecomeIdle);
-        self.transition(Transition::ReleaseTurn);
+        self.transition(Transition::Abandon);
     }
 
+    /// Put the session in a status directly (tests only), as a session
+    /// that got there by its own moves would be, without a turn task.
     #[cfg(test)]
     pub(crate) fn set_state(&self, s: &str) {
-        self.transition(match s {
-            "idle" => Transition::BecomeIdle,
-            "working" => Transition::StartTurn,
-            "waiting_input" => Transition::WaitForQuestion,
-            "waiting_lead" => Transition::WaitForLead,
-            "error" => Transition::FailTurn,
-            "offline" => Transition::GoOffline,
+        let status = match s {
+            "idle" => SessionStatus::Idle,
+            "working" => SessionStatus::Working,
+            "waiting_input" => SessionStatus::WaitingInput { question: Value::Null },
+            "waiting_lead" => SessionStatus::WaitingLead { lead: Value::Null },
+            "error" => SessionStatus::Error,
+            "offline" => SessionStatus::Offline,
             _ => panic!("unknown test session state: {s}"),
-        });
+        };
+        *self.control.lock().unwrap() = ControlState::forced(status, false);
     }
     pub fn last_error(&self) -> Option<String> {
         self.last_error.lock().unwrap().clone()
@@ -397,8 +414,12 @@ impl AgentSession {
     pub fn last_error_info(&self) -> Option<Value> {
         self.last_error_info.lock().unwrap().clone()
     }
+    /// The request a member waiting on its lead sent it.
     pub fn lead_suspended(&self) -> Option<Value> {
-        self.lead_suspended.lock().unwrap().clone()
+        match self.control.lock().unwrap().status() {
+            SessionStatus::WaitingLead { lead } => Some(lead.clone()),
+            _ => None,
+        }
     }
     pub fn is_busy(&self) -> bool {
         self.control.lock().unwrap().is_busy()
@@ -407,7 +428,7 @@ impl AgentSession {
         self.is_busy()
     }
     pub fn is_awaiting_question_answer(&self) -> bool {
-        self.status() == SessionStatus::WaitingInput
+        matches!(self.control.lock().unwrap().status(), SessionStatus::WaitingInput { .. })
     }
     pub fn pending_interaction_mode(&self) -> Option<String> {
         self.pending_interaction_mode.lock().unwrap().clone()
@@ -652,6 +673,12 @@ impl AgentSession {
                         let api_sid = db::codec::api_uuid(&db::codec::db_id(&sid));
                         let qid = db::codec::api_uuid(&q.id);
                         store().push_event(&api_sid, &events::question_dismissed(&qid, &api_sid, status), true);
+                        // This session no longer waits on it (a turn running
+                        // beside the question reads it closed when it ends).
+                        if db::codec::db_id(&sid) == db::codec::db_id(&self.session_id()) {
+                            self.turn_suspension.lock().unwrap().clear_question();
+                            self.try_transition(Transition::DismissQuestion);
+                        }
                     }
                     Ok(None) => {}
                     Err(e) => tracing::warn!("dismiss_pending_question_failed error={}", e),
@@ -662,23 +689,40 @@ impl AgentSession {
         }
     }
 
-    /// `handle_user_message` → `(session_id, message_id)`.
+    /// `handle_user_message` → `(session_id, message_id)`. Starts a turn on
+    /// a free session; a busy one refuses (callers send under
+    /// `user_message_lock` and queue behind a running turn instead).
     pub async fn handle_user_message(&self, m: UserMessage) -> Result<(String, String), SessionError> {
         let sid = m.session_id.clone();
-        let title: Option<String> = if m.content.is_empty() { None } else { Some(m.content.chars().take(100).collect()) };
-        self.bind_session(&sid, m.workspace.as_deref(), title.as_deref()).await?;
-
-        if self.has_open_question().await {
+        // An open question: a machine message waits for the answer, and the
+        // user's own message supersedes it (which ends the wait).
+        if db::get_pending_question(&self.pool, &sid).await.ok().flatten().is_some() {
             if m.origin != "user" {
                 tracing::info!("question_deferred_machine_message session_id={} origin={}", sid, m.origin);
                 return Err(SessionError::QuestionPending(sid));
             }
-            self.dismiss_pending_question("superseded", None).await;
+            self.dismiss_pending_question("superseded", Some(&sid)).await;
         }
-        if m.interrupt && self.is_busy() {
-            self.cancel.set();
-            self.dismiss_pending_question("dismissed", None).await;
+        // Claimed before the session is bound to `sid`: a refused message
+        // must not rebind a session whose turn is running for another one.
+        if !self.try_begin_turn() {
+            tracing::warn!("user_message_refused_busy session_id={} state={}", sid, self.state());
+            return Err(SessionError::precondition("The agent is still working on another turn."));
         }
+        match self.start_user_turn(m).await {
+            Ok(started) => Ok(started),
+            Err(e) => {
+                self.abandon_turn();
+                Err(e)
+            }
+        }
+    }
+
+    /// The body of [`Self::handle_user_message`] once the session is claimed.
+    async fn start_user_turn(&self, m: UserMessage) -> Result<(String, String), SessionError> {
+        let sid = m.session_id.clone();
+        let title: Option<String> = if m.content.is_empty() { None } else { Some(m.content.chars().take(100).collect()) };
+        self.bind_session(&sid, m.workspace.as_deref(), title.as_deref()).await?;
 
         // The workspace snapshot (the state before this turn, for revert)
         // walks the whole tree; the database steps below never touch the
@@ -772,11 +816,7 @@ impl AgentSession {
             db::save_message(&self.pool, &sid, note).await?;
         }
         store().init_turn(&sid, true);
-        self.transition(Transition::StartTurn);
-        *self.question_suspended.lock().unwrap() = None;
-        *self.lead_suspended.lock().unwrap() = None;
-        self.clear_cancel();
-        self.transition(Transition::ClaimTurn);
+        *self.turn_suspension.lock().unwrap() = Suspension::None;
         self.spawn_turn(TurnOptions { starts_run: true, unattended: m.origin == "scheduler", ..Default::default() });
         Ok((sid, db::codec::api_uuid(&persisted.id)))
     }
@@ -808,8 +848,8 @@ impl AgentSession {
             }
         }
         self.dismiss_pending_question("dismissed", None).await;
-        *self.lead_suspended.lock().unwrap() = None;
-        self.transition(Transition::RequestStop);
+        // A stopped member no longer waits on its lead: Stop leaves it idle.
+        self.try_transition(Transition::RequestStop);
         self.emit("agent_status", Some("idle"), None);
         true
     }
@@ -892,8 +932,7 @@ impl AgentSession {
         let ids: Vec<String> = visible.iter().map(|r| db::codec::api_uuid(&r.id)).collect();
         let data: Vec<Value> =
             visible.iter().map(|r| json!({"id": db::codec::api_uuid(&r.id), "content": r.content.clone().unwrap_or_default(), "extra": r.extra_json()})).collect();
-        self.clear_cancel();
-        self.transition(Transition::ClaimTurn);
+        self.transition(Transition::Claim);
         self.spawn_turn(TurnOptions { queued_activation_event: Some(json!({"type": "queued_turn_start", "agent": self.name(), "message_ids": ids, "messages": data})), ..opts });
         true
     }
@@ -926,13 +965,23 @@ impl AgentSession {
         self.resume_after_question_answer().await;
     }
 
+    /// Start the turn again with the answer to what the session waits on (a
+    /// question, or the lead's reply to a member). The turn that paused may
+    /// still be winding down (it tells the lead before it lets go), so the
+    /// resume waits for it: claiming on top of it, its cleanup released the
+    /// new turn's claim.
     pub async fn resume_after_question_answer(&self) {
-        *self.question_suspended.lock().unwrap() = None;
-        *self.lead_suspended.lock().unwrap() = None;
-        self.transition(Transition::StartTurn);
+        if self.owns_turn() {
+            self.wait_turn_finished().await;
+        }
+        *self.turn_suspension.lock().unwrap() = Suspension::None;
+        // Not waiting any more (dismissed meanwhile, or a turn took over):
+        // there is nothing to resume.
+        if !self.try_transition(Transition::Resume) {
+            tracing::info!("question_resume_skipped session_id={} state={}", self.session_id(), self.state());
+            return;
+        }
         self.emit("agent_status", Some("working"), None);
-        self.clear_cancel();
-        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { question_resume: true, ..Default::default() });
     }
 
@@ -940,9 +989,13 @@ impl AgentSession {
         if db::resolve_pending_question(&self.pool, question_id, normalize_question_status(reason), None).await?.is_none() {
             return Ok(());
         }
-        *self.question_suspended.lock().unwrap() = None;
-        self.transition(Transition::BecomeIdle);
-        self.emit("agent_status", Some("idle"), None);
+        self.turn_suspension.lock().unwrap().clear_question();
+        // Only a session paused on the question becomes idle: one opened
+        // while the turn's other tools still run is left to that turn, which
+        // reads the closed question when it ends.
+        if self.try_transition(Transition::DismissQuestion) {
+            self.emit("agent_status", Some("idle"), None);
+        }
         Ok(())
     }
 
@@ -959,6 +1012,36 @@ impl AgentSession {
             }
             Ok(_) => {}
             Err(e) => tracing::warn!("interaction_mode_apply_failed mode={} error={}", mode, e),
+        }
+    }
+}
+
+/// What a running turn will pause on when it ends (`AgentSession::turn_suspension`).
+#[derive(Clone, Debug, Default, PartialEq)]
+enum Suspension {
+    #[default]
+    None,
+    /// An `ask_user` question: `{question_id, session_id}`.
+    Question(Value),
+    /// An `ask_lead` request (a member only).
+    Lead(Value),
+}
+
+impl Suspension {
+    /// Record what the run's metadata says it paused on; a question wins
+    /// over a lead request, and the first of each is kept.
+    fn record(&mut self, question: Option<Value>, lead: Option<Value>) {
+        match (&*self, question, lead) {
+            (Suspension::Question(_), _, _) => {}
+            (_, Some(q), _) => *self = Suspension::Question(q),
+            (Suspension::None, None, Some(l)) => *self = Suspension::Lead(l),
+            _ => {}
+        }
+    }
+
+    fn clear_question(&mut self) {
+        if matches!(self, Suspension::Question(_)) {
+            *self = Suspension::None;
         }
     }
 }

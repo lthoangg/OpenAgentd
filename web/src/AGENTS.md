@@ -74,6 +74,36 @@ duplicating them in this guide. Relevant tests live under
 - Preserve auth/base-URL behavior across browser, desktop, and remote mobile
   connections when touching `api/` or platform bridges.
 
+## State machines
+
+A lifecycle (a run, a connection, a question card, an update, a pairing
+flow) is a state machine, written out rather than spread over flags.
+
+- **Shape.** A discriminated union of states (`kind`, with each state's data
+  inside it), a union of events (`type`), and a table made with
+  `defineMachine` (`lib/machine.ts`): for each state kind, the events it
+  takes and the pure function that makes the next state. Name the file
+  `<name>-state.ts` next to the store or hook that holds it.
+- **One field.** The store (or hook) keeps the state in one field and
+  changes it only as `field = machine.transition(field, event)`. Flags such
+  as "working", "connected" or "show the chip" are selectors over it, never
+  stored beside it. Timers and requests are effects the caller runs after a
+  transition, keyed to the state they were started for.
+- **Illegal moves.** An event the table does not list is a bug: under test
+  it throws, in the app it is logged as `illegal_transition` and the state
+  stays. A stale event that is fine to drop is listed as a move that
+  returns the state unchanged, with a comment saying why. Use `can()` where
+  a refusal is an ordinary outcome.
+- **Register it.** Add the machine to `MACHINES` in
+  `__tests__/state-writes.test.ts` (its file, its fields, where the first
+  value is set). That test fails on an unregistered `defineMachine` and on a
+  write that is not a transition; its `LEGACY` counts only shrink.
+- **Test it** with a table test of its moves, one test per illegal move that
+  matters, and a test that drives the real store or hook through the events.
+  The session states the backend sends are listed in
+  `appv3/crates/agent/data/session_states.json`; the web run state is held to
+  it by `__tests__/api/session-states-contract.test.ts`.
+
 ## Checks
 
 Run the commands in `web/AGENTS.md` (Development), then `make verify-web` from

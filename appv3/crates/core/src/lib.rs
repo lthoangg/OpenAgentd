@@ -6,6 +6,7 @@ pub mod credentials;
 pub mod env;
 pub mod error;
 pub mod home;
+pub mod machine;
 pub mod mimetypes;
 pub mod otel;
 pub mod path_locks;

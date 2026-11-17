@@ -86,6 +86,30 @@ Every service the server starts is a kernel module; `GET /api/modules` and
 - A panic inside a turn becomes an ordinary turn error, and a handler panic
   becomes a plain 500. Treat both as bugs, not error handling: return errors.
 
+## State machines
+
+A lifecycle (a session's turn, a scheduled task, a goal, a member, a
+connection, an update) is a state machine, written out rather than spread
+over flags, `Option`s and status strings.
+
+- **Shape.** An enum of states with each state's data inside its variant, an
+  enum of events, and `impl appv3_core::machine::Machine`: `TRANSITIONS` is
+  the written table of `(from, event, to)` kinds, `step` decides the next
+  state and is pure. Keep the state field private to the machine's module,
+  so nothing else can write it. `grep -rn "impl Machine for" crates` lists
+  them all.
+- **Moves.** `machine::apply` makes a move that must be legal: one outside
+  the table keeps the state, logs `illegal_transition`, and panics in debug
+  builds. Call `step` directly where a refusal is an ordinary answer (a busy
+  session refusing a second turn); check and move under one lock.
+- **Wire and disk.** The status string the API, SSE or a database column
+  carries is derived from the variant (`as_str`), never stored beside it. A
+  status column has a `CHECK` constraint listing its values. The session
+  states the web reads are `crates/agent/data/session_states.json`.
+- **Test it** with `machine::check_table` over a sample of every state and
+  event, a test per illegal move that matters, and a race test where two
+  callers can move it at once.
+
 ## Checks
 
 From the repository root:

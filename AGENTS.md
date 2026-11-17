@@ -210,6 +210,8 @@ the rule depends on you reading it, for the reason given.
 | The network guard refuses foreign hosts and origins | tests in `appv3/crates/api/src/middleware.rs` |
 | Child processes do not inherit secrets | `appv3/crates/core/tests/child_env.rs` |
 | `fetch` only in `web/src/api/`; no `any`; no conditional hook; no import cycle | `bun run lint` (`web/.oxlintrc.json`) |
+| A lifecycle has one state value and one transition table; nothing else writes it | Rust: `machine::check_table` tests and module privacy (`appv3/crates/core/src/machine.rs`); web: `web/src/__tests__/state-writes.test.ts` |
+| The session states the backend sends are the ones the web handles | `appv3/crates/agent/src/session/control.rs` tests, `web/src/__tests__/api/session-states-contract.test.ts` |
 | `web/src/components/ui/` imports no class or component library | `bun run lint` (`no-restricted-imports`) |
 | Design and copy rules that can be read from source | `web/src/__tests__/design-lint.test.ts`, `copy-lint.test.ts`, `web/src/__tests__/styles/` |
 | A Tauri command is registered, allowed, and called | `scripts/check_tauri_commands.py` |

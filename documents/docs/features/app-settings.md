@@ -136,8 +136,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     opens its page, scrolls to it and focuses it. Search works on phones
     too.
   - A provider's accounts are one list under "Tried in this order", with
-    **Use first** to move one to the top; each says how many sessions pin
-    it ("Pinned by 2 sessions").
+    **Use first** to move one to the top.
   - **Save** on a key checks it first; when the check fails it says why,
     with **Retry** and **Save anyway**.
   - The backend panel: selecting a server shows its details, **Use**

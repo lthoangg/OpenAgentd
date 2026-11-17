@@ -855,11 +855,11 @@ export function badgeLabel(state: BubbleState): string {
 }
 
 /**
- * The dismissed bubbles whose sessions are then read everywhere: finished
- * and failed turns about a session. Dismissing a question only hides it.
+ * Dismissed bubbles about a session, "Later" questions too: `pet_dismiss` (pet.rs)
+ * reports each seen and reads finished or failed turns away, never a question.
  */
-export function readOnDismiss(bubbles: PetBubble[]): string[] {
-  return bubbles.filter((b) => b.sessionId && b.tone !== 'input').map((b) => b.id)
+export function reportOnDismiss(bubbles: PetBubble[]): string[] {
+  return bubbles.filter((b) => b.sessionId).map((b) => b.id)
 }
 
 // ── Placement ──────────────────────────────────────────────────────────────

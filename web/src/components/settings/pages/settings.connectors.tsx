@@ -2,10 +2,12 @@ import { Plug } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { McpStatusChip } from '@/components/McpStatusChip'
+import { ConnectorGallery } from '@/components/settings/ConnectorGallery'
 import { Chip } from '@/components/ui/chip'
 import { TERMS } from '@/components/ui/term'
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
 import { useMcpServersQuery } from '@/queries'
+import { useAgentStore } from '@/stores/useAgentStore'
 
 interface McpListPageProps {
   selectedName?: string | null
@@ -14,17 +16,19 @@ interface McpListPageProps {
 }
 
 export function ConnectorsListPage({ selectedName, onSelect, onNew }: McpListPageProps) {
-  const { data, isLoading, isError, error, refetch } = useMcpServersQuery()
+  // The open workspace's project servers (its `.agents/mcp.json`) list here too.
+  const workspace = useAgentStore((s) => s._workspace)
+  const { data, isLoading, isError, error, refetch } = useMcpServersQuery({ workspace })
 
   const rows = useMemo<ListViewRow[]>(
     () =>
       (data?.servers ?? []).map((srv): ListViewRow => ({
         key: srv.name,
         active: selectedName === srv.name,
-        title: srv.name,
+        title: srv.project?.name ?? srv.name,
         titleMono: true,
-        // A server a plugin bundle brings: its detail page is read-only.
-        badge: srv.plugin ? `from ${srv.plugin}` : undefined,
+        // A server a plugin bundle or the project brings: its detail page is read-only.
+        badge: srv.plugin ? `from ${srv.plugin}` : srv.project ? 'from this project' : undefined,
         description: srv.transport === 'stdio' ? 'A program on this computer' : 'A web address',
         onClick: () => onSelect(srv.name),
         trailing: (
@@ -41,16 +45,18 @@ export function ConnectorsListPage({ selectedName, onSelect, onNew }: McpListPag
     <SettingsListView
       title="Connectors"
       description="Outside tools and services your agents can use, such as Notion, Slack or GitHub."
-      newLabel="New connector"
+      newLabel="Add your own"
       onNew={onNew}
-      filterPlaceholder="Filter connectors…"
+      filterPlaceholder="Filter your connectors…"
+      lead={<ConnectorGallery onOpen={onSelect} />}
+      listTitle="Your connectors"
       rows={rows}
       isLoading={isLoading}
       isError={isError}
       error={error}
       onRetry={() => void refetch()}
       emptyTitle="No connectors yet"
-      emptyBody="A connector gives your agents another tool to work with. Most need only a web address and a sign-in."
+      emptyBody="Turn one on above, or add your own: most need only a web address and a sign-in."
       emptyIcon={Plug}
     />
   )

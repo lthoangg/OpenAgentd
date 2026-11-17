@@ -17,7 +17,7 @@
  * either side knows the id, when its workspace and listener key match.
  */
 import { create } from 'zustand'
-import { type PreviewTarget, previewTargetKey } from '@/api/preview'
+import { type AgentPage, type PreviewTarget, previewTargetKey } from '@/api/preview'
 
 /** An agent-opened page nobody used for this long stops being kept alive. */
 export const KEEP_ALIVE_TTL_MS = 15 * 60_000
@@ -30,6 +30,8 @@ export interface AgentPreview {
   /** The listener id, once `openPreview` answered. */
   previewId?: string
   lastAgentUseAt: number
+  /** Listed by the server (`listAgentPages`); dropped when it stops listing it. */
+  fromServer?: boolean
 }
 
 export interface ShownPreview {
@@ -49,6 +51,9 @@ interface PreviewKeepAliveState {
   agent: Record<string, AgentPreview>
   /** Mounted `PreviewTabView`s, by a per-instance token. */
   tabs: Record<string, ShownPreview>
+  /** Bumped when the server announces a change to its agent pages (`preview_agent_pages`). */
+  serverPagesVersion: number
+  serverPagesChanged: () => void
   /** The agent opened `target`: keep it alive from now on. */
   registerAgent: (workspace: string, target: PreviewTarget, now?: number) => void
   /** The agent used a page of `workspace` (any action): refreshes its previews. */
@@ -61,6 +66,11 @@ interface PreviewKeepAliveState {
   forgetPreviewId: (previewId: string) => void
   /** Drops the previews nobody used since `now - KEEP_ALIVE_TTL_MS`. */
   expire: (now?: number) => void
+  /**
+   * The server's list of pages the agent wants loaded: each is kept (and
+   * refreshed), and one the server listed before but no longer does is dropped.
+   */
+  adoptServerPages: (pages: AgentPage[], now?: number) => void
   /** A tab mounted (or retargeted) to show the preview under `key`. */
   showTab: (token: string, key: string, previewId?: string) => void
   hideTab: (token: string) => void
@@ -70,6 +80,8 @@ interface PreviewKeepAliveState {
 export const usePreviewKeepAliveStore = create<PreviewKeepAliveState>((set) => ({
   agent: {},
   tabs: {},
+  serverPagesVersion: 0,
+  serverPagesChanged: () => set((state) => ({ serverPagesVersion: state.serverPagesVersion + 1 })),
   registerAgent: (workspace, target, now = Date.now()) =>
     set((state) => {
       const key = previewListenerKey(workspace, target)
@@ -110,6 +122,25 @@ export const usePreviewKeepAliveStore = create<PreviewKeepAliveState>((set) => (
       const agent = Object.fromEntries(Object.entries(state.agent).filter(([, entry]) => now - entry.lastAgentUseAt < KEEP_ALIVE_TTL_MS))
       return Object.keys(agent).length === Object.keys(state.agent).length ? state : { agent }
     }),
+  adoptServerPages: (pages, now = Date.now()) =>
+    set((state) => {
+      // An entry this window registered for the same listener keeps its key
+      // (and frame), even when its workspace is spelled differently.
+      const keyFor = (page: AgentPage) =>
+        Object.values(state.agent).find((entry) => entry.previewId === page.previewId)?.key ?? previewListenerKey(page.workspace, page.target)
+      const listed = new Map(pages.map((page) => [keyFor(page), page]))
+      const agent: Record<string, AgentPreview> = {}
+      for (const [key, entry] of Object.entries(state.agent)) {
+        if (entry.fromServer && !listed.has(key)) continue
+        agent[key] = entry
+      }
+      for (const [key, page] of listed) {
+        const prev = agent[key]
+        // A target the window already frames keeps its frame (same key).
+        agent[key] = { ...prev, key, workspace: prev?.workspace ?? page.workspace, target: prev?.target ?? page.target, previewId: page.previewId, lastAgentUseAt: now, fromServer: true }
+      }
+      return { agent }
+    }),
   showTab: (token, key, previewId) =>
     set((state) => {
       const prev = state.tabs[token]
@@ -129,7 +160,7 @@ export const usePreviewKeepAliveStore = create<PreviewKeepAliveState>((set) => (
       const { [token]: _gone, ...tabs } = state.tabs
       return { tabs }
     }),
-  reset: () => set({ agent: {}, tabs: {} }),
+  reset: () => set({ agent: {}, tabs: {}, serverPagesVersion: 0 }),
 }))
 
 /** True when a mounted Preview tab shows the same listener as `entry`. */

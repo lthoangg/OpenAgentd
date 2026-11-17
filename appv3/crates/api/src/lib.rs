@@ -5,6 +5,7 @@ pub mod cloud;
 pub mod config_watch;
 pub mod error;
 pub mod fileresp;
+pub mod gallery;
 pub mod middleware;
 pub mod modules;
 pub mod mux;

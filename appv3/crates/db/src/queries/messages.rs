@@ -1,4 +1,4 @@
-// size-ceiling: 1006 — split writes from the reads that build the model's window
+// size-ceiling: 1016 — split writes from the reads that build the model's window
 //! `session_messages` queries. Ordering is always `(seq, id)`.
 
 use crate::codec::{db_id, json_col, json_db, new_id, now_db, parse_dt, py_isoformat};
@@ -891,22 +891,32 @@ pub async fn pending_reply_requests(pool: &DbPool, session_id: &str) -> Result<V
     .await?)
 }
 
+/// Only `extra` of rows that may carry a snapshot, in transcript order.
+pub(crate) const SNAPSHOT_MARKS_SQL: &str = "SELECT extra FROM session_messages WHERE session_id = ? AND extra LIKE '%\"snapshot\"%' ORDER BY seq ASC, id ASC";
+
+/// Every row's `extra.snapshot` in transcript order (repeats kept), for a
+/// session id in db form: what [`SessionMessage::snapshot`] gives over the
+/// whole session, without reading content or tool output.
+pub async fn snapshot_marks(pool: &DbPool, db_session_id: &str) -> Result<Vec<String>> {
+    let rows: Vec<(Option<String>,)> = sqlx::query_as(SNAPSHOT_MARKS_SQL).bind(db_session_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().filter_map(|(extra,)| crate::codec::json_col(extra.as_deref())?.get("snapshot")?.as_str().filter(|s| !s.is_empty()).map(str::to_string)).collect())
+}
+
+/// Reads `ix_session_messages_reply_requests` (only rows that asked for a
+/// reply); without it the server walked every message on each start.
+pub(crate) const REPLY_REQUESTS_IN_FLIGHT_SQL: &str = "SELECT session_id, json_extract(extra, '$.sent_from.session_id') FROM session_messages \
+     WHERE json_extract(extra, '$.sent_from.reply') = 1 \
+     AND role = 'user' AND kind IN ('chat', 'queued') \
+     AND json_extract(extra, '$.sent_from.replied_at') IS NULL \
+     AND json_extract(extra, '$.sent_from.error_notified_at') IS NULL \
+     ORDER BY session_id ASC, seq ASC, id ASC";
+
 /// Every request for a reply that has had neither its answer nor a failure
 /// notice, as `(target session, sender session)`, the target as an API id.
 /// What a server that just started is still owed; a request still queued
 /// counts, since it runs once the target is free.
 pub async fn reply_requests_in_flight(pool: &DbPool) -> Result<Vec<(String, String)>> {
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT session_id, json_extract(extra, '$.sent_from.session_id') FROM session_messages \
-         WHERE role = 'user' AND kind IN ('chat', 'queued') \
-         AND extra LIKE '%\"sent_from\"%' \
-         AND json_extract(extra, '$.sent_from.reply') = 1 \
-         AND json_extract(extra, '$.sent_from.replied_at') IS NULL \
-         AND json_extract(extra, '$.sent_from.error_notified_at') IS NULL \
-         ORDER BY session_id ASC, seq ASC, id ASC",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(REPLY_REQUESTS_IN_FLIGHT_SQL).fetch_all(pool).await?;
     Ok(rows.into_iter().filter_map(|(target, source)| Some((crate::codec::api_uuid(&target), source?))).collect())
 }
 

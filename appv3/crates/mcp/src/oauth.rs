@@ -1,17 +1,22 @@
-// size-ceiling: 1297 — holds discovery, token storage and the loopback listener: give one its own module
+// size-ceiling: 1263 — holds discovery, token storage and the loopback listener: give one its own module
 //! MCP OAuth, plus the subset of the
 //! `mcp` SDK (2.2) `OAuthClientProvider` auth flow it drives: PRM / AS
 //! metadata discovery, dynamic client registration, PKCE authorization-code
 //! grant over a loopback callback, token exchange and refresh.
 
 use crate::client::{transport_err, McpError};
-use crate::config::{resolve_secret_refs, OAuthConfig};
-use appv3_providers::plugin::{b64url, parse_qs, pkce_challenge, qs_first, random_bytes, urlencode};
+use crate::config::{resolve_secret_refs, resolve_secret_refs_with, url_for_log, OAuthConfig};
+use appv3_providers::plugin::{b64url, pkce_challenge, random_bytes, urlencode};
 use serde_json::{json, Map, Value};
-use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+
+mod callback;
+pub use callback::{
+    allow_client_oauth, allow_interactive_oauth, cancel_client_oauth, disallow_interactive_oauth, finish_client_oauth, interactive_oauth_allowed, FinishError, Relay,
+    CLIENT_SIGN_IN_TIMEOUT,
+};
+use callback::{open_browser, Loopback, Mode};
 
 /// URL-encoded form body as ordered (name, value) pairs.
 type FormPairs = Vec<(String, String)>;
@@ -40,24 +45,7 @@ fn reg_err(m: String) -> McpError {
     McpError::Transport("OAuthRegistrationError", m)
 }
 
-// ── interactive gate + cache file ───────────────────────────────────────────
-
-fn interactive() -> &'static Mutex<HashSet<String>> {
-    static S: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    S.get_or_init(Default::default)
-}
-
-pub fn allow_interactive_oauth(name: &str) {
-    interactive().lock().unwrap().insert(name.to_string());
-}
-
-pub fn disallow_interactive_oauth(name: &str) {
-    interactive().lock().unwrap().remove(name);
-}
-
-pub fn interactive_oauth_allowed(name: &str) -> bool {
-    interactive().lock().unwrap().contains(name)
-}
+// ── cache file ──────────────────────────────────────────────────────────────
 
 /// The cache file's name for server `name`. A name from `mcp.json` (letters,
 /// digits, `_`, `-`) is the file's stem as v2 stored it. A byte outside
@@ -518,6 +506,8 @@ impl Prm {
 struct FileTokenStorage {
     path: PathBuf,
     oauth: OAuthConfig,
+    /// Whether `${NAME}`s may resolve to stored model provider keys (not for a project's server).
+    providers: bool,
 }
 
 fn py_type_name(v: &Value) -> &'static str {
@@ -570,9 +560,9 @@ impl FileTokenStorage {
             return validate_client_info(raw).map(Some).map_err(|e| McpError::Transport("ValidationError", e));
         }
         let Some(raw_id) = self.oauth.client_id.as_deref().filter(|s| !s.is_empty()) else { return Ok(None) };
-        let client_id = resolve_secret_refs(raw_id);
+        let client_id = resolve_secret_refs_with(raw_id, self.providers);
         let raw_secret = self.oauth.client_secret.as_deref().filter(|s| !s.is_empty());
-        let mut secret = raw_secret.map(resolve_secret_refs);
+        let mut secret = raw_secret.map(|s| resolve_secret_refs_with(s, self.providers));
         if client_id.is_empty() || unresolved_secret_ref(raw_id, &client_id) {
             return Ok(None);
         }
@@ -592,94 +582,6 @@ impl FileTokenStorage {
         data.insert("client_info".into(), Value::Object(ci.clone()));
         self.write(&data)
     }
-}
-
-// ── loopback callback ───────────────────────────────────────────────────────
-
-#[derive(Clone)]
-struct CodeResult {
-    code: String,
-    state: Option<String>,
-    iss: Option<String>,
-}
-
-struct Loopback {
-    listener: Mutex<Option<std::net::TcpListener>>,
-    redirect_uri: String,
-    /// v2 keeps the first callback's result and `done` event set, so a
-    /// second authorization on the same connection re-reads it at once.
-    last: Mutex<Option<Result<CodeResult, McpError>>>,
-}
-
-impl Loopback {
-    fn bind() -> Result<Loopback, McpError> {
-        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| McpError::Transport("OSError", e.to_string()))?;
-        let port = l.local_addr().map_err(|e| McpError::Transport("OSError", e.to_string()))?.port();
-        let _ = l.set_nonblocking(true);
-        Ok(Loopback { listener: Mutex::new(Some(l)), redirect_uri: format!("http://localhost:{port}{CALLBACK_PATH}"), last: Mutex::new(None) })
-    }
-
-    async fn wait(&self) -> Result<CodeResult, McpError> {
-        let timeout = || McpError::Transport("TimeoutError", "Timed out waiting for OAuth callback.".into());
-        let taken = self.listener.lock().unwrap().take();
-        let Some(std_l) = taken else { return self.last.lock().unwrap().clone().unwrap_or_else(|| Err(timeout())) };
-        let listener = tokio::net::TcpListener::from_std(std_l).map_err(|e| McpError::Transport("OSError", e.to_string()))?;
-        match tokio::time::timeout(Duration::from_secs(300), serve_callback(listener)).await {
-            Ok(r) => {
-                *self.last.lock().unwrap() = Some(r.clone());
-                r
-            }
-            Err(_) => Err(timeout()),
-        }
-    }
-}
-
-async fn serve_callback(listener: tokio::net::TcpListener) -> Result<CodeResult, McpError> {
-    use appv3_providers::plugin::write_response;
-    loop {
-        let Ok((mut sock, _)) = listener.accept().await else { continue };
-        let target = appv3_providers::codex::read_request_target(&mut sock).await;
-        let p = urlsplit(&target);
-        if p.path != CALLBACK_PATH {
-            write_response(&mut sock, 404, "Not Found", None).await;
-            continue;
-        }
-        let qs = parse_qs(&p.query);
-        let error = qs_first(&qs, "error");
-        if !error.is_empty() {
-            write_response(&mut sock, 200, "OK", Some("<h1>Authorization failed</h1><p>You can close this window.</p>".into())).await;
-            return Err(McpError::Transport("RuntimeError", format!("OAuth failed: {error}")));
-        }
-        let (code, state, iss) = (qs_first(&qs, "code"), qs_first(&qs, "state"), qs_first(&qs, "iss"));
-        write_response(&mut sock, 200, "OK", Some("<h1>Authorization successful</h1><p>You can close this window.</p><script>setTimeout(()=>window.close(),2000)</script>".into()))
-            .await;
-        return Ok(CodeResult { code, state: Some(state).filter(|s| !s.is_empty()), iss: Some(iss).filter(|s| !s.is_empty()) });
-    }
-}
-
-/// `webbrowser.open(url)` — honours `$BROWSER` like Python's `webbrowser`.
-fn open_browser(url: &str) -> Result<(), String> {
-    let choice = std::env::var("BROWSER").ok().and_then(|b| b.split(':').map(str::trim).find(|c| !c.is_empty()).map(String::from));
-    let argv: Vec<String> = match choice {
-        Some(cmdline) => {
-            let parts: Vec<String> = cmdline.split_whitespace().map(String::from).collect();
-            if parts.len() == 1 {
-                vec![parts[0].clone(), url.to_string()]
-            } else {
-                parts.iter().map(|a| a.replace("%s", url)).collect()
-            }
-        }
-        None => {
-            let cmd = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-            vec![cmd.to_string(), url.to_string()]
-        }
-    };
-    let mut child =
-        appv3_core::proctree::hide_window_std(&mut std::process::Command::new(&argv[0])).args(&argv[1..]).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
 }
 
 // ── auth-flow HTTP ──────────────────────────────────────────────────────────
@@ -895,7 +797,7 @@ pub fn build_oauth_provider(name: &str, url: &str, oauth: Option<&OAuthConfig>) 
         name: name.to_string(),
         server_url: url.to_string(),
         auth_method,
-        storage: FileTokenStorage { path: cache_path(name), oauth: oauth.clone() },
+        storage: FileTokenStorage { path: cache_path(name), oauth: oauth.clone(), providers: !crate::project::is_project_key(name) },
         callback,
         http,
         ctx: tokio::sync::Mutex::new(Ctx {
@@ -923,6 +825,17 @@ fn add_auth(ctx: &Ctx, req: &mut reqwest::Request) {
 impl OAuthProvider {
     pub fn redirect_uri(&self) -> &str {
         &self.callback.redirect_uri
+    }
+
+    /// The `redirect_uri` this sign-in uses: the relay page for a client on
+    /// another device, else the loopback listener.
+    fn flow_redirect(&self) -> (String, Option<Relay>) {
+        let relay = match callback::mode(&self.name).as_deref() {
+            Some(Mode::Client(c)) => c.relay.clone(),
+            _ => None,
+        };
+        let uri = relay.as_ref().map(|r| r.redirect_uri.clone()).unwrap_or_else(|| self.callback.redirect_uri.clone());
+        (uri, relay)
     }
 
     async fn exec(&self, r: &AuthReq, url: &url::Url) -> Result<Resp, McpError> {
@@ -1047,6 +960,7 @@ impl OAuthProvider {
             return Err(required(needs_oauth_message(&self.name)));
         }
         let granted_scope = ctx.tokens.as_ref().and_then(|t| t.scope.clone());
+        let (redirect, relay) = self.flow_redirect();
         if status == 401 || ctx.oauth_metadata.is_none() {
             // Step 1: protected resource metadata (SEP-985).
             let www_rm = if matches!(status, 401 | 403) { www_auth_field(www, "resource_metadata") } else { None };
@@ -1135,6 +1049,11 @@ impl OAuthProvider {
         let challenged = select_scopes(www_auth_field(www, "scope"), ctx.prm.as_ref(), ctx.oauth_metadata.as_ref(), &GRANT_TYPES);
         ctx.scope = if step_up { union_scopes(union_scopes(ctx.scope.clone(), granted_scope), challenged) } else { challenged };
         // Step 4: dynamic client registration.
+        // A client registered for another return address cannot use this one.
+        if ctx.client_info.as_ref().is_some_and(|ci| !redirect_fits(ci, &redirect)) {
+            tracing::debug!("mcp_oauth_reregister name={} reason=redirect_changed", self.name);
+            ctx.client_info = None;
+        }
         if ctx.client_info.is_none() {
             let discovered = ctx.oauth_metadata.is_some().then(|| ctx.expected_issuer(&self.server_url));
             let fallback = base_url(&self.server_url);
@@ -1145,7 +1064,7 @@ impl OAuthProvider {
                 md.insert("scope".into(), json!(s));
             }
             md.insert("client_name".into(), json!("OpenAgentd"));
-            md.insert("redirect_uris".into(), json!([self.callback.redirect_uri]));
+            md.insert("redirect_uris".into(), json!([redirect]));
             md.insert("token_endpoint_auth_method".into(), json!(self.auth_method));
             md.insert("grant_types".into(), json!(GRANT_TYPES));
             md.insert("application_type".into(), json!("native"));
@@ -1180,12 +1099,12 @@ impl OAuthProvider {
             ctx.client_info = Some(ci);
         }
         // Step 5: authorization + token exchange.
-        let (code, verifier) = self.authorization_code_grant(ctx).await?;
+        let (code, verifier) = self.authorization_code_grant(ctx, &redirect, relay.as_ref()).await?;
         let ci = ctx.client_info.as_ref().ok_or_else(|| flow_err("Missing client info".into()))?;
         let mut data = vec![
             ("grant_type".to_string(), "authorization_code".to_string()),
             ("code".into(), code),
-            ("redirect_uri".into(), self.callback.redirect_uri.clone()),
+            ("redirect_uri".into(), redirect.clone()),
             ("client_id".into(), ci_str(ci, "client_id").unwrap_or("").to_string()),
             ("code_verifier".into(), verifier),
         ];
@@ -1226,7 +1145,7 @@ impl OAuthProvider {
         AsMeta::validate_value(&v)
     }
 
-    async fn authorization_code_grant(&self, ctx: &Ctx) -> Result<(String, String), McpError> {
+    async fn authorization_code_grant(&self, ctx: &Ctx, redirect: &str, relay: Option<&Relay>) -> Result<(String, String), McpError> {
         let auth_endpoint = match &ctx.oauth_metadata {
             Some(m) => m.authorization_endpoint.clone(),
             None => format!("{}/authorize", base_url(&self.server_url)),
@@ -1235,11 +1154,11 @@ impl OAuthProvider {
         const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
         let verifier: String = random_bytes(128).iter().map(|b| CHARS[*b as usize % CHARS.len()] as char).collect();
         let challenge = pkce_challenge(&verifier);
-        let state = b64url(&random_bytes(32));
+        let state = flow_state(&b64url(&random_bytes(32)), &self.name, relay);
         let mut params: Vec<(String, String)> = vec![
             ("response_type".into(), "code".into()),
             ("client_id".into(), ci_str(ci, "client_id").unwrap_or("").into()),
-            ("redirect_uri".into(), self.callback.redirect_uri.clone()),
+            ("redirect_uri".into(), redirect.to_string()),
             ("state".into(), state.clone()),
             ("code_challenge".into(), challenge),
             ("code_challenge_method".into(), "S256".into()),
@@ -1256,14 +1175,29 @@ impl OAuthProvider {
         let pairs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let url = format!("{auth_endpoint}?{}", urlencode(&pairs));
         // redirect_handler
-        if !interactive_oauth_allowed(&self.name) {
-            return Err(required(needs_oauth_message(&self.name)));
-        }
-        tracing::info!("mcp_oauth_authorize name={} url={}", self.name, url);
-        if let Err(e) = open_browser(&url) {
-            tracing::warn!("mcp_oauth_browser_open_failed name={} error={}", self.name, e);
-        }
-        let result = self.callback.wait().await?;
+        let Some(mode) = callback::mode(&self.name) else { return Err(required(needs_oauth_message(&self.name))) };
+        tracing::info!("mcp_oauth_authorize name={} url={}", self.name, url_for_log(url.as_ref()));
+        let result = match &*mode {
+            Mode::ServerBrowser => {
+                if let Err(e) = open_browser(&url) {
+                    tracing::warn!("mcp_oauth_browser_open_failed name={} error={}", self.name, e);
+                }
+                self.callback.wait().await?
+            }
+            Mode::Client(c) if c.relay.is_none() => {
+                c.announce(&url);
+                // The browser reaches the loopback listener; a pasted address
+                // (finish) or Cancel arrive through the client instead.
+                tokio::select! {
+                    r = self.callback.wait() => r?,
+                    r = callback::wait_for_client(&self.name, &state) => r?,
+                }
+            }
+            Mode::Client(c) => {
+                c.announce(&url);
+                callback::wait_for_client(&self.name, &state).await?
+            }
+        };
         let state_ok = result.state.as_deref().map(|s| constant_eq(s.as_bytes(), state.as_bytes())).unwrap_or(false);
         if !state_ok {
             return Err(flow_err(format!("State parameter mismatch: {} != {state}", result.state.as_deref().unwrap_or("None"))));
@@ -1291,6 +1225,38 @@ impl OAuthProvider {
 
 fn constant_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn is_loopback_redirect(uri: &str) -> bool {
+    uri.starts_with("http://localhost:") || uri.starts_with("http://127.0.0.1:")
+}
+
+/// Whether a stored client registration may send a code to `redirect`. A
+/// loopback registration takes any loopback port (RFC 8252 §7.3); any other
+/// address must be registered exactly. A client the user configured has no
+/// registered list and is trusted as-is.
+fn redirect_fits(ci: &Map<String, Value>, redirect: &str) -> bool {
+    let Some(registered) = ci.get("redirect_uris").and_then(Value::as_array) else { return true };
+    let registered: Vec<&str> = registered.iter().filter_map(Value::as_str).collect();
+    if is_loopback_redirect(redirect) {
+        !registered.is_empty() && registered.iter().all(|u| is_loopback_redirect(u))
+    } else {
+        registered.contains(&redirect)
+    }
+}
+
+/// The authorization `state`. A relayed sign-in appends what the relay page
+/// shows and where it sends the code (`<random>.<base64url JSON>`); the
+/// random part keeps the whole value unguessable, and the server accepts a
+/// code only for the exact `state` it is waiting on.
+fn flow_state(random: &str, server: &str, relay: Option<&Relay>) -> String {
+    match relay {
+        None => random.to_string(),
+        Some(r) => {
+            let info = json!({"v": 1, "server": server, "return_to": r.return_to});
+            format!("{random}.{}", b64url(info.to_string().as_bytes()))
+        }
+    }
 }
 
 #[cfg(test)]

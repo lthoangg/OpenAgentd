@@ -9,8 +9,10 @@
 use crate::manager;
 use appv3_core::settings::settings;
 use appv3_db::{self as db, DbPool};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 /// A git failure with the HTTP status the routes answer with.
 #[derive(Debug, Clone)]
@@ -189,6 +191,7 @@ pub async fn remove_worktree(source: &Path, directory: &Path, dry_run: bool) -> 
     if !dry_run {
         let dstr = directory.display().to_string();
         let removed = run_git(source, &["worktree", "remove", "--force", &dstr]).await?;
+        forget_listing(source);
         if removed.code != 0 {
             return Err(GitError::new(500, fail_detail(&removed, "Failed to remove git worktree.")));
         }
@@ -230,7 +233,7 @@ pub fn worktree_root(source: &Path, create: bool) -> PathBuf {
 }
 
 /// `<repo>-<key>`: one folder per repository under a worktrees root.
-fn repo_folder(source: &Path) -> String {
+pub fn repo_folder(source: &Path) -> String {
     let key = hex(&sha1(source.display().to_string().as_bytes()))[..10].to_string();
     let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     format!("{name}-{key}")
@@ -348,7 +351,95 @@ pub async fn list_entries(source: &Path) -> GitResult<Vec<(String, Option<String
     if r.code != 0 {
         return Err(GitError::new(500, fail_detail(&r, "Failed to read git worktrees.")));
     }
-    Ok(parse_worktree_list(&r.stdout))
+    let entries = parse_worktree_list(&r.stdout);
+    LISTINGS.lock().unwrap().insert(resolve(source), (Instant::now(), Some(entries.clone())));
+    Ok(entries)
+}
+
+/// How long the sidebar reuses a repository's `git worktree list`.
+const LISTING_TTL: Duration = Duration::from_secs(10);
+
+/// When it was read, and the entries (`None`: git could not list them).
+type Listing = (Instant, Option<Vec<(String, Option<String>)>>);
+static LISTINGS: LazyLock<Mutex<HashMap<PathBuf, Listing>>> = LazyLock::new(Default::default);
+
+/// [`list_entries`], reused for [`LISTING_TTL`]: the sidebar asks for every
+/// repository on each load. `None` when git cannot list them.
+async fn cached_entries(source: &Path) -> Option<Vec<(String, Option<String>)>> {
+    let key = resolve(source);
+    if let Some((at, entries)) = LISTINGS.lock().unwrap().get(&key) {
+        if at.elapsed() < LISTING_TTL {
+            return entries.clone();
+        }
+    }
+    let entries = list_entries(source).await.ok();
+    if entries.is_none() {
+        LISTINGS.lock().unwrap().insert(key, (Instant::now(), None));
+    }
+    entries
+}
+
+/// Drop the cached listing of `source` after OpenAgentd changed its worktrees.
+pub fn forget_listing(source: &Path) {
+    LISTINGS.lock().unwrap().remove(&resolve(source));
+}
+
+/// A checkout git lists for a repository that has no sidebar row: made with
+/// plain `git worktree add`, by another tool, or by OpenAgentd before a
+/// session ran in it. Listed, not recorded, until a session opens it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnlistedWorktree {
+    pub path: String,
+    pub branch: Option<String>,
+    /// In OpenAgentd's worktree folder for the repository.
+    pub managed: bool,
+}
+
+/// Bring the sidebar's rows for the repository `source` in line with the
+/// disk and git:
+///
+/// - A worktree or subfolder row whose folder is gone is marked deleted (its
+///   sessions are kept). Only while `source` itself is reachable: an
+///   unplugged drive or unmounted share must not empty the list.
+/// - Checkouts git lists with no row come back as [`UnlistedWorktree`]s. A
+///   row the user hid stays hidden.
+///
+/// Never touches files; a git failure only skips the second part.
+pub async fn reconcile_repo(pool: &DbPool, source: &str) -> anyhow::Result<Vec<UnlistedWorktree>> {
+    let src = Path::new(source);
+    if !src.is_dir() {
+        return Ok(vec![]);
+    }
+    let rows = db::list_coding_workspaces_under(pool, source).await?;
+    for row in rows.iter().filter(|r| r.deleted_at.is_none() && (r.kind == "worktree" || r.kind == "folder")) {
+        if !Path::new(&row.path).is_dir() {
+            db::mark_coding_workspace_deleted(pool, &row.path).await?;
+        }
+    }
+    let Some(entries) = cached_entries(src).await else { return Ok(vec![]) };
+    let main = resolve(src);
+    let mut out = vec![];
+    for (dir, branch) in entries {
+        if dir.is_empty() {
+            continue;
+        }
+        let path = resolve(Path::new(&dir));
+        if path == main || !path.is_dir() {
+            continue;
+        }
+        let path_s = path.display().to_string();
+        // Listed already, or hidden by the user. A deleted row whose folder
+        // is back (made again) lists again.
+        if rows.iter().any(|r| r.path == path_s && r.deleted_at.is_none()) {
+            continue;
+        }
+        if db::get_workspace_by_path(pool, &path_s).await?.is_some_and(|r| r.deleted_at.is_none()) {
+            continue;
+        }
+        let managed = is_managed_for(&path, src);
+        out.push(UnlistedWorktree { path: path_s, branch, managed });
+    }
+    Ok(out)
 }
 
 pub fn canonical(p: &Path) -> PathBuf {
@@ -435,6 +526,61 @@ pub async fn register_workspace(pool: &DbPool, workspace: &str) -> anyhow::Resul
         }
     }
     Ok(())
+}
+
+/// Give `workspace` a row filed by git ([`register_workspace`]) when it has
+/// none, before hiding, renaming or removing it: otherwise those write a row
+/// with no repository, which the sidebar cannot place.
+pub async fn ensure_registered(pool: &DbPool, workspace: &str) -> anyhow::Result<()> {
+    if db::get_workspace_by_path(pool, &db::resolve_path(workspace)).await?.is_none() {
+        register_workspace(pool, workspace).await?;
+    }
+    Ok(())
+}
+
+/// What [`remove_if_unused`] did with a worktree whose last session went.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnusedWorktree {
+    /// Not an OpenAgentd worktree, or something still uses it.
+    InUse,
+    /// Removed (its branch too when every commit is on another branch).
+    Removed { name: String },
+    /// Left on disk because removing it would lose work.
+    Kept { name: String, reason: String },
+}
+
+/// Remove the OpenAgentd worktree `workspace` once nothing uses it (no
+/// session, no scheduled task) and nothing would be lost: no uncommitted or
+/// untracked change, and no commit that only its branch holds.
+pub async fn remove_if_unused(pool: &DbPool, workspace: &str) -> GitResult<UnusedWorktree> {
+    let db_err = |e: anyhow::Error| GitError::new(500, e.to_string());
+    let dir = canonical(Path::new(workspace));
+    let Some(source) = find_managed_worktree_source(&dir).await else { return Ok(UnusedWorktree::InUse) };
+    let path = dir.display().to_string();
+    let (sessions, tasks) = db::workspace_users(pool, &path).await.map_err(db_err)?;
+    let (busy, idle) = manager::live_sessions_in(|p: &str| p == path);
+    if sessions > 0 || tasks > 0 || !busy.is_empty() || !idle.is_empty() {
+        return Ok(UnusedWorktree::InUse);
+    }
+    let row_name = db::get_workspace_by_path(pool, &path).await.map_err(db_err)?.and_then(|r| r.name).filter(|n| !n.is_empty());
+    let name = row_name.unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+    let status = run_git(&dir, &["status", "--porcelain"]).await?;
+    if status.code != 0 {
+        return Ok(UnusedWorktree::Kept { name, reason: "git could not read its changes".into() });
+    }
+    if !status.stdout.trim().is_empty() {
+        return Ok(UnusedWorktree::Kept { name, reason: "it has uncommitted changes".into() });
+    }
+    let source = PathBuf::from(source);
+    let plan = remove_worktree(&source, &dir, true).await?;
+    if plan.unmerged_commits > 0 {
+        let n = plan.unmerged_commits;
+        return Ok(UnusedWorktree::Kept { name, reason: format!("its branch has {n} {} on no other branch", if n == 1 { "commit" } else { "commits" }) });
+    }
+    ensure_registered(pool, &path).await.map_err(db_err)?;
+    remove_worktree(&source, &dir, false).await?;
+    db::mark_coding_workspace_deleted(pool, &path).await.map_err(db_err)?;
+    Ok(UnusedWorktree::Removed { name })
 }
 
 /// Why a relocate was refused.
@@ -591,7 +737,7 @@ async fn ensure_repo_row(pool: &DbPool, source: &str) -> anyhow::Result<()> {
 /// existed). Run once at startup.
 pub async fn reclassify_workspaces(pool: &DbPool) {
     let Ok(rows) = db::list_visible_coding_workspaces(pool).await else { return };
-    for row in rows.into_iter().filter(|r| r.kind == "repo") {
+    for row in rows.iter().filter(|r| r.kind == "repo") {
         if !Path::new(&row.path).is_dir() {
             continue;
         }
@@ -599,6 +745,12 @@ pub async fn reclassify_workspaces(pool: &DbPool) {
             if let Err(e) = register_workspace(pool, &row.path).await {
                 tracing::warn!("workspace_reclassify_failed path={} err={}", row.path, e);
             }
+        }
+    }
+    // Rows whose worktree or subfolder went away while the app was closed.
+    for row in rows.iter().filter(|r| r.kind == "repo") {
+        if let Err(e) = reconcile_repo(pool, &row.path).await {
+            tracing::warn!("workspace_reconcile_failed path={} err={}", row.path, e);
         }
     }
 }
@@ -627,6 +779,7 @@ pub async fn create_worktree_at(pool: &DbPool, source: &Path, base: &Path, name:
         None => args.extend(["--detach", info.directory.as_str(), head.as_str()]),
     }
     let created = run_git(source, &args).await?;
+    forget_listing(source);
     if created.code != 0 {
         return Err(GitError::new(500, fail_detail(&created, "Failed to create git worktree.")));
     }

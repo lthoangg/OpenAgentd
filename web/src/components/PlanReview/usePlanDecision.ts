@@ -104,7 +104,7 @@ export function usePlanDecision({
     /** ``text`` is the formatted review; empty sends the bare option. */
     requestChanges: (text: string) => resolver.answer([[text.trim() || REQUEST_CHANGES]]),
     keepGoingHint: canKeepGoing
-      ? `The goal is the plan's Done when${goalSettings?.token_budget ? ', with the token budget from Settings → Sessions' : ''}. A check confirms it before the goal ends.`
+      ? "The goal is the plan's Done when. A check confirms it before the goal ends."
       : 'Add a Done when to the plan to keep going',
   }
 }

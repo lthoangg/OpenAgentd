@@ -114,13 +114,19 @@ stacked chip (below) is 36px: its two lines need it.
   of composer width (container query) the chip stacks into two lines and the
   context ring drops its percentage.
 - **The run picker** (⌘., `/model`, `/think`, the palette's "Model and
-  Thinking…") is one surface for all three: a model search with Recent first,
-  thinking as a segmented control (←/→ step it from the empty search; Extra
-  high reads XHigh there and on the chip, and the phone sheet puts the
-  Thinking label above it so every level fits), the
-  provider's accounts with state and quota left ("Auto" first), then Reset to
-  default and Make default. A popover on desktop and tablet, a bottom sheet
-  on phones. Every pick saves on the session at once; a refused save puts the
+  Thinking…") is one surface for all three, in two pages as the palette's
+  are. The first is the model search and list; a › marks a model with a page
+  of its own. Picking it (Enter, → at the end of the search, a click or a
+  tap) saves it and moves to that page: a "‹ model" back chip and
+  "Thinking", the model's levels as full rows (Default first while the model
+  decides, the agent's level tagged "default"; Extra high whole, the chip
+  says XHigh), then the provider's accounts with state and quota left. ↑/↓
+  and Enter pick a level and close; ← or Backspace go back with the search
+  and highlight as they were; the page keeps the first one's height.
+  `/think` opens on the running model's page. A model with no levels and
+  one account is picked and closes. No Reset or Make default: the agent's
+  own model and level save no override. A popover on desktop and tablet, a
+  bottom sheet on phones. Every pick saves on the session at once; a refused save puts the
   previous choice back and says so. The search is borderless over a hairline
   like the other pickers, matches with fuzzysort and ranks in one list; the
   list keeps its height while a search narrows it, so the field never moves

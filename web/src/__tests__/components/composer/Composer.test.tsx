@@ -22,6 +22,8 @@ mock.module('@/queries/useMcpQuery', () => ({
     refetch: async () => {},
   }),
   useUpdateMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useApproveMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useRevokeMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
   useConnectMcpOAuthMutation: () => ({ mutate: () => {}, isPending: false }),
 }))
 
@@ -45,8 +47,8 @@ function wrap(node: ReactNode) {
 function runSettings(over: Partial<RunSettings> = {}): RunSettings {
   return {
     agentName: 'code', agentModel: 'anthropic:claude-sonnet-4-5', agentThinkingLevel: null,
-    model: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', thinkingLevel: 'high', customized: false,
-    thinkingLevels: ['low', 'high'], models: [], modelsLoading: false, providerInfo: undefined,
+    model: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', thinkingLevel: 'high',
+    models: [], modelsLoading: false, providerInfo: undefined,
     accounts: null, credentialId: null, pinnedAccount: null, inUseAccount: null,
     ...over,
   }

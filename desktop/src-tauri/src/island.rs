@@ -1,4 +1,4 @@
-// size-ceiling: 3496 — holds settings, geometry and the server feed: give each its own module; move the inline tests out first
+// size-ceiling: 3513 — holds settings, geometry and the server feed: give each its own module; move the inline tests out first
 //! Agent status island in the MacBook notch (macOS).
 //!
 //! A borderless black webview (`web/island.html`) sits over the notch, or
@@ -2047,13 +2047,30 @@ async fn run_session_action(app: &AppHandle, session_id: &str, action: SessionAc
     let server = session.server_id.context("The session's server is no longer available.")?;
     if action == SessionAction::Dismiss {
         mark_session_read(app, session_id, None);
+        seen_by_shell(app, server, session_id);
         return Ok(());
     }
     let mode = if action == SessionAction::NewWindow { OpenIn::NewWindow } else { OpenIn::Existing };
     // The island is a widget: opening from it leaves focus where it is.
-    open_session(app, server, session_id, mode, true).await?;
+    open_session(app, server.clone(), session_id, mode, true).await?;
     mark_session_read(app, session_id, None);
+    // Focus stayed where it was, so the window will not report it seen itself.
+    seen_by_shell(app, server, session_id);
     Ok(())
+}
+
+/// The user opened or dismissed `session_id`'s notification on a shell
+/// surface (the island, the pet): tell its server it was seen, so the phone
+/// push it holds is dropped (`cloud/letters.rs`). An app window reports its
+/// own sessions (`web/src/api/client/session-seen.ts`). Best effort.
+pub(crate) fn seen_by_shell(app: &AppHandle, server: ServerId, session_id: &str) {
+    let (app, session_id) = (app.clone(), session_id.to_string());
+    tauri::async_runtime::spawn(async move {
+        match crate::answers::report_seen(&app, &server, &session_id).await {
+            Ok(()) => log::info!("seen: session={} reported", id_key(&session_id)),
+            Err(e) => log::debug!("seen: could not report session={}: {e:#}", id_key(&session_id)),
+        }
+    });
 }
 
 // ── The session → window router ─────────────────────────────────────────────

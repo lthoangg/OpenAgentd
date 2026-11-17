@@ -13,7 +13,6 @@ import { queryKeys, useProvidersQuery } from '@/queries'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { accountChoices, accountInUse, effectiveRun, splitModelId } from '@/lib/run-settings'
-import { pickableThinkingLevels } from '@/lib/thinking-levels'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { turnAccount } from '@/utils/turns'
 
@@ -26,10 +25,6 @@ export interface RunSettings {
   model: string | null
   provider: string
   thinkingLevel: string | null
-  /** The session overrides any of model, level or account. */
-  customized: boolean
-  /** Levels to pick from, lowest first; empty while they are not known or there is no choice. */
-  thinkingLevels: string[]
   /** Chat models the picker lists (no image or video generators). */
   models: ModelCatalogEntry[]
   /** The list is still the placeholder built from the providers list: its rows carry no levels. */
@@ -81,7 +76,6 @@ export function useRunSettings(workspace: string | null): RunSettings {
     const agentThinkingLevel = agent?.thinking_level ?? null
     const run = effectiveRun(session, { model: agentModel, thinkingLevel: agentThinkingLevel })
     const models = (registry.data?.models ?? []).filter((m) => !m.output_image && !m.output_video)
-    const entry = models.find((m) => m.id === run.model)
     const provider = run.model ? splitModelId(run.model).provider : ''
     const providerInfo = providers.data?.providers.find((p) => p.id === provider)
     const accounts = accountChoices(providerInfo)
@@ -96,8 +90,6 @@ export function useRunSettings(workspace: string | null): RunSettings {
       model: run.model,
       provider,
       thinkingLevel: run.thinkingLevel,
-      customized: run.overridden || Boolean(session.thinkingLevel) || Boolean(session.credentialId),
-      thinkingLevels: pickableThinkingLevels(entry, !modelsLoading),
       models,
       modelsLoading,
       providerInfo,

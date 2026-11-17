@@ -1,4 +1,4 @@
-/** Settings → Sessions → Goals: Keep going by default, the turn limit, token budget, and the questions opt-in. */
+/** Settings → Sessions → Goals: Keep going by default, the turn limit, and the questions opt-in. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -25,7 +25,7 @@ function GoalsSettingsPage() {
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
 
-const GOALS = { max_turns: 50, default_max_turns: 50, token_budget: null, allow_questions: false, keep_going_default: false }
+const GOALS = { max_turns: 50, default_max_turns: 50, allow_questions: false, keep_going_default: false }
 
 function handlers() {
   return [http.get('http://localhost/api/settings/goals', () => HttpResponse.json(GOALS))]
@@ -73,7 +73,7 @@ describe('Sessions settings: Goals', () => {
     fireEvent.change(screen.getByLabelText('Turns per goal'), { target: { value: '20' } })
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(bodies).toEqual([{ max_turns: 20, token_budget: null, allow_questions: true, keep_going_default: false }]))
+    await waitFor(() => expect(bodies).toEqual([{ max_turns: 20, allow_questions: true, keep_going_default: false }]))
   })
 
   it('saves Keep going after approval', async () => {
@@ -93,51 +93,15 @@ describe('Sessions settings: Goals', () => {
     fireEvent.click(keepGoing)
     fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
 
-    await waitFor(() => expect(bodies).toEqual([{ max_turns: 50, token_budget: null, allow_questions: false, keep_going_default: true }]))
+    await waitFor(() => expect(bodies).toEqual([{ max_turns: 50, allow_questions: false, keep_going_default: true }]))
   })
 
-  it('sets a default token budget, and empties it to remove the budget', async () => {
-    const bodies: unknown[] = []
-    let stored: number | null = null
-    server.use(
-      http.get('http://localhost/api/settings/goals', () => HttpResponse.json({ ...GOALS, token_budget: stored })),
-      http.put('http://localhost/api/settings/goals', async ({ request }) => {
-        const body = await request.json() as { token_budget: number | null }
-        bodies.push(body.token_budget)
-        stored = body.token_budget
-        return HttpResponse.json({ ...GOALS, ...body })
-      }),
-    )
+  it('offers no token budget: a goal runs until done, blocked or out of turns', async () => {
+    server.use(...handlers())
     renderPage()
 
-    const budget = await screen.findByLabelText('Token budget per goal') as HTMLInputElement
-    expect(budget.value).toBe('')
-    expect(budget.placeholder).toBe('No limit')
-    fireEvent.change(budget, { target: { value: '2000000' } })
-    expect(await screen.findByText(/Now ≈ 2M tokens\./)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
-    await waitFor(() => expect(bodies).toEqual([2_000_000]))
-
-    await waitFor(() => expect(budget.value).toBe('2000000'))
-    fireEvent.change(budget, { target: { value: '' } })
-    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
-    await waitFor(() => expect(bodies).toEqual([2_000_000, null]))
-  })
-
-  it('blocks saving a token budget below one', async () => {
-    let puts = 0
-    server.use(...handlers(), http.put('http://localhost/api/settings/goals', () => {
-      puts += 1
-      return HttpResponse.json(GOALS)
-    }))
-    renderPage()
-
-    const budget = await screen.findByLabelText('Token budget per goal')
-    fireEvent.change(budget, { target: { value: '0' } })
-    expect(await screen.findByText(/whole number of tokens, or empty for no budget/i)).toBeTruthy()
-    const save = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement
-    expect(save.disabled).toBe(true)
-    expect(puts).toBe(0)
+    await screen.findByLabelText('Turns per goal')
+    expect(screen.queryByLabelText(/token budget/i)).toBeNull()
   })
 
   it('offers no separate check model, so the check keeps the prompt cache', async () => {

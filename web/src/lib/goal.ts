@@ -38,6 +38,7 @@ const PAUSE_LABELS: Record<GoalPauseReason, string> = {
   user: 'paused by you',
   blocked: 'blocked',
   turn_limit: 'turn limit',
+  // Goals no longer have a token budget; only goals paused before then carry it.
   token_limit: 'token budget',
   no_progress: 'no progress',
   unverified: 'check rejected',
@@ -57,7 +58,7 @@ export function pauseReasonText(goal: SessionGoal): string {
     case 'user': return 'You paused it.'
     case 'blocked': return 'The agent reported a blocker it cannot get past alone.'
     case 'turn_limit': return `It used all ${goal.max_turns} turns. Resume grants another batch.`
-    case 'token_limit': return 'It reached its token budget. Resume grants another budget.'
+    case 'token_limit': return 'It reached the token budget goals used to have. Resume continues it with no budget.'
     case 'no_progress': return 'Two turns in a row made no tool calls.'
     case 'unverified': return 'The check rejected three completion claims in a row.'
     case 'check_failed': return 'The completion check failed three times in a row, without accepting or rejecting a claim.'

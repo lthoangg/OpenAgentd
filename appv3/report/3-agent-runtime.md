@@ -43,13 +43,15 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   - *Table:* revision **00000028** adds `session_goals`, `WITHOUT ROWID` and
     clustered on `(session_id, id)` with uuid7 ids: `objective` (≤ 4,000
     chars), `status` (`active|paused|achieved|cleared`), `pause_reason`
-    (`stopped|user|blocked|turn_limit|token_limit|no_progress|unverified|check_failed|error|restart`),
-    `detail` (blocker or last check reason), `max_turns`, `token_budget`, and
+    (`stopped|user|blocked|turn_limit|no_progress|unverified|check_failed|error|restart`;
+    `token_limit` only on goals paused before goals lost their token budget),
+    `detail` (blocker or last check reason), `max_turns`, and
     the counters `turns_used`, `tokens_used` (uncached input plus output),
     `active_seconds`, `rejected_claims`, `idle_turns`. The partial unique
     index `uq_session_goals_live` allows one active or paused goal per
     session. No foreign key; session delete removes the rows in its
-    transaction.
+    transaction. The `token_budget` column stays but is unused: a goal has
+    no token budget, so spending tokens never pauses it.
   - *Starting a goal:* the plan review answer
     (`POST /api/agent/{sid}/question/{qid}/answer`) takes
     `keep_going` beside `answers`: `true`, `{}` or `{"max_turns": n}`
@@ -60,7 +62,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     plan without one, or turns out of range, is a 422 that leaves the
     review open. After approval
     `AgentSession::start_goal_from_plan` clears a live goal, creates the
-    goal with the token budget from `goals.token_budget`, and saves its
+    goal, and saves its
     rules in a pinned, hidden `kind='note'` row with `extra.goal_note` and
     `extra.goal_id`, kept out of compaction while the goal is live; when no
     turn resumed, it starts one. The approval result asks for one `todo`
@@ -72,8 +74,8 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     /api/agent/sessions/{sid}/goal` returns `{goal}` (the newest goal of
     any status, or `null`); `POST …/goal/pause` and `…/goal/resume` return
     the goal, or 404 without a live one; `DELETE …/goal` is 204 and
-    idempotent. Resume grants another settings-sized batch of turns (and
-    another budget) when a limit paused it, and starts a turn when the
+    idempotent. Resume grants another settings-sized batch of turns
+    when the turn limit paused it, and starts a turn when the
     session is idle; while a stopped turn is still ending it is a 422.
     Pause and clear delete a queued `goal_turn` row. Member sessions are
     404.
@@ -152,14 +154,15 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     verdict (`goal_check.stopped` when Stop dropped it mid-request). The
     check's spend therefore counts in the Telemetry totals, per session,
     and as its own step in `cache_by_step`.
-  - *Settings:* `settings.yaml` gains `goals: {max_turns, token_budget,
+  - *Settings:* `settings.yaml` gains `goals: {max_turns,
     allow_questions, keep_going_default}`, each written only when it differs
-    from the default (50, no budget, `false`, `false`);
+    from the default (50, `false`, `false`); a `token_budget` left in an
+    older file is ignored and dropped on the next save;
     `keep_going_default` ticks Keep going in the review footer.
     `GET/PUT /api/settings/goals` returns them plus
-    `default_max_turns`; PUT keeps omitted keys, resets `max_turns` and
-    removes `token_budget` with `null`, and returns 422 for a `max_turns`
-    outside 1–1000, a `token_budget` below 1, or an unknown key.
+    `default_max_turns`; PUT keeps omitted keys, resets `max_turns` with
+    `null`, and returns 422 for a `max_turns` outside 1–1000 or an unknown
+    key (`token_budget` included).
 
   Tests: `agent/tests/goal_loop.rs`, `agent/tests/goal_questions.rs`, unit tests in `agent/src/goal/tests.rs`,
   `agent/src/plan/tests.rs`, `db/src/queries/goals.rs` and `db/tests/queries.rs`,

@@ -24,6 +24,8 @@ pub fn router() -> Router<AppState> {
         .route("/servers", get(list_servers).post(create_server))
         .route("/servers/{name}", get(get_server).put(update_server).delete(delete_server))
         .route("/servers/{name}/restart", post(restart_server))
+        .route("/servers/{name}/approve", post(approve_server))
+        .route("/servers/{name}/revoke", post(revoke_server))
         .route("/servers/{name}/oauth/connect", post(connect_oauth))
         .route("/app-tools/call", post(call_app_tool))
         .route("/app-frames", post(issue_app_frame))
@@ -31,31 +33,43 @@ pub fn router() -> Router<AppState> {
         .route("/app-context", post(update_app_context))
         .route("/app-storage", post(update_app_storage))
         .route("/apply", post(apply))
+        .merge(super::mcp_sign_in::router())
+        .merge(super::mcp_gallery::router())
 }
 
-fn internal(e: impl std::fmt::Display) -> ApiError {
+pub(super) fn internal(e: impl std::fmt::Display) -> ApiError {
     ApiError::internal(e)
 }
 
 /// `ServerStatusResponse`. A server a plugin provides adds `plugin` (the
 /// user's own have no such key), and its `config` is the plugin's: it has no
-/// entry in `mcp.json`.
-fn status_json(st: &ServerStatus, cfg: Option<&ServerConfig>) -> Value {
-    let config = if st.plugin.is_some() { plugin_config_body(cfg) } else { masked_config_body(cfg) };
+/// entry in `mcp.json`. A project's server adds `project` (its workspace and
+/// its name there; `name` is its key) and shows its entry from the project's
+/// `.agents/mcp.json`.
+pub(super) fn status_json(st: &ServerStatus, cfg: Option<&ServerConfig>) -> Value {
+    let config = if st.plugin.is_some() || st.project.is_some() { plugin_config_body(cfg) } else { masked_config_body(cfg) };
     let mut v = json!({
         "name": st.name, "transport": st.transport, "enabled": st.enabled, "state": st.state,
         "error": st.error, "tool_names": st.tool_names, "started_at": st.started_at,
         "config": config,
+        // Holds a sign-in it can use (or refresh): what "Sign out" forgets.
+        "signed_in": oauth::has_cached_oauth_tokens(&st.name),
     });
     if let Some(plugin) = &st.plugin {
         v["plugin"] = json!(plugin);
+    }
+    if let Some(p) = &st.project {
+        v["project"] = json!({"workspace": p.workspace, "name": p.name});
     }
     v
 }
 
 /// The config `st` shows: the user's entry in `mcp.json`, or for a plugin's
-/// server the one its plugin gave it.
-fn config_of(st: &ServerStatus, user: &cfgmod::McpConfig) -> Option<ServerConfig> {
+/// server the one its plugin gave it, or for a project's its project's entry.
+pub(super) fn config_of(st: &ServerStatus, user: &cfgmod::McpConfig) -> Option<ServerConfig> {
+    if st.project.is_some() {
+        return mcp_manager().project_server_config(&st.name);
+    }
     match st.plugin {
         Some(_) => mcp_manager().plugin_server_config(&st.name),
         None => user.servers.get(&st.name).cloned(),
@@ -67,9 +81,17 @@ fn list_json(cfg: &cfgmod::McpConfig) -> Value {
     json!({"servers": servers})
 }
 
-/// 409 when `name` is a server a plugin provides: the plugin owns it, so
-/// the user's `mcp.json` has nothing to edit or delete.
+/// 409 when `name` is a server a plugin provides, or a project's: the plugin
+/// or the project's file owns it, so the user's `mcp.json` has nothing to
+/// edit or delete.
 fn reject_plugin_server(name: &str) -> ApiResult<()> {
+    if let Some(p) = mcp_manager().project_of(name) {
+        return Err(ApiError::conflict(format!(
+            "{} comes from {}; edit that file to change it",
+            p.name,
+            appv3_mcp::project::project_file(std::path::Path::new(&p.workspace)).display()
+        )));
+    }
     match mcp_manager().plugin_of(name) {
         Some(plugin) => Err(ApiError::conflict(appv3_mcp::plugin::managed_by_plugin_message(name, &plugin))),
         None => Ok(()),
@@ -172,15 +194,28 @@ fn check_timeout(v: Option<i64>, prefix: &[Value], errs: &mut Vec<Value>) -> Opt
 
 // ── routes ──────────────────────────────────────────────────────────────────
 
-async fn list_servers() -> ApiResult<Response> {
+/// The user's and plugins' servers; with `?workspace=`, that workspace's
+/// project servers too (synced with its `.agents/mcp.json` first), and
+/// `project_error` when that file cannot be used.
+async fn list_servers(q: Qs) -> ApiResult<Response> {
     let cfg = cfgmod::load_config().map_err(internal)?;
-    Ok(json(list_json(&cfg)))
+    let mut out = list_json(&cfg);
+    if let Some(ws) = q.opt("workspace").filter(|w| !w.is_empty()) {
+        let m = mcp_manager();
+        m.sync_project(&ws).await;
+        let servers = out["servers"].as_array_mut().expect("a list");
+        servers.extend(m.project_servers(&ws).iter().map(|(st, sc)| status_json(st, Some(sc))));
+        if let Some(e) = m.project_error(&ws) {
+            out["project_error"] = json!(e);
+        }
+    }
+    Ok(json(out))
 }
 
 async fn get_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
     let Some(st) = mcp_manager().get_status(&name) else { return Err(ApiError::not_found(format!("MCP server '{name}' not found."))) };
-    if st.plugin.is_some() {
-        return Ok(json(status_json(&st, mcp_manager().plugin_server_config(&name).as_ref())));
+    if st.plugin.is_some() || st.project.is_some() {
+        return Ok(json(status_json(&st, config_of(&st, &cfgmod::McpConfig::default()).as_ref())));
     }
     let cfg = cfgmod::load_config().map_err(internal)?;
     Ok(json(status_json(&st, cfg.servers.get(&name))))
@@ -225,8 +260,8 @@ async fn update_server(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Re
     let mut cfg = cfgmod::load_config().map_err(internal)?;
     let Some(existing) = cfg.servers.get(&name).cloned() else { return Err(ApiError::not_found(format!("MCP server '{name}' not found."))) };
     let mut sc = server.expect("validated");
+    sc = merge_masked(sc, Some(&existing));
     if matches!(sc, ServerConfig::Http { .. }) {
-        sc = merge_masked(sc, Some(&existing));
         sc = store_oauth_secrets(&name, sc).map_err(internal)?;
     }
     cfg.servers.insert(name.clone(), sc.clone());
@@ -242,11 +277,19 @@ async fn delete_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
     }
     cfgmod::save_config(&cfg).map_err(internal)?;
     mcp_manager().remove_runner(&name).await;
+    // Removing a connector forgets its sign-in too.
+    oauth::disallow_interactive_oauth(&name);
+    oauth::clear_cached_oauth(&name);
     appv3_agent::mcp_apps::remove_storage(&name).await;
     Ok(json(json!({"name": name})))
 }
 
 async fn restart_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
+    if mcp_manager().project_of(&name).is_some() {
+        // A project's server restarts once approved; it is not in `mcp.json`.
+        let st = mcp_manager().restart_server(&name, Duration::from_secs(15)).await.map_err(ApiError::conflict)?;
+        return Ok(json(status_json(&st, mcp_manager().project_server_config(&name).as_ref())));
+    }
     if mcp_manager().plugin_of(&name).is_some() {
         // A plugin's server restarts like any other; it is not in `mcp.json`.
         let st = mcp_manager().restart_server(&name, Duration::from_secs(15)).await.map_err(|_| ApiError::not_found(format!("MCP server '{name}' not found.")))?;
@@ -262,8 +305,9 @@ async fn restart_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
 }
 
 async fn connect_oauth(AxPath(name): AxPath<String>) -> ApiResult<Response> {
-    // A plugin's server signs in like any other; it has no `mcp.json` entry to re-save.
-    let (sc, user_cfg) = match mcp_manager().plugin_of(&name).and_then(|_| mcp_manager().plugin_server_config(&name)) {
+    // A plugin's or project's server signs in like any other; it has no `mcp.json` entry to re-save.
+    let owned = mcp_manager().project_server_config(&name).or_else(|| mcp_manager().plugin_of(&name).and_then(|_| mcp_manager().plugin_server_config(&name)));
+    let (sc, user_cfg) = match owned {
         Some(sc) => (sc, None),
         None => {
             let cfg = cfgmod::load_config().map_err(internal)?;
@@ -273,6 +317,9 @@ async fn connect_oauth(AxPath(name): AxPath<String>) -> ApiResult<Response> {
     };
     if !sc.signs_in_with_oauth() {
         return Err(ApiError::bad_request(format!("MCP server '{name}' does not sign in with OAuth: it is a stdio server, or its Authorization header sets its credentials.")));
+    }
+    if mcp_manager().get_status(&name).is_some_and(|s| s.state == "needs_approval") {
+        return Err(ApiError::conflict(format!("MCP server '{name}' needs approval before it can sign in.")));
     }
     oauth::allow_interactive_oauth(&name);
     oauth::clear_cached_oauth(&name);
@@ -286,6 +333,23 @@ async fn connect_oauth(AxPath(name): AxPath<String>) -> ApiResult<Response> {
         cfgmod::save_config(cfg).map_err(internal)?;
     }
     Ok(json(status_json(&st, Some(&sc))))
+}
+
+/// Approve a project's server (keyed `name`) as its entry is now, and start it.
+async fn approve_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
+    let Some(p) = mcp_manager().project_of(&name) else { return Err(ApiError::not_found(format!("MCP server '{name}' is not a project's server."))) };
+    let st = mcp_manager().approve_project_server(&p.workspace, &p.name, None, Duration::from_secs(15)).await.map_err(ApiError::conflict)?;
+    let key = appv3_mcp::project::runner_key(&p.workspace, &p.name);
+    let st = mcp_manager().get_status(&key).unwrap_or(st);
+    Ok(json(status_json(&st, mcp_manager().project_server_config(&key).as_ref())))
+}
+
+/// Withdraw the approval of a project's server (keyed `name`): it stops.
+async fn revoke_server(AxPath(name): AxPath<String>) -> ApiResult<Response> {
+    let Some(p) = mcp_manager().project_of(&name) else { return Err(ApiError::not_found(format!("MCP server '{name}' is not a project's server."))) };
+    mcp_manager().revoke_project_server(&p.workspace, &p.name).await.map_err(internal)?;
+    let Some(st) = mcp_manager().get_status(&name) else { return Ok(json(json!({"name": name}))) };
+    Ok(json(status_json(&st, mcp_manager().project_server_config(&name).as_ref())))
 }
 
 async fn apply() -> ApiResult<Response> {
@@ -440,146 +504,4 @@ async fn update_app_storage(State(st): State<AppState>, raw: Bytes) -> ApiResult
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use appv3_kernel::{Module, Registrar};
-    use appv3_mcp::PluginServers;
-    use axum::body::Body as HttpBody;
-    use axum::http::{Request, StatusCode};
-    use http_body_util::BodyExt;
-    use tower::ServiceExt;
-
-    /// A plugin's module as far as the kernel sees it: it contributes its
-    /// servers when it starts (the sync is called by the test, as the real
-    /// module's hooks do).
-    struct PluginModule {
-        id: String,
-        plugin: String,
-        servers: Vec<(String, ServerConfig)>,
-    }
-
-    impl Module for PluginModule {
-        fn id(&self) -> &str {
-            &self.id
-        }
-        fn register(&self, r: &mut Registrar) -> anyhow::Result<()> {
-            r.add(PluginServers { plugin: self.plugin.clone(), servers: self.servers.clone() });
-            Ok(())
-        }
-    }
-
-    /// A server that is disabled, so it never starts a process.
-    fn plugin_server() -> ServerConfig {
-        let mut env = IndexMap::new();
-        env.insert("TOKEN".to_string(), "s3cret".to_string());
-        ServerConfig::Stdio { command: "npx".into(), args: vec!["-y".into(), "srv".into()], env, enabled: false, timeout: None, cwd: Some("/plugins/routes-mcp".into()) }
-    }
-
-    fn status(plugin: Option<&str>) -> ServerStatus {
-        ServerStatus {
-            name: "n".into(),
-            transport: "stdio".into(),
-            enabled: true,
-            state: "ready".into(),
-            error: None,
-            tool_names: vec!["n_t".into()],
-            started_at: None,
-            plugin: plugin.map(String::from),
-        }
-    }
-
-    async fn send(app: &Router, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-        let mut req = Request::builder().method(method).uri(uri);
-        let body = match body {
-            Some(v) => {
-                req = req.header("content-type", "application/json");
-                HttpBody::from(v.to_string())
-            }
-            None => HttpBody::empty(),
-        };
-        let resp = app.clone().oneshot(req.body(body).unwrap()).await.unwrap();
-        let status = resp.status();
-        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-        (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
-    }
-
-    /// The user's servers read as they always did; a plugin's adds `plugin`.
-    #[test]
-    fn only_a_plugins_server_carries_a_plugin_label() {
-        let cfg = ServerConfig::Stdio { command: "x".into(), args: vec![], env: IndexMap::new(), enabled: true, timeout: None, cwd: None };
-        let user = status_json(&status(None), Some(&cfg));
-        assert!(user.get("plugin").is_none());
-        assert_eq!(
-            user.to_string(),
-            r#"{"name":"n","transport":"stdio","enabled":true,"state":"ready","error":null,"tool_names":["n_t"],"started_at":null,"config":{"transport":"stdio","command":"x","args":[],"env":{},"enabled":true}}"#
-        );
-        let plugin = status_json(&status(Some("p")), Some(&cfg));
-        assert_eq!(plugin["plugin"], "p");
-        assert_eq!(plugin.to_string(), format!(r#"{},"plugin":"p"}}"#, user.to_string().strip_suffix('}').unwrap()), "the label is the only difference");
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn plugin_servers_are_listed_read_only_and_reached_by_their_encoded_full_name() {
-        let kernel = appv3_kernel::global();
-        let module = "plugin:routes-mcp";
-        kernel.add(PluginModule { id: module.into(), plugin: "routes-mcp".into(), servers: vec![("github".into(), plugin_server())] }).unwrap();
-        kernel.start(module).await.unwrap();
-        mcp_manager().sync_plugin_servers().await;
-
-        let dir = tempfile::tempdir().unwrap();
-        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
-        let app = crate::routes::router().with_state(AppState { pool });
-        // `encodeURIComponent("routes-mcp/github")`: the `/` stays inside one path segment.
-        let uri = "/api/mcp/servers/routes-mcp%2Fgithub";
-
-        let (st, v) = send(&app, "GET", uri, None).await;
-        assert_eq!(st, StatusCode::OK, "{v}");
-        assert_eq!(
-            (v["name"].as_str(), v["plugin"].as_str(), v["transport"].as_str(), v["state"].as_str()),
-            (Some("routes-mcp/github"), Some("routes-mcp"), Some("stdio"), Some("stopped")),
-            "{v}"
-        );
-        assert_eq!((v["config"]["command"].as_str(), v["config"]["cwd"].as_str()), (Some("npx"), Some("/plugins/routes-mcp")));
-        assert_eq!(v["config"]["env"], json!({"TOKEN": "********"}));
-        assert!(!v.to_string().contains("s3cret"), "{v}");
-
-        // Read-only: neither a change nor a delete, and nothing happens to the server.
-        let detail = "routes-mcp/github comes from plugin routes-mcp; manage it in Settings → Plugins";
-        let put = json!({"server": {"transport": "stdio", "command": "x", "args": [], "env": {}, "enabled": true}});
-        assert_eq!(send(&app, "PUT", uri, Some(put)).await, (StatusCode::CONFLICT, json!({"detail": detail})));
-        assert_eq!(send(&app, "DELETE", uri, None).await, (StatusCode::CONFLICT, json!({"detail": detail})));
-        assert_eq!(mcp_manager().get_status("routes-mcp/github").unwrap().plugin.as_deref(), Some("routes-mcp"));
-
-        // A restart is allowed.
-        let (st, v) = send(&app, "POST", &format!("{uri}/restart"), None).await;
-        assert_eq!(st, StatusCode::OK, "{v}");
-        assert_eq!((v["name"].as_str(), v["plugin"].as_str()), (Some("routes-mcp/github"), Some("routes-mcp")), "{v}");
-
-        // Signing in resolves the name too (a stdio server does not sign in).
-        let (st, v) = send(&app, "POST", &format!("{uri}/oauth/connect"), None).await;
-        assert_eq!(
-            (st, v),
-            (
-                StatusCode::BAD_REQUEST,
-                json!({"detail": "MCP server 'routes-mcp/github' does not sign in with OAuth: it is a stdio server, or its Authorization header sets its credentials."})
-            )
-        );
-
-        // The list carries it with its label.
-        let list = list_json(&cfgmod::McpConfig::default());
-        let listed = list["servers"].as_array().unwrap().iter().find(|s| s["name"] == "routes-mcp/github").expect("listed");
-        assert_eq!(listed["plugin"], "routes-mcp");
-
-        // Another server of the same plugin is not there.
-        let (st, v) = send(&app, "GET", "/api/mcp/servers/routes-mcp%2Fnope", None).await;
-        assert_eq!((st, v), (StatusCode::NOT_FOUND, json!({"detail": "MCP server 'routes-mcp/nope' not found."})));
-
-        // The plugin stops (the kernel drops its contribution, the hook syncs): the server is gone.
-        kernel.stop(module).await;
-        mcp_manager().sync_plugin_servers().await;
-        let (st, _) = send(&app, "GET", uri, None).await;
-        assert_eq!(st, StatusCode::NOT_FOUND);
-        assert!(list_json(&cfgmod::McpConfig::default())["servers"].as_array().unwrap().iter().all(|s| s["name"] != "routes-mcp/github"));
-        kernel.remove(module).await;
-    }
-}
+mod tests;

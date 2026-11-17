@@ -16,7 +16,8 @@ bug shows here as a reply that never arrives or a tool call that never runs.
 - The model chip in the composer ("Model ollama:stub. Change") opens "Model
   and thinking": a popover on desktop, a bottom sheet on a phone. Models are
   grouped by provider.
-- A thinking level is offered only for models known to have one.
+- A thinking level is offered only for models known to have one. Picking a
+  model with levels (the Anthropic stub) opens its levels page.
 
 ## Driving it with Playwright
 
@@ -29,11 +30,13 @@ bug shows here as a reply that never arrives or a tool call that never runs.
 
 ## Gotchas
 
-- On a phone the picker sheet stays open after a choice and covers Send. The
-  journey closes it with Escape; a user taps outside it.
-- The picker offers no thinking level for the stub, and a thinking level is
-  what selects the Responses API. The journey therefore seeds the first turn
-  through the API with `thinking_level=medium` and continues that session in
-  the UI. Choosing a thinking level in the picker is not driven.
+- Picking the Anthropic stub opens its levels page, which stays open over
+  Send. The journey closes it with Escape; a user picks a level or taps
+  outside it.
+- The picker offers no thinking level for the Ollama stub, and a thinking
+  level is what selects the Responses API. The journey therefore seeds the
+  first turn through the API with `thinking_level=medium` and continues that
+  session in the UI. Choosing a level in the picker is driven by
+  `run-picker`.
 - The model lists come from the stub: `drive.sh up` asks the backend to list
   each provider's models, as connecting a provider in Settings does.

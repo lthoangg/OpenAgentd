@@ -283,7 +283,12 @@ pub trait SessionProvider: Send + Sync {
 }
 
 pub struct McpTool {
+    /// The name the agent knows the server by.
     pub server_name: String,
+    /// The manager's key for the server's runner: `server_name`, except for
+    /// a project's server (`<name>@<workspace hash>`). An MCP app's panel
+    /// calls back through it.
+    pub runner: String,
     pub remote_name: String,
     pub name: String,
     pub description: String,
@@ -306,7 +311,13 @@ impl McpTool {
             .unwrap_or_else(|| format!("Tool '{remote}' from MCP server '{server_name}'."));
         let name = format!("{server_name}_{remote}");
         let definition = json!({"type": "function", "function": {"name": name, "description": description, "parameters": sanitize_tool_schema(def.get("inputSchema"))}});
-        McpTool { server_name: server_name.into(), name, remote_name: remote, description, def, definition, session }
+        McpTool { server_name: server_name.into(), runner: server_name.into(), name, remote_name: remote, description, def, definition, session }
+    }
+
+    /// The tool of the runner keyed `runner` (see [`McpTool::runner`]).
+    pub fn on_runner(mut self, runner: &str) -> Self {
+        self.runner = runner.into();
+        self
     }
 
     /// The sanitized input schema the model is given for this tool.
@@ -385,7 +396,7 @@ impl Tool for McpTool {
                             app_parts.insert(0, ContentBlock::text(summary.clone()));
                         }
                         let mcp_app = json!({
-                            "server": self.server_name, "tool": self.remote_name, "name": self.name,
+                            "server": self.runner, "tool": self.remote_name, "name": self.name,
                             "resourceUri": uri, "html": app["html"], "mimeType": app.get("mimeType"),
                             "resourceMeta": app.get("resourceMeta"), "toolMeta": meta, "tool_input": args,
                             "result": dump_call_result(&result),

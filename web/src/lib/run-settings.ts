@@ -1,7 +1,7 @@
 /**
  * How the next message runs — model, thinking level, account — as the run
- * deck and the run picker show it. Pure helpers: labels, the recent-model
- * list, and the frontmatter edit behind "Make default".
+ * deck and the run picker show it. Pure helpers: labels, accounts and quota,
+ * and the recent-model list.
  */
 import type { ProviderInfo, ProviderUsageLimit, ProviderUsageResponse, StoredCredential } from '@/api/client'
 import { formatUsageAmount } from '@/lib/usage-format'
@@ -59,14 +59,6 @@ export function effectiveRun(session: RunChoice, agent: RunChoice): RunChoice & 
     thinkingLevel: session.thinkingLevel || (overridden ? null : agent.thinkingLevel) || null,
     overridden,
   }
-}
-
-/** One level up or down (←/→ in the picker), stopping at either end. */
-export function stepThinkingLevel(levels: readonly string[], current: string | null, direction: 1 | -1): string | null {
-  if (levels.length === 0) return current
-  const at = current ? levels.indexOf(current) : -1
-  if (at < 0) return levels[0]
-  return levels[Math.min(levels.length - 1, Math.max(0, at + direction))]
 }
 
 /**
@@ -273,33 +265,4 @@ export function rememberRecentModel(id: string): string[] {
     // A full or blocked storage only loses the shortcut list.
   }
   return next
-}
-
-// ── Make default ────────────────────────────────────────────────────────────
-
-const FRONTMATTER_RE = /^(\s*---\r?\n)([\s\S]*?)(\r?\n---)/
-
-/**
- * Set (or, with `null`, remove) top-level scalar keys in an agent file's
- * frontmatter, leaving every other line as it was. Keys that are missing
- * are added at the end of the block.
- */
-export function setFrontmatterScalars(raw: string, values: Record<string, string | null>): string {
-  const m = FRONTMATTER_RE.exec(raw)
-  if (!m) return raw
-  const lines = m[2].split(/\r?\n/)
-  const pending = new Map(Object.entries(values))
-  const out: string[] = []
-  for (const line of lines) {
-    const key = /^([A-Za-z_][\w-]*):/.exec(line)?.[1]
-    if (key && pending.has(key)) {
-      const value = pending.get(key)
-      pending.delete(key)
-      if (value) out.push(`${key}: ${value}`)
-      continue
-    }
-    out.push(line)
-  }
-  for (const [key, value] of pending) if (value) out.push(`${key}: ${value}`)
-  return `${m[1]}${out.join('\n')}${m[3]}${raw.slice(m[0].length)}`
 }

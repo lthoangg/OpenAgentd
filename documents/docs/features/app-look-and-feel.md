@@ -391,8 +391,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     - a retry reads as a sentence: "The model is busy. Trying again in 8
       seconds (2 of 5)." or, for a dropped connection, "The connection
       dropped. Trying again in 8 seconds.";
-    - the Goal tab reads "7 of 50" and "18 minutes", and shows tokens only
-      against a token budget;
+    - the Goal tab reads "7 of 50" and "18 minutes", and leaves tokens out
+      (since `[v3.58.0]`, when goals lost their token budget);
     - the phone's run line reads "Working · 3:12", without the step;
     - a scheduled task's slug chip is not shown.
     The line under a reply, Turn details, the working row and the context

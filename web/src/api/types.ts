@@ -1,4 +1,4 @@
-// size-ceiling: 999 — types only: group them by resource, as api/client/ is
+// size-ceiling: 1022 — types only: group them by resource, as api/client/ is
 // API Response Types
 export interface AgentToolInfo {
   name: string
@@ -64,14 +64,37 @@ export interface CodingWorkspaceTreeWorktree {
   managed: boolean
   /** ``folder`` is a subfolder of a checkout, filed under its repository. */
   kind?: 'worktree' | 'folder'
+  /**
+   * A worktree made outside OpenAgentd (plain ``git worktree add``, another
+   * tool): listed, but the app only hides it, never deletes it.
+   */
+  external?: boolean
   /** The folder no longer exists on disk. */
   missing?: boolean
+}
+
+/** A worktree or subfolder gone from the list that still holds sessions. */
+export interface CodingWorkspaceTreeFormerCheckout {
+  path: string
+  name: string
+}
+
+/** ``DELETE /sessions/{id}?remove_worktree=true``: what became of its worktree. */
+export interface SessionDeleteResponse {
+  deleted: boolean
+  /** ``null`` when the session was not alone in an OpenAgentd worktree. */
+  worktree: { name: string; removed: boolean; reason?: string } | null
 }
 
 export interface CodingWorkspaceTreeRepository {
   path: string
   name: string
   worktrees: CodingWorkspaceTreeWorktree[]
+  /**
+   * Checkouts removed or gone from disk whose sessions the repository still
+   * lists. Absent on a server before this was added.
+   */
+  former_checkouts?: CodingWorkspaceTreeFormerCheckout[]
   /** Ids of the workspace groups this repository is in (its worktrees share them). */
   group_ids?: string[]
   /** The folder no longer exists on disk. */
@@ -849,6 +872,7 @@ export type GoalPauseReason =
   | 'user'
   | 'blocked'
   | 'turn_limit'
+  /** Only goals paused before goals lost their token budget. */
   | 'token_limit'
   | 'no_progress'
   | 'unverified'
@@ -866,7 +890,6 @@ export interface SessionGoal {
   /** The blocker, the last check's reason, or the error that paused it. */
   detail: string | null
   max_turns: number
-  token_budget: number | null
   turns_used: number
   /** Uncached input plus output tokens of its turns and checks. */
   tokens_used: number

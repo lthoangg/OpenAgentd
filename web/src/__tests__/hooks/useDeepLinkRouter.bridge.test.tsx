@@ -10,6 +10,9 @@ const invalidateQueries = mock(() => Promise.resolve())
 const pushToast = mock(() => {})
 const startNewSession = mock((..._args: unknown[]) => true)
 const requestSchedulerOpen = mock((..._args: unknown[]) => {})
+const requestComposerPrefill = mock((..._args: unknown[]) => {})
+const closeAll = mock(() => {})
+const closeSettings = mock(() => {})
 let currentWindowLabel = 'main'
 
 mock.module('@tauri-apps/plugin-deep-link', () => ({ getCurrent, onOpenUrl }))
@@ -23,7 +26,10 @@ mock.module('@/stores/useToastStore', () => ({
 }))
 mock.module('@/lib/new-session', () => ({ startNewSession }))
 mock.module('@/stores/useUIStore', () => ({
-  useUIStore: { getState: () => ({ requestSchedulerOpen }) },
+  useUIStore: { getState: () => ({ requestSchedulerOpen, requestComposerPrefill, closeAll }) },
+}))
+mock.module('@/stores/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ closeSettings }) },
 }))
 
 function DeepLinkRouter() {
@@ -42,6 +48,9 @@ beforeEach(() => {
   pushToast.mockReset()
   startNewSession.mockClear()
   requestSchedulerOpen.mockClear()
+  requestComposerPrefill.mockClear()
+  closeAll.mockClear()
+  closeSettings.mockClear()
   localStorage.clear()
   sessionStorage.clear()
   globalThis.fetch = mock(async () => new Response(null, { status: 200 }))
@@ -169,6 +178,48 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
 
     await waitFor(() => expect(requestSchedulerOpen).toHaveBeenCalledWith('task-7'))
     expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('queues a link prompt for the new draft before starting it, without sending', async () => {
+    const order: string[] = []
+    requestComposerPrefill.mockImplementation(() => { order.push('prefill') })
+    startNewSession.mockImplementation(() => { order.push('start'); return true })
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://new?workspace=%2Fsrv%2Frepo&prompt=fix%20the%20build']))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => expect(startNewSession).toHaveBeenCalledTimes(1))
+    expect(requestComposerPrefill).toHaveBeenCalledWith('/srv/repo', 'fix the build')
+    expect(order).toEqual(['prefill', 'start'])
+    // Usage, the scheduler or Settings would cover the draft.
+    expect(closeAll).toHaveBeenCalledTimes(1)
+    expect(closeSettings).toHaveBeenCalledTimes(1)
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('drops a link prompt when there is no folder to start a draft in', async () => {
+    getCurrent.mockImplementation(() => Promise.resolve(['openagentd://new?prompt=hello']))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ href: '/' }))
+    expect(requestComposerPrefill).not.toHaveBeenCalled()
+  })
+
+  it('opens Settings and telemetry through their app pages', async () => {
+    getCurrent.mockImplementation(() => Promise.resolve([
+      'openagentd://settings/models',
+      'openagentd://settings',
+      'openagentd://telemetry?days=30&traceId=abc&session=s1',
+    ]))
+
+    render(<DeepLinkRouter />)
+
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith({ href: '/settings/models' })
+      expect(navigate).toHaveBeenCalledWith({ href: '/settings' })
+      expect(navigate).toHaveBeenCalledWith({ href: '/telemetry?days=30&traceId=abc&session=s1' })
+    })
   })
 
   it('runs a link the plugin replays after a reload once, but a new tap on it again', async () => {

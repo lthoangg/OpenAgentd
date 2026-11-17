@@ -32,9 +32,15 @@ fn whole_ref_re() -> &'static regex::Regex {
 }
 
 fn oauth_env_key(name: &str, field: &str) -> String {
-    let re = regex::Regex::new(r"[^A-Za-z0-9]+").unwrap();
-    let p = re.replace_all(name, "_").trim_matches('_').to_uppercase();
-    format!("{}_MCP_{field}", if p.is_empty() { "MCP".to_string() } else { p })
+    cfgmod::secret_name(name, field)
+}
+
+/// Store a connector's API key as a named secret in `credentials.yaml` and
+/// return the `${NAME}` reference a header uses in its place.
+pub fn store_api_key(name: &str, key: &str) -> std::io::Result<String> {
+    let env_key = oauth_env_key(name, "API_KEY");
+    save_env_values(&[(env_key.clone(), key.to_string())])?;
+    Ok(format!("${{{env_key}}}"))
 }
 
 /// Store MCP client secrets as named secrets in `credentials.yaml`;
@@ -109,7 +115,7 @@ fn has_mask(cfg: &ServerConfig) -> bool {
 }
 
 fn mask_value(v: &str) -> String {
-    if whole_ref_re().is_match(v) {
+    if whole_ref_re().is_match(v) && !cfgmod::is_stored_secret_ref(v) {
         v.to_string()
     } else {
         MASK.to_string()
@@ -192,8 +198,77 @@ pub fn servers_text(m: &McpManager) -> String {
     servers_text_for(m, cfgmod::load_config())
 }
 
+// ── the gallery, for the agent ──────────────────────────────────────────────
+
+/// How a gallery connector signs in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GalleryAuth {
+    None,
+    OAuth,
+    Key,
+}
+
+/// A ready-made connector from the gallery, for the agent to suggest.
+#[derive(Clone, Debug)]
+pub struct GalleryHint {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub auth: GalleryAuth,
+}
+
+type GallerySource = Box<dyn Fn() -> Vec<GalleryHint> + Send + Sync>;
+
+fn gallery_source() -> &'static std::sync::OnceLock<GallerySource> {
+    static S: std::sync::OnceLock<GallerySource> = std::sync::OnceLock::new();
+    &S
+}
+
+/// Where `action='servers'` reads the gallery from (the API server's last
+/// good list). Set once at startup.
+pub fn set_gallery_source(f: impl Fn() -> Vec<GalleryHint> + Send + Sync + 'static) {
+    let _ = gallery_source().set(Box::new(f));
+}
+
+fn same_address(a: &str, b: &str) -> bool {
+    a.trim().trim_end_matches('/').eq_ignore_ascii_case(b.trim().trim_end_matches('/'))
+}
+
+/// The gallery's connectors that are not configured yet, and how to add each.
+fn gallery_text(cfg: Option<&cfgmod::McpConfig>) -> Option<String> {
+    gallery_text_from(&gallery_source().get()?(), cfg)
+}
+
+fn gallery_text_from(hints: &[GalleryHint], cfg: Option<&cfgmod::McpConfig>) -> Option<String> {
+    let configured = |url: &str| cfg.is_some_and(|c| c.servers.values().any(|sc| matches!(sc, ServerConfig::Http { url: u, .. } if same_address(u, url))));
+    let lines: Vec<String> = hints
+        .iter()
+        .filter(|h| !configured(&h.url))
+        .map(|h| {
+            let how = match h.auth {
+                GalleryAuth::None => format!("free, no account: add it with action='save', server='{}', config={{\"url\": \"{}\"}}", h.id, h.url),
+                GalleryAuth::OAuth => {
+                    format!("signs in with the user's account: add it with action='save', server='{}', config={{\"url\": \"{}\"}}, then the user signs in", h.id, h.url)
+                }
+                GalleryAuth::Key => "needs the user's key: the user turns it on in Settings → Connectors".to_string(),
+            };
+            format!("- {} ({}) — {how}", h.name, h.id)
+        })
+        .collect();
+    (!lines.is_empty()).then(|| format!("Ready-made connectors the user can turn on (Settings → Connectors shows them too):\n{}", lines.join("\n")))
+}
+
 /// [`servers_text`] for a loaded `mcp.json`.
 fn servers_text_for(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> String {
+    let gallery = gallery_text(cfg.as_ref().ok());
+    let text = servers_list_text(m, cfg);
+    match gallery {
+        Some(g) => format!("{text}\n{g}"),
+        None => text,
+    }
+}
+
+fn servers_list_text(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> String {
     let plugin_servers = m.plugin_servers();
     let mut lines = match cfg {
         Err(e) => vec![format!("mcp.json is invalid, so no server runs from it: {e}")],
@@ -211,6 +286,7 @@ fn servers_text_for(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> S
                     tool_names: vec![],
                     started_at: None,
                     plugin: None,
+                    project: None,
                 });
                 lines.push(state_line(&st));
                 lines.push(format!("  config: {}", agent_view(sc)));
@@ -235,11 +311,35 @@ fn clip(s: &str, max: usize) -> String {
     }
 }
 
+/// What `mcp(action='servers')` adds in `workspace`: its project's servers
+/// (named as the agent knows them), or why its `.agents/mcp.json` is unusable.
+/// Empty when the project ships none.
+pub fn project_servers_text(m: &McpManager, workspace: &str) -> String {
+    let mut lines = vec![];
+    if let Some(e) = m.project_error(workspace) {
+        lines.push(format!("This project's .agents/mcp.json is invalid, so none of its servers run: {e}"));
+    }
+    let servers = m.project_servers(workspace);
+    if !servers.is_empty() {
+        lines.push(
+            "Servers from this project's .agents/mcp.json (this workspace only; each runs once the user approves it, and save and remove do not apply: edit the file):".to_string(),
+        );
+        for (mut st, sc) in servers {
+            if let Some(p) = &st.project {
+                st.name = p.name.clone();
+            }
+            lines.push(state_line(&st));
+            lines.push(format!("  config: {}", agent_view(&sc)));
+        }
+    }
+    lines.join("\n")
+}
+
 fn keys(m: &IndexMap<String, String>) -> String {
     m.keys().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")
 }
 
-fn describe(cfg: &ServerConfig) -> String {
+pub(crate) fn describe(cfg: &ServerConfig) -> String {
     match cfg {
         ServerConfig::Stdio { command, args, env, .. } => {
             let line = std::iter::once(command.as_str()).chain(args.iter().map(String::as_str)).collect::<Vec<_>>().join(" ");
@@ -349,89 +449,4 @@ pub async fn apply(m: &McpManager, change: &Value) -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(v: Value) -> ServerConfig {
-        parse_entry("s", &v).unwrap()
-    }
-
-    #[test]
-    fn the_agent_view_masks_every_secret_but_references() {
-        let v = agent_view(&entry(json!({"command": "npx", "args": ["-y", "srv"], "env": {"TOKEN": "ghp_live", "REF": "${GITHUB_TOKEN}"}})));
-        assert_eq!(v["env"], json!({"TOKEN": MASK, "REF": "${GITHUB_TOKEN}"}));
-        assert_eq!(v["args"], json!(["-y", "srv"]));
-        let v = agent_view(&entry(json!({"url": "https://x/mcp", "headers": {"Authorization": "Bearer abc"}, "oauth": {"client_id": "id", "client_secret": "sec"}})));
-        assert_eq!(v["headers"], json!({"Authorization": MASK}));
-        assert_eq!(v["oauth"], json!({"client_id": MASK, "client_secret": MASK}));
-        assert!(!v.to_string().contains("abc") && !v.to_string().contains("sec\""), "{v}");
-    }
-
-    #[test]
-    fn masked_values_keep_what_is_stored() {
-        let old = entry(json!({"command": "a", "env": {"TOKEN": "t1", "MODE": "x"}}));
-        let new = entry(json!({"command": "b", "env": {"TOKEN": MASK, "MODE": "y"}}));
-        assert_eq!(merge_masked(new, Some(&old)), entry(json!({"command": "b", "env": {"TOKEN": "t1", "MODE": "y"}})));
-        let old = entry(json!({"url": "https://x", "headers": {"A": "s"}}));
-        let new = entry(json!({"url": "https://y", "headers": {"A": MASK}}));
-        assert_eq!(merge_masked(new, Some(&old)), entry(json!({"url": "https://y", "headers": {"A": "s"}})));
-    }
-
-    #[test]
-    fn an_entry_is_validated_like_mcp_json() {
-        assert!(parse_entry("1bad", &json!({"command": "x"})).unwrap_err().starts_with("Invalid MCP server name"));
-        assert!(parse_entry("ok", &json!({"command": ""})).unwrap_err().contains("at least 1 character"));
-        assert!(parse_entry("ok", &json!({"command": "x", "nope": 1})).unwrap_err().contains("Extra inputs are not permitted"));
-        assert!(parse_entry("ok", &json!("npx")).unwrap_err().starts_with("config must be a JSON object"));
-        assert_eq!(parse_entry("ok", &json!({"url": "https://x"})).unwrap().transport(), "http");
-    }
-
-    fn plugin_server(name: &str, plugin: &str, command: &str) -> crate::plugin::Wanted {
-        let config = ServerConfig::Stdio { command: command.into(), args: vec![], env: IndexMap::new(), enabled: false, timeout: None, cwd: Some("/plugins/p".into()) };
-        crate::plugin::Wanted { name: name.into(), plugin: plugin.into(), config }
-    }
-
-    /// The user's part of `servers` reads exactly as it did before plugins
-    /// had servers; theirs come after, labelled, and read-only.
-    #[tokio::test]
-    async fn the_server_list_shows_the_plugins_servers_after_the_users_and_says_whose_they_are() {
-        let m = McpManager::default();
-        let mine = cfgmod::parse_config(&json!({"servers": {"mine": {"command": "x", "enabled": false, "env": {"TOKEN": "t"}}}})).unwrap();
-        m.spawn_runner("mine", &mine.servers["mine"]);
-
-        assert_eq!(servers_text_for(&m, Ok(cfgmod::McpConfig::default())), "No MCP servers are configured. Add one with action='save'.");
-        assert_eq!(servers_text_for(&m, Err("bad".into())), "mcp.json is invalid, so no server runs from it: bad");
-        let plain = servers_text_for(&m, Ok(mine.clone()));
-        assert_eq!(
-            plain,
-            "MCP servers (secrets show as ********; send them back unchanged to keep them):\n- mine (stdio, disabled)\n  config: {\"transport\":\"stdio\",\"command\":\"x\",\"args\":[],\"env\":{\"TOKEN\":\"********\"},\"enabled\":false}"
-        );
-
-        m.apply_plugin_servers(vec![plugin_server("changelog-tools/github", "changelog-tools", "npx")]).await;
-        let text = servers_text_for(&m, Ok(mine));
-        let (head, plugins) = text.split_at(plain.len());
-        assert_eq!(head, plain, "the user's servers read as before");
-        assert!(plugins.starts_with("\nServers from plugins (read-only"), "{plugins}");
-        assert!(plugins.contains("\n- changelog-tools/github (stdio, disabled, from plugin changelog-tools)\n  config: {"), "{plugins}");
-        assert!(plugins.contains(r#""cwd":"/plugins/p""#), "{plugins}");
-
-        // Nothing of the user's own: say so, and still list the plugins'.
-        let only = servers_text_for(&m, Ok(cfgmod::McpConfig::default()));
-        assert!(only.starts_with("No MCP servers are configured in mcp.json. Add one with action='save'.\nServers from plugins"), "{only}");
-        let broken = servers_text_for(&m, Err("bad".into()));
-        assert!(broken.starts_with("mcp.json is invalid, so no server runs from it: bad\nServers from plugins"), "{broken}");
-    }
-
-    /// A confirmed change never reaches a plugin's server, whatever a card
-    /// says: it is not the user's `mcp.json` entry to change.
-    #[tokio::test]
-    async fn a_confirmed_change_does_not_apply_to_a_plugins_server() {
-        let m = McpManager::default();
-        m.apply_plugin_servers(vec![plugin_server("changelog-tools/github", "changelog-tools", "npx")]).await;
-        for ty in [SAVE_CHANGE, REMOVE_CHANGE] {
-            let e = apply(&m, &json!({"type": ty, "name": "changelog-tools/github", "config": {"command": "x"}, "before": "absent"})).await.unwrap_err();
-            assert_eq!(e, "changelog-tools/github comes from plugin changelog-tools; manage it in Settings → Plugins");
-        }
-        assert!(m.get_status("changelog-tools/github").is_some());
-    }
-}
+mod tests;

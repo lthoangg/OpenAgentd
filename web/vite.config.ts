@@ -94,6 +94,8 @@ export default defineConfig({
         tray: path.resolve(import.meta.dirname, "tray.html"),
         island: path.resolve(import.meta.dirname, "island.html"),
         pet: path.resolve(import.meta.dirname, "pet.html"),
+        // Where a connector's sign-in comes back to in a browser on another device.
+        "oauth-done": path.resolve(import.meta.dirname, "oauth-done.html"),
       },
       output: {
         // Rolldown-native chunk groups (the deprecated function-form

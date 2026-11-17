@@ -471,6 +471,11 @@ pub fn stored(provider_id: Option<&str>, name: &str) -> Option<String> {
     hit.or_else(|| f.secrets.get(name).filter(|v| !v.is_empty()).cloned())
 }
 
+/// The named secret `name` only, never a provider's key.
+pub fn stored_secret(name: &str) -> Option<String> {
+    snapshot().secrets.get(name).filter(|v| !v.is_empty()).cloned()
+}
+
 /// [`stored`] for exactly `provider_id`, for callers that must not read beyond one provider's own
 /// credential (a plugin bundle's code): an empty id finds nothing instead of searching every provider, and
 /// the named secrets (MCP client secrets and the like) are never consulted.

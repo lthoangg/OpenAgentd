@@ -96,6 +96,17 @@ agnostic by design.
   budgets.
 - **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://session/<id>`) open the requested session; the `cockpit` and `coding` hosts and the `/coding` paths of builds before v3.0.0 are no longer read `[v3.54.0]`. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
   - A session link can name its server `[v3.52.0]`: `?device=<account device id>` and/or `?server=<base URL>` (and `?srv=`, the app's own token in widget links). The phone opens it on that computer, switching first (the account computer directly on the home network when it can, else through the account); a link without them opens on the server in use, as before. Each link is handled once, so a reload (a server switch, or iOS reloading the app in the background) no longer opens it again, starts another draft, or repeats an OAuth callback.
+  - The full set of links `[v3.58.0]`, each also on `openagentd-dev://`. A link opens or fills in; it never sends, approves or installs anything.
+
+    | Link | Opens |
+    |---|---|
+    | `connect?url=…&key=…` | Adds a server (the QR code) |
+    | `session/<id>` (`?srv=`, `?device=`, `?server=`) | That session; one id only, so `session/settings/models` is not a way into other screens |
+    | `new` (`?workspace=<path>`, `?prompt=<text>`) | A new-session draft, in the last folder without `workspace`, with any open overlay (Settings, Usage, the scheduler) closed; `prompt` is added to the message box unsent, cut to 8,000 characters, and waits for the box on a cold start |
+    | `scheduler` (`?task=<id>`) | The scheduler, on that task |
+    | `settings`, `settings/<section>` | Settings, on that section (e.g. `models`); an unknown section opens the first page |
+    | `telemetry` (`?days=1\|7\|30\|90`, `?traceId=`, `?session=`) | The telemetry view on that range, trace or session |
+    | `auth/callback`, `mcp-oauth` | Finish a provider or connector sign-in |
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper. Codex models automatically prioritize extended context
   window limits (up to 872k/1M tokens) where supported by the catalog

@@ -86,16 +86,14 @@ impl WorkspaceMessagesSettings {
 /// starts with Keep going ticked (v3 only). Written only when it differs
 /// from the default, so files stay unchanged. The completion check always
 /// runs on the session's own model, so it reuses the turn's prompt cache.
+/// A goal has no token budget; a `token_budget` left in an older file is
+/// ignored and dropped on the next save.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GoalSettings {
     /// Turns a new goal may run; `None` means [`DEFAULT_GOAL_MAX_TURNS`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<i64>,
-    /// New tokens (uncached input plus output) a new goal may spend before
-    /// it pauses; `None` means no budget.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token_budget: Option<i64>,
     /// Let the agent ask the user questions during a goal. Off: goal turns
     /// run unattended: `ask_user` refuses, and `plan` saves without a review.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -120,11 +118,6 @@ impl GoalSettings {
             Some(n) if (1..=MAX_GOAL_MAX_TURNS).contains(&n) => n,
             _ => DEFAULT_GOAL_MAX_TURNS,
         }
-    }
-    /// The default budget for a new goal. A hand-edited value below 1 means
-    /// no budget.
-    pub fn token_budget(&self) -> Option<i64> {
-        self.token_budget.filter(|n| *n >= 1)
     }
 }
 
@@ -706,23 +699,24 @@ mod tests {
         assert!(!to_pyyaml(&cfg).unwrap().contains("goals"));
         assert_eq!(cfg.goals.max_turns(), DEFAULT_GOAL_MAX_TURNS);
         assert!(!cfg.goals.allow_questions);
-        cfg.goals = GoalSettings { max_turns: Some(20), token_budget: Some(500_000), allow_questions: true, keep_going_default: true };
+        cfg.goals = GoalSettings { max_turns: Some(20), allow_questions: true, keep_going_default: true };
         let text = to_pyyaml(&cfg).unwrap();
-        assert!(text.ends_with("goals:\n  max_turns: 20\n  token_budget: 500000\n  allow_questions: true\n  keep_going_default: true\n"), "{text}");
+        assert!(text.ends_with("goals:\n  max_turns: 20\n  allow_questions: true\n  keep_going_default: true\n"), "{text}");
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("settings.yaml");
         std::fs::write(&p, &text).unwrap();
         let back = load_runtime_settings_from(&p).unwrap().goals;
-        assert_eq!((back.max_turns(), back.token_budget(), back.allow_questions, back.keep_going_default), (20, Some(500_000), true, true));
+        assert_eq!((back.max_turns(), back.allow_questions, back.keep_going_default), (20, true, true));
     }
 
     #[test]
-    fn a_goal_token_budget_below_one_means_no_budget() {
-        let with = |n: Option<i64>| GoalSettings { token_budget: n, ..Default::default() }.token_budget();
-        assert_eq!(with(None), None);
-        assert_eq!(with(Some(0)), None);
-        assert_eq!(with(Some(-3)), None);
-        assert_eq!(with(Some(80_000)), Some(80_000));
+    fn an_old_goal_token_budget_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.yaml");
+        std::fs::write(&p, "goals:\n  max_turns: 20\n  token_budget: 500000\n").unwrap();
+        let cfg = load_runtime_settings_from(&p).unwrap();
+        assert_eq!(cfg.goals.max_turns(), 20);
+        assert!(!to_pyyaml(&cfg).unwrap().contains("token_budget"));
     }
 
     #[test]

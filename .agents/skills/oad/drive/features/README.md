@@ -9,11 +9,16 @@ view; find code paths in the source when you need them.
 |---|---|---|
 | [Send a message](message.md) | `message` | A new session in a folder opened through the UI; the reply streams in; the server stored the turn |
 | [Model protocols](protocols.md) | `protocols` | Text and a tool call over Anthropic Messages and OpenAI Responses, picked the way a user picks a model |
+| [Run picker](run-picker.md) | `run-picker` | A model, then its thinking level on its own page, picked with the keys on a desktop and taps on a phone; `/think` opens on the levels; the turn runs with the level |
 | [Session sidebar](sidebar.md) | `sidebar` | Sessions are listed under their workspace, open on a click, and are found by search |
+| [Worktree list](worktrees.md) | `worktrees` | A worktree removed outside the app drops off while its session stays; a plain-git one is listed as external |
 | [Review panel](review.md) | `review` | A file the agent changed shows in Git with its diff, and matches `git diff` on disk |
 | [Terminal](terminal.md) | `terminal` | A command typed in the panel's terminal runs in the session's workspace |
 | [Script tool row](script.md) | `script` | A `script` call's nested tool calls run; its row shows the code, the calls and the result, and is the same after a reload |
 | [Settings](settings.md) | `settings` | Search lands on the setting it names; a changed setting applies and survives a reload |
+| [Seen on a screen](notify-seen.md) | `notify-seen` | A session on screen is reported seen when it opens and when its turn's notification arrives |
+| [Connectors](connectors.md) | `connectors`, `connectors-remote` | Context7 turns on from the gallery and an agent calls it in a session; Connect opens Notion's sign-in, Cancel ends it; `oauth-done.html` refuses a stale code. From another device, Linear's sign-in returns through the callback page, which waits for Continue, to `oauth-done.html` and the server's token exchange |
+| [Agent preview without the tab](preview.md) | `preview` | After the Preview tab closes and the app reloads on another session, the first session's agent still clicks and reads its page |
 
 Not mapped yet: plan mode and plan review, subagents, scheduled tasks, the
 command palette, attachments, web preview, undo, the account and remote

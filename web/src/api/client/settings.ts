@@ -132,8 +132,6 @@ export type GoalSettings = {
   /** Turns a new goal may run (1-1000); the plan review can change it per plan. */
   max_turns: number
   default_max_turns: number
-  /** Tokens a new goal may spend (uncached input plus output); ``null`` is no budget. */
-  token_budget: number | null
   /** Goal turns may ask the user questions; off runs them unattended. */
   allow_questions: boolean
   /** The plan review starts with "Keep going until done" ticked. */
@@ -142,11 +140,10 @@ export type GoalSettings = {
 
 /**
  * Fields left out keep their stored values; ``max_turns: null`` restores the
- * default and ``token_budget: null`` removes the budget.
+ * default.
  */
 export type GoalSettingsUpdate = {
   max_turns?: number | null
-  token_budget?: number | null
   allow_questions?: boolean
   keep_going_default?: boolean
 }
@@ -294,8 +291,6 @@ export type StoredCredential = {
   /** Unix seconds when a cooling-down credential is tried again. */
   cooldown_until: number | null
   cooldown_reason: 'rate_limit' | 'quota' | 'spend_limit' | 'auth' | string | null
-  /** Sessions pinned to this credential (v3; the credentials list only). */
-  pinned_sessions?: number
 }
 
 export type ProviderCredentialsBody = {

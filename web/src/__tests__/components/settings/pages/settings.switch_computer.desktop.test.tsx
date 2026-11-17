@@ -28,6 +28,7 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { SwitchComputerSettingsPage } = await import('@/components/settings/pages/settings.switch_computer')
+const { AppBackendDialog } = await import('@/components/AppBackendDialog')
 const { BUILTIN_STOPPED_COMPUTERS, CANNOT_OPEN_COMPUTERS } = await import('@/components/phone/AccountComputers')
 const { queryClient } = await import('@/lib/query-client')
 
@@ -125,6 +126,33 @@ function page() {
 
 const ran = (command: string) => calls.filter((call) => call.command === command)
 const rowOf = (name: string) => screen.getByText(name).closest('[data-server-row]') as HTMLElement
+
+// The status bar's server button opens this dialog: it used to list only
+// this computer and the saved servers, never the account's computers.
+describe('the Server dialog on the desktop', () => {
+  function dialog(open: boolean) {
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <AppBackendDialog open={open} onOpenChange={() => {}} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('lists the account’s computers, as Settings → Switch computer does', async () => {
+    shell()
+    dialog(true)
+    expect(await screen.findByText('Linux · 9C02 E1B7')).toBeTruthy()
+    expect(screen.getByText('Windows · 1111 2222')).toBeTruthy()
+    expect(within(rowOf('Linux · 9C02 E1B7')).getByRole('button', { name: 'Use Linux · 9C02 E1B7' })).toBeTruthy()
+  })
+
+  it('asks the account nothing while it is closed', async () => {
+    shell()
+    dialog(false)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(ran('desktop_cloud_call')).toEqual([])
+  })
+})
 
 describe('the account’s computers on the desktop', () => {
   it('lists the account’s computers in the one list, after this computer, with their status and the one in use', async () => {

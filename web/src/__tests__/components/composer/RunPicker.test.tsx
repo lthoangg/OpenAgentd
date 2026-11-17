@@ -1,6 +1,7 @@
 /**
  * The run picker: model, thinking level and account for the next message,
- * each saved on the session as it is picked.
+ * each saved on the session as it is picked. Models on the first page; a
+ * model's levels and accounts on a second page it opens.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -48,8 +49,6 @@ function settings(over: Partial<RunSettings> = {}): RunSettings {
     model: 'anthropic:sonnet',
     provider: 'anthropic',
     thinkingLevel: 'medium',
-    customized: false,
-    thinkingLevels: ['low', 'medium', 'high'],
     models: [model('anthropic:sonnet'), model('anthropic:opus'), model('openai:gpt-5', ['minimal', 'high'])],
     modelsLoading: false,
     providerInfo: undefined,
@@ -78,7 +77,11 @@ async function frame() {
   await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
 }
 
-/** The account picker with each account's usage already in the cache, so no request goes out. */
+const search = () => screen.getByRole('searchbox', { name: 'Search models' })
+const levelList = () => screen.getByRole('listbox', { name: /^Thinking for / })
+const levelNames = () => Array.from(levelList().querySelectorAll('[role="option"]')).map((o) => o.textContent)
+
+/** The account picker (the running model's page) with each account's usage already in the cache, so no request goes out. */
 function renderAccounts(usageByAccount: Record<string, ProviderUsageResponse['limits']>) {
   const accounts = Object.keys(usageByAccount).map((id) => credential(id, id[0].toUpperCase() + id.slice(1)))
   const providerInfo = { id: 'openai', label: 'OpenAI', stored_credentials: accounts, supports_credential_usage: true } as ProviderInfo
@@ -88,7 +91,7 @@ function renderAccounts(usageByAccount: Record<string, ProviderUsageResponse['li
   }
   render(
     <QueryClientProvider client={client}>
-      <RunPicker settings={settings({ accounts, providerInfo, provider: 'openai' })} focus="model" onDone={() => {}} />
+      <RunPicker settings={settings({ accounts, providerInfo, model: 'openai:gpt-5', provider: 'openai', thinkingLevel: null })} focus="thinking" onDone={() => {}} />
     </QueryClientProvider>,
   )
   return (id: string) => screen.getByRole('radio', { name: new RegExp(id, 'i') })
@@ -194,19 +197,133 @@ describe('RunPicker', () => {
   })
 
   it('opens on the model that runs, not the first row', () => {
-    wrap(<RunPicker settings={settings({ model: 'openai:gpt-5', provider: 'openai', customized: true })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ model: 'openai:gpt-5', provider: 'openai' })} focus="model" onDone={() => {}} />)
     const highlighted = screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted'))
     expect(highlighted.map((o) => o.textContent)).toEqual(['gpt-5'])
-    const search = screen.getByRole('searchbox', { name: 'Search models' })
-    expect(document.getElementById(search.getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('gpt-5')
+    expect(document.getElementById(search().getAttribute('aria-activedescendant') ?? '')?.textContent).toBe('gpt-5')
   })
 
-  it('picks the highlighted running model with Enter and closes', () => {
+  it('saves the highlighted model with Enter and opens its levels, without closing', async () => {
     const onDone = mock(() => {})
-    wrap(<RunPicker settings={settings({ model: 'anthropic:opus', customized: true })} focus="model" onDone={onDone} />)
-    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search models' }), { key: 'Enter' })
+    wrap(<RunPicker settings={settings({ model: 'anthropic:opus' })} focus="model" onDone={onDone} />)
+    fireEvent.keyDown(search(), { key: 'Enter' })
     expect(lastPatch().model).toBe('anthropic:opus')
+    expect(onDone).not.toHaveBeenCalled()
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(levelList().getAttribute('aria-label')).toBe('Thinking for anthropic:opus')
+    // The keys go to the level list.
+    await frame()
+    expect(document.activeElement).toBe(levelList())
+  })
+
+  it('opens the highlighted model\'s levels with → once the caret is at the end of the search', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    const input = search() as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'gpt' } })
+    // Mid-query, → only moves the caret.
+    input.setSelectionRange(1, 1)
+    fireEvent.keyDown(input, { key: 'ArrowRight' })
+    expect(setRun).not.toHaveBeenCalled()
+    input.setSelectionRange(3, 3)
+    fireEvent.keyDown(input, { key: 'ArrowRight' })
+    expect(lastPatch().model).toBe('openai:gpt-5')
+    expect(levelNames()).toEqual(["Defaultmodel's own level", 'Minimal', 'High'])
+  })
+
+  it('marks the models that open a page with a chevron', () => {
+    wrap(<RunPicker settings={settings({ models: [model('anthropic:sonnet'), model('ollama:qwen', [])] })} focus="model" onDone={() => {}} />)
+    expect(screen.getByRole('option', { name: /sonnet/ }).querySelector('[data-opens-page]')).not.toBeNull()
+    expect(screen.getByRole('option', { name: /qwen/ }).querySelector('[data-opens-page]')).toBeNull()
+  })
+
+  it('picks a model with no levels and one account and closes', () => {
+    const onDone = mock(() => {})
+    wrap(<RunPicker settings={settings({ models: [model('anthropic:sonnet'), model('ollama:qwen', [])] })} focus="model" onDone={onDone} />)
+    fireEvent.click(screen.getByRole('option', { name: /qwen/ }))
+    expect(lastPatch().model).toBe('ollama:qwen')
     expect(onDone).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('listbox', { name: /^Thinking for / })).toBeNull()
+  })
+
+  it('picks a level with ↑/↓ and Enter, saves it and closes', () => {
+    const onDone = mock(() => {})
+    wrap(<RunPicker settings={settings()} focus="model" onDone={onDone} />)
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    // Opens on the level kept from the last model.
+    const highlighted = () => levelList().querySelector('[data-highlighted]')?.textContent
+    expect(highlighted()).toBe('Medium')
+    fireEvent.keyDown(levelList(), { key: 'ArrowDown' })
+    expect(highlighted()).toBe('High')
+    fireEvent.keyDown(levelList(), { key: 'Enter' })
+    expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: 'high' })
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes back to the models with ← or Backspace, keeping the search and the model highlighted', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    fireEvent.change(search(), { target: { value: 'o' } })
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    fireEvent.keyDown(levelList(), { key: 'ArrowLeft' })
+    expect((search() as HTMLInputElement).value).toBe('o')
+    expect(screen.getAllByRole('option').filter((o) => o.hasAttribute('data-highlighted')).map((o) => o.textContent)).toEqual(['opusClaude'])
+
+    fireEvent.keyDown(search(), { key: 'Enter' })
+    fireEvent.keyDown(levelList(), { key: 'Backspace' })
+    expect(screen.getByRole('searchbox', { name: 'Search models' })).toBeTruthy()
+  })
+
+  it('goes back from the back chip, which names the model', () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to models (anthropic:opus)' }))
+    expect(screen.getByRole('listbox', { name: 'Models' })).toBeTruthy()
+  })
+
+  it('puts the caret at the end of the kept search on the way back, so → opens the page again', async () => {
+    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    fireEvent.change(search(), { target: { value: 'opus' } })
+    fireEvent.keyDown(search(), { key: 'Enter' })
+    fireEvent.keyDown(levelList(), { key: 'ArrowLeft' })
+    await frame()
+    const input = search() as HTMLInputElement
+    expect(document.activeElement).toBe(input)
+    expect([input.selectionStart, input.selectionEnd]).toEqual([4, 4])
+    fireEvent.keyDown(input, { key: 'ArrowRight' })
+    expect(levelList().getAttribute('aria-label')).toBe('Thinking for anthropic:opus')
+  })
+
+  it('opens on the running model\'s levels from /think', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevel: 'high', agentThinkingLevel: null })} focus="thinking" onDone={() => {}} />)
+    expect(levelList().getAttribute('aria-label')).toBe('Thinking for anthropic:sonnet')
+    expect(screen.getByRole('option', { name: /High/ }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('keeps page 1\'s height on the levels page, so the popover does not jump', () => {
+    const { container } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
+    const root = container.querySelector('[data-run-picker]') as HTMLElement
+    root.getBoundingClientRect = () => ({ height: 300 }) as DOMRect
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    expect((container.querySelector('[data-run-picker-page="levels"]') as HTMLElement).style.minHeight).toBe('300px')
+  })
+
+  it('taps a level in the phone sheet to pick it and close, on a full-height row', () => {
+    const onDone = mock(() => {})
+    wrap(<RunPicker settings={settings()} focus="model" onDone={onDone} touch />)
+    fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    const low = screen.getByRole('option', { name: /Low/ })
+    expect(low.className).toContain('min-h-(--phone-control)')
+    fireEvent.click(low)
+    expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: 'low' })
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no Reset to default or Make default', () => {
+    wrap(<RunPicker settings={settings({ model: 'anthropic:opus' })} focus="model" onDone={() => {}} />)
+    expect(screen.queryByRole('button', { name: /Reset to default/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Make default/ })).toBeNull()
+    fireEvent.keyDown(search(), { key: 'Enter' })
+    expect(screen.queryByRole('button', { name: /Reset to default/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Make default/ })).toBeNull()
   })
 
   it('drops the provider: prefix from rows: the model part is all a row shows', () => {
@@ -231,24 +348,21 @@ describe('RunPicker', () => {
   })
 
   it('stores the agent default as no override', () => {
-    wrap(<RunPicker settings={settings({ model: 'anthropic:opus', customized: true })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ model: 'anthropic:opus' })} focus="model" onDone={() => {}} />)
     fireEvent.click(screen.getByRole('option', { name: /sonnet/ }))
     expect(lastPatch().model).toBeNull()
   })
 
-  it('searches, picks with Enter and closes', async () => {
+  it('searches, and Enter picks the match and opens its levels', async () => {
     const onDone = mock(() => {})
     wrap(<RunPicker settings={settings()} focus="model" onDone={onDone} />)
     await frame()
-    const search = screen.getByRole('searchbox', { name: 'Search models' })
-    expect(document.activeElement).toBe(search)
-    fireEvent.change(search, { target: { value: 'gpt' } })
-    fireEvent.keyDown(search, { key: 'Enter' })
+    expect(document.activeElement).toBe(search())
+    fireEvent.change(search(), { target: { value: 'gpt' } })
+    fireEvent.keyDown(search(), { key: 'Enter' })
     expect(lastPatch().model).toBe('openai:gpt-5')
-    // Another provider: the picker looks for its accounts on the next frame,
-    // and with none to choose from it closes.
-    await frame()
-    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(levelList().getAttribute('aria-label')).toBe('Thinking for openai:gpt-5')
   })
 
   // The palette, Settings' model field and the @ picker all match loosely.
@@ -265,14 +379,13 @@ describe('RunPicker', () => {
     const onDone = mock(() => {})
     const models = [model('agy:antigravity-claude-opus-4-6-thinking'), model('anthropic:sonnet'), model('anthropic:opus')]
     wrap(<RunPicker settings={settings({ models })} focus="model" onDone={onDone} />)
-    const search = screen.getByRole('searchbox', { name: 'Search models' })
 
-    fireEvent.change(search, { target: { value: 'opus' } })
+    fireEvent.change(search(), { target: { value: 'opus' } })
 
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['opusClaude', 'antigravity-claude-opus-4-6-thinkingAntigravity'])
     // No provider headings in ranked results.
     expect(document.querySelector('[role="listbox"] .select-none')).toBeNull()
-    fireEvent.keyDown(search, { key: 'Enter' })
+    fireEvent.keyDown(search(), { key: 'Enter' })
     expect(lastPatch().model).toBe('anthropic:opus')
   })
 
@@ -282,69 +395,48 @@ describe('RunPicker', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const list = screen.getByRole('listbox', { name: 'Models' })
     list.getBoundingClientRect = () => ({ height: 240 }) as DOMRect
-    const search = screen.getByRole('searchbox', { name: 'Search models' })
 
-    fireEvent.change(search, { target: { value: 'g' } })
-    fireEvent.change(search, { target: { value: 'gpt' } })
+    fireEvent.change(search(), { target: { value: 'g' } })
+    fireEvent.change(search(), { target: { value: 'gpt' } })
     expect(list.style.minHeight).toBe('240px')
 
-    fireEvent.change(search, { target: { value: '' } })
+    fireEvent.change(search(), { target: { value: '' } })
     expect(list.style.minHeight).toBe('')
   })
 
-  it('steps the thinking level with ←/→ while the search is empty', () => {
-    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    const search = screen.getByRole('searchbox', { name: 'Search models' })
-    fireEvent.keyDown(search, { key: 'ArrowRight' })
-    expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: 'high' })
-    fireEvent.keyDown(search, { key: 'ArrowLeft' })
-    expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: 'low' })
+  it('offers no "Default" level on the agent\'s model while the agent sets one: its level is the default', () => {
+    wrap(<RunPicker settings={settings()} focus="thinking" onDone={() => {}} />)
+    expect(levelNames()).toEqual(['Low', 'Mediumdefault', 'High'])
   })
 
-  it('offers no "Default" thinking level while the agent sets one: its level is the default', () => {
-    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    const group = screen.getByRole('radiogroup', { name: 'Thinking level' })
-    expect(Array.from(group.querySelectorAll('[role="radio"]')).map((r) => r.textContent)).toEqual(['Low', 'Medium', 'High'])
+  it('stores the agent\'s own level on its model as no override', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevel: 'high' })} focus="thinking" onDone={() => {}} />)
+    fireEvent.click(screen.getByRole('option', { name: /Medium/ }))
+    expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: null })
   })
 
-  // "Extra high" was twice as wide as its neighbours and pushed the last
-  // levels off a phone's row; the segment says XHigh, the name stays whole.
-  it('labels Extra high as XHigh on its segment, keeping the full name for screen readers', () => {
-    wrap(<RunPicker settings={settings({ thinkingLevels: ['low', 'medium', 'high', 'xhigh', 'max'] })} focus="model" onDone={() => {}} />)
-    const xhigh = screen.getByRole('radio', { name: 'Extra high' })
-    expect(xhigh.textContent).toBe('XHigh')
+  it('names every level in full on its row', () => {
+    wrap(<RunPicker settings={settings({ models: [model('anthropic:sonnet', ['low', 'medium', 'high', 'xhigh', 'max'])] })} focus="thinking" onDone={() => {}} />)
+    expect(levelNames()).toEqual(['Low', 'Mediumdefault', 'High', 'Extra high', 'Max'])
   })
 
-  // Six levels (Off … XHigh) need the sheet's whole width on an iPhone mini.
-  it('puts the Thinking label above its levels in the phone sheet, beside them on desktop', () => {
-    const { unmount } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} touch />)
-    const row = () => screen.getByRole('radiogroup', { name: 'Thinking level' }).parentElement!
-    expect(row().className.split(/\s+/)).toContain('flex-col')
-    unmount()
-    wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect(row().className.split(/\s+/)).not.toContain('flex-col')
+  it('checks a Default row when no thinking level is set, so the page always shows what is in effect', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevel: null, agentThinkingLevel: null })} focus="thinking" onDone={() => {}} />)
+    expect(levelNames()).toEqual(["Defaultmodel's own level", 'Low', 'Medium', 'High'])
+    expect(screen.getByRole('option', { name: /Default/ }).getAttribute('aria-selected')).toBe('true')
   })
 
-  it('lights a Default segment when no thinking level is set, so the row always shows what is in effect', () => {
-    wrap(<RunPicker settings={settings({ thinkingLevel: null, agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
-    const group = screen.getByRole('radiogroup', { name: 'Thinking level' })
-    expect(Array.from(group.querySelectorAll('[role="radio"]')).map((r) => r.textContent)).toEqual(['Default', 'Low', 'Medium', 'High'])
-    expect(screen.getByRole('radio', { name: "Default: the model's own level" }).getAttribute('aria-checked')).toBe('true')
-    // The segment says it; no line of text under the row.
-    expect(screen.queryByText(/Not set/)).toBeNull()
-  })
-
-  it('goes back to the model\'s own level from Default once a level was picked', async () => {
-    wrap(<RunPicker settings={settings({ thinkingLevel: 'high', agentThinkingLevel: null })} focus="model" onDone={() => {}} />)
-    expect(screen.getByRole('radio', { name: 'High' }).getAttribute('aria-checked')).toBe('true')
-    fireEvent.click(screen.getByRole('radio', { name: "Default: the model's own level" }))
+  it('goes back to the model\'s own level from Default once a level was picked', () => {
+    wrap(<RunPicker settings={settings({ thinkingLevel: 'high', agentThinkingLevel: null })} focus="thinking" onDone={() => {}} />)
+    expect(screen.getByRole('option', { name: /High/ }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('option', { name: /Default/ }))
     expect(setRun).toHaveBeenLastCalledWith({ thinkingLevel: null })
   })
 
   it('has no Auto row: picking an account locks it, and a cooling account says so', () => {
     const accounts = [credential('work', 'Work'), credential('home', 'Home', { status: 'cooling_down' })]
     const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
-    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0], inUseAccount: accounts[0] })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0], inUseAccount: accounts[0] })} focus="thinking" onDone={() => {}} />)
 
     const group = screen.getByRole('radiogroup', { name: 'Anthropic account' })
     expect(screen.getByRole('radio', { name: /Work/ }).getAttribute('aria-checked')).toBe('true')
@@ -359,7 +451,7 @@ describe('RunPicker', () => {
   it('checks the account in use when nothing is locked', () => {
     const accounts = [credential('work', 'Work'), credential('home', 'Home', { in_use: true })]
     const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
-    wrap(<RunPicker settings={settings({ accounts, providerInfo, inUseAccount: accounts[1] })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ accounts, providerInfo, inUseAccount: accounts[1] })} focus="thinking" onDone={() => {}} />)
     expect(screen.getByRole('radio', { name: /Home/ }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('radio', { name: /Work/ }).getAttribute('aria-checked')).toBe('false')
   })
@@ -367,7 +459,7 @@ describe('RunPicker', () => {
   it('marks the account a locked session moved to as in use, and says it goes back', () => {
     const accounts = [credential('work', 'Work', { status: 'cooling_down' }), credential('home', 'Home')]
     const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
-    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0], inUseAccount: accounts[1] })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ accounts, providerInfo, credentialId: 'work', pinnedAccount: accounts[0], inUseAccount: accounts[1] })} focus="thinking" onDone={() => {}} />)
     expect(screen.getByRole('radio', { name: /Work/ }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('radio', { name: /Home/ }).querySelector('[data-in-use]')?.textContent).toBe('in use')
     expect(screen.getByText('Back on Work when its limit resets.')).toBeTruthy()
@@ -381,7 +473,7 @@ describe('RunPicker', () => {
       const onDone = mock(() => {})
       const accounts = [credential('work', 'Work', { status: 'needs_reconnect' })]
       const providerInfo = { id: 'anthropic', label: 'Anthropic', stored_credentials: accounts, supports_credential_usage: false } as ProviderInfo
-      wrap(<RunPicker settings={settings({ accounts, providerInfo })} focus="model" onDone={onDone} />)
+      wrap(<RunPicker settings={settings({ accounts, providerInfo })} focus="thinking" onDone={onDone} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Reconnect Work…' }))
       expect(openSettings).toHaveBeenCalledWith('models')
@@ -391,25 +483,17 @@ describe('RunPicker', () => {
     }
   })
 
-  it('resets every override at once, and only when there is one', () => {
-    const { unmount } = wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
-    expect((screen.getByRole('button', { name: /Reset to default/ }) as HTMLButtonElement).disabled).toBe(true)
-    unmount()
-    wrap(<RunPicker settings={settings({ customized: true })} focus="model" onDone={() => {}} />)
-    fireEvent.click(screen.getByRole('button', { name: /Reset to default/ }))
-    expect(setRun).toHaveBeenCalledWith({ model: null, thinkingLevel: null, credentialId: null })
-  })
-
   it('has no Recent group, even after models were used', () => {
     window.localStorage.setItem('oa.recentModels.v1', JSON.stringify(['openai:gpt-5']))
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     expect(screen.queryByText('Recent')).toBeNull()
   })
 
-  it('keeps the list in place when a model is clicked: the row under the pointer stays the one picked', () => {
+  it('brings back the same list after a model is clicked: the row under the pointer stays the one picked', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     const before = screen.getAllByRole('option').map((o) => o.textContent)
     fireEvent.click(screen.getByRole('option', { name: /opus/ }))
+    fireEvent.keyDown(levelList(), { key: 'ArrowLeft' })
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(before)
     expect(screen.queryByText('Recent')).toBeNull()
   })
@@ -418,16 +502,6 @@ describe('RunPicker', () => {
     wrap(<RunPicker settings={settings()} focus="model" onDone={() => {}} />)
     // A row takes no focus on press (WebKit would drop it on the body).
     expect(fireEvent.mouseDown(screen.getByRole('option', { name: /opus/ }))).toBe(false)
-  })
-
-  it('picks the highlighted row with Enter after a mouse pick, not whatever moved into its place', () => {
-    const onDone = mock(() => {})
-    wrap(<RunPicker settings={settings()} focus="model" onDone={onDone} />)
-    const gpt = screen.getByRole('option', { name: /gpt-5/ })
-    fireEvent.mouseMove(gpt, { clientX: 20, clientY: 40 })
-    fireEvent.click(gpt)
-    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search models' }), { key: 'Enter' })
-    expect(lastPatch(1).model).toBe('openai:gpt-5')
   })
 
   // As in the palette: a list that opens, filters or scrolls under a parked
@@ -458,22 +532,24 @@ describe('RunPicker', () => {
     expect(highlighted.map((o) => o.textContent)).toEqual(['opus'])
   })
 
-  it('keeps the level while the model list is still loading and the new model\'s levels are unknown', () => {
-    const loading = settings({ modelsLoading: true, thinkingLevels: [], models: [model('anthropic:sonnet', []), model('anthropic:opus', [])] })
-    wrap(<RunPicker settings={loading} focus="model" onDone={() => {}} />)
+  it('keeps the level while the model list is still loading and the new model\'s levels are unknown, and closes', () => {
+    const onDone = mock(() => {})
+    const loading = settings({ modelsLoading: true, models: [model('anthropic:sonnet', []), model('anthropic:opus', [])] })
+    wrap(<RunPicker settings={loading} focus="model" onDone={onDone} />)
     fireEvent.click(screen.getByRole('option', { name: /opus/ }))
     expect(setRun).toHaveBeenCalledWith({ model: 'anthropic:opus', thinkingLevel: 'medium' })
+    expect(onDone).toHaveBeenCalledTimes(1)
   })
 
   it('does not pin the agent\'s own level when going back to the agent\'s model', () => {
-    wrap(<RunPicker settings={settings({ model: 'anthropic:opus', customized: true })} focus="model" onDone={() => {}} />)
+    wrap(<RunPicker settings={settings({ model: 'anthropic:opus' })} focus="model" onDone={() => {}} />)
     fireEvent.click(screen.getByRole('option', { name: /sonnet/ }))
     expect(setRun).toHaveBeenCalledWith({ model: null, thinkingLevel: null })
   })
 
-  it('shows no thinking control when the model has no levels to pick', () => {
-    wrap(<RunPicker settings={settings({ thinkingLevels: [] })} focus="model" onDone={() => {}} />)
-    expect(screen.queryByRole('radiogroup', { name: 'Thinking level' })).toBeNull()
-    expect(screen.queryByText(/model's own default/)).toBeNull()
+  it('opens /think on the models when the running model has nothing to pick', () => {
+    wrap(<RunPicker settings={settings({ models: [model('anthropic:sonnet', [])] })} focus="thinking" onDone={() => {}} />)
+    expect(screen.queryByRole('listbox', { name: /^Thinking for / })).toBeNull()
+    expect(screen.getByRole('listbox', { name: 'Models' })).toBeTruthy()
   })
 })

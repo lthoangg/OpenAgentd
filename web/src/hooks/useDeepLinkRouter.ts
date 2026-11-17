@@ -7,9 +7,14 @@ import { apiBaseUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { startNewSession } from '@/lib/new-session'
 import { loadLastWorkspace } from '@/utils/workspace'
 import { isMobileApp } from '@/lib/mobile-app'
+import { isTelemetryRange, type TelemetryRange } from '@/stores/useTelemetryStore'
+
+/** Longest ``prompt`` a ``new`` link fills in; the rest is cut. */
+export const DEEP_LINK_PROMPT_MAX = 8000
 
 /**
  * The server a session link names: `srv` (the app's own opaque token, from
@@ -25,11 +30,20 @@ export interface DeepLinkServer {
 
 export type DeepLinkParsed =
   | { kind: 'auth_callback'; provider: string; code: string }
+  /** A connector's sign-in code, sent on by the relay page (`openagentd://mcp-oauth?code=…&state=…`). */
+  | { kind: 'mcp_oauth'; search: string }
   | { kind: 'navigate'; path: string; server?: DeepLinkServer }
-  /** A new-session draft (home-screen widget); in the last folder when ``workspace`` is null. */
-  | { kind: 'new_session'; workspace: string | null }
+  /**
+   * A new-session draft (home-screen widget); in the last folder when
+   * ``workspace`` is null, with ``prompt`` filled in (never sent) when set.
+   */
+  | { kind: 'new_session'; workspace: string | null; prompt?: string }
   /** The scheduler, on one task when ``task`` is set (home-screen widget). */
   | { kind: 'open_scheduler'; task: string | null }
+  /** Settings, on ``section`` when set (an unknown one opens its first page). */
+  | { kind: 'open_settings'; section: string | null }
+  /** The telemetry view, on a range, trace or session when set. */
+  | { kind: 'open_telemetry'; days?: TelemetryRange; traceId?: string; session?: string }
   | { kind: 'unknown' }
 
 function nonEmptyParam(url: URL, name: string): string | null {
@@ -93,7 +107,13 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
       return { kind: 'auth_callback', provider, code }
     }
 
+    if (host === 'mcp-oauth' && pathname === '') {
+      return { kind: 'mcp_oauth', search: url.search }
+    }
+
     if (host === 'session') {
+      // One session id at most: other app paths have their own hosts.
+      if (pathname.includes('/')) return { kind: 'unknown' }
       const target = `/${pathname}`.replace(/\/+$/, '')
       const server = target ? linkServer(url) : undefined
       return server ? { kind: 'navigate', path: target, server } : { kind: 'navigate', path: target || '/' }
@@ -101,11 +121,31 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
 
     // `/` reopens the last session, so a widget's "New session" needs its own host.
     if (host === 'new' && pathname === '') {
-      return { kind: 'new_session', workspace: nonEmptyParam(url, 'workspace') }
+      const workspace = nonEmptyParam(url, 'workspace')
+      const prompt = url.searchParams.get('prompt')
+      return prompt?.trim()
+        ? { kind: 'new_session', workspace, prompt: prompt.slice(0, DEEP_LINK_PROMPT_MAX) }
+        : { kind: 'new_session', workspace }
     }
 
     if (host === 'scheduler' && pathname === '') {
       return { kind: 'open_scheduler', task: nonEmptyParam(url, 'task') }
+    }
+
+    if (host === 'settings' && !pathname.includes('/')) {
+      return { kind: 'open_settings', section: pathname || null }
+    }
+
+    if (host === 'telemetry' && pathname === '') {
+      const days = Number(nonEmptyParam(url, 'days'))
+      const traceId = nonEmptyParam(url, 'traceId')
+      const session = nonEmptyParam(url, 'session')
+      return {
+        kind: 'open_telemetry',
+        ...(isTelemetryRange(days) ? { days } : {}),
+        ...(traceId ? { traceId } : {}),
+        ...(session ? { session } : {}),
+      }
     }
 
     return { kind: 'unknown' }
@@ -210,15 +250,39 @@ export function useDeepLinkRouter(): void {
           handledOAuthCallbacks.delete(callbackKey)
           useToastStore.getState().push({ tone: 'error', title: 'Authentication failed' })
         }
+      } else if (parsed.kind === 'mcp_oauth') {
+        if (handledOAuthCallbacks.has(parsed.search)) return
+        handledOAuthCallbacks.add(parsed.search)
+        const { finishSignInFromPage } = await import('@/oauth-done/finish')
+        const result = await finishSignInFromPage(parsed.search)
+        void queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+        useToastStore.getState().push({ tone: result.ok ? 'success' : 'error', title: result.title, description: result.ok ? undefined : result.detail })
       } else if (parsed.kind === 'navigate') {
         if (await openOnLinkServer(parsed.path, parsed.server).catch(() => false)) return
         void router.navigate({ href: parsed.path })
       } else if (parsed.kind === 'new_session') {
         const workspace = parsed.workspace ?? loadLastWorkspace()?.path ?? null
-        if (workspace) startNewSession({ navigate: router.navigate, workspace })
-        else void router.navigate({ href: '/' })
+        // The draft is what the link asked to see: no overlay left over it.
+        useUIStore.getState().closeAll()
+        useSettingsStore.getState().closeSettings()
+        if (workspace) {
+          if (parsed.prompt) useUIStore.getState().requestComposerPrefill(workspace, parsed.prompt)
+          startNewSession({ navigate: router.navigate, workspace })
+        } else {
+          void router.navigate({ href: '/' })
+        }
       } else if (parsed.kind === 'open_scheduler') {
         useUIStore.getState().requestSchedulerOpen(parsed.task)
+      } else if (parsed.kind === 'open_settings') {
+        // The /settings pages open the Settings modal and return to the workspace.
+        void router.navigate({ href: parsed.section ? `/settings/${encodeURIComponent(parsed.section)}` : '/settings' })
+      } else if (parsed.kind === 'open_telemetry') {
+        const search = new URLSearchParams()
+        if (parsed.days) search.set('days', String(parsed.days))
+        if (parsed.traceId) search.set('traceId', parsed.traceId)
+        if (parsed.session) search.set('session', parsed.session)
+        const query = search.toString()
+        void router.navigate({ href: query ? `/telemetry?${query}` : '/telemetry' })
       }
     }
 

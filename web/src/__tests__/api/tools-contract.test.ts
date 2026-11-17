@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { canonicalToolName, isPlanSubmission } from '@/utils/tool-names'
+import { STEP_KIND } from '@/components/ReaderTurn/segments'
 
 const contract = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../../../appv3/crates/agent/data/tools.json', import.meta.url)), 'utf8'),
@@ -49,5 +50,10 @@ describe('built-in tools', () => {
 
   it('still draws the rows of a retired tool in old sessions', () => {
     expect(contract.retired.filter((tool) => !display.includes(`name === '${tool}'`))).toEqual([])
+  })
+
+  it('counts every backend tool under a named group in Simple view, not "other"', () => {
+    // Add the tool to STEP_KIND in components/ReaderTurn/segments.ts.
+    expect(contract.tools.filter((tool) => !Object.hasOwn(STEP_KIND, tool))).toEqual([])
   })
 })

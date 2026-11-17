@@ -16,6 +16,9 @@ const globalEventStream = mock((...args: unknown[]) => {
   globalSignals.push(args[1] as AbortSignal)
 })
 mock.module('@/api/global-events', () => ({ globalEventStream }))
+const reportSessionSeen = mock((..._args: unknown[]) => {})
+let attention = true
+mock.module('@/api/client/session-seen', () => ({ reportSessionSeen, pageHasAttention: () => attention }))
 
 import { GlobalEventStream, handleGlobalEvent, invalidateGlobalEventQueries, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
 import { queryKeys } from '@/queries'
@@ -961,7 +964,7 @@ describe('handleGlobalEvent', () => {
     client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [{ data: [row], next_cursor: null, has_more: false }], pageParams: [null] })
     const goal = {
       id: 'g1', session_id: 's1', objective: 'tests pass', status: 'active', pause_reason: null, detail: null,
-      max_turns: 50, token_budget: null, turns_used: 2, tokens_used: 900, active_seconds: 30, rejected_claims: 0,
+      max_turns: 50, turns_used: 2, tokens_used: 900, active_seconds: 30, rejected_claims: 0,
       created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:01:00Z', ended_at: null,
     }
 
@@ -1088,6 +1091,26 @@ describe('handleGlobalEvent', () => {
       { force: false, sessionOnScreen: true },
       { force: false, sessionOnScreen: false },
     ])
+  })
+
+  it('reports a notification about the session on screen as seen, so the phone is not told', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'shown' })
+    reportSessionSeen.mockClear()
+    attention = true
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'seen-1', session_id: 'shown', kind: 'assistant_done', title: 'Done', body: 'Shown',
+    }, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'seen-2', session_id: 'elsewhere', kind: 'input_needed', title: 'Needs you', body: 'Which?',
+    }, 1, () => 1)
+    // Window in the background: the person may not be looking.
+    attention = false
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'seen-3', session_id: 'shown', kind: 'assistant_done', title: 'Done', body: 'Again',
+    }, 1, () => 1)
+    attention = true
+    expect(reportSessionSeen.mock.calls).toEqual([['shown', { now: true }]])
   })
 
   it('badges the session row so another window sees the stopped session', async () => {

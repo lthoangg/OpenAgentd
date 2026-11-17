@@ -1,3 +1,4 @@
+// size-ceiling: 803 — the chat route's layout and its wiring: move the session hooks it composes into their own module
 /**
  * AgentChatView — top-level layout for the agent chat route.
  *
@@ -30,6 +31,7 @@ import { isChatWorkspacePath, useChatWorkspace, useCheckoutLabel, useWorkspaceHa
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMarkSessionRead } from '@/stores/useUnreadStore'
+import { useReportSessionSeen } from '@/hooks/use-report-session-seen'
 import { useReportShownSession } from '@/lib/island-setting'
 import { useStartInComposer, useStrandedFocusGuard } from '@/hooks/use-dock-focus'
 import { previewsAvailable } from '@/api/preview'
@@ -303,6 +305,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
+    handleComposerMount,
   } = useSessionBootstrap({
     sessionId,
     workspace,
@@ -380,6 +383,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   useReturnQueuedAfterFailure({ sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
+  useReportSessionSeen(sessionIdState)
   useReportShownSession(sessionIdState)
 
   const {
@@ -491,6 +495,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       historyPrompts={historyPrompts}
       onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
       onValueChange={handleDraftValueChange}
+      onMount={handleComposerMount}
       fileRefs={fileRefs}
       onFileRefsNeeded={() => setFileRefsEnabled(true)}
       revertedCount={leadRevertedCount}

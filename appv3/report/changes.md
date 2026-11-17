@@ -2,6 +2,45 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## The worktree list follows git and the disk (v3.58.0)
+
+`GET /api/agent/workspace/tree` now reconciles each repository before it
+answers: a `worktree` or `folder` row whose folder is gone gets
+`deleted_at` set (only while the repository's own folder is reachable), and
+checkouts `git worktree list` shows with no row are listed without being
+stored. Each item of `repositories[].worktrees` gains `external` (bool: a
+worktree OpenAgentd did not make), and each repository gains
+`former_checkouts: [{path, name}]` (deleted worktree/folder rows that still
+hold top-level sessions). `missing` stays, now only for checkouts of a
+repository that can't be reached. Older clients ignore the new fields.
+
+`DELETE /api/agent/sessions/{id}?remove_worktree=true` (new query flag)
+answers `200 {"deleted": true, "worktree": null | {"name", "removed",
+"reason"?}}` instead of `204`: an OpenAgentd worktree the session ran in is
+removed once no session or scheduled task uses it and it has no uncommitted
+change and no commit that only its branch holds. Without the flag the
+route is unchanged.
+
+Hide (`PATCH /workspace/visibility`), rename and remove
+(`/workspace/worktrees`) file a path with no row by git first, so they no
+longer store `worktree` rows without a `source_path`. `agentd cleanup
+--apply` removes old managed worktrees with `git worktree remove` and
+`prune`, marks their rows deleted, and skips any with uncommitted changes.
+
+## Phone pushes wait for an unseen notification (v3.58.0)
+
+`POST /api/agent/{session_id}/seen` (new; body ignored; `{"status": "ok"}`,
+422 for an id that is not a UUID) tells the server a client shows the
+session in a focused window. Answering a question counts as seen too. The
+server keeps the time in memory only, nothing on disk.
+
+A letter for the account's phones (`cloud/letters.rs`) is no longer sent at
+once: it waits 60 s and is dropped when its session was seen after it was
+raised (a report up to 2 s before still counts: the two can cross). A
+letter with no session always goes. Held letters go out at once when the
+host's cloud task ends normally. The cloud API and the sealed letter format
+are unchanged.
+
 ## `script` tool (v3.57.0)
 
 Every agent, lead and member, is offered a new built-in tool, `script`

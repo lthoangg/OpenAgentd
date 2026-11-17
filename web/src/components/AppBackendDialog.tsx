@@ -2,12 +2,15 @@
  * AppBackendDialog — the Server panel in an overlay, for places that need it
  * outside Settings: the loading screen (no server yet), the footer health
  * dot, and a scanned `openagentd://connect` link. Settings → Switch computer renders
- * the same `AppBackendPanel` as a page. One close button, in the header.
+ * the same `AppBackendPanel` as a page, with the same account computers in
+ * the desktop app. One close button, in the header.
  */
 import { Server } from 'lucide-react'
 import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
 import { OVERLAY_BODY } from '@/components/ui/panel-tokens'
 import { AppBackendPanel, type AppBackendPrefill } from '@/components/AppBackendPanel'
+import { useDesktopAccountRows } from '@/components/DesktopAccountRows'
+import { isDesktopShell } from '@/lib/desktop-shell'
 
 export type { AppBackendPrefill }
 
@@ -21,6 +24,8 @@ interface AppBackendDialogProps {
 }
 
 export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBackendDialogProps) {
+  // The account's computers, asked for only while the dialog shows.
+  const accountRows = useDesktopAccountRows(open && isDesktopShell(), () => onOpenChange(false))
   // Always mounted: AppOverlay owns the enter and exit, so closing fades out
   // like every other overlay instead of snapping shut.
   return (
@@ -32,7 +37,7 @@ export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBack
       />
 
       <div className={OVERLAY_BODY}>
-        <AppBackendPanel active={open} prefill={prefill} showNetworkAccess />
+        <AppBackendPanel active={open} prefill={prefill} showNetworkAccess accountRows={accountRows} />
       </div>
     </AppOverlay>
   )

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { sharedGlobalEventStream } from '@/api/stream-hub'
 import { onApiBaseUrlChange } from '@/api/base-url'
+import { pageHasAttention, reportSessionSeen } from '@/api/client/session-seen'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { haptic } from '@/lib/haptics'
@@ -12,6 +13,7 @@ import type { SessionGoalResponse } from '@/api/types'
 import { isSessionGoal } from '@/lib/goal'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { markAutoTitle } from '@/lib/auto-title'
 import { forgetPrefetchedHistory } from '@/lib/session-prefetch'
@@ -390,6 +392,12 @@ async function handleEvent(
     return true
   }
 
+  if (type === 'preview_agent_pages') {
+    // The agent opened a page: `PreviewKeepAlive` re-reads the server's list.
+    usePreviewKeepAliveStore.getState().serverPagesChanged()
+    return true
+  }
+
   if (type === 'session_goal') {
     // A goal was set, counted a turn, paused, resumed, achieved, or cleared.
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
@@ -448,6 +456,9 @@ async function handleEvent(
       const store = useAgentStore.getState()
       if (questionId && store.sessionId === sessionId) store.expectQuestion(questionId)
     }
+    // Raised about the session the person is looking at: it is seen, so the
+    // server keeps it off the phone (`cloud/letters.rs`).
+    if (sessionId && useAgentStore.getState().sessionId === sessionId && pageHasAttention()) reportSessionSeen(sessionId, { now: true })
     if (replayed) {
       // Decided once the replay ends (see flushReplayQuestions).
       if (kind === 'input_needed' && sessionId) replayQuestions.push({ id, sessionId, title: event.title, body: event.body })

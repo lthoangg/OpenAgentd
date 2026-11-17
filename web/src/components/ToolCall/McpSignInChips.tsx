@@ -1,20 +1,16 @@
 /**
- * Under an `mcp` call refused because its server needs sign-in (desktop):
+ * Under an `mcp` call refused because its server needs sign-in (desktop and
+ * phone: sign-in opens on the device in hand, wherever the server runs):
  * Sign in right there for a URL server the app can sign in to, the server's
  * Settings page for any other (an API key, a local server), and a quiet
  * "Signed in" once it is ready. Same rule as the composer's MCP rows
  * (`SessionMcpServers`): sign-in is for an enabled URL server.
  */
-import { useIsPhone } from '@/hooks/use-is-phone'
 import { useConnectMcpOAuthMutation, useMcpServersQuery } from '@/queries/useMcpQuery'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { TOOL_CHIP_CLASS } from './chipStyles'
 
 export function McpSignInChips({ server }: { server: string }) {
-  return useIsPhone() ? null : <SignInChips server={server} />
-}
-
-function SignInChips({ server }: { server: string }) {
   const { data } = useMcpServersQuery()
   const connect = useConnectMcpOAuthMutation()
   const openSettings = useSettingsStore((s) => s.openSettings)

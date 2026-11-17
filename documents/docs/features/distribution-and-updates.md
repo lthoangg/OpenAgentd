@@ -169,6 +169,10 @@ Desktop is primary. CLI / server is the developer path.
   by the deleted rows return to disk; a lock held by a running server is
   reported rather than failing the pass. Since v3.1.0 the preview lists the
   largest candidates with their size and reason (`--limit N`, `0` for all).
+  Since `[v3.58.0]` old managed worktrees are removed through git, so
+  `git worktree list` and the sidebar stop listing them, and their branch is
+  kept unless every commit is on another branch. A worktree with uncommitted
+  or untracked changes is left alone.
 - **Server migration export/import** `[v1.97.0, v2.4.0]` — `agentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
   `.tar.gz` archive. `agentd transfer import <archive>` unpacks it on the target

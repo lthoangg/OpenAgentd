@@ -108,4 +108,24 @@ describe('tabs showing a preview', () => {
     get().touchAgent(WS)
     expect(get()).toBe(before)
   })
+
+  it("adopts the server's agent pages, one entry per listener, and drops what it stops listing", () => {
+    // This window saw the open under its own spelling of the workspace.
+    get().registerAgent(WS, URL_TARGET, 100)
+    get().setAgentPreviewId(URL_KEY, 'p1')
+    const serverWs = '/private/Users/me/project'
+    get().adoptServerPages([{ previewId: 'p1', workspace: serverWs, target: URL_TARGET }, { previewId: 'p2', workspace: serverWs, target: { kind: 'file', path: 'a.html' } }], 500)
+    expect(Object.keys(get().agent)).toHaveLength(2)
+    expect(get().agent[URL_KEY]).toMatchObject({ workspace: WS, previewId: 'p1', lastAgentUseAt: 500, fromServer: true })
+    const fileKey = previewListenerKey(serverWs, { kind: 'file', path: 'a.html' })
+    expect(get().agent[fileKey]).toMatchObject({ previewId: 'p2', fromServer: true })
+
+    get().adoptServerPages([{ previewId: 'p1', workspace: serverWs, target: URL_TARGET }], 600)
+    expect(Object.keys(get().agent)).toEqual([URL_KEY])
+    // A page only this window registered is not the server's to drop.
+    get().reset()
+    get().registerAgent(WS, URL_TARGET, 100)
+    get().adoptServerPages([], 600)
+    expect(Object.keys(get().agent)).toEqual([URL_KEY])
+  })
 })

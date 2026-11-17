@@ -4,6 +4,9 @@
 //! Plugins can provide servers too (`plugin.rs`): they run next to the
 //! user's from the kernel's [`PluginServers`] contributions, as
 //! `<plugin>/<server>`, and are never written to `mcp.json`.
+//! A project can ship servers in `<workspace>/.agents/mcp.json`
+//! (`project.rs`): they run for that workspace alone, once the user approves
+//! them.
 
 pub mod admin;
 pub mod client;
@@ -11,6 +14,7 @@ pub mod config;
 pub mod hub;
 pub mod oauth;
 pub mod plugin;
+pub mod project;
 pub mod sessions;
 pub mod tool;
 
@@ -60,6 +64,9 @@ pub struct ServerStatus {
     /// The plugin that provides this server; `None` for the user's own
     /// servers (the ones in `mcp.json`).
     pub plugin: Option<String>,
+    /// The project that ships this server (`<workspace>/.agents/mcp.json`);
+    /// `name` is then its key, `<name>@<workspace hash>`.
+    pub project: Option<project::ProjectRef>,
 }
 
 /// Lifecycle of one runner, which starts at most once (a restart replaces
@@ -74,6 +81,9 @@ enum RunnerState {
     Ready,
     Error,
     AuthRequired,
+    /// A project's server the user has not approved (as it is now): it does
+    /// not run. Approving replaces the runner.
+    NeedsApproval,
 }
 
 impl RunnerState {
@@ -85,6 +95,7 @@ impl RunnerState {
             RunnerState::Ready => "ready",
             RunnerState::Error => "error",
             RunnerState::AuthRequired => "auth_required",
+            RunnerState::NeedsApproval => "needs_approval",
         }
     }
 
@@ -118,6 +129,8 @@ struct Runner {
     config: ServerConfig,
     /// The plugin that owns this server (`None`: the user's own).
     plugin: Option<String>,
+    /// The project that ships this server (`None`: the user's or a plugin's).
+    project: Option<project::ProjectRef>,
     tools: Mutex<Vec<Arc<McpTool>>>,
     client: Mutex<Option<Arc<McpClient>>>,
     shutdown: watch::Sender<bool>,
@@ -140,19 +153,30 @@ fn model_tool_names(tools: &[Arc<McpTool>]) -> Vec<String> {
 }
 
 impl Runner {
+    #[cfg(test)]
     fn new(name: &str, cfg: &ServerConfig, state: RunnerState, plugin: Option<&str>) -> Arc<Self> {
+        Self::build(name, cfg, state, plugin, None)
+    }
+
+    fn build(name: &str, cfg: &ServerConfig, state: RunnerState, plugin: Option<&str>, project: Option<project::ProjectRef>) -> Arc<Self> {
         Arc::new(Runner {
             name: name.into(),
             state: watch::channel(state).0,
             details: Mutex::default(),
             config: cfg.clone(),
             plugin: plugin.map(String::from),
+            project,
             tools: Mutex::new(vec![]),
             client: Mutex::new(None),
-            shutdown: watch::channel(state == RunnerState::Stopped).0,
+            shutdown: watch::channel(matches!(state, RunnerState::Stopped | RunnerState::NeedsApproval)).0,
             task: Mutex::new(None),
             keep_session: Default::default(),
         })
+    }
+    /// The name the agent knows the server by: a project's server's own
+    /// name, else the runner's.
+    fn display_name(&self) -> &str {
+        self.project.as_ref().map(|p| p.name.as_str()).unwrap_or(&self.name)
     }
     fn state(&self) -> RunnerState {
         *self.state.borrow()
@@ -176,6 +200,7 @@ impl Runner {
             tool_names: d.tool_names.clone(),
             started_at: d.started_at.clone(),
             plugin: self.plugin.clone(),
+            project: self.project.clone(),
         }
     }
     /// `Starting` → `Ready` with the server's client and tools; `false` (and
@@ -237,6 +262,11 @@ pub struct McpManager {
     lock: tokio::sync::Mutex<bool>,
     /// The HTTP servers' sessions, kept across restarts.
     sessions: Arc<sessions::SessionStore>,
+    /// Where approvals of projects' servers are kept (tests set their own;
+    /// `None`: the user's config dir).
+    approvals: RwLock<Option<project::Approvals>>,
+    /// Why a workspace's `.agents/mcp.json` could not be read, by workspace.
+    project_errors: RwLock<std::collections::HashMap<String, String>>,
 }
 
 /// Python `datetime.now(UTC).isoformat()`.
@@ -343,6 +373,8 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
         ServerConfig::Stdio { command, args, env, cwd, .. } => {
             let command = program_in(command, cwd.as_deref());
             let command = command.as_ref();
+            // References filled in first: a `PATH` stored as a secret is a `${NAME}` here.
+            let env = config::resolve_env_dict_with(env, !project::is_project_key(name));
             let configured = env.get("PATH").cloned();
             let mut path = match &configured {
                 Some(p) => p.clone(),
@@ -365,7 +397,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             if !path.is_empty() {
                 launch_env.push(("PATH".into(), path));
             }
-            for (k, v) in config::resolve_env_dict(env) {
+            for (k, v) in env {
                 launch_env.retain(|(n, _)| *n != k);
                 launch_env.push((k, v));
             }
@@ -382,13 +414,15 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             if oauth.is_some() && oauth::interactive_oauth_allowed(name) && unresolved_client_id(cfg) {
                 return Err(RunError::AuthRequired(oauth_credentials_required_message(name)));
             }
-            let hdrs: Vec<(String, String)> = config::resolve_env_dict(headers).into_iter().collect();
+            let hdrs: Vec<(String, String)> = config::resolve_env_dict_with(headers, !project::is_project_key(name)).into_iter().collect();
             // MCP authorization is discovered on a 401, so a server with no
             // `oauth` block still signs in (dynamic client registration).
             let discovered = OAuthConfig { client_id: None, client_secret: None };
             let oauth = oauth.as_ref().or(cfg.signs_in_with_oauth().then_some(&discovered));
             let auth = oauth::build_oauth_provider(name, url, oauth)?;
-            Ok(McpClient::http(url, &hdrs, auth, *kind)?.with_timeout(cfg.timeout()))
+            // A sign-in finishes inside `initialize`, after the user approves in a browser.
+            let sign_in_wait = oauth::interactive_oauth_allowed(name).then_some(oauth::CLIENT_SIGN_IN_TIMEOUT);
+            Ok(McpClient::http(url, &hdrs, auth, *kind)?.with_timeout(cfg.timeout()).with_sign_in_wait(sign_in_wait))
         }
     }
 }
@@ -462,7 +496,8 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>, kept: 
             }
         };
         let weak: std::sync::Weak<dyn SessionProvider> = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
-        let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(&name, d, weak.clone()))).collect();
+        let display = runner.display_name().to_string();
+        let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(&display, d, weak.clone()).on_runner(&name))).collect();
         let count = tools.len();
         if !runner.become_ready(client.clone(), tools) {
             close_session(&client, &name, keep(), &kept).await;
@@ -518,7 +553,12 @@ impl McpManager {
     /// Starts a runner for `name` (replacing any in the map); `plugin` is the
     /// plugin that provides the server, if one does.
     fn spawn(&self, name: &str, cfg: &ServerConfig, plugin: Option<&str>) {
-        let runner = Runner::new(name, cfg, if cfg.enabled() { RunnerState::Starting } else { RunnerState::Stopped }, plugin);
+        self.spawn_owned(name, cfg, plugin, None);
+    }
+
+    /// [`McpManager::spawn`] for any owner: a plugin, a project, or neither.
+    fn spawn_owned(&self, name: &str, cfg: &ServerConfig, plugin: Option<&str>, project: Option<project::ProjectRef>) {
+        let runner = Runner::build(name, cfg, if cfg.enabled() { RunnerState::Starting } else { RunnerState::Stopped }, plugin, project);
         self.runners.write().unwrap().insert(name.to_string(), runner.clone());
         if cfg.enabled() {
             let h = tokio::spawn(run_server(name.to_string(), cfg.clone(), runner.clone(), self.sessions.clone()));
@@ -529,6 +569,11 @@ impl McpManager {
     /// Runs the user's servers from `mcp.json`, then the plugins' (a bad or
     /// empty `mcp.json` does not keep the plugins' servers from running).
     async fn start_locked(&self) {
+        match config::migrate_literal_secrets() {
+            Ok(moved) if !moved.is_empty() => tracing::info!("mcp_secrets_migrated entries={:?}", moved),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("mcp_secrets_migration_failed err={}", e),
+        }
         match config::load_config() {
             Err(e) => tracing::error!("mcp_config_invalid err={}", e),
             Ok(cfg) if cfg.servers.is_empty() => tracing::info!("mcp_no_servers_configured"),
@@ -589,10 +634,11 @@ impl McpManager {
         tracing::info!("mcp_manager_stopped");
     }
 
-    /// Stops the user's servers and forgets them; the plugins' servers keep
-    /// running.
+    /// Stops the user's servers and forgets them; the plugins' and projects'
+    /// servers keep running.
     async fn stop_user_runners(&self) {
-        let user: Vec<(String, Arc<Runner>)> = self.runners.read().unwrap().iter().filter(|(_, r)| r.plugin.is_none()).map(|(n, r)| (n.clone(), r.clone())).collect();
+        let user: Vec<(String, Arc<Runner>)> =
+            self.runners.read().unwrap().iter().filter(|(_, r)| r.plugin.is_none() && r.project.is_none()).map(|(n, r)| (n.clone(), r.clone())).collect();
         futures::future::join_all(user.iter().map(|(_, r)| Self::stop_runner(r))).await;
         let mut runners = self.runners.write().unwrap();
         for (name, _) in &user {
@@ -611,10 +657,24 @@ impl McpManager {
     }
 
     /// `restart_server` — `Err` when *name* is neither in `mcp.json` nor a
-    /// server a running plugin provides.
+    /// server a running plugin provides, nor an approved project's server.
     pub async fn restart_server(&self, name: &str, ready_timeout: Duration) -> Result<ServerStatus, String> {
         let runner = {
             let _g = self.lock.lock().await;
+            let project_runner = self.runners.read().unwrap().get(name).filter(|r| r.project.is_some()).cloned();
+            if let Some(old) = project_runner {
+                if old.state() == RunnerState::NeedsApproval {
+                    return Err(format!("'{name}' needs the user's approval before it runs"));
+                }
+                Self::stop_runner(&old).await;
+                self.spawn_owned(name, &old.config, None, old.project.clone());
+                let runner = self.runners.read().unwrap().get(name).cloned().expect("spawned above");
+                drop(_g);
+                if !runner.wait_settled(ready_timeout).await {
+                    tracing::warn!("mcp_restart_timeout server={} timeout_s={}", name, ready_timeout.as_secs_f64());
+                }
+                return Ok(runner.status());
+            }
             // Resolved with the lock held: a plugin that just stopped has had
             // its server removed by its sync, and it must not come back.
             let (sc, plugin) = match plugin::wanted_server(name) {
@@ -642,11 +702,11 @@ impl McpManager {
 
     /// Stops and forgets the user's server `name`. A plugin's server is not
     /// the user's to remove: it goes when its plugin stops (see
-    /// [`McpManager::sync_plugin_servers`]).
+    /// [`McpManager::sync_plugin_servers`]); a project's goes with its entry.
     pub async fn remove_runner(&self, name: &str) {
         let _g = self.lock.lock().await;
         let old = self.runners.read().unwrap().get(name).cloned();
-        if old.as_ref().is_some_and(|r| r.plugin.is_some()) {
+        if old.as_ref().is_some_and(|r| r.plugin.is_some() || r.project.is_some()) {
             return;
         }
         if let Some(r) = old {
@@ -663,9 +723,10 @@ impl McpManager {
 
     /// Every runner by name: the user's servers in config order, then the
     /// plugins' in the order they started, whichever was added last. How
-    /// every listing reads.
+    /// every listing reads. Projects' servers are not among them: each
+    /// belongs to its workspace (see [`McpManager::statuses_in`]).
     fn ordered_runners(&self) -> Vec<(String, Arc<Runner>)> {
-        let all: Vec<(String, Arc<Runner>)> = self.runners.read().unwrap().iter().map(|(n, r)| (n.clone(), r.clone())).collect();
+        let all: Vec<(String, Arc<Runner>)> = self.runners.read().unwrap().iter().filter(|(_, r)| r.project.is_none()).map(|(n, r)| (n.clone(), r.clone())).collect();
         let (plugin, user): (Vec<_>, Vec<_>) = all.into_iter().partition(|(_, r)| r.plugin.is_some());
         user.into_iter().chain(plugin).collect()
     }
@@ -750,6 +811,7 @@ pub fn mcp_manager() -> Arc<McpManager> {
         for ty in [admin::SAVE_CHANGE, admin::REMOVE_CHANGE] {
             appv3_agent::confirm::register_applier(ty, Arc::new(|_pool, change| Box::pin(async move { admin::apply(&mcp_manager(), &change).await })));
         }
+        appv3_agent::confirm::register_applier(project::APPROVE_CHANGE, Arc::new(|_pool, change| Box::pin(async move { project::apply_approval(&mcp_manager(), &change).await })));
         m
     })
     .clone()
@@ -761,7 +823,7 @@ pub fn masked_config_body(cfg: Option<&ServerConfig>) -> Value {
     match cfg {
         None => Value::Null,
         Some(c @ ServerConfig::Stdio { command, args, env, enabled, .. }) => {
-            with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}), c)
+            with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": admin::mask_map(env), "enabled": enabled}), c)
         }
         Some(c @ ServerConfig::Http { url, headers, oauth, enabled, .. }) => {
             let oauth = oauth.as_ref().map(|o| {

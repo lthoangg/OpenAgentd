@@ -20,7 +20,7 @@ function makeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
     pause_reason: null,
     detail: null,
     max_turns: 50,
-    token_budget: null,
+
     turns_used: 6,
     tokens_used: 412_000,
     active_seconds: 750,

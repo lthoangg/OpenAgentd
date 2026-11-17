@@ -121,6 +121,17 @@ async fn logged_cancel(log: &std::path::Path) -> String {
     std::fs::read_to_string(log).unwrap_or_default()
 }
 
+#[test]
+fn initialize_waits_for_a_sign_in_in_progress() {
+    let wait = std::time::Duration::from_secs(600);
+    let c = McpClient::http("https://example.invalid/mcp", &[], None, config::HttpKind::Streamable).unwrap();
+    assert_eq!(c.deadline("initialize").as_secs(), 30);
+    let c = c.with_sign_in_wait(Some(wait));
+    // The user approves in a browser during `initialize`'s first 401.
+    assert_eq!(c.deadline("initialize"), wait);
+    assert_eq!(c.deadline("tools/list").as_secs(), 30);
+}
+
 #[tokio::test]
 async fn stdio_tool_call_times_out_and_is_cancelled() {
     let d = tempfile::tempdir().unwrap();

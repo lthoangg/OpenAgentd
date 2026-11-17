@@ -376,15 +376,6 @@ pub async fn update_session(pool: &DbPool, id: &str, upd: SessionUpdate) -> Resu
     get_session(pool, &sid).await
 }
 
-/// How many top-level sessions are pinned to each stored credential.
-pub async fn pinned_credential_counts(pool: &DbPool) -> Result<std::collections::HashMap<String, i64>> {
-    let rows: Vec<(String, i64)> =
-        sqlx::query_as("SELECT credential_id, COUNT(*) FROM chat_sessions WHERE credential_id IS NOT NULL AND parent_session_id IS NULL GROUP BY credential_id")
-            .fetch_all(pool)
-            .await?;
-    Ok(rows.into_iter().collect())
-}
-
 /// Bump the history revision. As in v2 (SQLAlchemy's `onupdate=_utcnow` fires
 /// for this Core UPDATE), `updated_at` moves too.
 pub async fn bump_history_revision<'e, E: sqlx::SqliteExecutor<'e>>(ex: E, id: &str, structural: bool) -> Result<()> {

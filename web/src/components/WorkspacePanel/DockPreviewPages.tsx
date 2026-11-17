@@ -33,9 +33,14 @@ export function usePreviewListeners() {
     const previewId = ids.get(tab.id)
     ids.delete(tab.id)
     if (previewId && ![...ids.values()].includes(previewId)) {
-      // The listener is going away: no hidden copy may reopen it.
-      usePreviewKeepAliveStore.getState().forgetPreviewId(previewId)
-      void closePreview(previewId).catch(() => {})
+      // The listener goes unless the agent still uses its page; then a
+      // hidden copy keeps that page loaded. A listener that goes may not be
+      // reopened by a hidden copy.
+      void closePreview(previewId, { keepAgentPage: true })
+        .then((closed) => {
+          if (closed) usePreviewKeepAliveStore.getState().forgetPreviewId(previewId)
+        })
+        .catch(() => {})
     }
   }, [])
   return { handlePreviewId, handleTabClosed }

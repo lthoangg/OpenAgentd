@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Signed bytes: a CRLF checkout (Windows autocrlf) would break the signature.
+account-pages/connectors/*.json -text
+account-pages/connectors/*.json.sig -text

@@ -32,6 +32,9 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
     private var taps: [[String: Any]] = []
     /// Told after each tap is queued (the shell emits an event to the page).
     var onTap: (@convention(c) () -> Void)?
+    /// Writes the account computer the app is on into the buffer and returns
+    /// its length (0: none). Asked by `willPresent`.
+    var openDevice: (@convention(c) (UnsafeMutablePointer<UInt8>?, Int) -> Int)?
 
     /// Taps kept until the web UI asks; older ones go first.
     private static let maxTaps = 8
@@ -80,6 +83,14 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
         return ["kind": "local", "id": id]
     }
 
+    private func currentOpenDevice() -> String? {
+        guard let openDevice else { return nil }
+        var buffer = [UInt8](repeating: 0, count: 256)
+        let n = buffer.withUnsafeMutableBufferPointer { openDevice($0.baseAddress, $0.count) }
+        guard n > 0, n <= buffer.count else { return nil }
+        return String(decoding: buffer[0..<n], as: UTF8.self)
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -106,6 +117,14 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let request = notification.request
+        let content = request.content
+        let remote = request.trigger?.isKind(of: UNPushNotificationTrigger.self) == true
+        let notice = (content.userInfo["t"] as? String) ?? (content.categoryIdentifier.isEmpty ? nil : content.categoryIdentifier)
+        if ForegroundPush.showsBanner(remote: remote, notice: notice, sender: content.userInfo["sender"] as? String, openDevice: remote ? currentOpenDevice() : nil) {
+            completionHandler([.banner, .list, .sound])
+            return
+        }
         if let inner, inner.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))) {
             inner.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
         } else {
@@ -118,8 +137,12 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
 /// notification plugin set its delegate. `onTap` is called (on any thread)
 /// after each queued tap.
 @_cdecl("openagentd_notification_taps_install")
-public func openagentdNotificationTapsInstall(_ onTap: (@convention(c) () -> Void)?) {
+public func openagentdNotificationTapsInstall(
+    _ onTap: (@convention(c) () -> Void)?,
+    _ openDevice: (@convention(c) (UnsafeMutablePointer<UInt8>?, Int) -> Int)?
+) {
     NotificationTaps.shared.onTap = onTap
+    NotificationTaps.shared.openDevice = openDevice
     // Synchronously during launch, so a tap that launched the app reaches it.
     if Thread.isMainThread {
         NotificationTaps.shared.install()

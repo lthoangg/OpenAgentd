@@ -25,7 +25,7 @@ async fn deleting_a_session_removes_its_side_questions() {
     let other = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
     for s in [&lead, &child, &other] {
         insert_side_question(&pool, &s.id, "why?").await.unwrap();
-        insert_session_goal(&pool, &s.id, "done", 50, None).await.unwrap();
+        insert_session_goal(&pool, &s.id, "done", 50).await.unwrap();
     }
     delete_session_rows(&pool, &lead.id).await.unwrap();
     assert_eq!(count_side_questions(&pool, &lead.id).await.unwrap(), 0);

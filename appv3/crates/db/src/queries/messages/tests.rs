@@ -34,6 +34,17 @@ async fn queued_queries_use_the_queued_index() {
 }
 
 /// v3's extra indexes must not take the history page off `(seq, id)`.
+/// Restoring who is owed a reply read every message on each server start
+/// (5 to 55 s on a large database), delaying the turns it resumes.
+#[tokio::test]
+async fn reply_requests_in_flight_reads_only_reply_requests() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = crate::create_pool(dir.path().join("t.db")).await.unwrap();
+    let p = plan(&pool, REPLY_REQUESTS_IN_FLIGHT_SQL, 0).await;
+    assert!(p.contains("ix_session_messages_reply_requests") && !p.contains("TEMP B-TREE"), "{p}");
+}
+
+/// v3's extra indexes must not take the history page off `(seq, id)`.
 #[tokio::test]
 async fn history_page_keeps_the_seq_index() {
     let dir = tempfile::tempdir().unwrap();
@@ -104,4 +115,40 @@ async fn workspace_message_requests() {
     save_message(&pool, &sid, with(serde_json::json!({"session_id": "e", "reply": true, "error_notified_at": "x", "hops": 1}))).await.unwrap();
     let target = crate::codec::api_uuid(&sid);
     assert_eq!(reply_requests_in_flight(&pool).await.unwrap(), vec![(target.clone(), "b".to_string()), (target, "d".to_string())]);
+}
+
+/// The snapshot sweep read every column of every row (13k rows with their
+/// tool output on a long session) only to find `extra.snapshot`.
+#[tokio::test]
+async fn snapshot_marks_match_the_full_rows_without_reading_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = crate::create_pool(dir.path().join("t.db")).await.unwrap();
+    let id = uuid::Uuid::now_v7();
+    let sid = id.to_string();
+    crate::create_session(&pool, crate::NewSession { id: Some(id), workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let snap = |s: Value| {
+        let mut e = Map::new();
+        e.insert("snapshot".into(), s);
+        NewMessage { extra: Some(e), ..NewMessage::user("turn") }
+    };
+    save_message(&pool, &sid, snap(serde_json::json!("t1"))).await.unwrap();
+    save_message(&pool, &sid, NewMessage::tool("c1", "shell", "\"snapshot\" in the output")).await.unwrap();
+    save_message(&pool, &sid, snap(serde_json::json!(""))).await.unwrap();
+    save_message(&pool, &sid, snap(serde_json::json!(7))).await.unwrap();
+    save_message(&pool, &sid, NewMessage::user("no snapshot")).await.unwrap();
+    save_message(&pool, &sid, snap(serde_json::json!("t2"))).await.unwrap();
+    save_message(&pool, &sid, snap(serde_json::json!("t1"))).await.unwrap();
+    let db_sid = crate::codec::db_id(&sid);
+    let full: Vec<String> = sqlx::query_as::<_, SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? ORDER BY seq ASC, id ASC")
+        .bind(&db_sid)
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(SessionMessage::snapshot)
+        .collect();
+    assert_eq!(full, ["t1", "t2", "t1"]);
+    assert_eq!(snapshot_marks(&pool, &db_sid).await.unwrap(), full);
+    let p = plan(&pool, SNAPSHOT_MARKS_SQL, 1).await;
+    assert!(p.contains("ix_session_messages_session_seq_id") && !p.contains("TEMP B-TREE"), "{p}");
 }

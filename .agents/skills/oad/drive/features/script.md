@@ -17,7 +17,7 @@ the script logged or returned.
 - The row appears in the turn where the agent called `script`. Click or tap it
   to open it.
 - In Simple detail the turn's work is folded behind one line first ("1
-  other"); open that line to reach the row.
+  script"); open that line to reach the row.
 
 ## Driving it with Playwright
 

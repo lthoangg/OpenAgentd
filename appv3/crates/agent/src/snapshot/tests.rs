@@ -74,6 +74,48 @@ async fn repack_removes_alternates_file_when_every_entry_is_gone() {
     assert!(!alternates.exists());
 }
 
+/// Production: a snapshot borrowed unchanged files from the workspace repo
+/// (alternates); the repo was deleted, so its ref points at a tree whose
+/// blob is gone and `git repack` failed on every maintenance run, forever.
+#[tokio::test]
+async fn repack_drops_refs_whose_objects_are_gone_and_keeps_the_rest() {
+    if !is_available() {
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    sh(&ws, &["init", "-q"]);
+    write(&ws, "a.txt", b"committed");
+    sh(&ws, &["add", "a.txt"]);
+    sh(&ws, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"]);
+    let gitdir = tmp.path().join("snap");
+    assert!(init_repo_cli(&gitdir, &ws).await);
+    assert!(gitdir.join("objects/info/alternates").exists(), "seeded from the workspace repo");
+    let (gd, wt) = (p(&gitdir), p(&ws));
+    write(&ws, "b.txt", b"new");
+    let paths = list_candidate_paths(&gitdir, &ws).await;
+    assert!(stage(&gitdir, &ws, &paths).await);
+    let borrowed = git(&wt_args(&gd, &wt, &["write-tree"]), Some(&ws), &[], None).await.text().trim().to_string();
+    ensure_ref(&gitdir, &borrowed).await;
+    // A snapshot whose objects all live in the snapshot repo.
+    let blob = git(&gd_args(&gd, &["hash-object", "-w", "--stdin"]), None, &[], Some(b"own".to_vec())).await.text().trim().to_string();
+    let own = git(&gd_args(&gd, &["mktree"]), None, &[], Some(format!("100644 blob {blob}\town.txt\n").into_bytes())).await.text().trim().to_string();
+    ensure_ref(&gitdir, &own).await;
+    assert_eq!(list_snapshot_refs(&gitdir).await.len(), 2);
+
+    std::fs::remove_dir_all(&ws).unwrap();
+    repack(&gitdir).await;
+
+    let refs = list_snapshot_refs(&gitdir).await;
+    assert!(!refs.contains_key(&borrowed), "a snapshot that cannot be read is dropped");
+    assert!(refs.contains_key(&own), "a readable snapshot is kept");
+    let o = git(&gd_args(&gd, &["repack", "-a", "-d", "-q", "-l"]), None, &[], None).await;
+    assert_eq!(o.code, 0, "{}", o.err());
+    let o = git(&gd_args(&gd, &["cat-file", "-p", &format!("{own}:own.txt")]), None, &[], None).await;
+    assert_eq!(o.text(), "own");
+}
+
 // ── gix engine vs git CLI engine ────────────────────────────────────────
 
 fn sh(dir: &Path, args: &[&str]) {

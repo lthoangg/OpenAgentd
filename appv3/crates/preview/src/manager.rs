@@ -20,6 +20,9 @@ pub const IDLE_SECS: u64 = 30 * 60;
 pub const MAX_ALIAS_PORTS: usize = 4;
 /// Most tunnels (`/api/preview/{id}/tunnel`) open into one preview.
 pub const MAX_TUNNELS: usize = 32;
+/// A page the agent opened stays wanted (an app window keeps it loaded out
+/// of sight) until the agent has not used it for this long.
+pub const AGENT_PAGE_TTL_SECS: u64 = 15 * 60;
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct PreviewInfo {
@@ -71,6 +74,10 @@ pub struct Entry {
     alias_ports: Mutex<VecDeque<u16>>,
     tunnels: AtomicUsize,
     stop: watch::Sender<bool>,
+    /// What the agent opened here (`{"kind": "url", "url"}` or
+    /// `{"kind": "file", "path"}`, the web's `PreviewTarget`) and when it
+    /// last used the page.
+    agent_page: Mutex<Option<(serde_json::Value, u64)>>,
 }
 
 /// Marks a request or WebSocket as in flight; the preview is not idle while
@@ -169,6 +176,23 @@ impl Entry {
     pub fn clear_console(&self) {
         self.console.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
+
+    /// The agent opened `target` here: any app window may load it out of sight.
+    pub fn agent_opened(&self, target: serde_json::Value) {
+        *self.agent_page.lock().unwrap_or_else(|e| e.into_inner()) = Some((target, now_secs()));
+    }
+
+    /// The agent used the page (any page action): it stays wanted longer.
+    pub fn agent_used(&self) {
+        if let Some(page) = self.agent_page.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            page.1 = now_secs();
+        }
+    }
+
+    /// The page the agent wants kept loaded, unless unused past [`AGENT_PAGE_TTL_SECS`].
+    pub fn agent_page(&self) -> Option<serde_json::Value> {
+        self.agent_page.lock().unwrap_or_else(|e| e.into_inner()).as_ref().filter(|(_, at)| now_secs().saturating_sub(*at) < AGENT_PAGE_TTL_SECS).map(|(t, _)| t.clone())
+    }
 }
 
 #[derive(Default)]
@@ -247,6 +271,7 @@ impl Manager {
             alias_ports: Mutex::new(VecDeque::new()),
             tunnels: AtomicUsize::new(0),
             stop,
+            agent_page: Mutex::new(None),
         });
         {
             let mut entries = self.lock();

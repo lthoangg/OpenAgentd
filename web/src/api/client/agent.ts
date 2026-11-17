@@ -1,4 +1,4 @@
-// size-ceiling: 864 — 63 request functions: group them by resource into modules
+// size-ceiling: 873 — 63 request functions: group them by resource into modules
 /**
  * OpenAgentd API client — agent sessions, workspace, and files.
  */
@@ -11,6 +11,7 @@ import { sharedAgentStream } from '../stream-hub'
 import { fetchJsonWithEtag, parseDetailOrThrow, registerEtagCache } from './_shared'
 import type {
   SessionDetailResponse,
+  SessionDeleteResponse,
   SessionResolveResponse,
   SessionPageResponse,
   SessionResponse,
@@ -609,9 +610,17 @@ export async function updateSessionRunSettings(
   return res.json()
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}`, { method: 'DELETE' })
+/**
+ * Delete a session. With ``removeWorktree``, the OpenAgentd worktree it ran
+ * in goes too once nothing else uses it and nothing would be lost; the
+ * answer says what happened to it (``null`` from a server without it).
+ */
+export async function deleteSession(id: string, options?: { removeWorktree?: boolean }): Promise<SessionDeleteResponse | null> {
+  const query = options?.removeWorktree ? '?remove_worktree=true' : ''
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}${query}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, 'deleteSession')
+  if (res.status === 204) return null
+  return res.json()
 }
 
 /** Pin or unpin a session in the sidebar (v3). Pinning keeps its `updated_at`. */

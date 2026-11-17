@@ -15,7 +15,10 @@ mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => isMobile, MOBILE_Q
 
 const originalFetch = globalThis.fetch
 let openCalls = 0
+let listCalls = 0
 let failOpen = false
+/** What `GET /api/preview` lists: the server's previews, with `agent_page` when the agent opened one. */
+let serverPreviews: Record<string, unknown>[] = []
 
 // The page is not loaded from the network: answer the iframe's own load locally.
 type Interceptor = { beforeAsyncRequest?: (args: { request: Request }) => Promise<Response | void> }
@@ -29,9 +32,15 @@ if (happyDOM) {
 beforeEach(() => {
   isMobile = false
   openCalls = 0
+  listCalls = 0
   failOpen = false
+  serverPreviews = []
   usePreviewKeepAliveStore.getState().reset()
-  globalThis.fetch = mock(async (input: unknown) => {
+  globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+    if (String(input).endsWith('/api/preview') && ((init as RequestInit | undefined)?.method ?? 'GET') === 'GET') {
+      listCalls += 1
+      return new Response(JSON.stringify({ previews: serverPreviews }))
+    }
     if (String(input).endsWith('/api/preview')) {
       openCalls += 1
       if (failOpen) return new Response(JSON.stringify({ detail: 'nope' }), { status: 422 })
@@ -158,6 +167,31 @@ describe('PreviewKeepAlive', () => {
     await pastStartDelay(() => usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET))
     expect(frames()).toHaveLength(0)
     expect(openCalls).toBe(0)
+    expect(listCalls).toBe(0)
+  })
+
+  it("frames the agent's page when its session is not on screen, from the server's list", async () => {
+    // Logs: a page failed whenever no view of its session had seen the open.
+    serverPreviews = [{ id: 'p1', workspace: WS, kind: 'url', target: 'http://localhost:5173', port: 52011, origin: ORIGIN, path: '/', url: `${ORIGIN}/`, console_errors: 0, agent_page: TARGET }]
+    render(<PreviewKeepAlive />)
+    // The hidden frame opens 1.5 s after the list arrives.
+    await waitFor(() => expect(frames()).toHaveLength(1), { timeout: 3000 })
+    expect(frames()[0]?.getAttribute('src')).toBe(`${ORIGIN}/pricing`)
+    expect(usePreviewKeepAliveStore.getState().agent[KEY]).toMatchObject({ previewId: 'p1', fromServer: true })
+
+    // The server stops listing it (unused for 15 min, or closed): the frame goes.
+    serverPreviews = [{ ...serverPreviews[0], agent_page: null }]
+    act(() => usePreviewKeepAliveStore.getState().serverPagesChanged())
+    await waitFor(() => expect(frames()).toHaveLength(0))
+  })
+
+  it("re-reads the server's list when the agent opens a page", async () => {
+    render(<PreviewKeepAlive />)
+    await waitFor(() => expect(listCalls).toBe(1))
+    serverPreviews = [{ id: 'p1', workspace: WS, kind: 'url', target: 'http://localhost:5173', port: 52011, origin: ORIGIN, path: '/', url: `${ORIGIN}/`, console_errors: 0, agent_page: TARGET }]
+    act(() => usePreviewKeepAliveStore.getState().serverPagesChanged())
+    await waitFor(() => expect(listCalls).toBe(2))
+    await waitFor(() => expect(frames()).toHaveLength(1), { timeout: 3000 })
   })
 
   it('is off where previews cannot work (a browser on another device)', async () => {

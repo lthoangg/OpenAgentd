@@ -167,6 +167,32 @@ pub async fn list_visible_coding_workspaces(pool: &DbPool) -> Result<Vec<CodingW
     Ok(sqlx::query_as::<_, CodingWorkspace>("SELECT * FROM coding_workspaces WHERE hidden = 0 AND deleted_at IS NULL ORDER BY created_at ASC").fetch_all(pool).await?)
 }
 
+/// Every row filed under the repository `source` (worktrees and subfolders),
+/// whatever its state: listed, hidden or deleted.
+pub async fn list_coding_workspaces_under(pool: &DbPool, source: &str) -> Result<Vec<CodingWorkspace>> {
+    Ok(sqlx::query_as::<_, CodingWorkspace>("SELECT * FROM coding_workspaces WHERE source_path = ? ORDER BY created_at ASC").bind(source).fetch_all(pool).await?)
+}
+
+/// Worktrees and subfolders that are gone from the sidebar (removed, or
+/// found missing) but still hold top-level sessions: the sidebar keeps those
+/// sessions under their repository.
+pub async fn list_former_checkouts(pool: &DbPool) -> Result<Vec<CodingWorkspace>> {
+    Ok(sqlx::query_as::<_, CodingWorkspace>(
+        "SELECT * FROM coding_workspaces cw WHERE cw.deleted_at IS NOT NULL AND cw.kind IN ('worktree', 'folder') AND cw.source_path IS NOT NULL \
+         AND EXISTS (SELECT 1 FROM chat_sessions s WHERE s.parent_session_id IS NULL AND s.workspace = cw.path) ORDER BY cw.created_at ASC",
+    )
+    .fetch_all(pool)
+    .await?)
+}
+
+/// What still uses the folder `path`: sessions (any, subagents too) and
+/// scheduled tasks that run there.
+pub async fn workspace_users(pool: &DbPool, path: &str) -> Result<(i64, i64)> {
+    let sessions = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM chat_sessions WHERE workspace = ?").bind(path).fetch_one(pool).await?;
+    let tasks = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM scheduled_task WHERE workspace = ?").bind(path).fetch_one(pool).await?;
+    Ok((sessions, tasks))
+}
+
 // ── relocate ────────────────────────────────────────────────────────────────
 
 /// `path` moved from under `from` to under `to`: `from` itself, or a path

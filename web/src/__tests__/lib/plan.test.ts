@@ -14,7 +14,7 @@ const PLAN: SessionPlan = {
 function goal(overrides: Partial<SessionGoal> = {}): SessionGoal {
   return {
     id: 'g1', session_id: 's1', objective: 'It ships.', status: 'active', pause_reason: null, detail: null,
-    max_turns: 50, token_budget: null, turns_used: 2, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
+    max_turns: 50, turns_used: 2, tokens_used: 0, active_seconds: 0, rejected_claims: 0,
     created_at: '2026-10-24T00:00:00Z', updated_at: '2026-10-24T00:00:00Z', ended_at: null,
     ...overrides,
   }

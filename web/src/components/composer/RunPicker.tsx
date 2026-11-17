@@ -1,51 +1,46 @@
 /**
  * RunPicker — how the next message runs: model, thinking level, account.
  *
- * One surface for all three, opened from the run chip under the composer
- * (⌘., ``/model``, ``/think``, or the palette). Every pick is saved on the
- * session at once; a refused save puts the previous choice back and says so.
+ * Two pages in one surface, opened from the run chip under the composer
+ * (⌘., ``/model``, ``/think``, or the palette). The first lists the models.
+ * Picking one saves it and opens the second page: that model's thinking
+ * levels, then its provider's accounts (``/think`` opens there directly). A
+ * model with no levels and one account is picked and the picker closes.
+ * Every pick is saved on the session at once; a refused save puts the
+ * previous choice back and says so.
  *
- * Keyboard: type to search models, ↑/↓ to move, Enter to pick and close;
- * with the search empty, ←/→ step the thinking level. Focus stays in the
- * search while rows are clicked, so the keys keep working after a mouse pick.
+ * Keyboard, as on the palette's pages: on the models, type to search, ↑/↓ to
+ * move, Enter (or → at the end of the search) to pick and open the levels.
+ * On the levels, ↑/↓ to move and Enter to pick and close; ← or Backspace go
+ * back to the models, with the search and the highlight as they were. Focus
+ * stays in the search (or the level list) while rows are clicked, so the keys
+ * keep working after a mouse pick. A phone does the same with taps.
+ *
  * A search matches loosely and ranks the closest model first (fuzzysort, as
- * the palette and Settings' model field do), in one list.
- *
- * Models sit under their provider's display name ("Claude", not `anthropic`)
- * and a row is just the model. Where no heading names the provider
- * (ranked results) its name trails the row. A search still matches the whole
- * ``provider:model`` id, so ``openai:`` lists that provider's models.
+ * the palette and Settings' model field do), in one list. Models sit under
+ * their provider's display name ("Claude", not `anthropic`) and a row is just
+ * the model. Where no heading names the provider (ranked results) its name
+ * trails the row. A search still matches the whole ``provider:model`` id, so
+ * ``openai:`` lists that provider's models.
  */
-import { failureSentence } from '@/lib/failure-toast'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import fuzzysort from 'fuzzysort'
-import { Check, RotateCcw, Search } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 
 import type { StoredCredential } from '@/api/client'
-import { getAgent, getCodeAgent } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
 import { MODEL_LINE_CLASS, ModelPart } from '@/components/ui/model-name'
-import { SegmentedControl } from '@/components/ui/segmented-control'
 import { hoverIntent } from '@/hooks/use-hover-intent'
 import { useProvidersQuery, useProviderUsageQuery } from '@/queries/useProvidersQuery'
-import { useUpdateAgentMutation } from '@/queries/useAgentSettingsQueries'
 import { selectionHapticFeedback } from '@/lib/haptics'
-import { hasFinePointer } from '@/lib/pointer'
-import {
-  quotaSegments,
-  setFrontmatterScalars,
-  splitModelId,
-  stepThinkingLevel,
-  thinkingLevelLabel,
-  thinkingLevelShortLabel,
-} from '@/lib/run-settings'
+import { accountChoices, quotaSegments, splitModelId, thinkingLevelLabel } from '@/lib/run-settings'
+import { pickableThinkingLevels } from '@/lib/thinking-levels'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { RunPickerFocus } from '@/stores/useUIStore'
-import { useToastStore } from '@/stores/useToastStore'
 import type { RunSettings } from './useRunSettings'
 
 const MAX_LISTED = 60
@@ -74,28 +69,52 @@ function rowsFor(settings: RunSettings, query: string): ModelRow[] {
 
 export interface RunPickerProps {
   settings: RunSettings
+  /** ``thinking`` opens on the running model's levels page. */
   focus: RunPickerFocus
-  /** Closes the picker (Enter on a model, or after Make default). */
+  /** Closes the picker (a level picked, or a model with nothing more to choose). */
   onDone: () => void
   /** Phone sheet: taller rows. */
   touch?: boolean
 }
 
-/** The "Default" segment's value: no level set, the model's own applies. */
+/** The "Default" level's value: no level set, the model's own applies. */
 const DEFAULT_LEVEL = ''
+
+/** The second page: a model, and the level in effect for it when the page opened. */
+interface LevelsPage {
+  model: string
+  level: string | null
+}
+
+interface LevelOption {
+  value: string
+  label: string
+  /** Muted text after the label: the agent's default, or what Default means. */
+  note?: string
+}
 
 export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerProps) {
   const setRun = useAgentStore((s) => s.setSessionRunSettings)
-  const pushToast = useToastStore((s) => s.push)
   const [query, setQuery] = useState('')
-  // With no session level, the agent's applies on its own model; anywhere else the model decides.
-  const modelDecidesByDefault = !settings.thinkingLevel || !(settings.model === settings.agentModel && settings.agentThinkingLevel)
-  // Read once per opening: a pick is remembered for next time, but the list
-  // does not reorder under the pointer while it is open.
   const rows = useMemo(() => rowsFor(settings, query), [settings, query])
   // A provider's display name, from the providers list (its id until that loads).
   const providers = useProvidersQuery().data?.providers
   const providerLabel = (id: string) => providers?.find((p) => p.id === id)?.label ?? id
+
+  // What a model's page offers: its levels, and its provider's accounts.
+  const levelsOf = (id: string) => pickableThinkingLevels(settings.models.find((m) => m.id === id), !settings.modelsLoading)
+  const accountsOf = (id: string) => {
+    const { provider } = splitModelId(id)
+    return provider === settings.provider ? settings.accounts : accountChoices(providers?.find((p) => p.id === provider))
+  }
+  const hasPage = (id: string) => levelsOf(id).length > 0 || accountsOf(id) !== null
+
+  const [page, setPage] = useState<LevelsPage | null>(() =>
+    focus === 'thinking' && settings.model && hasPage(settings.model) ? { model: settings.model, level: settings.thinkingLevel } : null,
+  )
+  // Page 2 keeps the height page 1 had, so the popover does not jump.
+  const [pageHeight, setPageHeight] = useState<number | null>(null)
+
   // The list opens on the model that runs, as a native pop-up menu opens on
   // its checked item; a search, or the user moving, takes over from there. The
   // highlight follows a model, not a position, so a list that changes (the
@@ -106,8 +125,8 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
   const active = movedRow >= 0 ? movedRow : runningRow
   const setActive = (index: number | null) => setMovedTo(index === null ? null : rows[index]?.id ?? null)
   const searchRef = useRef<HTMLInputElement>(null)
-  const thinkingRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const levelsRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   // The picker opens upward from the chip: while a search narrows the list
   // it keeps the height it had, so the search field stays where the typing is.
@@ -122,29 +141,32 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     setActive(null)
   }
 
-  // Where focus starts: the search, or the chosen thinking level. The
-  // running model scrolls into view either way.
+  // On each page: the highlighted model scrolls into view, and the keys go
+  // to the search or the level list (an accounts-only page: the checked
+  // account). Touch focuses nothing: the search would raise the keyboard.
+  const onLevels = page !== null
   useEffect(() => {
     const id = requestAnimationFrame(() => {
-      listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' })
-      if (focus === 'thinking') {
-        thinkingRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"], [role="radio"]')?.focus()
-      } else if (!touch) {
-        // Touch: focusing the search would raise the keyboard over the list.
-        searchRef.current?.focus()
-      }
+      if (!onLevels) listRef.current?.querySelector<HTMLElement>('[data-highlighted]')?.scrollIntoView?.({ block: 'nearest' })
+      if (touch) return
+      if (!onLevels) {
+        // Back from a page the search is a new field: the caret goes to the
+        // end of the query it keeps, where → opens a page again.
+        const input = searchRef.current
+        input?.focus()
+        input?.setSelectionRange(input.value.length, input.value.length)
+      } else (levelsRef.current ?? rootRef.current?.querySelector<HTMLElement>('[data-account-list] [aria-checked="true"]'))?.focus()
     })
     return () => cancelAnimationFrame(id)
-  }, [focus, touch])
+  }, [onLevels, touch])
 
   // A failed save puts the previous choice back and says so in a toast with
   // Retry (setSessionRunSettings).
   const save = (patch: Parameters<typeof setRun>[0]) => setRun(patch)
 
-  const pickModel = (id: string, close: boolean) => {
+  const pickModel = (id: string) => {
     selectionHapticFeedback()
-    const next = settings.models.find((m) => m.id === id)
-    const levels = next?.thinking_levels.filter((l) => l !== '__none__') ?? []
+    const levels = levelsOf(id)
     // While the list is the placeholder its rows carry no levels, so the
     // level stays as it is rather than being dropped.
     const supported = settings.modelsLoading || levels.includes(settings.thinkingLevel ?? '')
@@ -160,56 +182,25 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
       // An account belongs to one provider; another provider starts on its own account in use.
       ...(sameProvider ? {} : { credentialId: null }),
     })
-    if (!close) return
-    if (sameProvider) {
+    if (!hasPage(id)) {
       onDone()
       return
     }
-    // Another provider: once the picker shows its accounts (the next frame),
-    // Enter lands on them so one can be picked at once; without a choice of
-    // accounts it closes as usual.
-    requestAnimationFrame(() => {
-      const account = rootRef.current?.querySelector<HTMLElement>('[data-account-list] [aria-checked="true"]')
-      if (account) account.focus()
-      else onDone()
-    })
+    setPageHeight(rootRef.current?.getBoundingClientRect().height ?? null)
+    setPage({ model: id, level: keepLevel ?? (toAgentModel ? settings.agentThinkingLevel : null) })
   }
 
-  const pickLevel = (level: string) => {
-    void save({ thinkingLevel: level === DEFAULT_LEVEL ? null : level })
+  const back = () => {
+    if (!page) return
+    // The list comes back on the model the page was for.
+    setMovedTo(page.model)
+    setPage(null)
+    setPageHeight(null)
   }
 
   const pickAccount = (id: string) => {
     selectionHapticFeedback()
     void save({ credentialId: id })
-  }
-
-  const reset = () => {
-    void save({ model: null, thinkingLevel: null, credentialId: null })
-  }
-
-  const updateAgent = useUpdateAgentMutation(settings.agentName ?? 'code')
-  const makeDefault = async () => {
-    const name = settings.agentName ?? 'code'
-    try {
-      const detail = name === 'code' ? await getCodeAgent() : await getAgent(name)
-      const content = setFrontmatterScalars(detail.content, {
-        model: settings.model,
-        thinking_level: settings.thinkingLevel,
-      })
-      await updateAgent.mutateAsync({ content })
-      // The session no longer differs from its agent.
-      await setRun({ model: null, thinkingLevel: null })
-      pushToast({ tone: 'success', title: 'Default saved', description: `New sessions run ${settings.model}${settings.thinkingLevel ? ` · ${thinkingLevelLabel(settings.thinkingLevel)}` : ''}.` })
-      onDone()
-    } catch (err) {
-      pushToast({
-        tone: 'error',
-        title: "Couldn't save the default",
-        description: failureSentence(err),
-        action: { label: 'Retry', onAction: () => void makeDefault() },
-      })
-    }
   }
 
   const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -225,21 +216,112 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
     if (event.key === 'Enter') {
       event.preventDefault()
       const row = rows[active]
-      if (row) pickModel(row.id, true)
+      if (row) pickModel(row.id)
       return
     }
-    if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && query === '' && settings.thinkingLevels.length > 0) {
-      event.preventDefault()
-      const next = stepThinkingLevel(settings.thinkingLevels, settings.thinkingLevel, event.key === 'ArrowRight' ? 1 : -1)
-      if (next && next !== settings.thinkingLevel) pickLevel(next)
+    if (event.key === 'ArrowRight' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      // In the search, → moves the caret until it reaches the end.
+      const input = event.currentTarget
+      const caretAtEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length
+      const row = rows[active]
+      if (caretAtEnd && row && hasPage(row.id)) {
+        event.preventDefault()
+        pickModel(row.id)
+      }
     }
   }
 
-  const atDefaults = !settings.customized
   const rowClass = cn(MENU_ITEM_CLASS, touch && 'min-h-(--phone-control) text-sm')
 
+  if (page) {
+    const levels = levelsOf(page.model)
+    // The agent's own level is the default on its model; elsewhere the model decides.
+    const agentDefault = page.model === settings.agentModel ? settings.agentThinkingLevel : null
+    const current = settings.model === page.model ? settings.thinkingLevel : page.level
+    const options: LevelOption[] = [
+      ...(agentDefault ? [] : [{ value: DEFAULT_LEVEL, label: 'Default', note: "model's own level" }]),
+      ...levels.map((level) => ({ value: level, label: thinkingLevelLabel(level), note: level === agentDefault ? 'default' : undefined })),
+    ]
+    // Accounts once the session is on this model's provider (the next render after the pick).
+    const showAccounts = splitModelId(page.model).provider === settings.provider && settings.accounts && settings.providerInfo
+    const pickLevel = (value: string) => {
+      selectionHapticFeedback()
+      // The default level is stored as none, so the session is back on its defaults.
+      void save({ thinkingLevel: value === DEFAULT_LEVEL || value === agentDefault ? null : value })
+      onDone()
+    }
+    const onPageKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return
+      if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
+        event.preventDefault()
+        back()
+      }
+    }
+    const { model } = splitModelId(page.model)
+    return (
+      <div
+        ref={rootRef}
+        className="flex min-h-0 flex-col"
+        data-run-picker=""
+        data-run-picker-page="levels"
+        style={pageHeight ? { minHeight: pageHeight } : undefined}
+        onKeyDown={onPageKeyDown}
+      >
+        <div className={cn('flex items-center gap-2 border-b border-(--color-border-subtle) px-2 pb-1.5', touch ? 'min-h-(--phone-control)' : 'min-h-7 pointer-coarse:min-h-9')}>
+          <button
+            type="button"
+            onClick={back}
+            aria-label={`Back to models (${page.model})`}
+            className={cn(
+              'inline-flex min-w-0 items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
+              touch ? 'min-h-8 text-sm' : 'text-meta',
+            )}
+          >
+            <ChevronLeft size={touch ? 16 : 12} className="shrink-0" aria-hidden="true" />
+            <span className={cn('flex', MODEL_LINE_CLASS)}>
+              <ModelPart model={model} />
+            </span>
+          </button>
+          <span className="ml-auto shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
+        </div>
+
+        {levels.length > 0 && (
+          <LevelList
+            listRef={levelsRef}
+            label={`Thinking for ${page.model}`}
+            options={options}
+            value={current ?? DEFAULT_LEVEL}
+            onPick={pickLevel}
+            rowClass={rowClass}
+          />
+        )}
+
+        {showAccounts && (
+          <AccountList
+            providerId={settings.providerInfo!.id}
+            providerLabel={settings.providerInfo!.label}
+            accounts={settings.accounts!}
+            usage={settings.providerInfo!.supports_credential_usage === true}
+            locked={settings.pinnedAccount}
+            inUse={settings.inUseAccount}
+            onPick={pickAccount}
+            onPickAndClose={(id) => {
+              pickAccount(id)
+              onDone()
+            }}
+            onReconnect={() => {
+              onDone()
+              useSettingsStore.getState().openSettings('models')
+            }}
+            rowClass={rowClass}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div ref={rootRef} className="flex min-h-0 flex-col" data-run-picker="">
+    <div ref={rootRef} className="flex min-h-0 flex-col" data-run-picker="" data-run-picker-page="models">
       {/* Borderless, over a hairline, like the palette and the other pickers. */}
       <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 pb-1.5">
         <Search size={13} aria-hidden="true" className="shrink-0 text-(--color-text-muted)" />
@@ -299,7 +381,7 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 {...hoverIntent(() => { if (active !== index) setActive(index) })}
                 // Keep focus in the search: WebKit would drop it on the body.
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => pickModel(row.id, false)}
+                onClick={() => pickModel(row.id)}
                 tabIndex={-1}
                 className={rowClass}
               >
@@ -309,77 +391,87 @@ export function RunPicker({ settings, focus, onDone, touch = false }: RunPickerP
                 {nameProvider && <span className="max-w-[8rem] shrink-0 truncate text-meta text-(--color-text-muted)">{providerLabel(provider)}</span>}
                 {row.id === settings.agentModel && <span className="text-meta text-(--color-text-muted)">default</span>}
                 <Check size={13} aria-hidden="true" className={selected ? 'opacity-100' : 'opacity-0'} />
+                {/* A model with levels or accounts opens a page of its own. */}
+                <ChevronRight size={13} aria-hidden="true" data-opens-page={hasPage(row.id) ? '' : undefined} className={cn('shrink-0 text-(--color-text-muted)', !hasPage(row.id) && 'opacity-0')} />
               </button>
             </div>
           )
         })}
       </div>
+    </div>
+  )
+}
 
-      {settings.thinkingLevels.length > 0 && (
-        <div ref={thinkingRef} className="mt-1 border-t border-(--color-border-subtle) px-2 pt-2.5">
-          {/* The phone sheet stacks the label: six levels need its whole width on an iPhone mini. */}
-          <div className={touch ? 'flex flex-col items-stretch gap-1.5' : 'flex items-center gap-3'}>
-            <span className="shrink-0 text-xs text-(--color-text-muted)">Thinking</span>
-            <SegmentedControl
-              label="Thinking level"
-              value={settings.thinkingLevel ?? DEFAULT_LEVEL}
-              onChange={pickLevel}
-              options={[
-                // No level from the session or the agent: the model decides, and a lit
-                // segment says so. While the agent sets one, that level is the default.
-                ...(modelDecidesByDefault ? [{ value: DEFAULT_LEVEL, label: 'Default', ariaLabel: "Default: the model's own level", tooltip: "The model's own level" }] : []),
-                ...settings.thinkingLevels.map((level) => {
-                  const short = thinkingLevelShortLabel(level)
-                  const full = thinkingLevelLabel(level)
-                  return { value: level, label: short, ariaLabel: short === full ? undefined : full, tooltip: short === full ? undefined : full }
-                }),
-              ]}
-              // ``sm`` stays 28px on touch (it is the toolbar size), so a
-              // tablet's popover takes the default, 36px there.
-              size={touch || !hasFinePointer() ? 'default' : 'sm'}
-              fill
-              className="min-w-0 flex-1"
-            />
-          </div>
-        </div>
-      )}
-
-      {settings.accounts && settings.providerInfo && (
-        <AccountList
-          providerId={settings.providerInfo.id}
-          providerLabel={settings.providerInfo.label}
-          accounts={settings.accounts}
-          usage={settings.providerInfo.supports_credential_usage === true}
-          locked={settings.pinnedAccount}
-          inUse={settings.inUseAccount}
-          onPick={pickAccount}
-          onPickAndClose={(id) => {
-            pickAccount(id)
-            onDone()
-          }}
-          onReconnect={() => {
-            onDone()
-            useSettingsStore.getState().openSettings('models')
-          }}
-          rowClass={rowClass}
-        />
-      )}
-
-      <div className="mt-2 flex items-center justify-between gap-2 border-t border-(--color-border-subtle) px-1 pt-2">
-        <Button type="button" variant="ghost" size="sm" onClick={reset} disabled={atDefaults}>
-          <RotateCcw size={12} aria-hidden="true" />
-          Reset to default
-        </Button>
-        <Button
+/**
+ * The levels of the second page: a list driven from itself, as the models
+ * are from the search. ↑/↓ move, Enter picks, a click or tap picks.
+ */
+function LevelList({
+  listRef,
+  label,
+  options,
+  value,
+  onPick,
+  rowClass,
+}: {
+  listRef: RefObject<HTMLDivElement | null>
+  label: string
+  options: LevelOption[]
+  /** The level in effect (``DEFAULT_LEVEL`` for none). */
+  value: string
+  onPick: (value: string) => void
+  rowClass: string
+}) {
+  // Opens on the level in effect, as the models open on the running one.
+  const [active, setActive] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)))
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const count = options.length
+      const next = (active + (event.key === 'ArrowDown' ? 1 : -1) + count) % count
+      setActive(next)
+      listRef.current?.querySelector(`[data-level-row="${next}"]`)?.scrollIntoView?.({ block: 'nearest' })
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const option = options[active]
+      if (option) onPick(option.value)
+    }
+  }
+  return (
+    <div
+      ref={listRef}
+      role="listbox"
+      aria-label={label}
+      tabIndex={0}
+      aria-activedescendant={options[active] ? `run-picker-level-${active}` : undefined}
+      onKeyDown={onKeyDown}
+      // The highlighted row shows where the keys go, as the search does for the models.
+      data-focus-ring="off"
+      className="overflow-y-auto overscroll-contain px-1 pt-1"
+    >
+      {options.map((option, index) => (
+        <button
+          key={option.value}
           type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void makeDefault()}
-          disabled={!settings.model || (settings.model === settings.agentModel && settings.thinkingLevel === settings.agentThinkingLevel) || updateAgent.isPending}
+          role="option"
+          id={`run-picker-level-${index}`}
+          data-level-row={index}
+          aria-selected={option.value === value}
+          data-highlighted={index === active ? '' : undefined}
+          {...hoverIntent(() => { if (active !== index) setActive(index) })}
+          // Keep focus on the list, so the keys still work after a click.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onPick(option.value)}
+          tabIndex={-1}
+          className={rowClass}
         >
-          Make default
-        </Button>
-      </div>
+          <span className="min-w-0 flex-1 truncate text-(--color-text)">{option.label}</span>
+          {option.note && <span className="shrink-0 text-meta text-(--color-text-muted)">{option.note}</span>}
+          <Check size={13} aria-hidden="true" className={option.value === value ? 'opacity-100' : 'opacity-0'} />
+        </button>
+      ))}
     </div>
   )
 }
@@ -405,7 +497,7 @@ function AccountList({
   /** The account the session runs on now. */
   inUse: StoredCredential | null
   onPick: (id: string) => void
-  /** Enter on an account: pick it and close, as Enter on a model does. */
+  /** Enter on an account: pick it and close, as Enter on a level does. */
   onPickAndClose: (id: string) => void
   /** Sign a signed-out account back in (Settings → Models). */
   onReconnect: () => void

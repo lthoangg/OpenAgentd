@@ -88,8 +88,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     when a separate completion check
     confirms the agent's `update_goal` claim from evidence shown in the
     conversation, when the agent reports a blocker, or at a limit: 50 turns by
-    default, two turns in a row without tool calls, three rejected claims in a
-    row, or an optional token budget (uncached input plus output). A rejected
+    default, two turns in a row without tool calls, or three rejected claims in
+    a row. Since `[v3.58.0]` a goal has no token budget: spending tokens never
+    pauses it, and the Settings field for one is gone. A rejected
     claim's reason goes back to the agent. The check also reads the task board,
     where unfinished tasks need a stated reason, and the runtime's own log of
     the commands the goal ran, with their exit codes, and the files it changed,
@@ -100,8 +101,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     failures in a row pause the goal. Goal turns run unattended by default: the
     agent decides instead of asking and notes each choice, and a plan it
     submits is saved without opening a review. **Settings → Sessions** sets
-    whether Keep going starts ticked, the turn limit, a default token budget,
-    and allows questions during a goal. The check runs on the session's own
+    whether Keep going starts ticked and the turn limit, and allows questions
+    during a goal. The check runs on the session's own
     model, so it reuses the conversation's prompt cache. It is told which
     messages are the runtime's own notes (goal reminders, mode and plan
     notes), so it never takes them for your requirements or for proof the
@@ -496,6 +497,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     actions, MCP calls, and generations. "Other" is left for plugin and MCP
     server tools, and tools saved under a former name count with their
     current one.
+    Since `[v3.58.0]` a `script` call counts as a script ("1 script"), not
+    as "other".
   - An open row stays pinned to the top of the transcript while its steps
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row

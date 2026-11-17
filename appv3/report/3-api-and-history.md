@@ -38,9 +38,8 @@ removed or turned off is cleared at the next turn, with a `provider_status`
 `pin_released` note.
 
 Assistant rows' `extra` gains `credential_id` and `credential_label`, the
-stored credential that answered (pooled providers only). `GET
-/api/settings/providers/{id}/credentials` adds `pinned_sessions` per
-credential. Each `GET /api/settings/providers/usage-summary` item adds
+stored credential that answered (pooled providers only). Each `GET
+/api/settings/providers/usage-summary` item adds
 `account`, the label of the credential its limits belong to (the one the
 provider's next request uses) when the provider pools two or more enabled
 credentials, else `null`.

@@ -770,8 +770,7 @@ async fn provider_credentials_flow(c: &Client, pool: &appv3_db::DbPool, root: &s
 }
 
 /// A session pinned to one of the provider's credentials (v3 addition):
-/// PATCH sets and clears it, it survives a reload, the credential list
-/// counts the sessions pinned to each credential, and a pin is refused for
+/// PATCH sets and clears it, it survives a reload, and a pin is refused for
 /// a credential that is not the session model's provider's or not enabled.
 async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path, base: &str, personal: &str, work: &str) {
     let new = appv3_db::NewSession { workspace: root.display().to_string(), model: Some("openrouter:test/model".into()), ..Default::default() };
@@ -790,10 +789,7 @@ async fn session_pin_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path:
     let row = list["data"].as_array().unwrap().iter().find(|r| r["id"] == json!(appv3_db::codec::api_uuid(&s.id))).cloned().unwrap();
     assert_eq!(row["credential_label"], json!("Work"), "lists name it too, for the desktop tray: {row}");
     let (_, v) = c.json("GET", base, None).await;
-    let pinned: Vec<i64> = v["credentials"].as_array().unwrap().iter().map(|c| c["pinned_sessions"].as_i64().unwrap()).collect();
-    let work_index = v["credentials"].as_array().unwrap().iter().position(|c| c["id"] == json!(work)).unwrap();
-    assert_eq!(pinned[work_index], 1, "{v}");
-    assert_eq!(pinned.iter().sum::<i64>(), 1, "{v}");
+    assert!(v["credentials"].as_array().unwrap().iter().all(|c| c.get("pinned_sessions").is_none()), "no pinned counts: {v}");
 
     // Picking an account cooling after a 429 is the user forcing it: the
     // next request tries it instead of silently staying on another one.
@@ -849,13 +845,13 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     use appv3_agent::plan::{self, PlanChange, PlanTarget};
     let uri = "/api/settings/goals";
     let (st, v) = c.json("GET", uri, None).await;
-    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 50, "default_max_turns": 50, "token_budget": null, "allow_questions": false, "keep_going_default": false})));
+    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 50, "default_max_turns": 50, "allow_questions": false, "keep_going_default": false})));
     // The check always runs on the session's own model, so there is no model to set.
     for bad in [
         json!({"max_turns": 0}),
         json!({"max_turns": 1001}),
-        json!({"token_budget": 0}),
-        json!({"token_budget": "lots"}),
+        // Goals have no token budget.
+        json!({"token_budget": 2_000_000}),
         json!({"keep_going_default": [true]}),
         json!({"check_model": "openai:gpt-5"}),
         json!({"nope": 1}),
@@ -863,14 +859,11 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
         let (st, v) = c.json("PUT", uri, Some(bad.clone())).await;
         assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
     }
-    let (st, v) = c.json("PUT", uri, Some(json!({"max_turns": 7, "token_budget": 2_000_000, "allow_questions": true, "keep_going_default": true}))).await;
-    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 7, "default_max_turns": 50, "token_budget": 2_000_000, "allow_questions": true, "keep_going_default": true})));
+    let (st, v) = c.json("PUT", uri, Some(json!({"max_turns": 7, "allow_questions": true, "keep_going_default": true}))).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"max_turns": 7, "default_max_turns": 50, "allow_questions": true, "keep_going_default": true})));
     // Omitted fields keep their values; null restores the default.
     let (_, v) = c.json("PUT", uri, Some(json!({"max_turns": null, "allow_questions": false}))).await;
-    assert_eq!(
-        (v["max_turns"].clone(), v["token_budget"].clone(), v["allow_questions"].clone(), v["keep_going_default"].clone()),
-        (json!(50), json!(2_000_000), json!(false), json!(true))
-    );
+    assert_eq!((v["max_turns"].clone(), v["allow_questions"].clone(), v["keep_going_default"].clone()), (json!(50), json!(false), json!(true)));
 
     // A Plan-mode session with a plan under review.
     let ws = root.join("goal-ws");
@@ -902,12 +895,12 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     let g = wait_goal(c, &sid, |g| g["status"] == "paused").await;
     assert_eq!((g["pause_reason"].clone(), g["turns_used"].clone(), g["max_turns"].clone()), (json!("no_progress"), json!(2), json!(6)), "{g}");
     assert_eq!(g["objective"], "the tests pass");
-    assert_eq!(g["token_budget"], 2_000_000, "the budget comes from Settings: {g}");
+    assert!(g.get("token_budget").is_none(), "goals have no token budget: {g}");
     assert!(g["tokens_used"].as_i64().unwrap() > 0, "{g}");
     let result = tool_result(pool, &sid, "call-goal-1").await;
     assert!(result.contains("keep going until done"), "{result}");
-    let (st, v) = c.json("PUT", uri, Some(json!({"token_budget": null, "keep_going_default": false}))).await;
-    assert_eq!((st, v["token_budget"].clone(), v["keep_going_default"].clone()), (StatusCode::OK, Value::Null, json!(false)), "{v}");
+    let (st, v) = c.json("PUT", uri, Some(json!({"keep_going_default": false}))).await;
+    assert_eq!((st, v["keep_going_default"].clone()), (StatusCode::OK, json!(false)), "{v}");
 
     let (_, v) = c.json("GET", &format!("/api/agent/{sid}/history"), None).await;
     let msgs = v["lead"]["messages"].as_array().unwrap();
@@ -949,7 +942,7 @@ async fn goal_flow(c: &Client, pool: &appv3_db::DbPool, root: &std::path::Path) 
     assert_eq!(st, StatusCode::NOT_FOUND);
 
     // A goal whose cut-off turn is not continued after a restart comes back paused.
-    appv3_db::insert_session_goal(pool, &sid, "survive a restart", 5, None).await.unwrap();
+    appv3_db::insert_session_goal(pool, &sid, "survive a restart", 5).await.unwrap();
     assert!(appv3_agent::goal::continue_after_restart(pool, &[], std::slice::from_ref(&sid)).await >= 1);
     let (_, v) = c.json("GET", &goal_uri, None).await;
     assert_eq!((v["goal"]["status"].clone(), v["goal"]["pause_reason"].clone()), (json!("paused"), json!("restart")), "{v}");
@@ -1041,8 +1034,18 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
     let (st, list) = c.json("GET", &format!("/api/preview?workspace={}", urlencode(&ws)), None).await;
     assert_eq!(st, StatusCode::OK);
     assert!(list["previews"].as_array().unwrap().iter().any(|x| x["id"] == p["id"]), "{list}");
+    assert!(list["previews"].as_array().unwrap().iter().all(|x| x["agent_page"].is_null()), "the user opened it, not the agent: {list}");
+    // What the agent opened is listed, so any app window can keep it loaded.
+    appv3_preview::global().get(p["id"].as_str().unwrap()).unwrap().agent_opened(json!({"kind": "file", "path": "designs/landing.html"}));
+    let (_, list) = c.json("GET", "/api/preview", None).await;
+    let mine = list["previews"].as_array().unwrap().iter().find(|x| x["id"] == p["id"]).cloned().unwrap();
+    assert_eq!(mine["agent_page"], json!({"kind": "file", "path": "designs/landing.html"}));
 
     let id = p["id"].as_str().unwrap();
+    // The user closes the Preview tab while the agent uses the page: it stays.
+    let (st, kept) = c.json("DELETE", &format!("/api/preview/{id}?keep_agent_page=1"), None).await;
+    assert_eq!((st, kept), (StatusCode::OK, json!({"kept": true})));
+    assert!(appv3_preview::global().get(id).is_some());
     let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;
@@ -1526,7 +1529,9 @@ async fn wait_idle(sid: &str) {
 /// (it sent the previous chat's id). That must not start the session there,
 /// or a later plan approval resumes that copy and runs tools in the wrong repo.
 /// Opening a worktree made with `git worktree add`, or a subfolder, files it
-/// under its repository in the tree; a folder gone from disk is `missing`.
+/// under its repository in the tree; a worktree gone from disk drops off,
+/// keeping its sessions as a former checkout; one git lists but no session
+/// opened yet is listed too.
 async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
     let git = |dir: &std::path::Path, args: &[&str]| {
         let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
@@ -1551,7 +1556,11 @@ async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
         assert_eq!(st, StatusCode::OK, "{v}");
     }
     let gone_path = path(&gone);
+    let (st, s) = c.json("POST", "/api/agent/sessions/resolve", Some(json!({"workspace": gone_path}))).await;
+    assert_eq!(st, StatusCode::OK, "{s}");
     std::fs::remove_dir_all(&gone).unwrap();
+    let unopened = root.join("tree-repo-new");
+    git(&repo, &["worktree", "add", "-q", "-b", "new", unopened.to_str().unwrap()]);
     let (_, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
     let repos = v["repositories"].as_array().unwrap();
     assert!(!repos.iter().any(|r| r["path"] == json!(path(&outside)) || r["path"] == json!(path(&repo.join("web")))), "no repository rows of their own: {v}");
@@ -1560,10 +1569,11 @@ async fn worktree_tree_flow(c: &Client, root: &std::path::Path) {
     assert_eq!(r["git"], json!(true), "a folder with .git is a Git repository: {v}");
     let wts = r["worktrees"].as_array().unwrap();
     let entry = |p: &std::path::Path| wts.iter().find(|w| w["path"] == json!(path(p))).cloned().unwrap_or_else(|| panic!("{} under the repository: {v}", p.display()));
-    assert_eq!(entry(&outside), json!({"path": path(&outside), "name": "tree-repo-fix", "managed": false, "kind": "worktree", "missing": false}));
-    assert_eq!(entry(&repo.join("web")), json!({"path": path(&repo.join("web")), "name": "web", "managed": false, "kind": "folder", "missing": false}));
-    let gone_entry = wts.iter().find(|w| w["path"] == json!(gone_path)).unwrap_or_else(|| panic!("the removed worktree stays listed: {v}"));
-    assert_eq!(gone_entry["missing"], json!(true));
+    assert_eq!(entry(&outside), json!({"path": path(&outside), "name": "tree-repo-fix", "managed": false, "kind": "worktree", "external": true, "missing": false}));
+    assert_eq!(entry(&repo.join("web")), json!({"path": path(&repo.join("web")), "name": "web", "managed": false, "kind": "folder", "external": false, "missing": false}));
+    assert_eq!(entry(&unopened), json!({"path": path(&unopened), "name": "tree-repo-new", "managed": false, "kind": "worktree", "external": true, "missing": false}));
+    assert!(!wts.iter().any(|w| w["path"] == json!(gone_path)), "a worktree gone from disk drops off: {v}");
+    assert_eq!(r["former_checkouts"], json!([{"path": gone_path, "name": "tree-repo-gone"}]), "its session stays with the repository: {v}");
 }
 
 async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path, other: &std::path::Path) {

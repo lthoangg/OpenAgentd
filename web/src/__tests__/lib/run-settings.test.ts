@@ -8,9 +8,7 @@ import {
   quotaSegments,
   shortWindowLabel,
   rememberRecentModel,
-  setFrontmatterScalars,
   splitModelId,
-  stepThinkingLevel,
   thinkingLevelLabel,
   thinkingLevelShortLabel,
 } from '@/lib/run-settings'
@@ -45,23 +43,6 @@ describe('recent models', () => {
   })
 })
 
-describe('setFrontmatterScalars', () => {
-  const raw = '---\nname: code\nrole: lead\nmodel: old:model\nresponses_api: true\n---\n\nYou help.\n'
-
-  it('replaces and adds keys, keeping every other line', () => {
-    expect(setFrontmatterScalars(raw, { model: 'agy:claude', thinking_level: 'high' }))
-      .toBe('---\nname: code\nrole: lead\nmodel: agy:claude\nresponses_api: true\nthinking_level: high\n---\n\nYou help.\n')
-  })
-
-  it('removes a key set to null', () => {
-    expect(setFrontmatterScalars(raw, { model: null })).toBe('---\nname: code\nrole: lead\nresponses_api: true\n---\n\nYou help.\n')
-  })
-
-  it('leaves a file without frontmatter alone', () => {
-    expect(setFrontmatterScalars('Just text', { model: 'x:y' })).toBe('Just text')
-  })
-})
-
 describe('effectiveRun', () => {
   const agent = { model: 'anthropic:sonnet', thinkingLevel: 'medium' }
 
@@ -75,20 +56,6 @@ describe('effectiveRun', () => {
 
   it('prefers the session level', () => {
     expect(effectiveRun({ model: null, thinkingLevel: 'high' }, agent).thinkingLevel).toBe('high')
-  })
-})
-
-describe('stepThinkingLevel', () => {
-  const levels = ['none', 'low', 'medium', 'high']
-
-  it('moves one level and stops at either end', () => {
-    expect(stepThinkingLevel(levels, 'low', 1)).toBe('medium')
-    expect(stepThinkingLevel(levels, 'high', 1)).toBe('high')
-    expect(stepThinkingLevel(levels, 'none', -1)).toBe('none')
-  })
-
-  it('starts from the first level when none is chosen', () => {
-    expect(stepThinkingLevel(levels, null, 1)).toBe('none')
   })
 })
 

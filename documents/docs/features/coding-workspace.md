@@ -43,6 +43,19 @@ agent against it.
   separate one (existing workspaces are re-filed once at startup). A checkout
   whose folder no longer exists shows a **Missing** badge. Removing a worktree
   also deletes its `openagentd/` or `oad/` branch.
+  Since `[v3.58.0]` the list follows git and the disk instead of keeping old
+  records. A worktree or subfolder removed outside the app (`git worktree
+  remove`, deleting the folder, an agent cleaning up) drops off on the next
+  sidebar load, and its sessions stay listed under the repository with its
+  name as their tag. **Missing** is now only for a repository whose own folder
+  can't be reached (moved, or on an unplugged drive), and its checkouts are
+  then left as they are. Worktrees git lists that no session has opened yet
+  are listed too; one made outside OpenAgentd is marked **external** and can
+  be hidden but not deleted from the app. Subfolders follow the worktrees
+  under a **Folders** heading in the checkout menu, and the new-session folder
+  chip shows them with a folder icon. Deleting the last session of an
+  OpenAgentd worktree removes the worktree too, unless it has uncommitted
+  changes or commits that are on no other branch; a toast says which.
 - **Warm-paper workspace refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper

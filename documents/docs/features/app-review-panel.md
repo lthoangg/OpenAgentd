@@ -140,8 +140,12 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   dropped after 15 minutes without agent use, and opening the Preview tab
   takes over from it. Focus the page takes (a fill) goes back to where you
   were typing. A page action right after `open` waits up to 8 seconds for the
-  page to load instead of failing at once. Phones still need the workspace's
-  Preview sheet.
+  page to load instead of failing at once. Since v3.58.0 the server lists the
+  agent's pages, so this also works while you look at another session or the
+  agent is a member; one app window (the one holding a lock) loads them, and
+  a page action sent in the same batch as `open` waits for it. When no app
+  window is open the agent is told so, instead of being asked to open the
+  page again. Phones still need the workspace's Preview sheet.
 - **Multi-type file lightbox** `[since v1.0, v1.92.0, v1.99.8, v1.123.0]` — click any
   generated or attached file to open `FileLightbox`, a full-screen gallery
   covering images, video, audio, PDFs, text, and generic file types in one modal.

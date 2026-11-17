@@ -25,7 +25,7 @@ function makeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
     pause_reason: null,
     detail: null,
     max_turns: 50,
-    token_budget: null,
+
     turns_used: 6,
     tokens_used: 412_000,
     active_seconds: 750,
@@ -274,20 +274,14 @@ describe('GoalTabView numbers and the Detail setting', () => {
   const stats = () => Array.from(document.querySelectorAll('[data-goal-stat]'), (row) => row.textContent)
   afterEach(() => { useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' }) })
 
-  it('in Full shows turns, tokens and time, budget or not', () => {
+  it('in Full shows turns, tokens and time', () => {
     renderTab(makeGoal({ turns_used: 7, tokens_used: 1_400_000, active_seconds: 18 * 60 }))
     expect(stats()).toEqual(['Turns7 / 50', 'Tokens1.4M', 'Time18m'])
   })
 
-  it('in Simple leaves the token count out when no budget is set, and says the rest in words', () => {
+  it('in Simple leaves the token count out, and says the rest in words', () => {
     useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
     renderTab(makeGoal({ turns_used: 7, tokens_used: 1_400_000, active_seconds: 18 * 60 }))
     expect(stats()).toEqual(['Turns7 of 50', 'Time18 minutes'])
-  })
-
-  it('in Simple shows the tokens against a budget when one is set', () => {
-    useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
-    renderTab(makeGoal({ turns_used: 7, tokens_used: 1_400_000, token_budget: 5_000_000, active_seconds: 18 * 60 }))
-    expect(stats()).toEqual(['Turns7 of 50', 'Tokens1.4M of 5M', 'Time18 minutes'])
   })
 })

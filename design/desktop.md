@@ -114,7 +114,9 @@ not the word Running. A question with a few choices is
 answered in place (island, pet, notification buttons); anything else says
 **Open to answer**. × means Later: the question stays until answered. Every
 way of opening a session goes through one router, which focuses the window
-that already shows it.
+that already shows it. Opening or dismissing a notification on a companion
+(Later included) counts as seeing it, as looking at the session in a
+focused window does: the phone is not told a minute later.
 
 #### A notification says which computer
 

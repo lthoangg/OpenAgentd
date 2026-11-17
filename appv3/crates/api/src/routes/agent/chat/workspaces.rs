@@ -80,6 +80,9 @@ pub(super) async fn update_visibility(State(st): State<AppState>, raw: Bytes) ->
     }
     let workspace = validate_workspace_or_422(&ws, !hidden)?;
     if hidden {
+        // A checkout with no row yet (one git lists) is filed first, so a
+        // hidden worktree stays a worktree of its repository.
+        appv3_agent::worktrees::ensure_registered(&st.pool, &workspace).await.map_err(ApiError::internal)?;
         db::hide_coding_workspace(&st.pool, &workspace).await?;
     } else {
         register_session_workspace(&st.pool, &workspace).await?;
@@ -145,7 +148,26 @@ fn in_git_work_tree(path: &Path) -> bool {
 pub(super) async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
     let s = settings();
     let chat_path = s.chat_workspace_root().display().to_string();
+    // The list follows the disk and git: drop rows whose folder is gone and
+    // pick up checkouts git lists that have no row yet.
+    let before = db::list_visible_coding_workspaces(&st.pool).await?;
+    let mut sources: Vec<String> = before.iter().filter_map(|r| if r.kind == "repo" { Some(r.path.clone()) } else { r.source_path.clone() }).collect();
+    sources.sort();
+    sources.dedup();
+    sources.retain(|p| !s.is_chat_workspace(Some(Path::new(p))));
+    let reconciled = futures::future::join_all(sources.iter().map(|src| appv3_agent::worktrees::reconcile_repo(&st.pool, src))).await;
+    let mut unlisted: std::collections::HashMap<String, Vec<appv3_agent::worktrees::UnlistedWorktree>> = Default::default();
+    for (src, r) in sources.iter().zip(reconciled) {
+        match r {
+            Ok(items) if !items.is_empty() => {
+                unlisted.insert(src.clone(), items);
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("workspace_reconcile_failed path={src} err={e}"),
+        }
+    }
     let rows = db::list_visible_coding_workspaces(&st.pool).await?;
+    let former = db::list_former_checkouts(&st.pool).await?;
     // Workspace groups: each repository's tags plus the groups themselves.
     let memberships = db::list_group_memberships(&st.pool).await.map_err(ApiError::internal)?;
     let group_ids = |path: &str| -> Vec<String> { memberships.iter().filter(|(_, p)| p == path).map(|(g, _)| db::codec::api_uuid(g)).collect() };
@@ -170,6 +192,7 @@ pub(super) async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Resp
             "path": row.path,
             "name": name,
             "worktrees": [],
+            "former_checkouts": [],
             "group_ids": group_ids(&row.path),
             "missing": !Path::new(&row.path).is_dir(),
             // The client offers the Changes view and worktrees only where there is Git.
@@ -186,10 +209,18 @@ pub(super) async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Resp
             let missing = !Path::new(&source).is_dir();
             repos.push((
                 source.clone(),
-                json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source), "missing": missing, "git": in_git_work_tree(Path::new(&source))})
-                    .as_object()
-                    .unwrap()
-                    .clone(),
+                json!({
+                    "path": source,
+                    "name": basename(&source),
+                    "worktrees": [],
+                    "former_checkouts": [],
+                    "group_ids": group_ids(&source),
+                    "missing": missing,
+                    "git": in_git_work_tree(Path::new(&source)),
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
             ));
         }
         // A subfolder shows its path inside the repository (`web/app`).
@@ -205,8 +236,25 @@ pub(super) async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Resp
             "name": name,
             "managed": row.managed,
             "kind": row.kind,
+            // Made outside OpenAgentd: listed, but only OpenAgentd's own can be removed here.
+            "external": row.kind == "worktree" && !row.managed,
             "missing": !Path::new(&row.path).is_dir(),
         }));
+    }
+    // Checkouts git lists that have no row: shown, recorded once a session opens one.
+    for (source, slot) in repos.iter_mut() {
+        let Some(items) = unlisted.remove(source.as_str()) else { continue };
+        let list = slot.get_mut("worktrees").unwrap().as_array_mut().unwrap();
+        for w in items {
+            list.push(json!({"path": w.path, "name": basename(&w.path), "managed": w.managed, "kind": "worktree", "external": !w.managed, "missing": false}));
+        }
+    }
+    // Checkouts gone from the list keep their sessions under the repository.
+    for row in former {
+        let Some(source) = row.source_path.as_deref() else { continue };
+        let Some((_, slot)) = repos.iter_mut().find(|(p, _)| p == source) else { continue };
+        let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
+        slot.get_mut("former_checkouts").unwrap().as_array_mut().unwrap().push(json!({"path": row.path, "name": name}));
     }
     Ok(json(json!({
         "repositories": repos.into_iter().map(|(_, m)| Value::Object(m)).collect::<Vec<_>>(),

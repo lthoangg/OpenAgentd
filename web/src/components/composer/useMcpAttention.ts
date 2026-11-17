@@ -1,7 +1,8 @@
 /**
  * The agent's MCP servers that need the user: one waiting for sign-in, or
- * one that failed. Servers that work stay out of sight; these mark the
- * composer's "+" (where MCP lives) with a dot.
+ * one that failed, or one the project ships that waits for approval. Servers
+ * that work stay out of sight; these mark the composer's "+" (where MCP
+ * lives) with a dot.
  */
 import { useMcpServersQuery } from '@/queries/useMcpQuery'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
@@ -16,14 +17,20 @@ export interface McpAttention {
 export function useMcpAttention(workspace: string | null): McpAttention {
   const agents = useAgentsQuery(workspace, Boolean(workspace))
   const declared = agents.data?.agents?.[0]?.mcp_servers ?? []
-  const servers = useMcpServersQuery()
-  const needing = (servers.data?.servers ?? []).filter((s) => (
-    declared.includes(s.name) && s.enabled && (s.state === 'auth_required' || s.state === 'error')
+  const servers = useMcpServersQuery({ workspace })
+  const all = servers.data?.servers ?? []
+  const shadowed = (name: string) => all.some((s) => s.project?.name === name)
+  const needing = all.filter((s) => (
+    s.project
+      ? s.enabled && (s.state === 'needs_approval' || s.state === 'auth_required' || s.state === 'error')
+      : declared.includes(s.name) && !shadowed(s.name) && s.enabled && (s.state === 'auth_required' || s.state === 'error')
   ))
   if (needing.length === 0) return { names: [], summary: null }
-  const signIn = needing.some((s) => s.state === 'auth_required')
+  const label = (s: (typeof needing)[number]) => s.project?.name ?? s.name
+  const reason = (s: (typeof needing)[number]) =>
+    s.state === 'needs_approval' ? 'needs approval' : s.state === 'auth_required' ? 'needs sign-in' : 'failed to start'
   const summary = needing.length > 1
     ? `${needing.length} connectors need attention`
-    : `${needing[0].name} ${signIn ? 'needs sign-in' : 'failed to start'}`
-  return { names: needing.map((s) => s.name), summary }
+    : `${label(needing[0])} ${reason(needing[0])}`
+  return { names: needing.map(label), summary }
 }

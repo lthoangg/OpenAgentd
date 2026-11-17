@@ -288,7 +288,6 @@ fn goals_json(g: &rs::GoalSettings) -> Value {
     json!({
         "max_turns": g.max_turns(),
         "default_max_turns": rs::DEFAULT_GOAL_MAX_TURNS,
-        "token_budget": g.token_budget(),
         "allow_questions": g.allow_questions,
         "keep_going_default": g.keep_going_default,
     })
@@ -300,28 +299,21 @@ async fn get_goals() -> ApiResult<Response> {
 }
 
 /// Fields the body omits keep their stored values; `max_turns: null`
-/// restores the default and `token_budget: null` removes the budget.
+/// restores the default.
 async fn put_goals(raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
     let has = |k: &str| v.as_object().is_some_and(|o| o.contains_key(k));
     let max_turns = if has("max_turns") { Some(b.opt_int("max_turns")) } else { None };
-    let token_budget = if has("token_budget") { Some(b.opt_int("token_budget")) } else { None };
     let allow_questions = if has("allow_questions") { Some(b.bool("allow_questions", Some(false))) } else { None };
     let keep_going_default = if has("keep_going_default") { Some(b.bool("keep_going_default", Some(false))) } else { None };
-    b.finish(&["max_turns", "token_budget", "allow_questions", "keep_going_default"])?;
+    b.finish(&["max_turns", "allow_questions", "keep_going_default"])?;
     if matches!(max_turns, Some(Some(n)) if !(1..=rs::MAX_GOAL_MAX_TURNS).contains(&n)) {
         return Err(ApiError::unprocessable(format!("max_turns must be an integer from 1 to {} or null", rs::MAX_GOAL_MAX_TURNS)));
-    }
-    if matches!(token_budget, Some(Some(n)) if n < 1) {
-        return Err(ApiError::unprocessable("token_budget must be a positive integer or null"));
     }
     let mut cfg = rs::load_runtime_settings().map_err(internal)?;
     if let Some(n) = max_turns {
         cfg.goals.max_turns = n.filter(|n| *n != rs::DEFAULT_GOAL_MAX_TURNS);
-    }
-    if let Some(n) = token_budget {
-        cfg.goals.token_budget = n;
     }
     if let Some(on) = allow_questions {
         cfg.goals.allow_questions = on;
@@ -929,19 +921,12 @@ pub fn credentials_json(entry: &Value) -> Value {
     Value::Array(f.provider(id).iter().map(|c| credential_meta(entry, c, in_use.as_deref() == Some(c.id.as_str()))).collect())
 }
 
-async fn list_credentials(axum::extract::State(st): axum::extract::State<AppState>, AxPath(id): AxPath<String>) -> ApiResult<Response> {
+async fn list_credentials(AxPath(id): AxPath<String>) -> ApiResult<Response> {
     let entry = &find_or_404(&id)?;
     cred_store::load().map_err(store_err)?;
-    // v3 addition: how many sessions are pinned to each credential.
-    let pinned = appv3_db::pinned_credential_counts(&st.pool).await?;
-    let mut credentials = credentials_json(entry);
-    for c in credentials.as_array_mut().into_iter().flatten() {
-        let n = c.get("id").and_then(Value::as_str).and_then(|id| pinned.get(id)).copied().unwrap_or(0);
-        c["pinned_sessions"] = json!(n);
-    }
     Ok(json(json!({
         "provider": id,
-        "credentials": credentials,
+        "credentials": credentials_json(entry),
         "env_pinned": appv3_providers::pool::env_pinned(&id),
         "supports_multiple_credentials": prov::supports_multiple_credentials(&id),
         "supports_credential_usage": prov::supports_credential_usage(&id),

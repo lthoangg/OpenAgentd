@@ -45,6 +45,61 @@ Four orthogonal ways to add capability.
     MCP spec describes. Plugin MCP servers sign in the same way. A server that
     does not ask connects as before, one with its own `Authorization` header
     keeps using it, and a background start never registers a client.
+  - **Connector gallery** `[v3.58.0]` — Settings → Connectors opens on ready-made
+    connectors. Free ones (Context7, DeepWiki, Microsoft Learn, AWS Knowledge,
+    Cloudflare Docs, Exa, Hugging Face) turn on with a switch. Account ones
+    (Notion, Linear, Atlassian, Sentry, Stripe, …) turn on and sign in with one
+    **Connect**. GitHub takes a pasted token, which is stored as a secret. The
+    list is a signed file on openagentd.dev, so new connectors appear without an
+    update. The server keeps the last good list and falls back to the copy in the
+    app (`OPENAGENTD_GALLERY=off` uses only that copy; `OPENAGENTD_GALLERY_URL`
+    and `OPENAGENTD_GALLERY_KEY` point at an organization's own list). Turning one
+    on writes an ordinary `mcp.json` entry. A connector already added by hand
+    shows as on, and one on an old address of a connector is offered **Update**.
+    The agent's `mcp` `servers` action lists the gallery's connectors too.
+  - **Sign in from any device** `[v3.58.0]` — connector sign-in opens on the device
+    in hand: a browser on another computer, the phone app, or through a proxy or
+    the relay. The code comes back through
+    `account.openagentd.dev/oauth/callback`, which asks the user to confirm, then
+    passes it to the app (`openagentd://mcp-oauth`) or to `oauth-done.html`
+    beside the web app. A browser on the server's machine still uses localhost.
+    While a sign-in waits, the card has **Cancel** and **Paste address** (for a
+    page that could not come back by itself), and the phone shows **Sign in**
+    under a tool call that needs it. **Sign out** forgets a sign-in and keeps the
+    connector, and removing a connector forgets its sign-in too.
+    `OPENAGENTD_MCP_OAUTH_CALLBACK=self` sends codes straight to an HTTPS
+    deployment's own `oauth-done.html`.
+  - **Per-project servers in `<project>/.agents/mcp.json`** `[v3.58.0]` — a repository
+    can commit `<project>/.agents/mcp.json` (the same entries as `mcp.json`,
+    under `servers` or `mcpServers`) and everyone who opens it gets those
+    servers, in that workspace only. Nothing runs until the user approves
+    each server: when the agent searches or calls one, a confirm card shows
+    the command or URL and the `${NAME}` variables it reads, and the
+    composer's **+** menu and Settings → Connectors list it **from this
+    project** with **Needs approval · Allow** (then **Revoke**). Approvals
+    live in the user's config dir (`mcp-project-approvals.json`), never in
+    the repository, and are tied to the exact entry: a changed entry asks
+    again, and deleting the file stops its servers. In a scheduled or goal
+    turn nobody is there to approve, so an unapproved server never starts.
+    Inside its workspace a project's server takes the place of a global one
+    with the same name; a stdio server runs in the project folder, and each
+    workspace keeps its own process, sign-in and session. Edits to the file
+    apply at the agent's next `mcp` call. The card also names the `${NAME}`s
+    in an `oauth` block, and a project's server reads them from the
+    environment and named secrets only, never from a model provider's stored
+    key. Use `${NAME}` rather than a literal secret in a committed file.
+  - **MCP secrets live in `credentials.yaml`** `[v3.58.0]` — `mcp.json` holds
+    only configuration. Saving a server from Settings → Connectors, the
+    agent's `mcp` tool or the gallery moves each literal `env`, header and
+    OAuth client value into `credentials.yaml` (`<SERVER>_MCP_ENV_<KEY>`,
+    `<SERVER>_MCP_HEADER_<NAME>`, `<SERVER>_MCP_CLIENT_ID`/`_SECRET`) and
+    writes a `${NAME}` reference in its place; a value with a reference in
+    it is kept as written. An older file, or one edited by hand, is moved the
+    same way at the next start. Settings and the API show stored values as
+    `********` (stdio `env` too), sending `********` back keeps them, and
+    removing a key or a server deletes its stored secret. `mcp.json` is
+    owner-only, the agent's file and shell tools cannot open it, and log
+    lines show server URLs without their query string.
   - **Legacy HTTP+SSE servers** `[v3.45.0]` — `mcp.json` takes `type` as well
     as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
     `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,

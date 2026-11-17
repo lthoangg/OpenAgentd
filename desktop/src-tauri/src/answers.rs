@@ -7,6 +7,11 @@
 //! calls the app window makes, so the Rust process keeps the credential and
 //! the overlays never see it.
 //!
+//! It also tells the server a session was seen (`POST /api/agent/{id}/seen`)
+//! when the user opens or dismisses its notification in the pet, the island
+//! or the tray, so the phone push the server holds is dropped
+//! (`appv3/crates/api/src/cloud/letters.rs`).
+//!
 //! Only the simplest shape is answered in place: one plain `ask_user`
 //! question, one choice, a few short options. Anything that needs typing,
 //! several answers, or a closer look (a plan review, a change to apply) is
@@ -140,6 +145,13 @@ fn answer_url(base: &str, session_id: &str, question_id: &str) -> Result<String>
     Ok(format!("{}/{}/answer", question_url(base, session_id)?, api_id(question_id)))
 }
 
+fn seen_url(base: &str, session_id: &str) -> Result<String> {
+    if !is_id(session_id) {
+        bail!("Not a session id.");
+    }
+    Ok(format!("{}/api/agent/{}/seen", base.trim_end_matches('/'), api_id(session_id)))
+}
+
 /// Whether `answers` is something to post: a few groups of short, non-empty answers.
 pub fn check_answers(answers: &[Vec<String>]) -> Result<()> {
     if answers.is_empty() || answers.len() > MAX_ANSWER_GROUPS {
@@ -248,6 +260,27 @@ pub async fn submit(
     submit_at(client_for(server), &base, token.as_deref(), session_id, question_id, answers).await
 }
 
+/// Tell the server at `base` that `session_id` was seen. A server before
+/// v3.58.0 has no such route (404): that is not an error, its phone only
+/// rings as it always did.
+pub async fn report_seen_at(client: &reqwest::Client, base: &str, token: Option<&str>, session_id: &str) -> Result<()> {
+    let mut request = client.post(seen_url(base, session_id)?).timeout(REQUEST_TIMEOUT);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let status = request.send().await.context("report the session seen")?.status().as_u16();
+    match status {
+        200..=299 | 404 => Ok(()),
+        _ => bail!("The server refused the seen report (HTTP {status})."),
+    }
+}
+
+/// [`report_seen_at`] on `server`, with its saved credential.
+pub async fn report_seen(app: &AppHandle, server: &ServerId, session_id: &str) -> Result<()> {
+    let (base, token) = crate::servers::endpoint(app, server).await.context("The server is not available.")?;
+    report_seen_at(client_for(server), &base, token.as_deref(), session_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,6 +368,49 @@ mod tests {
         );
         assert!(question_url("http://x", "../x").is_err());
         assert!(answer_url("http://x", SESSION, "../x").is_err());
+        assert_eq!(seen_url("http://127.0.0.1:4082/", "5f0c1d2e3a4b4c5d8e6f7a8b9c0d1e2f").unwrap(), format!("http://127.0.0.1:4082/api/agent/{SESSION}/seen"));
+        assert!(seen_url("http://x", "../x").is_err());
+    }
+
+    /// A one-request HTTP server on loopback answering `status`; the
+    /// request's head comes back through the handle.
+    fn fake_server(status: u16) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut head = Vec::new();
+            let mut byte = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap() == 1 {
+                head.push(byte[0]);
+            }
+            let body = r#"{"status":"ok"}"#;
+            let reply = format!("HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            stream.write_all(reply.as_bytes()).unwrap();
+            String::from_utf8(head).unwrap()
+        });
+        (base, handle)
+    }
+
+    #[tokio::test]
+    async fn a_seen_report_posts_to_the_session_with_the_key() {
+        let (base, server) = fake_server(200);
+        report_seen_at(&reqwest::Client::new(), &base, Some("k3y"), SESSION).await.unwrap();
+        let head = server.join().unwrap().to_lowercase();
+        assert!(head.starts_with(&format!("post /api/agent/{SESSION}/seen http/1.1")), "{head}");
+        assert!(head.contains("authorization: bearer k3y"), "{head}");
+    }
+
+    #[tokio::test]
+    async fn an_older_server_without_the_route_is_not_an_error() {
+        let (base, server) = fake_server(404);
+        assert!(report_seen_at(&reqwest::Client::new(), &base, None, SESSION).await.is_ok());
+        assert!(!server.join().unwrap().to_lowercase().contains("authorization"));
+        let (base, server) = fake_server(500);
+        assert!(report_seen_at(&reqwest::Client::new(), &base, None, SESSION).await.is_err());
+        server.join().unwrap();
+        assert!(report_seen_at(&reqwest::Client::new(), "http://127.0.0.1:1", None, "../x").await.is_err());
     }
 
     #[test]

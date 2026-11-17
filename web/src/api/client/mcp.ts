@@ -35,7 +35,8 @@ export type ServerStatus = {
   name: string
   transport: 'stdio' | 'http' | 'sse'
   enabled: boolean
-  state: 'stopped' | 'starting' | 'ready' | 'auth_required' | 'error'
+  /** `needs_approval`: a project's server the user has not approved (as its entry is now); it does not run. */
+  state: 'stopped' | 'starting' | 'ready' | 'auth_required' | 'error' | 'needs_approval'
   error: string | null
   tool_names: string[]
   started_at: string | null
@@ -47,6 +48,21 @@ export type ServerStatus = {
    * server is read-only here: the bundle owns its config.
    */
   plugin?: string | null
+  /**
+   * The project that ships this server in its `.agents/mcp.json`: its
+   * workspace, and its name there (`name` is then its key,
+   * `<name>@<workspace hash>`). Read-only here: the project's file owns it,
+   * and it runs once approved.
+   */
+  project?: { workspace: string; name: string } | null
+  /** It holds a sign-in from its service (what Sign out forgets). */
+  signed_in?: boolean
+}
+
+export type McpServerList = {
+  servers: ServerStatus[]
+  /** Why the workspace's `.agents/mcp.json` could not be used (with `workspace` only). */
+  project_error?: string | null
 }
 
 export type CreateServerRequest = { name: string; server: ServerBody }
@@ -61,9 +77,25 @@ export type MCPAppToolCallRequest = {
 }
 export type MCPAppToolCallResponse = { result: unknown }
 
-export async function listMcpServers(): Promise<{ servers: ServerStatus[] }> {
-  const res = await fetch(`${apiBaseUrl()}/mcp/servers`)
+/** The user's and plugins' servers; with `workspace`, its project's servers too. */
+export async function listMcpServers(workspace?: string | null): Promise<McpServerList> {
+  const query = workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers${query}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listMcpServers')
+  return res.json()
+}
+
+/** Approve a project's server (by its key) as its entry is now, and start it. */
+export async function approveMcpServer(name: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/approve`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/approve`)
+  return res.json()
+}
+
+/** Withdraw the approval of a project's server (by its key): it stops. */
+export async function revokeMcpServer(name: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/revoke`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/revoke`)
   return res.json()
 }
 
@@ -108,6 +140,112 @@ export async function restartMcpServer(name: string): Promise<ServerStatus> {
 export async function connectMcpOAuth(name: string): Promise<ServerStatus> {
   const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/connect`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/connect`)
+  return res.json()
+}
+
+/**
+ * A sign-in the client drives. `sign_in`: open `auth_url` for the user; the
+ * code comes back to the server's localhost listener (`loopback`, a browser
+ * on the server's machine) or through the relay page to `return_to`
+ * (`relay`). `done`: the server connected without asking.
+ */
+export type McpSignInStart =
+  | { status: 'sign_in'; auth_url: string; return: 'loopback' | 'relay' }
+  | { status: 'done'; server: ServerStatus }
+
+export type McpSignInStatus =
+  | { status: 'none' | 'waiting' }
+  | { status: 'done'; server: ServerStatus }
+  | { status: 'failed'; error: string }
+
+export async function startMcpSignIn(name: string, returnTo: string): Promise<McpSignInStart> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ return_to: returnTo }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/start`)
+  return res.json()
+}
+
+export async function getMcpSignInStatus(name: string): Promise<McpSignInStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/status`)
+  if (!res.ok) await parseDetailOrThrow(res, `GET /mcp/servers/${name}/oauth/status`)
+  return res.json()
+}
+
+/** The code the relay page or a pasted address brought back. */
+export type McpSignInCode = { code: string; state: string; iss?: string | null } | { url: string }
+
+export async function finishMcpSignIn(body: McpSignInCode): Promise<{ status: 'done' | 'waiting'; name: string; server?: ServerStatus }> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/oauth/finish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /mcp/oauth/finish')
+  return res.json()
+}
+
+export async function cancelMcpSignIn(name: string): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/cancel`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/cancel`)
+}
+
+/** Forget the server's sign-in; the connector stays. */
+export async function signOutMcpServer(name: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/sign-out`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/sign-out`)
+  return res.json()
+}
+
+/** How a gallery connector signs in: not at all, at the service, or with a pasted key. */
+export type GalleryAuth =
+  | 'none'
+  | 'oauth'
+  | { header: string; template: string; key_url?: string | null; key_label?: string | null }
+
+export interface GalleryEntry {
+  type: 'connector'
+  id: string
+  name: string
+  description: string
+  category: string
+  url: string
+  auth: GalleryAuth
+  /** The connector already added for this address, if any. */
+  server: ServerStatus | null
+  /** A connector still on an old address of this one: offer the update. */
+  update_for: string | null
+}
+
+export interface ConnectorGallery {
+  /** `cloud`: fetched now; `cache`: an earlier fetch; `bundled`: the app's own copy. */
+  source: 'cloud' | 'cache' | 'bundled'
+  entries: GalleryEntry[]
+}
+
+export async function getConnectorGallery(refresh = false): Promise<ConnectorGallery> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/gallery${refresh ? '?refresh=1' : ''}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /mcp/gallery')
+  return res.json()
+}
+
+/** Turn a gallery connector on: adds it (with `key` for a key connector) or switches the existing one on. */
+export async function enableGalleryConnector(id: string, key?: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/gallery/${encodeURIComponent(id)}/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(key ? { key } : {}),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/gallery/${id}/enable`)
+  return res.json()
+}
+
+/** Move the connector on an old address of `id` to its new one. */
+export async function updateGalleryConnector(id: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/gallery/${encodeURIComponent(id)}/update`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/gallery/${id}/update`)
   return res.json()
 }
 

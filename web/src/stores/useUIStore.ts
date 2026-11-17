@@ -59,6 +59,16 @@ interface UIStore {
   requestSchedulerOpen: (taskId: string | null) => void
   /** Clear a pending scheduler request; true when there was one. */
   takeSchedulerOpenRequest: () => boolean
+  /**
+   * Text a deep link (``openagentd://new?prompt=…``) asked to put in a new
+   * draft's composer in ``workspace``. Kept until that draft's composer
+   * takes it, because on a cold start the link arrives before it mounts.
+   * Never sent: the user still presses Send.
+   */
+  composerPrefill: { workspace: string; text: string } | null
+  requestComposerPrefill: (workspace: string, text: string) => void
+  /** Take the pending prefill for ``workspace``'s draft, once. */
+  takeComposerPrefill: (workspace: string) => string | null
   toggleScheduler: () => void
   toggleRunPicker: () => void
   /** Open the run picker focused on ``focus`` (stays open when it already is). */
@@ -116,6 +126,16 @@ export const useUIStore = create<UIStore>()(
       if (!get().schedulerOpenPending) return false
       set((state) => { state.schedulerOpenPending = false })
       return true
+    },
+    composerPrefill: null,
+    requestComposerPrefill: (workspace, text) => set((state) => {
+      state.composerPrefill = { workspace, text }
+    }),
+    takeComposerPrefill: (workspace) => {
+      const pending = get().composerPrefill
+      if (!pending || pending.workspace !== workspace) return null
+      set((state) => { state.composerPrefill = null })
+      return pending.text
     },
     toggleScheduler: () => {
       set((state) => {

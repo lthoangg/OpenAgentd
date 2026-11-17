@@ -141,7 +141,10 @@ export const queryKeys = {
   mcp: {
     all: () => ['mcp'] as const,
     list: () => ['mcp', 'list'] as const,
+    /** The list with a workspace's project servers (under `list`, so its invalidations cover it). */
+    workspaceList: (workspace: string) => ['mcp', 'list', 'workspace', workspace] as const,
     detail: (name: string) => ['mcp', 'detail', name] as const,
+    gallery: () => ['mcp', 'gallery'] as const,
   },
   settings: {
     deniedPaths: () => ['settings', 'denied-paths'] as const,

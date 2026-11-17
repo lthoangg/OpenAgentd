@@ -287,3 +287,58 @@ describe('ConnectorDetailPage — a server from a plugin', () => {
     expect(screen.getByText('.openagentd/config/mcp.json')).toBeTruthy()
   })
 })
+
+describe('ConnectorDetailPage — a server from the project', () => {
+  const KEY = 'db@0123456789'
+  const PROJECT_SERVER = {
+    name: KEY,
+    transport: 'stdio',
+    enabled: true,
+    state: 'needs_approval',
+    error: null,
+    tool_names: [],
+    started_at: null,
+    project: { workspace: '/repo/app', name: 'db' },
+    config: { transport: 'stdio', command: './db-mcp', args: ['--ro'], env: {}, enabled: true },
+  }
+  let posted: string[] = []
+
+  function serve(body: Record<string, unknown> = PROJECT_SERVER) {
+    posted = []
+    server.use(
+      http.get('http://localhost/api/mcp/servers/:name', () => HttpResponse.json(body)),
+      http.post('http://localhost/api/mcp/servers/:name/:action', ({ request }) => {
+        posted.push(new URL(request.url).pathname)
+        return HttpResponse.json(body)
+      }),
+    )
+  }
+
+  it('names the project file it comes from and has no form, Save or Delete', async () => {
+    serve()
+    renderPage(KEY)
+
+    expect(await screen.findByText('from this project')).toBeTruthy()
+    expect(screen.getByText(/Defined in \/repo\/app\/\.agents\/mcp\.json/)).toBeTruthy()
+    expect(screen.getByText('./db-mcp --ro')).toBeTruthy()
+    expect(screen.queryByPlaceholderText('npx')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^save/i })).toBeNull()
+  })
+
+  it('approves it with Allow', async () => {
+    serve()
+    renderPage(KEY)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow' }))
+    await waitFor(() => expect(posted).toEqual([`/api/mcp/servers/${encodeURIComponent(KEY)}/approve`]))
+  })
+
+  it('revokes it once approved', async () => {
+    serve({ ...PROJECT_SERVER, state: 'ready' })
+    renderPage(KEY)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }))
+    await waitFor(() => expect(posted).toEqual([`/api/mcp/servers/${encodeURIComponent(KEY)}/revoke`]))
+  })
+})

@@ -22,9 +22,16 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     the picker and the turn footer, so the part that tells models apart
     stays. In Plan mode the placeholder says the agent reads and proposes
     without editing files.
-  - The run chip opens one picker for model, thinking and account: search
-    models (recent ones first), step thinking with ←/→, pick an account with
-    its state and quota left, or **Reset to default** / **Make default**.
+  - The run chip opens one picker for model, thinking and account. Since
+    `[v3.58.0]` it has two pages: search and pick a model, and the picker
+    moves to that model's page, with its thinking levels as rows and its
+    provider's accounts (state and quota left) under them. Enter or → opens
+    the page, ↑/↓ and Enter pick a level and close, ← or Backspace go back
+    with the search as it was; a phone does the same with taps. `/think`
+    opens on the running model's page, and a model with no levels and one
+    account is picked at once. **Reset to default** and **Make default** are
+    gone: picking the agent's own model and level saves no override, and an
+    agent's default is set in Settings → Agents.
     Every pick is saved on the session at once and survives a reload; if the
     save fails, a toast says so and offers **Retry**. Open it
     with `⌘.`/`Ctrl+.` (it was `⌘⇧A`/`Ctrl+Shift+A`), `/model`, `/think`, or
@@ -97,7 +104,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   model."), and goes back to the locked account once it resets. A turn waits
   only when every account is limited, for the first one to reset. The
   **Auto** row is gone: with no lock, the picker checks the account the
-  provider uses now, and **Reset to default** removes a lock. The run chip
+  provider uses now. The run chip
   always names the account in use, and the picker tags the account a locked
   session moved to with **in use**. Each account row shows every limit of the
   account in % used, as Settings → Models does (`5h 12% · 7d 64% · $84.50

@@ -83,7 +83,7 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     let capped = cut_off_session(&pool, &ws, None, None).await;
     appv3_db::mark_turn_in_flight(&pool, &capped, false).await.unwrap();
     appv3_db::count_restart_resume(&pool, &capped).await.unwrap();
-    appv3_db::insert_session_goal(&pool, &capped, "ship it", 5, None).await.unwrap();
+    appv3_db::insert_session_goal(&pool, &capped, "ship it", 5).await.unwrap();
     // Parked on a question: not running, its answer resumes it.
     let parked = cut_off_session(&pool, &ws, None, None).await;
     appv3_db::mark_turn_in_flight(&pool, &parked, false).await.unwrap();
@@ -98,7 +98,7 @@ async fn each_kind_of_cut_off_turn_gets_its_own_outcome() {
     let between = cut_off_session(&pool, &ws, None, None).await;
     appv3_db::save_message(&pool, &between, NewMessage::tool("c1", "shell", "ok")).await.unwrap();
     appv3_db::save_message(&pool, &between, NewMessage::assistant(Some("Step one done.".into()))).await.unwrap();
-    appv3_db::insert_session_goal(&pool, &between, "finish it", 2, None).await.unwrap();
+    appv3_db::insert_session_goal(&pool, &between, "finish it", 2).await.unwrap();
     // Marked, but its turn had answered: an older build could leave such a
     // mark behind. It is not run again.
     let answered = cut_off_session(&pool, &ws, None, None).await;

@@ -7,9 +7,9 @@ export default async function script({ page, expect, step, newSessionInDemo, sen
   const row = (state) => page.getByRole("button", { name: `${state} script details` })
   const calls = page.getByRole("list", { name: "Nested tool calls" }).getByRole("listitem")
   // Simple detail (what an instance with no sessions starts in) folds a
-  // turn's work behind one line, where a script counts as "other"; Full
+  // turn's work behind one line, where a script counts as "1 script"; Full
   // shows the row at once.
-  const folded = page.getByRole("button", { name: "1 other", exact: true })
+  const folded = page.getByRole("button", { name: "1 script", exact: true })
   const unfold = async () => {
     await row("Expand").or(folded).first().waitFor()
     if (await folded.isVisible()) await folded.click()

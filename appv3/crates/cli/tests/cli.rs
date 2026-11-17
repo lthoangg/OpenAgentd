@@ -353,6 +353,55 @@ fn cleanup_without_a_database_skips_and_creates_nothing() {
     assert!(!sb.path("data/openagentd.db").exists());
 }
 
+/// Old managed worktrees go through git (`git worktree list` and the sidebar
+/// stop listing them); one holding uncommitted work is kept.
+#[test]
+fn cleanup_removes_old_worktrees_through_git_and_keeps_work() {
+    let sb = Sandbox::new();
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let o = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).to_string()
+    };
+    let app = sb.path("app");
+    std::fs::create_dir_all(&app).unwrap();
+    git(&app, &["init", "-q", "-b", "main"]);
+    for (k, v) in [("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false")] {
+        git(&app, &["config", k, v]);
+    }
+    std::fs::write(app.join("a.txt"), "a\n").unwrap();
+    git(&app, &["add", "."]);
+    git(&app, &["commit", "-qm", "init"]);
+    let app = appv3_db::resolve_path(&app.display().to_string());
+    let app = std::path::Path::new(&app);
+    // Where OpenAgentd puts this repository's worktrees with the data dir set.
+    let root = sb.path("data/worktrees").join(appv3_agent::worktrees::repo_folder(app));
+    let (old, wip) = (root.join("old"), root.join("wip"));
+    git(app, &["worktree", "add", "-q", "-b", "oad/old", old.to_str().unwrap()]);
+    git(app, &["worktree", "add", "-q", "-b", "oad/wip", wip.to_str().unwrap()]);
+    std::fs::write(wip.join("notes.txt"), "unsaved\n").unwrap();
+    let old_path = appv3_db::resolve_path(&old.display().to_string());
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let pool = appv3_db::create_pool(sb.path("data/openagentd.db")).await.unwrap();
+        appv3_db::upsert_coding_workspace(&pool, &old_path, "worktree", Some(&app.display().to_string()), None, true, false).await.unwrap();
+        pool.close().await;
+    });
+
+    let o = sb.run(&["cleanup", "--apply", "--older-than-days", "0"]);
+    assert_eq!(code(&o), 0, "{}\n{}", stdout(&o), stderr(&o));
+    assert!(!old.exists(), "the old worktree is removed: {}", stdout(&o));
+    assert!(wip.is_dir(), "the one with uncommitted work stays");
+    let listed = git(app, &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("/old\n") && listed.contains("/wip\n"), "git no longer lists it: {listed}");
+    assert!(!git(app, &["branch", "--list"]).contains("oad/old"), "its merged branch goes too");
+    rt.block_on(async {
+        let pool = appv3_db::create_pool(sb.path("data/openagentd.db")).await.unwrap();
+        let row = appv3_db::get_workspace_by_path(&pool, &old_path).await.unwrap().unwrap();
+        assert!(row.deleted_at.is_some(), "the sidebar row is marked removed");
+    });
+}
+
 #[test]
 fn transfer_round_trip_redacts_secrets() {
     let sb = Sandbox::new();

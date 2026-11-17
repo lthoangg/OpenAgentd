@@ -173,7 +173,7 @@ const activeGoal: SessionGoal = {
   pause_reason: null,
   detail: null,
   max_turns: 10,
-  token_budget: null,
+
   turns_used: 1,
   tokens_used: 100,
   active_seconds: 30,

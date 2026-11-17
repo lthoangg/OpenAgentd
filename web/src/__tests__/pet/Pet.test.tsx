@@ -268,14 +268,15 @@ describe('Pet', () => {
     expect(calls).toContainEqual(['pet_dismiss', { notificationIds: ['n1'] }])
   })
 
-  it('only hides a dismissed question: it still waits on you elsewhere', async () => {
+  // The shell reports it seen (no phone ring) but never reads a question away.
+  it('only hides a dismissed question and tells the shell it was seen', async () => {
     await mount()
     await waitFor(() => expect(petEl()).toBeInTheDocument())
     emit('pet-state', { ...view, status: { running: 0, needsInput: 1 } })
     emit('pet-notification', question({ body: 'Keep v1?' }))
     fireEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(screen.queryByText('Keep v1?')).toBeNull()
-    expect(calls.some(([cmd]) => cmd === 'pet_dismiss')).toBe(false)
+    expect(calls).toContainEqual(['pet_dismiss', { notificationIds: ['q1'] }])
   })
 
   // × used to throw the question away: the pet still said "!" but showed no

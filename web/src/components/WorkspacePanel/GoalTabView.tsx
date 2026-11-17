@@ -169,14 +169,11 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
   const now = baseNow && baseNow.tone === 'active' && !baseNow.note && next
     ? { ...baseNow, note: `Next task: ${next.content}` }
     : baseNow
-  // Simple detail says the numbers in words and drops the token count unless
-  // it is measured against a budget; Full shows all three, as numbers.
+  // Simple detail says the numbers in words and drops the token count, which
+  // nothing limits; Full shows all three, as numbers.
   const simple = useSimpleDetail()
   const of = simple ? ' of ' : ' / '
   const turns = goalTurnNumber(goal, session.running)
-  const tokens = goal.token_budget
-    ? `${formatGoalTokens(goal.tokens_used)}${of}${formatGoalTokens(goal.token_budget)}`
-    : formatGoalTokens(goal.tokens_used)
   const note = goalNote(goal)
   return (
     <div className="flex flex-col gap-4 text-xs" data-goal-panel={goal.status}>
@@ -197,9 +194,7 @@ export function GoalStatusPanel({ goal, session, busy, onAction, plan }: {
       )}
       <div className="flex flex-col gap-1.5">
         <StatRow label="Turns" value={`${turns}${of}${goal.max_turns}`} fraction={turns / goal.max_turns} words={simple} />
-        {(!simple || goal.token_budget) && (
-          <StatRow label="Tokens" value={tokens} fraction={goal.token_budget ? goal.tokens_used / goal.token_budget : undefined} words={simple} />
-        )}
+        {!simple && <StatRow label="Tokens" value={formatGoalTokens(goal.tokens_used)} words={simple} />}
         <StatRow label="Time" value={simple ? formatDurationWords(goal.active_seconds * 1000) : formatGoalDuration(goal.active_seconds)} words={simple} />
       </div>
       {note && (

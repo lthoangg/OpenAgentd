@@ -17,10 +17,11 @@
  *     / ``undo:restore-draft`` custom events that repopulate the composer
  *     from the queued-message and undo affordances elsewhere in the tree.
  */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { useNavigate } from '@tanstack/react-router'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { workspaceLabel } from '@/utils/workspace'
 import { draftComposerKey, startNewSession } from '@/lib/new-session'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
@@ -74,6 +75,8 @@ export interface UseSessionBootstrapResult {
   handleNewSession: () => void
   handleDraftValueChange: (value: string) => void
   handleAddFileComment: (path: string, startLine: number, endLine: number) => void
+  /** The composer mounted (its ref is set): a waiting link prompt can go in. */
+  handleComposerMount: () => void
 }
 
 export function useSessionBootstrap({
@@ -350,6 +353,21 @@ export function useSessionBootstrap({
     }
     inputRef.current?.setValue(composerDrafts.get(draftComposerKey(draftWorkspace))?.value ?? '')
   }, [draftWorkspace, inputRef])
+  // ``openagentd://new?prompt=…``: once this folder's draft is on screen
+  // (after the effect above restored its text), add the link's text as its
+  // own paragraph. Only filled in, never sent. On a cold start the composer
+  // mounts after the folder is known, so wait for it rather than lose the text.
+  const composerPrefill = useUIStore((s) => s.composerPrefill)
+  const [composerMounts, setComposerMounts] = useState(0)
+  const handleComposerMount = useCallback(() => setComposerMounts((n) => n + 1), [])
+  useEffect(() => {
+    if (!draftWorkspace || composerPrefill?.workspace !== draftWorkspace) return
+    if (!inputRef.current) return
+    const text = useUIStore.getState().takeComposerPrefill(draftWorkspace)
+    if (!text) return
+    inputRef.current?.appendValue(text, { paragraph: true })
+    inputRef.current?.focus()
+  }, [composerPrefill, composerMounts, draftWorkspace, inputRef])
   useEffect(() => {
     if (!draftWorkspace) return
     return useAgentStore.subscribe((state, prev) => {
@@ -483,5 +501,6 @@ export function useSessionBootstrap({
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
+    handleComposerMount,
   }
 }

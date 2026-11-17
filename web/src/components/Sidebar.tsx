@@ -29,7 +29,7 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { failureToast } from '@/lib/failure-toast'
+import { failureSentence, failureToast } from '@/lib/failure-toast'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -356,8 +356,16 @@ export function Sidebar({
         )
         // An older server ignores ``workspaces``: keep only this repository's rows.
         latest = page.data.find(inList)
-      } catch {
-        latest = undefined
+      } catch (err) {
+        // Not "no sessions": a blank draft here would hide the failure
+        // (DESIGN.md → Rulebook 10).
+        useToastStore.getState().push({
+          tone: 'error',
+          title: "Couldn't open the last session",
+          description: failureSentence(err),
+          action: { label: 'Retry', onAction: () => { void openWorkspaceLatest(path, listPaths, sessionTarget) } },
+        })
+        return
       }
     }
     if (latest) handleSessionSelect(latest, latest.workspace ?? path)

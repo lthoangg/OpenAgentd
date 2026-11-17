@@ -30,4 +30,10 @@ describe("ReadView", () => {
     expect(scroller!.className).toMatch(/(^|\s)max-h-\S+/)
     expect(scroller!.className).toMatch(/(^|\s)sm:max-h-\S+/)
   })
+
+  it("shows a skeleton, not the word, while the lines load", () => {
+    render(<ReadView args={JSON.stringify({ path: "src/app.ts" })} loading />)
+    expect(screen.getByRole("status", { name: "Loading lines" }).getAttribute("data-slot")).toBe("skeleton")
+    expect(screen.queryByText("Loading…")).toBeNull()
+  })
 })

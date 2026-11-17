@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { Collapsible } from '@/components/ui/collapsible'
+import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from './CopyButton'
 import { truncateForDisplay, parsePartialJSON } from './displayText'
 
@@ -65,7 +66,7 @@ export function ReadView({ args, result, loading = false, onCollapse }: ReadView
           <span className="truncate">{path}</span>
         </button>
         <span className="shrink-0 px-1 font-sans text-meta font-normal tabular-nums text-(--color-text-muted)">
-          {loading ? 'Loading…' : label}
+          {loading ? <Skeleton role="status" aria-label="Loading lines" className="inline-block h-3 w-16 align-middle" /> : label}
         </span>
         <CopyButton label="Copy read result" text={body} />
       </div>

@@ -139,6 +139,34 @@ describe("FileLightbox", () => {
     expect(screen.getByText("Hello world text content")).toBeTruthy()
   })
 
+  it("shows skeleton lines while a text file loads, then its text", async () => {
+    const realFetch = globalThis.fetch
+    let answer: (r: Response) => void = () => {}
+    globalThis.fetch = mock(() => new Promise<Response>((resolve) => { answer = resolve })) as unknown as typeof fetch
+    try {
+      render(<FileLightbox items={[{ type: "text", src: "/files/notes.txt", name: "notes.txt" }]} index={0} isOpen={true} onClose={() => {}} />)
+      const loading = screen.getByRole("status", { name: "Loading notes.txt" })
+      expect(loading.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(1)
+      expect(screen.queryByText("Loading…")).toBeNull()
+      answer(new Response("The notes."))
+      expect(await screen.findByText("The notes.")).toBeTruthy()
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it("says when a text file could not load", async () => {
+    const realFetch = globalThis.fetch
+    globalThis.fetch = mock(async () => new Response("<html>not found</html>", { status: 404 })) as unknown as typeof fetch
+    try {
+      render(<FileLightbox items={[{ type: "text", src: "/files/gone.txt", name: "gone.txt" }]} index={0} isOpen={true} onClose={() => {}} />)
+      expect(await screen.findByText("Couldn't load gone.txt.")).toBeTruthy()
+      expect(screen.queryByText(/not found/)).toBeNull()
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
   it("renders pdf open-in-new-tab link", () => {
     render(<FileLightbox items={[{ type: "pdf", src: "doc.pdf", name: "doc.pdf" }]} index={0} isOpen={true} onClose={() => {}} />)
     expect(screen.getByText("Open in new tab")).toBeTruthy()

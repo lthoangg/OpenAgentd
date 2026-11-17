@@ -2,6 +2,7 @@
 //! Scheduled task engine plus the `schedule` tool.
 
 pub mod cron;
+mod state;
 
 use crate::broadcaster;
 use crate::service::{dispatch_user_message, Dispatch, DispatchError};
@@ -15,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
 pub use cron::{next_fire, validate_cron};
+use state::{exhausted, transition, used_up, TaskEvent, TaskState};
 
 // ── utils / schemas ──────────────────────────────────────────────────────────
 
@@ -189,16 +191,6 @@ pub enum SchedulerError {
     Other(#[from] anyhow::Error),
 }
 
-fn exhausted(t: &ScheduledTask) -> bool {
-    if t.status == "completed" {
-        return true;
-    }
-    if t.status == "failed" {
-        return false;
-    }
-    matches!(t.max_runs, Some(m) if t.run_count >= m)
-}
-
 /// Why a fire did not dispatch to a session it targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SkipReason {
@@ -253,30 +245,16 @@ impl FireOutcome {
 /// task completes, and anything else waits for its next slot. A task paused
 /// while it ran stays paused.
 fn record_run(t: &mut ScheduledTask, error: Option<String>, now: DateTime<Utc>) {
-    let was_paused = !t.enabled || t.status == "paused";
+    let was_on = TaskState::of(t).enabled();
     t.run_count += 1;
+    let failed = error.is_some();
     t.last_error = error;
-    if was_paused {
-        return;
+    let at_limit = used_up(t);
+    if was_on {
+        t.next_fire_at = if at_limit { None } else { nf(t, Some(now)) };
     }
-    let failed = t.last_error.is_some();
-    let nxt = nf(t, Some(now));
-    let at_limit = matches!(t.max_runs, Some(m) if t.run_count >= m);
-    let finite_complete = !failed && at_limit;
-    t.next_fire_at = if at_limit { None } else { nxt };
-    t.status = if failed {
-        if at_limit {
-            t.enabled = false;
-        }
-        "failed".into()
-    } else if finite_complete {
-        t.enabled = false;
-        "completed".into()
-    } else if t.schedule_type == "at" {
-        "completed".into()
-    } else {
-        "pending".into()
-    };
+    let ran = TaskEvent::Ran { failed, at_limit, one_shot: t.schedule_type == "at" };
+    let _ = transition(t, ran);
 }
 
 fn dt(s: &Option<String>) -> Option<DateTime<Utc>> {
@@ -420,13 +398,9 @@ impl TaskScheduler {
 
     /// `add`.
     pub async fn add(self: &Arc<Self>, mut t: ScheduledTask) -> anyhow::Result<ScheduledTask> {
-        if exhausted(&t) {
-            t.enabled = false;
-            t.status = "completed".into();
-            t.next_fire_at = None;
-        } else {
-            t.next_fire_at = nf(&t, None);
-        }
+        let edit = TaskEvent::Edit { enabled: t.enabled, used_up: exhausted(&t) };
+        let state = transition(&mut t, edit)?;
+        t.next_fire_at = if state == TaskState::Completed { None } else { nf(&t, None) };
         let t = db::insert_task(&self.pool, &t).await?;
         if t.enabled {
             self.start_timer(t.clone());
@@ -510,30 +484,24 @@ impl TaskScheduler {
         if body.max_runs_set {
             task.max_runs = body.max_runs;
         }
-        if let Some(e) = body.enabled {
-            task.enabled = e;
-        }
-        Ok(self.update_locked(task).await?)
+        let enabled = body.enabled.unwrap_or(task.enabled);
+        Ok(self.update_locked(task, enabled).await?)
     }
 
+    /// Save `task`'s edited fields; `task.enabled` is whether it should be on its schedule.
     pub async fn update(self: &Arc<Self>, task: ScheduledTask) -> anyhow::Result<ScheduledTask> {
         let _g = self.state_lock.lock().await;
-        self.update_locked(task).await
+        let enabled = task.enabled;
+        self.update_locked(task, enabled).await
     }
 
-    async fn update_locked(self: &Arc<Self>, mut task: ScheduledTask) -> anyhow::Result<ScheduledTask> {
+    async fn update_locked(self: &Arc<Self>, mut task: ScheduledTask, enabled: bool) -> anyhow::Result<ScheduledTask> {
         self.invalidate_fire(&task.id);
         self.cancel_timer(&task.slug);
-        if task.status == "running" {
-            task.status = if task.enabled { "pending".into() } else { "paused".into() };
-        }
-        if exhausted(&task) {
-            task.enabled = false;
-            task.status = "completed".into();
-            task.next_fire_at = None;
-        } else {
-            task.next_fire_at = nf(&task, None);
-        }
+        // The runs are used up by count only: a stored "completed" stays completed.
+        let edit = TaskEvent::Edit { enabled, used_up: used_up(&task) };
+        let state = transition(&mut task, edit)?;
+        task.next_fire_at = if state == TaskState::Completed { None } else { nf(&task, None) };
         let t = self.persist(&task).await?;
         if t.enabled {
             self.start_timer(t.clone());
@@ -558,8 +526,7 @@ impl TaskScheduler {
         let mut t = self.get_task(slug).await?.ok_or_else(|| anyhow::anyhow!("No row was found when one was required"))?;
         self.invalidate_fire(&t.id);
         self.cancel_timer(slug);
-        t.enabled = false;
-        t.status = "paused".into();
+        transition(&mut t, TaskEvent::Pause)?;
         self.persist(&t).await
     }
 
@@ -567,15 +534,9 @@ impl TaskScheduler {
         let _g = self.state_lock.lock().await;
         let mut t = self.get_task(slug).await?.ok_or_else(|| anyhow::anyhow!("No row was found when one was required"))?;
         self.invalidate_fire(&t.id);
-        t.enabled = true;
-        t.status = "pending".into();
-        if exhausted(&t) {
-            t.enabled = false;
-            t.status = "completed".into();
-            t.next_fire_at = None;
-        } else {
-            t.next_fire_at = nf(&t, None);
-        }
+        let resume = TaskEvent::Resume { used_up: used_up(&t) };
+        let state = transition(&mut t, resume)?;
+        t.next_fire_at = if state == TaskState::Completed { None } else { nf(&t, None) };
         let t = self.persist(&t).await?;
         if t.enabled {
             self.start_timer(t.clone());
@@ -587,16 +548,13 @@ impl TaskScheduler {
         let _g = self.state_lock.lock().await;
         let mut t = self.get_task(slug).await?.ok_or_else(|| anyhow::anyhow!("No row was found when one was required"))?;
         if exhausted(&t) {
-            t.enabled = false;
-            t.status = "completed".into();
+            transition(&mut t, TaskEvent::Resume { used_up: true })?;
             t.next_fire_at = None;
             self.persist(&t).await?;
             return Ok(());
         }
-        let was_disabled = !t.enabled || t.status == "paused";
-        if was_disabled {
-            t.enabled = true;
-            t.status = "pending".into();
+        if !TaskState::of(&t).enabled() {
+            transition(&mut t, TaskEvent::RunNow)?;
             t.next_fire_at = nf(&t, None);
             t = self.persist(&t).await?;
             self.start_timer(t.clone());
@@ -672,7 +630,7 @@ impl TaskScheduler {
                 _ => break,
             };
             task = fresh;
-            if !task.enabled || exhausted(&task) || task.schedule_type == "at" {
+            if !TaskState::of(&task).enabled() || exhausted(&task) || task.schedule_type == "at" {
                 break;
             }
         }
@@ -699,8 +657,8 @@ impl TaskScheduler {
     async fn reschedule_without_firing(&self, task: &ScheduledTask, v: u64) {
         let _g = self.state_lock.lock().await;
         if let Ok(Some(mut t)) = db::get_task(&self.pool, &task.id).await {
-            if t.enabled && t.status != "paused" && self.version(&task.id) == v {
-                t.status = "pending".into();
+            if TaskState::of(&t).enabled() && self.version(&task.id) == v {
+                let _ = transition(&mut t, TaskEvent::Skip);
                 t.next_fire_at = nf(&t, Some(Utc::now()));
                 let _ = self.persist(&t).await;
             }
@@ -718,8 +676,8 @@ impl TaskScheduler {
                 return;
             }
             match db::get_task(&self.pool, &task.id).await {
-                Ok(Some(mut t)) if t.enabled && !exhausted(&t) => {
-                    t.status = "running".into();
+                Ok(Some(mut t)) if TaskState::of(&t).enabled() && !exhausted(&t) => {
+                    let _ = transition(&mut t, TaskEvent::Fire);
                     t.last_run_at = Some(codec::dt_db(&now));
                     let _ = self.persist(&t).await;
                 }

@@ -182,7 +182,7 @@ impl PendingQuestion {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ScheduledTask {
     pub id: String,
     pub name: String,

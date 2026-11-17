@@ -218,7 +218,8 @@ async fn an_edit_landing_while_a_fire_waits_leaves_the_task_pending() {
     }
     let mut edited = db::get_task(&s.pool, &t.id).await.unwrap().unwrap();
     edited.prompt = "edited".into();
-    s.update_locked(edited).await.unwrap();
+    let enabled = edited.enabled;
+    s.update_locked(edited, enabled).await.unwrap();
     drop(held);
     fire.await.unwrap();
     s.stop();
@@ -282,4 +283,19 @@ fn only_a_current_fire_that_ran_or_failed_counts() {
     assert_eq!(FireOutcome::Superseded.settle(true).counted_run(), None);
     assert_eq!(FireOutcome::Skipped(SkipReason::ActiveTurn).settle(true).counted_run(), None);
     assert_eq!(FireOutcome::Skipped(SkipReason::PendingQuestion).settle(true).counted_run(), None);
+}
+
+/// A task's `enabled` and `status` columns encode one `TaskState`, written
+/// only by `state::transition` (`appv3/AGENTS.md` → State machines).
+#[test]
+fn only_the_task_machine_writes_enabled_or_status() {
+    let src = include_str!("mod.rs");
+    let writes: Vec<&str> = src
+        .lines()
+        .filter(|l| {
+            let l = l.trim_start();
+            !l.starts_with("//") && (l.contains(".status = ") || l.contains(".enabled = "))
+        })
+        .collect();
+    assert!(writes.is_empty(), "write through state::transition instead: {writes:#?}");
 }

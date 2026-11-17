@@ -12,6 +12,7 @@ import { STATUS, type StatusView } from '@/lib/status'
 
 export function mcpServerStatus(server: ServerStatus): StatusView {
   if (!server.enabled) return STATUS.off
+  if (server.state === 'needs_approval') return STATUS.needsApproval
   if (server.state === 'auth_required') return STATUS.needsSignIn
   if (server.state === 'ready') {
     const count = server.tool_names.length

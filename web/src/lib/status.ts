@@ -19,6 +19,7 @@ export interface StatusView {
 export const STATUS = {
   needsYou: { label: 'Needs you', tone: 'warning' },
   needsSignIn: { label: 'Needs sign-in', tone: 'warning' },
+  needsApproval: { label: 'Needs approval', tone: 'warning' },
   running: { label: 'Running', tone: 'info', spinner: true },
   starting: { label: 'Starting…', tone: 'info', spinner: true },
   done: { label: 'Done', tone: 'neutral' },

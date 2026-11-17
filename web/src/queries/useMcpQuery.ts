@@ -9,6 +9,8 @@ import {
   deleteMcpServer,
   restartMcpServer,
   signOutMcpServer,
+  approveMcpServer,
+  revokeMcpServer,
   getConnectorGallery,
   enableGalleryConnector,
   updateGalleryConnector,
@@ -34,14 +36,21 @@ export function mcpPollInterval(servers: ServerStatus[] | undefined): number | f
   return starting ? MCP_STARTING_POLL_MS : false
 }
 
-export function useMcpServersQuery(options?: { pollWhileStarting?: boolean }) {
+/**
+ * The user's and plugins' servers. With `workspace`, that workspace's project
+ * servers (from its `.agents/mcp.json`) come too, each with `project` set.
+ */
+export function useMcpServersQuery(options?: { pollWhileStarting?: boolean; workspace?: string | null }) {
   // Servers that push `mcp_status_changed` need no polling: the global event
   // stream invalidates this query when a server settles.
   const pushed = useServerCapability(CAPABILITY.mcpEvents)
+  const workspace = options?.workspace || null
   return useQuery({
-    queryKey: queryKeys.mcp.list(),
-    queryFn: listMcpServers,
-    staleTime: 10_000,
+    queryKey: workspace ? queryKeys.mcp.workspaceList(workspace) : queryKeys.mcp.list(),
+    queryFn: () => listMcpServers(workspace),
+    // Fetching a workspace's list syncs its `.agents/mcp.json`, which can
+    // change on disk at any time: every surface that opens fetches it fresh.
+    staleTime: workspace ? 0 : 10_000,
     // Opt-in: only surfaces that show live state want the extra traffic.
     refetchInterval: options?.pollWhileStarting && !pushed
       ? (query) => mcpPollInterval(query.state.data?.servers)
@@ -59,6 +68,24 @@ export function useMcpServerQuery(name: string | null | undefined) {
 
 function invalidateAll(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+}
+
+/** Approve a project's server (by its key) and start it. */
+export function useApproveMcpServerMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => approveMcpServer(name),
+    onSettled: () => invalidateAll(client),
+  })
+}
+
+/** Withdraw a project's server's approval (by its key): it stops. */
+export function useRevokeMcpServerMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => revokeMcpServer(name),
+    onSettled: () => invalidateAll(client),
+  })
 }
 
 export function useCreateMcpServerMutation() {

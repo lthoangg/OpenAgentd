@@ -28,6 +28,8 @@ mock.module('@/queries/useAgentsQuery', () => ({
 mock.module('@/queries/useMcpQuery', () => ({
   useMcpServersQuery: () => ({ data: { servers: [] }, isLoading: false, isError: false, refetch: async () => {} }),
   useUpdateMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useApproveMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useRevokeMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
   useConnectMcpOAuthMutation: () => ({ mutate: () => {}, isPending: false }),
 }))
 

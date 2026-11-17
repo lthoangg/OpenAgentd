@@ -69,6 +69,22 @@ Four orthogonal ways to add capability.
     connector, and removing a connector forgets its sign-in too.
     `OPENAGENTD_MCP_OAUTH_CALLBACK=self` sends codes straight to an HTTPS
     deployment's own `oauth-done.html`.
+  - **Per-project servers in `<project>/.agents/mcp.json`** `[v3.58.0]` — a repository
+    can commit `<project>/.agents/mcp.json` (the same entries as `mcp.json`,
+    under `servers` or `mcpServers`) and everyone who opens it gets those
+    servers, in that workspace only. Nothing runs until the user approves
+    each server: when the agent searches or calls one, a confirm card shows
+    the command or URL and the `${NAME}` variables it reads, and the
+    composer's **+** menu and Settings → Connectors list it **from this
+    project** with **Needs approval · Allow** (then **Revoke**). Approvals
+    live in the user's config dir (`mcp-project-approvals.json`), never in
+    the repository, and are tied to the exact entry: a changed entry asks
+    again, and deleting the file stops its servers. In a scheduled or goal
+    turn nobody is there to approve, so an unapproved server never starts.
+    Inside its workspace a project's server takes the place of a global one
+    with the same name; a stdio server runs in the project folder, and each
+    workspace keeps its own process, sign-in and session. Edits to the file
+    apply at the agent's next `mcp` call.
   - **Legacy HTTP+SSE servers** `[v3.45.0]` — `mcp.json` takes `type` as well
     as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
     `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,

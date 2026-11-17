@@ -288,6 +288,7 @@ fn servers_list_text(m: &McpManager, cfg: Result<cfgmod::McpConfig, String>) -> 
                     tool_names: vec![],
                     started_at: None,
                     plugin: None,
+                    project: None,
                 });
                 lines.push(state_line(&st));
                 lines.push(format!("  config: {}", agent_view(sc)));
@@ -312,11 +313,35 @@ fn clip(s: &str, max: usize) -> String {
     }
 }
 
+/// What `mcp(action='servers')` adds in `workspace`: its project's servers
+/// (named as the agent knows them), or why its `.agents/mcp.json` is unusable.
+/// Empty when the project ships none.
+pub fn project_servers_text(m: &McpManager, workspace: &str) -> String {
+    let mut lines = vec![];
+    if let Some(e) = m.project_error(workspace) {
+        lines.push(format!("This project's .agents/mcp.json is invalid, so none of its servers run: {e}"));
+    }
+    let servers = m.project_servers(workspace);
+    if !servers.is_empty() {
+        lines.push(
+            "Servers from this project's .agents/mcp.json (this workspace only; each runs once the user approves it, and save and remove do not apply: edit the file):".to_string(),
+        );
+        for (mut st, sc) in servers {
+            if let Some(p) = &st.project {
+                st.name = p.name.clone();
+            }
+            lines.push(state_line(&st));
+            lines.push(format!("  config: {}", agent_view(&sc)));
+        }
+    }
+    lines.join("\n")
+}
+
 fn keys(m: &IndexMap<String, String>) -> String {
     m.keys().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")
 }
 
-fn describe(cfg: &ServerConfig) -> String {
+pub(crate) fn describe(cfg: &ServerConfig) -> String {
     match cfg {
         ServerConfig::Stdio { command, args, env, .. } => {
             let line = std::iter::once(command.as_str()).chain(args.iter().map(String::as_str)).collect::<Vec<_>>().join(" ");

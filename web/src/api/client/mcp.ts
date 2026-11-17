@@ -35,7 +35,8 @@ export type ServerStatus = {
   name: string
   transport: 'stdio' | 'http' | 'sse'
   enabled: boolean
-  state: 'stopped' | 'starting' | 'ready' | 'auth_required' | 'error'
+  /** `needs_approval`: a project's server the user has not approved (as its entry is now); it does not run. */
+  state: 'stopped' | 'starting' | 'ready' | 'auth_required' | 'error' | 'needs_approval'
   error: string | null
   tool_names: string[]
   started_at: string | null
@@ -47,8 +48,21 @@ export type ServerStatus = {
    * server is read-only here: the bundle owns its config.
    */
   plugin?: string | null
+  /**
+   * The project that ships this server in its `.agents/mcp.json`: its
+   * workspace, and its name there (`name` is then its key,
+   * `<name>@<workspace hash>`). Read-only here: the project's file owns it,
+   * and it runs once approved.
+   */
+  project?: { workspace: string; name: string } | null
   /** It holds a sign-in from its service (what Sign out forgets). */
   signed_in?: boolean
+}
+
+export type McpServerList = {
+  servers: ServerStatus[]
+  /** Why the workspace's `.agents/mcp.json` could not be used (with `workspace` only). */
+  project_error?: string | null
 }
 
 export type CreateServerRequest = { name: string; server: ServerBody }
@@ -63,9 +77,25 @@ export type MCPAppToolCallRequest = {
 }
 export type MCPAppToolCallResponse = { result: unknown }
 
-export async function listMcpServers(): Promise<{ servers: ServerStatus[] }> {
-  const res = await fetch(`${apiBaseUrl()}/mcp/servers`)
+/** The user's and plugins' servers; with `workspace`, its project's servers too. */
+export async function listMcpServers(workspace?: string | null): Promise<McpServerList> {
+  const query = workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers${query}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listMcpServers')
+  return res.json()
+}
+
+/** Approve a project's server (by its key) as its entry is now, and start it. */
+export async function approveMcpServer(name: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/approve`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/approve`)
+  return res.json()
+}
+
+/** Withdraw the approval of a project's server (by its key): it stops. */
+export async function revokeMcpServer(name: string): Promise<ServerStatus> {
+  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/revoke`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/revoke`)
   return res.json()
 }
 

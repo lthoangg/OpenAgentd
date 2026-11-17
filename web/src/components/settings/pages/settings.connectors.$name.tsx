@@ -5,11 +5,13 @@ import { formatFullDateTime } from '@/utils/format'
 
 import { cancelMcpSignIn, type ServerStatus } from '@/api/client'
 import {
+  useApproveMcpServerMutation,
   useConnectMcpOAuthMutation,
   useSignOutMcpServerMutation,
   useDeleteMcpServerMutation,
   useMcpServerQuery,
   useRestartMcpServerMutation,
+  useRevokeMcpServerMutation,
   useUpdateMcpServerMutation,
 } from '@/queries'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -59,6 +61,8 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
   const restartMut = useRestartMcpServerMutation()
   const connectOAuthMut = useConnectMcpOAuthMutation()
   const signOutMut = useSignOutMcpServerMutation()
+  const approveMut = useApproveMcpServerMutation()
+  const revokeMut = useRevokeMcpServerMutation()
 
   const seedDraft = useMemo<McpServerDraft | null>(() => {
     if (serverQ.data?.name !== name) return null
@@ -144,6 +148,20 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
   // A server a plugin bundle brings belongs to the bundle: it has no form, no
   // Save and no Delete here, only a way to restart it.
   const plugin = server?.plugin ?? null
+  // A server a project ships belongs to its `.agents/mcp.json` the same way,
+  // and runs once the user allows it.
+  const project = server?.project ?? null
+  const owned = !!plugin || !!project
+  const label = project?.name ?? name
+
+  const handleApproval = async (allow: boolean) => {
+    try {
+      await (allow ? approveMut : revokeMut).mutateAsync(name)
+      push({ tone: 'success', title: allow ? `Allowed "${label}"` : `Revoked "${label}"` })
+    } catch (err) {
+      push({ tone: 'error', title: allow ? `Couldn't allow "${label}"` : `Couldn't revoke "${label}"`, description: errorMessage(err) })
+    }
+  }
   // Back goes through the same unsaved-changes check as closing Settings.
   const guardedBack = () => {
     if (dirty) setConfirmLeave(true)
@@ -154,8 +172,8 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
     <div className="flex h-full flex-col">
       <EditorSubHeader
         kind="mcp"
-        name={name}
-        path={plugin ? undefined : '.openagentd/config/mcp.json'}
+        name={label}
+        path={owned ? undefined : '.openagentd/config/mcp.json'}
         dirty={dirty}
         invalid={invalid}
         saving={updateMut.isPending}
@@ -208,7 +226,14 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 </Callout>
               )}
 
-              {plugin ? (
+              {project ? (
+                <ProjectServerConfig
+                  server={server}
+                  file={`${project.workspace}/.agents/mcp.json`}
+                  pending={approveMut.isPending || revokeMut.isPending}
+                  onApproval={(allow) => void handleApproval(allow)}
+                />
+              ) : plugin ? (
                 <PluginServerConfig server={server} plugin={plugin} />
               ) : draft ? (
                 <McpServerForm value={draft} onChange={setDraft} isNew={false} disabled={updateMut.isPending} errors={fieldErrors} />
@@ -223,12 +248,13 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
               <RestartCard
                 onRestart={handleRestart}
                 pending={restartMut.isPending}
-                enabled={server.enabled}
+                enabled={server.enabled && server.state !== 'needs_approval'}
                 dirty={dirty}
                 plugin={plugin}
+                project={!!project}
                 signOut={server.signed_in && signsInWithOAuth(server) ? { run: () => void handleSignOut(), pending: signOutMut.isPending } : null}
               />
-              {!plugin && (
+              {!owned && (
                 <EditorDeleteRow
                   thing="connector"
                   description="Removes it from mcp.json."
@@ -241,7 +267,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
         </div>
       </div>
 
-      {!plugin && (
+      {!owned && (
         <SaveBar
           draft={{
             dirty,
@@ -302,6 +328,11 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
           <Chip>{`from ${server.plugin}`}</Chip>
         </PanelRow>
       )}
+      {server.project && (
+        <PanelRow label="Source">
+          <Chip title={server.project.workspace}>from this project</Chip>
+        </PanelRow>
+      )}
       <PanelRow label="Started">
         <span className="text-xs text-(--color-text)">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : 'Not running'}</span>
       </PanelRow>
@@ -350,6 +381,49 @@ function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: 
 
 // ── Manage ───────────────────────────────────────────────────────────────────
 
+/**
+ * What a project's server runs, or connects to, as text: the project's
+ * `.agents/mcp.json` owns it. It runs once allowed, as its entry is now; a
+ * changed entry asks again.
+ */
+function ProjectServerConfig({
+  server, file, pending, onApproval,
+}: {
+  server: ServerStatus
+  file: string
+  pending: boolean
+  onApproval: (allow: boolean) => void
+}) {
+  const config = server.config
+  const waiting = server.state === 'needs_approval'
+  return (
+    <PanelSection title="Configuration" description={`Defined in ${file}. Edit that file to change it.`} flush>
+      {config?.transport === 'stdio' && (
+        <PanelRow label="Command" stack>
+          <code className={CODE_LINE}>{commandLine(config.command, config.args)}</code>
+        </PanelRow>
+      )}
+      {config && config.transport !== 'stdio' && (
+        <PanelRow label="Address" stack>
+          <code className={CODE_LINE}>{config.url}</code>
+        </PanelRow>
+      )}
+      <PanelRow
+        label="Allow it to run"
+        description={waiting
+          ? 'It runs in this workspace only, once you allow it as it is now.'
+          : 'Allowed for this workspace. Revoking stops it; it asks again before it runs.'}
+      >
+        {waiting ? (
+          <Button variant="default" size="sm" disabled={pending} onClick={() => onApproval(true)}>Allow</Button>
+        ) : (
+          <Button variant="default" size="sm" disabled={pending} onClick={() => onApproval(false)}>Revoke</Button>
+        )}
+      </PanelRow>
+    </PanelSection>
+  )
+}
+
 /** A web-address connector that signs in at its service (not one whose Authorization header carries its credentials). */
 function signsInWithOAuth(server: ServerStatus): boolean {
   const c = server.config
@@ -358,7 +432,7 @@ function signsInWithOAuth(server: ServerStatus): boolean {
 }
 
 function RestartCard({
-  onRestart, pending, enabled, dirty, plugin, signOut,
+  onRestart, pending, enabled, dirty, plugin, project = false, signOut,
 }: {
   onRestart: () => void
   pending: boolean
@@ -366,6 +440,8 @@ function RestartCard({
   dirty: boolean
   /** The bundle that owns the server, if any. */
   plugin: string | null
+  /** The project's `.agents/mcp.json` owns the server. */
+  project?: boolean
   /** Sign out of a connector that is signed in. */
   signOut: { run: () => void; pending: boolean } | null
 }) {
@@ -375,7 +451,7 @@ function RestartCard({
         label="Restart"
         description={
           !enabled
-            ? plugin ? 'Turn the plugin on in Plugins first.' : 'Turn it on and save first.'
+            ? project ? 'Allow it first, or turn it on in the project\'s file.' : plugin ? 'Turn the plugin on in Plugins first.' : 'Turn it on and save first.'
             : dirty
               ? 'Restart uses the saved settings. Save first to apply your edits.'
               : 'Reconnect to pick up changes or recover from an error.'

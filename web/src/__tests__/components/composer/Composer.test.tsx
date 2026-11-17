@@ -22,6 +22,8 @@ mock.module('@/queries/useMcpQuery', () => ({
     refetch: async () => {},
   }),
   useUpdateMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useApproveMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useRevokeMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
   useConnectMcpOAuthMutation: () => ({ mutate: () => {}, isPending: false }),
 }))
 

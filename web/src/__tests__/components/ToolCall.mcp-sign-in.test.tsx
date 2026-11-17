@@ -15,6 +15,8 @@ mock.module('@/queries/useMcpQuery', () => ({
   useMcpServersQuery: () => ({ data: { servers }, isLoading: false, isError: false, refetch: async () => {} }),
   useConnectMcpOAuthMutation: () => ({ mutate: connect, isPending: false, isError: false }),
   useUpdateMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useApproveMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
+  useRevokeMcpServerMutation: () => ({ mutate: () => {}, isPending: false }),
 }))
 
 const { ToolCall } = await import('@/components/ToolCall')

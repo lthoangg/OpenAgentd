@@ -13,6 +13,11 @@
  * always switch it back on. Globally configured servers the agent doesn't
  * declare aren't part of this session and aren't listed; the Settings link
  * covers them.
+ *
+ * With a workspace, the project's own servers (its `.agents/mcp.json`) are
+ * listed too, by their name in the project. They run only once the user
+ * approves them (Allow), so their row offers Allow or Revoke instead of a
+ * switch; one replaces the agent's server of the same name here.
  */
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -25,8 +30,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import {
+  useApproveMcpServerMutation,
   useConnectMcpOAuthMutation,
   useMcpServersQuery,
+  useRevokeMcpServerMutation,
   useUpdateMcpServerMutation,
 } from '@/queries/useMcpQuery'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -116,9 +123,57 @@ function ServerRow({
   )
 }
 
+/** A server the project ships: Allow it to run, or Revoke that. */
+function ProjectServerRow({
+  server,
+  busy,
+  onApprove,
+  onRevoke,
+  onConnect,
+}: {
+  server: ServerStatus
+  busy: boolean
+  onApprove: (server: ServerStatus) => void
+  onRevoke: (server: ServerStatus) => void
+  onConnect: (server: ServerStatus) => void
+}) {
+  const name = server.project?.name ?? server.name
+  const waiting = server.state === 'needs_approval'
+  const action = waiting ? null : rowAction(server)
+  return (
+    <li aria-label={name} aria-busy={busy || undefined} className={cn(COMPACT_ROW, 'min-h-12 flex-wrap')}>
+      {/* Room for the name before the chips wrap to the next line. */}
+      <span className={cn('min-w-24 flex-1 truncate font-mono', TEXT.label)}>{name}</span>
+      <Chip title={`From this project's .agents/mcp.json. It runs in this workspace only, once you allow it.`}>from this project</Chip>
+      <McpStatusChip server={server} />
+      {action && (
+        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => onConnect(server)}>
+          {action}
+        </Button>
+      )}
+      {waiting ? (
+        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => onApprove(server)}
+          title="Let it run in this workspace, as its entry is now">
+          Allow
+        </Button>
+      ) : (
+        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onRevoke(server)}
+          title="Stop it; it asks again before it runs">
+          Revoke
+        </Button>
+      )}
+      {server.error && server.state !== 'auth_required' && (
+        <p className="w-full text-meta leading-relaxed text-(--color-error)">{server.error}</p>
+      )}
+    </li>
+  )
+}
+
 export interface SessionMcpServersProps {
   /** MCP server names the current agent declares. */
   agentServers: string[]
+  /** The session's workspace: its project's servers are listed too. */
+  workspace?: string | null
   /** Called after a server's tool set may have changed, so the caller can
    *  refresh the agent payload that the tool names are derived from. */
   onServersChanged?: () => void
@@ -129,15 +184,21 @@ export interface SessionMcpServersProps {
   variant?: 'section' | 'menu'
 }
 
-export function SessionMcpServers({ agentServers, onServersChanged, variant = 'section' }: SessionMcpServersProps) {
+export function SessionMcpServers({ agentServers, workspace = null, onServersChanged, variant = 'section' }: SessionMcpServersProps) {
   const openSettings = useSettingsStore((s) => s.openSettings)
   // Poll here (and only here) so a server enabled from this panel visibly
   // moves starting → ready without a reopen.
-  const { data, isLoading, isError, refetch } = useMcpServersQuery({ pollWhileStarting: true })
+  const { data, isLoading, isError, refetch } = useMcpServersQuery({ pollWhileStarting: true, workspace })
   const updateServer = useUpdateMcpServerMutation()
   const connectOAuth = useConnectMcpOAuthMutation()
+  const approve = useApproveMcpServerMutation()
+  const revoke = useRevokeMcpServerMutation()
 
-  const statuses = new Map((data?.servers ?? []).map((s) => [s.name, s]))
+  const all = data?.servers ?? []
+  const projectServers = all.filter((s) => s.project)
+  const statuses = new Map(all.filter((s) => !s.project).map((s) => [s.name, s]))
+  // A project's server takes the place of the agent's server of its name.
+  const shown = agentServers.filter((name) => !projectServers.some((s) => s.project?.name === name))
 
   // Only the row being mutated goes busy — a whole-section freeze would make
   // toggling one server feel like it broke the others.
@@ -145,7 +206,11 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
     ? updateServer.variables.name
     : connectOAuth.isPending
       ? connectOAuth.variables
-      : null
+      : approve.isPending
+        ? approve.variables
+        : revoke.isPending
+          ? revoke.variables
+          : null
 
   const toggle = (server: ServerStatus) => {
     if (!server.config) return
@@ -159,7 +224,19 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
     connectOAuth.mutate(server.name, { onSettled: () => onServersChanged?.() })
   }
 
-  const hasServers = agentServers.length > 0
+  const approveServer = (server: ServerStatus) => {
+    approve.mutate(server.name, { onSettled: () => onServersChanged?.() })
+  }
+
+  const revokeServer = (server: ServerStatus) => {
+    revoke.mutate(server.name, { onSettled: () => onServersChanged?.() })
+  }
+
+  const hasServers = shown.length > 0 || projectServers.length > 0
+  // Without servers of its own the agent may still get some from the
+  // project: wait for the list before saying there are none.
+  const waitingForProject = !!workspace && isLoading && agentServers.length === 0
+  const projectError = data?.project_error ?? null
 
   const manage = (
     <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('connectors')}>
@@ -169,7 +246,14 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
 
   const body = (
     <>
-      {!hasServers ? (
+      {projectError && (
+        <div className={variant === 'menu' ? 'px-2 py-2' : 'p-3'}>
+          <Callout tone="error" title="This project's connectors can't load">
+            <span className="font-mono break-words">{projectError}</span>
+          </Callout>
+        </div>
+      )}
+      {waitingForProject ? null : !hasServers ? (
         <p className={cn(variant === 'menu' ? 'px-2 py-2' : 'px-4 py-4', TEXT.body)}>
           No connectors for this agent. Add one under Manage, then list it in the
           agent's config.
@@ -201,13 +285,23 @@ export function SessionMcpServers({ agentServers, onServersChanged, variant = 's
         </div>
       ) : (
         <ul className={variant === 'menu' ? '' : 'divide-y divide-(--color-border-subtle)'}>
-          {agentServers.map((name) => (
+          {shown.map((name) => (
             <ServerRow
               key={name}
               name={name}
               server={statuses.get(name)}
               busy={busyServer === name}
               onToggle={toggle}
+              onConnect={connect}
+            />
+          ))}
+          {projectServers.map((server) => (
+            <ProjectServerRow
+              key={server.name}
+              server={server}
+              busy={busyServer === server.name}
+              onApprove={approveServer}
+              onRevoke={revokeServer}
               onConnect={connect}
             />
           ))}

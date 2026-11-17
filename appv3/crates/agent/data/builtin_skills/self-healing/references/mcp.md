@@ -68,3 +68,19 @@ Never ask the user to paste a token into the chat, and never put one in
   `Authorization` header uses that header instead.
 
 If a server fails to start, `servers` shows the error; fix the entry with `save`.
+
+## A project's own servers (`<project>/.agents/mcp.json`)
+
+A repository can ship servers for everyone who opens it in
+`<project>/.agents/mcp.json`: the same entries as above, under `servers` (or
+`mcpServers`, so another client's `.mcp.json` can be copied in as it is). A
+stdio server runs in the project folder. Write or edit that file with `patch`
+when the user wants servers for this project only, or shared with their team;
+`save` and `remove` do not apply to it.
+
+They run only in that workspace, and only once the user approves each one as
+its entry is: searching or calling one that waits (`needs_approval` in
+`servers`) shows the user a card with what it runs or connects to and the
+`${NAME}` variables it reads. A changed entry asks again. In a scheduled or
+goal turn nobody is there to approve, so it is refused. Inside the project a
+server there takes the place of a global one with the same name.

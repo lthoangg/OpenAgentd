@@ -436,3 +436,118 @@ describe('SessionMcpServers', () => {
     expect(screen.queryByRole('listitem', { name: /figma/i })).toBeNull()
   })
 })
+
+describe('SessionMcpServers — servers from the project', () => {
+  const WS = '/repo/app'
+  const KEY = 'db@0123456789'
+
+  function projectServer(overrides: Partial<ServerStatus> = {}): ServerStatus {
+    return makeServer({
+      name: KEY,
+      state: 'needs_approval',
+      project: { workspace: WS, name: 'db' },
+      config: { transport: 'stdio', command: './db-mcp', args: ['--ro'], env: {}, enabled: true },
+      ...overrides,
+    })
+  }
+
+  function mockWorkspaceList(servers: ServerStatus[], extra: Record<string, unknown> = {}) {
+    let asked: string | null = null
+    server.use(
+      http.get('http://localhost/api/mcp/servers', ({ request }) => {
+        asked = new URL(request.url).searchParams.get('workspace')
+        return HttpResponse.json({ servers, ...extra })
+      }),
+    )
+    return () => asked
+  }
+
+  it('lists the project servers of the workspace by their own name, needing approval', async () => {
+    const asked = mockWorkspaceList([makeServer({ name: 'github' }), projectServer()])
+
+    renderSection({ agentServers: ['github'], workspace: WS })
+
+    const db = await waitFor(() => row('db'))
+    expect(asked()).toBe(WS)
+    expect(within(db).getByText('Needs approval')).toBeTruthy()
+    expect(within(db).getByText('from this project')).toBeTruthy()
+    expect(within(db).queryByText(KEY)).toBeNull()
+    expect(within(db).queryByRole('switch')).toBeNull()
+    expect(row('github')).toBeTruthy()
+  })
+
+  it('approves a project server with Allow', async () => {
+    mockWorkspaceList([projectServer()])
+    let approved: string | null = null
+    server.use(
+      http.post('http://localhost/api/mcp/servers/:name/approve', ({ params }) => {
+        approved = String(params.name)
+        return HttpResponse.json(projectServer({ state: 'ready' }))
+      }),
+    )
+
+    renderSection({ agentServers: [], workspace: WS })
+
+    await userEvent.click(await waitFor(() => within(row('db')).getByRole('button', { name: 'Allow' })))
+    await waitFor(() => expect(approved).toBe(KEY))
+  })
+
+  it('revokes an approved project server', async () => {
+    mockWorkspaceList([projectServer({ state: 'ready', tool_names: ['db_query'] })])
+    let revoked: string | null = null
+    server.use(
+      http.post('http://localhost/api/mcp/servers/:name/revoke', ({ params }) => {
+        revoked = String(params.name)
+        return HttpResponse.json(projectServer())
+      }),
+    )
+
+    renderSection({ agentServers: [], workspace: WS })
+
+    const db = await waitFor(() => row('db'))
+    expect(within(db).getByText('Ready · 1 tool')).toBeTruthy()
+    await userEvent.click(within(db).getByRole('button', { name: 'Revoke' }))
+    await waitFor(() => expect(revoked).toBe(KEY))
+  })
+
+  it('shows only the project server where it replaces a server of the same name', async () => {
+    mockWorkspaceList([makeServer({ name: 'db', tool_names: ['global_query'] }), projectServer()])
+
+    renderSection({ agentServers: ['db'], workspace: WS })
+
+    await waitFor(() => row('db'))
+    expect(screen.getAllByRole('listitem', { name: /db/i })).toHaveLength(1)
+    expect(within(row('db')).getByText('from this project')).toBeTruthy()
+  })
+
+  it('says why the project file cannot be used', async () => {
+    mockWorkspaceList([], { project_error: '/repo/app/.agents/mcp.json: Invalid JSON' })
+
+    renderSection({ agentServers: [], workspace: WS })
+
+    expect(await screen.findByText(/Invalid JSON/)).toBeTruthy()
+  })
+
+  it('asks again each time it opens, since the project file may have changed', async () => {
+    let calls = 0
+    server.use(
+      http.get('http://localhost/api/mcp/servers', () => {
+        calls += 1
+        return HttpResponse.json({ servers: [projectServer({ state: calls === 1 ? 'ready' : 'needs_approval' })] })
+      }),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const open = () => render(
+      <QueryClientProvider client={queryClient}>
+        <SessionMcpServers agentServers={[]} workspace={WS} />
+      </QueryClientProvider>,
+    )
+
+    const first = open()
+    expect(await within(await waitFor(() => row('db'))).findByText('Ready')).toBeTruthy()
+    first.unmount()
+    open()
+    expect(await within(await waitFor(() => row('db'))).findByText('Needs approval')).toBeTruthy()
+    expect(calls).toBe(2)
+  })
+})

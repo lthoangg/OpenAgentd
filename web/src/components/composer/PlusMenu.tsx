@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useIsMobile } from '@/hooks/use-mobile'
 import { lazySurface } from '@/lib/lazy-surface'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
+import { useMcpServersQuery } from '@/queries/useMcpQuery'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores/useUIStore'
 import { useMcpAttention } from './useMcpAttention'
@@ -164,6 +165,8 @@ function PlusMenuItems({
 }) {
   const agents = useAgentsQuery(workspace, Boolean(workspace))
   const agentServers = agents.data?.agents?.[0]?.mcp_servers ?? []
+  // The project's own servers (`.agents/mcp.json`) belong here too.
+  const projectServers = (useMcpServersQuery({ workspace }).data?.servers ?? []).filter((s) => s.project)
   const mcpRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (scrollToMcp) mcpRef.current?.scrollIntoView({ block: 'nearest' })
@@ -172,7 +175,7 @@ function PlusMenuItems({
   const hint = 'ml-auto font-mono text-meta text-(--color-text-muted)'
   // No connector, no section: an empty heading takes no room. A typed
   // ``/connectors`` still opens it, where it says how to add one.
-  const showConnectors = agentServers.length > 0 || scrollToMcp
+  const showConnectors = agentServers.length > 0 || projectServers.length > 0 || scrollToMcp
   // Touch: two parts (mockup J3). What to add to the message, then the
   // connectors, a page of their own inside the sheet.
   const [page, setPage] = useState<'add' | 'tools'>(scrollToMcp ? 'tools' : 'add')
@@ -180,6 +183,7 @@ function PlusMenuItems({
     <SessionMcpServers
       variant="menu"
       agentServers={agentServers}
+      workspace={workspace}
       onServersChanged={() => { void agents.refetch() }}
     />
   )

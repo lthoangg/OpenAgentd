@@ -56,7 +56,7 @@ function LspInstallLine({ request }: { request: LspInstallRequest }) {
         push({ tone: 'error', title: FAILED, description: 'The install did not finish. Retry, or check the logs of the computer the agent runs on.' })
       } else {
         push({ tone: 'success', title: 'TypeScript tools are ready', description: name })
-        dismiss()
+        dismiss(request)
       }
     } catch (cause) {
       setFailed(true)
@@ -77,7 +77,7 @@ function LspInstallLine({ request }: { request: LspInstallRequest }) {
           text={`Install TypeScript tools for ${name}?`}
           detail={`Downloaded and installed on the computer the agent runs on, not on this device.\n${request.workspace}\nLanguage server ${request.languageServerVersion}, TypeScript ${request.typeScriptVersion}`}
         >
-          <Button type="button" variant="ghost" size="xs" onClick={dismiss}>Later</Button>
+          <Button type="button" variant="ghost" size="xs" onClick={() => dismiss(request)}>Later</Button>
           <Button type="button" variant="primary" size="xs" onClick={() => { void install() }}>{failed ? 'Retry' : 'Install'}</Button>
         </NoticeLine>
       )}

@@ -100,6 +100,21 @@ it('keeps the line with Retry and says why in a toast when the install fails', a
   expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
 })
 
+it('an install that finishes after another folder asks leaves that folder\'s line', async () => {
+  let finish: () => void = () => {}
+  installGate = new Promise((resolve) => { finish = resolve })
+  render(<LspInstallPrompt />)
+  fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+  await waitFor(() => expect(installTypeScriptLsp).toHaveBeenCalledTimes(1))
+
+  const other = { workspace: '/other', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' }
+  act(() => { useLspInstallStore.getState().requestInstall(other) })
+  await act(async () => { finish() })
+
+  expect(useLspInstallStore.getState().request).toEqual(other)
+  expect(await screen.findByText('Install TypeScript tools for other?')).toBeInTheDocument()
+})
+
 it('dismisses without installing', () => {
   render(<LspInstallPrompt />)
 

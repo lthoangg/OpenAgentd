@@ -26,14 +26,14 @@ import { useServerUpdateStore } from '@/stores/useServerUpdateStore'
 beforeEach(() => {
   health = { isSuccess: true, isError: false, isPending: false }
   external = false
-  useServerUpdateStore.setState({ phase: { kind: 'idle' } })
+  useServerUpdateStore.setState({ updatePhase: { kind: 'idle' } })
 })
 afterEach(cleanup)
 
 describe('ConnectionBanner', () => {
   it('says the server is updating, with no alarm or actions, while this app updates it', () => {
     health = { isSuccess: false, isError: true, isPending: false }
-    useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
     render(<ConnectionBanner />)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('status').textContent).toContain('Updating to v3.51.0')

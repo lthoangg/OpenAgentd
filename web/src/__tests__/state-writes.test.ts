@@ -85,6 +85,28 @@ export const MACHINES: Record<string, MachineEntry> = {
     fields: ['handoffState'],
     initial: [],
   },
+  'btw answer': {
+    file: 'stores/btw-state.ts',
+    fields: ['liveAnswer'],
+    // The store starts an answer and drops it (cleared, or handed to the stored row).
+    initial: ['stores/useBtwStore.ts'],
+  },
+  'server update': {
+    file: 'stores/server-update-state.ts',
+    fields: ['updatePhase'],
+    initial: ['stores/useServerUpdateStore.ts'],
+  },
+  'lsp install prompt': {
+    file: 'stores/lsp-prompt-state.ts',
+    fields: ['lspPrompt'],
+    initial: ['stores/useLspInstallStore.ts'],
+  },
+  'join approval': {
+    file: 'hooks/approval-tap-state.ts',
+    // Held by ``useReducer(approvalTapStep)``.
+    fields: ['approvalTap'],
+    initial: [],
+  },
 }
 
 /**

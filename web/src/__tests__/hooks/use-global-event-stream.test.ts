@@ -24,6 +24,7 @@ import { GlobalEventStream, handleGlobalEvent, invalidateGlobalEventQueries, rec
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { LSP_NONE, lspRequestOf } from '@/stores/lsp-prompt-state'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { isFreshAutoTitle } from '@/lib/auto-title'
 import { runOf } from '@/stores/useAgentStore/run-state'
@@ -52,7 +53,7 @@ beforeEach(() => {
   globalEventStream.mockClear()
   globalCallbacks = null
   globalSignals = []
-  useLspInstallStore.setState({ request: null })
+  useLspInstallStore.setState({ lspPrompt: LSP_NONE })
   useUnreadStore.setState({ ids: [], failed: [] })
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })
@@ -125,7 +126,7 @@ it('replaces the global stream on a backend switch and ignores old-backend LSP e
     component: 'typescript', workspace: '/old-backend', downloads_enabled: true,
     language_server_version: '4.3.3', typescript_version: '5.8.2',
   })
-  await waitFor(() => expect(useLspInstallStore.getState().request).toBeNull())
+  await waitFor(() => expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull())
 })
 
 it('reconciles the active session whenever the global connection opens', async () => {
@@ -1001,13 +1002,13 @@ describe('handleGlobalEvent', () => {
     }
 
     expect(await handleGlobalEvent(client, 'lsp_install_required', payload, 1, () => 1)).toBe(true)
-    expect(useLspInstallStore.getState().request).toEqual({
+    expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toEqual({
       workspace: '/workspace', languageServerVersion: '4.3.3', typeScriptVersion: '5.8.2',
     })
 
     useLspInstallStore.getState().dismiss()
     expect(await handleGlobalEvent(client, 'lsp_install_required', { ...payload, downloads_enabled: false }, 1, () => 1)).toBe(false)
-    expect(useLspInstallStore.getState().request).toBeNull()
+    expect(lspRequestOf(useLspInstallStore.getState().lspPrompt)).toBeNull()
   })
 
   it('deduplicates replayed desktop notifications by notification_id', async () => {

@@ -62,7 +62,7 @@ describe('useBtwStore', () => {
     expect(calls[0]).toEqual({ url: '/api/agent/sessions/s1/btw', method: 'POST', body: { question: 'which file?' } })
     const s = state()
     expect(s.open).toBe(true)
-    expect(s.live).toEqual({ id: 'q1', question: 'which file?', text: 'config.yaml', status: 'done', error: null })
+    expect(s.liveAnswer).toEqual({ id: 'q1', question: 'which file?', text: 'config.yaml', kind: 'done' })
     expect(s.revision).toBe(1)
   })
 
@@ -77,7 +77,7 @@ describe('useBtwStore', () => {
     )
     // No final event: the connection dropped, so the stored row takes over.
     await useBtwStore.getState().ask(S, 'q')
-    expect(state().live).toBeNull()
+    expect(state().liveAnswer).toBeNull()
   })
 
   it('keeps errors and stops with their partial answer', async () => {
@@ -88,13 +88,13 @@ describe('useBtwStore', () => {
       ]).response,
     )
     await useBtwStore.getState().ask(S, 'q')
-    expect(state().live).toMatchObject({ status: 'error', error: 'rate limited', text: 'Par' })
+    expect(state().liveAnswer).toMatchObject({ kind: 'error', error: 'rate limited', text: 'Par' })
   })
 
   it('shows a refused request as an error', async () => {
     installFetch(() => new Response(JSON.stringify({ detail: 'No provider configured.' }), { status: 400 }))
     await useBtwStore.getState().ask(S, 'q')
-    expect(state().live).toMatchObject({ status: 'error', error: expect.stringContaining('No provider configured.') })
+    expect(state().liveAnswer).toMatchObject({ kind: 'error', error: expect.stringContaining('No provider configured.') })
   })
 
   it('stop asks the server and the stream ends stopped', async () => {
@@ -121,11 +121,11 @@ describe('useBtwStore', () => {
     push({ type: 'btw_start', id: 'q1', question: 'q' })
     push({ type: 'btw_delta', id: 'q1', text: 'Par' })
     await new Promise((r) => setTimeout(r, 10))
-    expect(state().live).toMatchObject({ id: 'q1', text: 'Par', status: 'streaming' })
+    expect(state().liveAnswer).toMatchObject({ id: 'q1', text: 'Par', kind: 'streaming' })
     await useBtwStore.getState().stop(S)
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/agent/sessions/s1/btw/q1/stop')).toBe(true)
     await asking
-    expect(state().live).toMatchObject({ status: 'stopped', text: 'Par', error: null })
+    expect(state().liveAnswer).toMatchObject({ kind: 'stopped', text: 'Par' })
   })
 
   it('a stop that crosses the finished answer leaves it done', async () => {
@@ -155,7 +155,7 @@ describe('useBtwStore', () => {
     await new Promise((r) => setTimeout(r, 10))
     await useBtwStore.getState().stop(S)
     await asking
-    expect(state().live).toMatchObject({ status: 'done', text: 'Whole answer.' })
+    expect(state().liveAnswer).toMatchObject({ kind: 'done', text: 'Whole answer.' })
   })
 
   it('a new ask stops the running one and only the newest writes', async () => {
@@ -174,7 +174,7 @@ describe('useBtwStore', () => {
     first.close()
     await one
     expect(calls.filter((c) => c.url.endsWith('/q1/stop'))).toHaveLength(1)
-    expect(state().live).toMatchObject({ id: 'q2', text: 'new', status: 'done' })
+    expect(state().liveAnswer).toMatchObject({ id: 'q2', text: 'new', kind: 'done' })
   })
 
   it('dismiss hides, reopen shows the newest, sessions are separate', () => {
@@ -190,10 +190,10 @@ describe('useBtwStore', () => {
 
   it('clear deletes on the server and resets the thread', async () => {
     const calls = installFetch(() => new Response(null, { status: 204 }))
-    useBtwStore.setState({ sessions: { [S]: { open: true, view: 2, live: { id: 'q', question: 'q', text: 'a', status: 'done', error: null }, revision: 3 } } })
+    useBtwStore.setState({ sessions: { [S]: { open: true, view: 2, liveAnswer: { id: 'q', question: 'q', text: 'a', kind: 'done' }, revision: 3 } } })
     await useBtwStore.getState().clear(S)
     expect(calls[0]).toMatchObject({ url: '/api/agent/sessions/s1/btw', method: 'DELETE' })
-    expect(state()).toMatchObject({ open: true, view: null, live: null, revision: 4 })
+    expect(state()).toMatchObject({ open: true, view: null, liveAnswer: null, revision: 4 })
   })
 })
 
@@ -203,18 +203,18 @@ describe('mergeLive', () => {
   })
 
   it('appends a live answer the list does not have yet', () => {
-    const out = mergeLive([row('a', 'done')], { id: null, question: 'new', text: '', status: 'streaming', error: null })
+    const out = mergeLive([row('a', 'done')], { id: null, question: 'new', text: '', kind: 'streaming' })
     expect(out.map((e) => [e.key, e.live])).toEqual([['a', false], ['live', true]])
   })
 
   it('shows the live text over a stored row that is still streaming', () => {
-    const out = mergeLive([row('a', 'streaming', '')], { id: 'a', question: 'a', text: 'typing', status: 'streaming', error: null })
+    const out = mergeLive([row('a', 'streaming', '')], { id: 'a', question: 'a', text: 'typing', kind: 'streaming' })
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ answer: 'typing', live: true })
   })
 
   it('prefers the stored row once both have ended', () => {
-    const out = mergeLive([row('a', 'done', 'final')], { id: 'a', question: 'a', text: 'final', status: 'done', error: null })
+    const out = mergeLive([row('a', 'done', 'final')], { id: 'a', question: 'a', text: 'final', kind: 'done' })
     expect(out[0]).toMatchObject({ answer: 'final', live: false })
   })
 })

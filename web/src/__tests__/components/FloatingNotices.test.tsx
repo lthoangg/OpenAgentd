@@ -20,17 +20,18 @@ beforeAll(async () => {
   await prefetchSurfaces()
 })
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { LSP_NONE, lspAsking } from '@/stores/lsp-prompt-state'
 import { useToastStore } from '@/stores/useToastStore'
 
 beforeEach(() => {
   useToastStore.setState({ toasts: [{ id: 't-1', tone: 'info', title: 'Saved', durationMs: 60_000 }] })
-  useLspInstallStore.setState({ request: { workspace: '/project', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' } })
+  useLspInstallStore.setState({ lspPrompt: lspAsking({ workspace: '/project', languageServerVersion: '1.2.3', typeScriptVersion: '5.8.2' }) })
 })
 
 afterEach(() => {
   cleanup()
   useToastStore.setState({ toasts: [] })
-  useLspInstallStore.setState({ request: null })
+  useLspInstallStore.setState({ lspPrompt: LSP_NONE })
 })
 
 it('stacks toasts, the TypeScript tools prompt and the update card in one column', () => {

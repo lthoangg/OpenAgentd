@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { countSideQuestions, listSideQuestions } from '@/api/client'
 import type { SideQuestion, SideQuestionStatus } from '@/api/types'
 import { selectBtw, useBtwStore, type BtwLive } from '@/stores/useBtwStore'
+import { btwErrorOf } from '@/stores/btw-state'
 import { queryKeys } from './keys'
 
 /** How often an answer streaming elsewhere (another tab, before a reload) is re-read. */
@@ -47,14 +48,14 @@ export function mergeLive(items: readonly SideQuestion[], live: BtwLive | null):
     id: live.id,
     question: live.question,
     answer: live.text,
-    status: live.status,
-    error: live.error,
+    status: live.kind,
+    error: btwErrorOf(live),
     live: true,
   }
   const at = live.id ? out.findIndex((e) => e.id === live.id) : -1
   if (at === -1) return [...out, fromLive]
   // The stored row wins once it has ended; until then the live text is newer.
-  if (live.status === 'streaming' || out[at].status === 'streaming') out[at] = fromLive
+  if (live.kind === 'streaming' || out[at].status === 'streaming') out[at] = fromLive
   return out
 }
 
@@ -75,7 +76,7 @@ export function useSideQuestions(
 ) {
   const state = useBtwStore(selectBtw(sessionId))
   const sid = sessionId ?? ''
-  const liveId = state.live?.status === 'streaming' ? state.live.id : null
+  const liveId = state.liveAnswer?.kind === 'streaming' ? state.liveAnswer.id : null
   const listOn = listEnabled ?? state.open
   useRefetchOnRevision(sessionId, state.revision)
 
@@ -97,11 +98,11 @@ export function useSideQuestions(
   })
 
   const items = list.data?.items
-  const exchanges = useMemo(() => mergeLive(items ?? [], state.live), [items, state.live])
+  const exchanges = useMemo(() => mergeLive(items ?? [], state.liveAnswer), [items, state.liveAnswer])
   return {
     ...state,
     exchanges,
-    isLoading: listOn && list.isLoading && !state.live,
+    isLoading: listOn && list.isLoading && !state.liveAnswer,
     error: list.error,
     /** Stored side questions (for the reopen chip), when the count is enabled. */
     total: Math.max(count.data?.total ?? 0, list.data?.total ?? 0),

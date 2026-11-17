@@ -57,7 +57,7 @@ beforeEach(() => {
     servers: [{ base_url: MAC_MINI, name: 'Mac mini' }, { base_url: NAS, name: 'Office NAS' }],
   }
   window.__OAD_API_BASE_URL__ = MAC_MINI
-  useServerUpdateStore.setState({ phase: { kind: 'idle' }, start })
+  useServerUpdateStore.setState({ updatePhase: { kind: 'idle' }, start })
   // What the running app already knows about the server in use.
   queryClient.setQueryData(queryKeys.health(), { status: 'ok', version: '3.53.1', capabilities: ['api.server_update'] })
   fetched = []

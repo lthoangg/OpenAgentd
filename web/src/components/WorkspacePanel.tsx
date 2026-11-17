@@ -415,7 +415,7 @@ export function WorkspacePanel({
   // Side questions once the session has one (the palette opens either before).
   const hasGoal = goal !== null && goal.status !== 'cleared'
   const sideQuestions = useSideQuestions(sessionId, { countEnabled: open && !mobile, listEnabled: false })
-  const hasSideQuestions = sideQuestions.total > 0 || sideQuestions.live !== null
+  const hasSideQuestions = sideQuestions.total > 0 || sideQuestions.liveAnswer !== null
   // The tab strip's "+" menu: every view and tool this dock can open, so one
   // is a tap away while other tabs are open. Tasks and side questions open
   // above the chat on phones, so only desktop lists them here; the plan and

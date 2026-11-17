@@ -52,7 +52,7 @@ export function ConnectionBanner({ retry = true }: {
   const [starting, setStarting] = useState(false)
   const label = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
   const builtin = isPhone ? null : builtinAction(backendStatus.data ?? null)
-  const updatingTo = useServerUpdateStore((s) => (s.phase.kind === 'updating' ? s.phase.target : null))
+  const updatingTo = useServerUpdateStore((s) => (s.updatePhase.kind === 'updating' ? s.updatePhase.target : null))
 
   const switchToBuiltin = async () => {
     setStarting(true)

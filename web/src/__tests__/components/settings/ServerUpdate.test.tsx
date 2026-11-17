@@ -48,7 +48,7 @@ beforeEach(() => {
   client = new QueryClient()
   data = available()
   start.mockClear()
-  useServerUpdateStore.setState({ phase: { kind: 'idle' }, start })
+  useServerUpdateStore.setState({ updatePhase: { kind: 'idle' }, start })
 })
 afterEach(cleanup)
 
@@ -78,21 +78,21 @@ describe('ServerUpdate', () => {
   })
 
   it('shows progress, then the result', () => {
-    useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
     const { unmount } = show()
     expect((screen.getByRole('button', { name: /Updating/ }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByRole('status').textContent).toContain('the app reconnects on its own')
     unmount()
 
     data = available({ current: '3.51.0', available: false })
-    useServerUpdateStore.setState({ phase: { kind: 'done', from: '3.50.0', to: '3.51.0' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'done', from: '3.50.0', to: '3.51.0' } })
     show()
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByRole('status').textContent).toBe('Updated v3.50.0 → v3.51.0.')
   })
 
   it('says what failed, where the log is, and offers another try', () => {
-    useServerUpdateStore.setState({ phase: { kind: 'failed', message: 'checksum mismatch', log: '/s/logs/upgrade.log' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'failed', message: 'checksum mismatch', log: '/s/logs/upgrade.log' } })
     show()
     expect(screen.getByRole('alert').textContent).toContain('checksum mismatch Details: /s/logs/upgrade.log on the server.')
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
@@ -129,7 +129,7 @@ describe('ServerUpdate for a desktop app’s server', () => {
     expect(screen.getByRole('status').textContent).toContain('Windows may ask to confirm it on the computer.')
     unmount()
 
-    useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
     show()
     const note = screen.getByRole('status').textContent
     expect(note).toContain('OpenAgentd on the computer downloads it and restarts')
@@ -167,7 +167,7 @@ describe('ServerUpdateOnRow', () => {
 
   it('keeps showing the run it started', () => {
     data = available({ current: '3.51.0', available: false })
-    useServerUpdateStore.setState({ phase: { kind: 'done', from: '3.50.0', to: '3.51.0' } })
+    useServerUpdateStore.setState({ updatePhase: { kind: 'done', from: '3.50.0', to: '3.51.0' } })
     showOnRow()
     expect(screen.getByRole('status').textContent).toBe('Updated v3.50.0 → v3.51.0.')
   })

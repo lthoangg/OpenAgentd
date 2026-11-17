@@ -58,6 +58,8 @@ async fn a_scheduled_run_waits_for_a_message_being_sent_and_then_skips() {
 
     let task = s.get_task(&t.slug).await.unwrap().unwrap();
     assert_eq!((task.status.as_str(), task.run_count), ("pending", 0), "the scheduled run started a turn beside the user's");
+    // The user's turn reaches the model on its own time; a second call would be the scheduled run's.
+    wait_until_async("the user's turn to call the model", async || !mock.calls.lock().unwrap().is_empty()).await;
     assert_eq!(mock.calls.lock().unwrap().len(), 1, "two turns called the model");
     service::interrupt_agent(&user, Some(&sid)).await;
 }

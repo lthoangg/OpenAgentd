@@ -92,4 +92,44 @@ describe('useLongPress (shared core)', () => {
       fakeTimers.restore()
     }
   })
+
+  it('swallows the click a held release raises on the sheet it opened, but not a new tap there', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onRow = mock(() => {})
+      render(
+        <>
+          <Surface enabled onLongPress={() => {}} />
+          <button type="button" onClick={onRow}>Create worktree…</button>
+        </>,
+      )
+      const surface = screen.getByTestId('surface')
+      fireEvent.pointerDown(surface, pressOpts())
+      fakeTimers.tick(600)
+      fireEvent.pointerUp(surface, pressOpts())
+      // The release's click lands on the row the sheet put under the finger.
+      fireEvent.click(screen.getByText('Create worktree…'))
+      expect(onRow).not.toHaveBeenCalled()
+
+      fireEvent.pointerDown(screen.getByText('Create worktree…'), pressOpts())
+      fireEvent.click(screen.getByText('Create worktree…'))
+      expect(onRow).toHaveBeenCalledTimes(1)
+    } finally {
+      fakeTimers.restore()
+    }
+  })
+
+  it('lets the click of a short tap through', () => {
+    const onRow = mock(() => {})
+    render(
+      <>
+        <Surface enabled onLongPress={() => {}} />
+        <button type="button" onClick={onRow}>Row</button>
+      </>,
+    )
+    fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
+    fireEvent.pointerUp(screen.getByTestId('surface'), pressOpts())
+    fireEvent.click(screen.getByText('Row'))
+    expect(onRow).toHaveBeenCalledTimes(1)
+  })
 })

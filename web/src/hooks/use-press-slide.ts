@@ -21,7 +21,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import { LONG_PRESS_MOVE_TOLERANCE, LONG_PRESS_MS } from '@/hooks/use-long-press'
+import { LONG_PRESS_MOVE_TOLERANCE, LONG_PRESS_MS, swallowReleaseClick } from '@/hooks/use-long-press'
 
 export interface PressSlideRelease {
   /** The finger went past the move tolerance at some point. */
@@ -147,21 +147,7 @@ export function usePressSlide(options: PressSlideOptions): { active: string | nu
     // finger. That click comes before any new press: a press is a new tap,
     // and ends the swallow.
     stopSwallow.current?.()
-    const swallow = (click: MouseEvent) => {
-      stopSwallow.current?.()
-      click.preventDefault()
-      click.stopPropagation()
-    }
-    const newPress = () => stopSwallow.current?.()
-    const timer = window.setTimeout(() => stopSwallow.current?.(), 600)
-    stopSwallow.current = () => {
-      window.clearTimeout(timer)
-      document.removeEventListener('click', swallow, true)
-      document.removeEventListener('pointerdown', newPress, true)
-      stopSwallow.current = null
-    }
-    document.addEventListener('click', swallow, true)
-    document.addEventListener('pointerdown', newPress, true)
+    stopSwallow.current = swallowReleaseClick()
     optionsRef.current.onRelease(id, info)
   }
 

@@ -74,3 +74,22 @@ fn the_card_names_the_variables_a_server_reads_never_their_values() {
     assert_eq!(referenced_variables(&cfg.servers["a"]), ["GITHUB_TOKEN", "USER"]);
     assert_eq!(referenced_variables(&cfg.servers["b"]), ["API_KEY"], "a URL is not filled in");
 }
+
+/// A sign-in's client ID and secret are filled in too, so the card names them.
+#[test]
+fn the_card_names_the_oauth_client_references() {
+    let cfg = parse_project_config(
+        &json!({"servers": {"c": {"url": "https://h/mcp", "headers": {"X-Team": "${TEAM}"}, "oauth": {"client_id": "${GH_ID}", "client_secret": "${OPENAI_API_KEY}"}}}}),
+        &ws(),
+    )
+    .unwrap();
+    assert_eq!(referenced_variables(&cfg.servers["c"]), ["TEAM", "GH_ID", "OPENAI_API_KEY"]);
+    let card = propose_approval(&ws().display().to_string(), "c", &cfg.servers["c"]);
+    assert!(card.question.contains("`OPENAI_API_KEY`"), "{}", card.question);
+}
+
+#[test]
+fn only_a_project_servers_key_has_an_at_sign() {
+    assert!(is_project_key(&runner_key("/w", "docs")));
+    assert!(!is_project_key("docs") && !is_project_key("plugin/docs"));
+}

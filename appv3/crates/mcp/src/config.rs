@@ -2,6 +2,7 @@
 
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -435,19 +436,192 @@ pub fn py_dumps_indent2_sorted(v: &Value) -> String {
     out
 }
 
+/// Write `cfg` to `path` as it is, owner-only. [`save_config`] is the save
+/// that also keeps secrets out of the file.
 pub fn save_config_to(cfg: &McpConfig, path: &Path) -> Result<(), String> {
     for name in cfg.servers.keys() {
         validate_server_name(name)?;
     }
     let servers: Map<String, Value> = cfg.servers.iter().map(|(k, v)| (k.clone(), v.dump())).collect();
     let text = py_dumps_indent2_sorted(&json!({"servers": servers})) + "\n";
-    appv3_core::secret_files::write_atomic(path, &text).map_err(|e| e.to_string())?;
+    appv3_core::secret_files::write_secret_file(path, &text).map_err(|e| e.to_string())?;
     tracing::info!("mcp_config_saved path={} servers={:?}", path.display(), cfg.servers.keys().collect::<Vec<_>>());
     Ok(())
 }
 
+/// Save the user's `mcp.json`: literal `env`, header and OAuth client values
+/// go to `credentials.yaml` and the file keeps `${NAME}` references; a
+/// stored secret the file no longer references is deleted.
 pub fn save_config(cfg: &McpConfig) -> Result<(), String> {
-    save_config_to(cfg, &config_path())
+    save_config_at(cfg, &config_path(), &appv3_core::credentials::path())
+}
+
+/// [`save_config`] with `mcp.json` at `path` and the credential store at `creds`.
+/// The secrets are written before the file that references them, so a crash
+/// in between loses nothing.
+pub fn save_config_at(cfg: &McpConfig, path: &Path, creds: &Path) -> Result<(), String> {
+    let before = load_config_from(path).ok();
+    let (cfg, store, moved) = take_literal_secrets(cfg);
+    if !store.is_empty() {
+        appv3_core::credentials::update_at(creds, |f| {
+            for (k, v) in store {
+                f.secrets.insert(k, v);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+        tracing::info!("mcp_secrets_stored entries={:?}", moved);
+    }
+    save_config_to(&cfg, path)?;
+    let now = referenced_names(&cfg);
+    let gone: Vec<String> = before.as_ref().map(referenced_names).unwrap_or_default().into_iter().filter(|n| is_stored_secret_name(n) && !now.contains(n)).collect();
+    if !gone.is_empty() {
+        appv3_core::credentials::update_at(creds, |f| {
+            for n in &gone {
+                f.secrets.shift_remove(n);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+        tracing::info!("mcp_secrets_forgotten names={:?}", gone);
+    }
+    Ok(())
+}
+
+/// Move the literal secrets out of the user's `mcp.json` (an older file, or
+/// one edited by hand) and make it owner-only. Returns the `server.key`s
+/// moved. A file that does not parse is left as it is.
+pub fn migrate_literal_secrets() -> Result<Vec<String>, String> {
+    migrate_literal_secrets_at(&config_path(), &appv3_core::credentials::path())
+}
+
+pub fn migrate_literal_secrets_at(path: &Path, creds: &Path) -> Result<Vec<String>, String> {
+    if !path.is_file() {
+        return Ok(vec![]);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path).map_err(|e| e.to_string())?.permissions().mode();
+        if mode & 0o077 != 0 {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        }
+    }
+    let cfg = load_config_from(path)?;
+    let (_, store, moved) = take_literal_secrets(&cfg);
+    if store.is_empty() {
+        return Ok(vec![]);
+    }
+    save_config_at(&cfg, path, creds)?;
+    Ok(moved)
+}
+
+// ── secrets kept in credentials.yaml ────────────────────────────────────────
+
+/// The named secret that holds `field` of server `server`: `<SERVER>_MCP_<FIELD>`.
+pub fn secret_name(server: &str, field: &str) -> String {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"[^A-Za-z0-9]+").unwrap());
+    let norm = |s: &str| re.replace_all(s, "_").trim_matches('_').to_uppercase();
+    let p = norm(server);
+    format!("{}_MCP_{}", if p.is_empty() { "MCP".to_string() } else { p }, norm(field))
+}
+
+/// Whether `name` is one OpenAgentd stores for an MCP server ([`secret_name`]).
+pub fn is_stored_secret_name(name: &str) -> bool {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"^[A-Z0-9_]+_MCP_(CLIENT_ID|CLIENT_SECRET|API_KEY|ENV_[A-Z0-9_]+|HEADER_[A-Z0-9_]+)$").unwrap()).is_match(name)
+}
+
+/// Whether `value` is exactly `${NAME}` for a secret OpenAgentd stored
+/// ([`is_stored_secret_name`]): Settings shows it masked, like the value.
+pub fn is_stored_secret_ref(value: &str) -> bool {
+    value.strip_prefix("${").and_then(|v| v.strip_suffix('}')).is_some_and(is_stored_secret_name)
+}
+
+/// A value to keep in `credentials.yaml`: not empty, not the mask, and with
+/// no `$NAME` / `${NAME}` reference (one with a reference is written by hand
+/// and kept as written).
+fn is_literal(value: &str) -> bool {
+    !value.is_empty() && value != "********" && !env_ref_re().is_match(value)
+}
+
+/// The names `cfg` references in `env`, headers and OAuth client fields.
+fn referenced_names(cfg: &McpConfig) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for sc in cfg.servers.values() {
+        for v in secret_values(sc) {
+            for c in env_ref_re().captures_iter(v) {
+                out.insert(c.get(1).or_else(|| c.get(2)).unwrap().as_str().to_string());
+            }
+        }
+    }
+    out
+}
+
+/// The values of `sc` that may hold a secret.
+pub fn secret_values(sc: &ServerConfig) -> Vec<&str> {
+    match sc {
+        ServerConfig::Stdio { env, .. } => env.values().map(String::as_str).collect(),
+        ServerConfig::Http { headers, oauth, .. } => {
+            let o = oauth.iter().flat_map(|o| [o.client_id.as_deref(), o.client_secret.as_deref()]).flatten();
+            headers.values().map(String::as_str).chain(o).collect()
+        }
+    }
+}
+
+/// `cfg` with each literal secret replaced by a `${NAME}` reference, the
+/// `(NAME, value)`s to store, and the `server.key`s moved.
+pub fn take_literal_secrets(cfg: &McpConfig) -> (McpConfig, Vec<(String, String)>, Vec<String>) {
+    let mut used = referenced_names(cfg);
+    let mut store = vec![];
+    let mut moved = vec![];
+    let mut out = cfg.clone();
+    for (server, sc) in out.servers.iter_mut() {
+        let mut take = |field: String, label: &str, value: &mut String| {
+            if !is_literal(value) {
+                return;
+            }
+            let base = secret_name(server, &field);
+            let name = (1..).map(|i| if i == 1 { base.clone() } else { format!("{base}_{i}") }).find(|n| !used.contains(n)).expect("some name is free");
+            used.insert(name.clone());
+            store.push((name.clone(), std::mem::replace(value, format!("${{{name}}}"))));
+            moved.push(format!("{server}.{label}"));
+        };
+        match sc {
+            ServerConfig::Stdio { env, .. } => {
+                for (k, v) in env.iter_mut() {
+                    take(format!("ENV_{k}"), k, v);
+                }
+            }
+            ServerConfig::Http { headers, oauth, .. } => {
+                for (k, v) in headers.iter_mut() {
+                    take(format!("HEADER_{k}"), k, v);
+                }
+                if let Some(o) = oauth {
+                    if let Some(v) = o.client_id.as_mut() {
+                        take("CLIENT_ID".into(), "oauth.client_id", v);
+                    }
+                    if let Some(v) = o.client_secret.as_mut() {
+                        take("CLIENT_SECRET".into(), "oauth.client_secret", v);
+                    }
+                }
+            }
+        }
+    }
+    (out, store, moved)
+}
+
+/// `url` for a log line: no query, fragment or user info, which may carry a key.
+pub fn url_for_log(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            u.set_query(None);
+            u.set_fragment(None);
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
+            u.to_string()
+        }
+        Err(_) => url.split(['?', '#']).next().unwrap_or_default().to_string(),
+    }
 }
 
 // ── env refs ────────────────────────────────────────────────────────────────
@@ -460,6 +634,13 @@ fn env_ref_re() -> &'static regex::Regex {
 /// `resolve_secret_refs` — expand `$VAR` / `${VAR}` from the environment,
 /// then `credentials.yaml` (named secrets, then provider values).
 pub fn resolve_secret_refs(value: &str) -> String {
+    resolve_secret_refs_with(value, true)
+}
+
+/// [`resolve_secret_refs`]; without `providers`, the stored model provider
+/// keys are not consulted (a project's server: only the environment and
+/// the named secrets its approval card listed).
+pub fn resolve_secret_refs_with(value: &str, providers: bool) -> String {
     if !env_ref_re().is_match(value) {
         return value.to_string();
     }
@@ -469,13 +650,18 @@ pub fn resolve_secret_refs(value: &str) -> String {
             if let Ok(v) = std::env::var(name) {
                 return v;
             }
-            appv3_core::credentials::stored(None, name).unwrap_or_else(|| c[0].to_string())
+            let stored = if providers { appv3_core::credentials::stored(None, name) } else { appv3_core::credentials::stored_secret(name) };
+            stored.unwrap_or_else(|| c[0].to_string())
         })
         .into_owned()
 }
 
 pub fn resolve_env_dict(env: &IndexMap<String, String>) -> IndexMap<String, String> {
-    env.iter().map(|(k, v)| (k.clone(), resolve_secret_refs(v))).collect()
+    resolve_env_dict_with(env, true)
+}
+
+pub fn resolve_env_dict_with(env: &IndexMap<String, String>, providers: bool) -> IndexMap<String, String> {
+    env.iter().map(|(k, v)| (k.clone(), resolve_secret_refs_with(v, providers))).collect()
 }
 
 #[cfg(test)]

@@ -148,9 +148,11 @@ async fn plugin_servers_run_beside_the_users_and_follow_their_plugin() {
         serde_json::to_string_pretty(&json!({"servers": {"echoes": {"command": py, "args": [script.display().to_string()], "env": {"PATH": path}}}})).unwrap() + "\n",
     )
     .unwrap();
-    let on_disk = std::fs::read_to_string(&mcp_json).unwrap();
     m.reload_from_config().await;
     m.wait_until_ready(Duration::from_secs(20)).await;
+    // Loading it moved the literal `PATH` into the credential store.
+    let on_disk = std::fs::read_to_string(&mcp_json).unwrap();
+    assert!(on_disk.contains("${ECHOES_MCP_ENV_PATH}") && !on_disk.contains(&path), "{on_disk}");
     assert_eq!(m.server_names(), ["echoes", "changelog-tools/github", "changelog-tools/docs"], "the user's first, then the plugins'");
     assert_eq!(started_at("changelog-tools/github"), gh_at, "reloading mcp.json does not drop or restart a plugin's server");
     let echoes_at = started_at("echoes");

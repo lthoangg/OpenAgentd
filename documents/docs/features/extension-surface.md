@@ -84,7 +84,22 @@ Four orthogonal ways to add capability.
     Inside its workspace a project's server takes the place of a global one
     with the same name; a stdio server runs in the project folder, and each
     workspace keeps its own process, sign-in and session. Edits to the file
-    apply at the agent's next `mcp` call.
+    apply at the agent's next `mcp` call. The card also names the `${NAME}`s
+    in an `oauth` block, and a project's server reads them from the
+    environment and named secrets only, never from a model provider's stored
+    key. Use `${NAME}` rather than a literal secret in a committed file.
+  - **MCP secrets live in `credentials.yaml`** `[v3.58.0]` — `mcp.json` holds
+    only configuration. Saving a server from Settings → Connectors, the
+    agent's `mcp` tool or the gallery moves each literal `env`, header and
+    OAuth client value into `credentials.yaml` (`<SERVER>_MCP_ENV_<KEY>`,
+    `<SERVER>_MCP_HEADER_<NAME>`, `<SERVER>_MCP_CLIENT_ID`/`_SECRET`) and
+    writes a `${NAME}` reference in its place; a value with a reference in
+    it is kept as written. An older file, or one edited by hand, is moved the
+    same way at the next start. Settings and the API show stored values as
+    `********` (stdio `env` too), sending `********` back keeps them, and
+    removing a key or a server deletes its stored secret. `mcp.json` is
+    owner-only, the agent's file and shell tools cannot open it, and log
+    lines show server URLs without their query string.
   - **Legacy HTTP+SSE servers** `[v3.45.0]` — `mcp.json` takes `type` as well
     as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
     `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,

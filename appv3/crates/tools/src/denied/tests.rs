@@ -16,7 +16,7 @@ fn the_credential_store_is_denied_to_file_and_shell_tools() {
     let tmp = tempfile::tempdir().unwrap();
     let d = DeniedPaths::new(&tmp.path().join("ws"), None);
     let cfg = &appv3_core::settings().config_dir;
-    for f in [appv3_core::credentials::FILE_NAME, ".env.migrated", appv3_core::runtime_settings::DOTENV_BACKUP] {
+    for f in [appv3_core::credentials::FILE_NAME, ".env.migrated", appv3_core::runtime_settings::DOTENV_BACKUP, "mcp.json"] {
         let p = cfg.join(f);
         assert!(d.validate_path(p.to_str().unwrap()).is_err(), "{f} writable");
         assert!(d.validate_read_path(p.to_str().unwrap()).is_err(), "{f} readable");

@@ -5,7 +5,7 @@
 //! grant over a loopback callback, token exchange and refresh.
 
 use crate::client::{transport_err, McpError};
-use crate::config::{resolve_secret_refs, OAuthConfig};
+use crate::config::{resolve_secret_refs, resolve_secret_refs_with, url_for_log, OAuthConfig};
 use appv3_providers::plugin::{b64url, pkce_challenge, random_bytes, urlencode};
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
@@ -506,6 +506,8 @@ impl Prm {
 struct FileTokenStorage {
     path: PathBuf,
     oauth: OAuthConfig,
+    /// Whether `${NAME}`s may resolve to stored model provider keys (not for a project's server).
+    providers: bool,
 }
 
 fn py_type_name(v: &Value) -> &'static str {
@@ -558,9 +560,9 @@ impl FileTokenStorage {
             return validate_client_info(raw).map(Some).map_err(|e| McpError::Transport("ValidationError", e));
         }
         let Some(raw_id) = self.oauth.client_id.as_deref().filter(|s| !s.is_empty()) else { return Ok(None) };
-        let client_id = resolve_secret_refs(raw_id);
+        let client_id = resolve_secret_refs_with(raw_id, self.providers);
         let raw_secret = self.oauth.client_secret.as_deref().filter(|s| !s.is_empty());
-        let mut secret = raw_secret.map(resolve_secret_refs);
+        let mut secret = raw_secret.map(|s| resolve_secret_refs_with(s, self.providers));
         if client_id.is_empty() || unresolved_secret_ref(raw_id, &client_id) {
             return Ok(None);
         }
@@ -795,7 +797,7 @@ pub fn build_oauth_provider(name: &str, url: &str, oauth: Option<&OAuthConfig>) 
         name: name.to_string(),
         server_url: url.to_string(),
         auth_method,
-        storage: FileTokenStorage { path: cache_path(name), oauth: oauth.clone() },
+        storage: FileTokenStorage { path: cache_path(name), oauth: oauth.clone(), providers: !crate::project::is_project_key(name) },
         callback,
         http,
         ctx: tokio::sync::Mutex::new(Ctx {
@@ -1174,7 +1176,7 @@ impl OAuthProvider {
         let url = format!("{auth_endpoint}?{}", urlencode(&pairs));
         // redirect_handler
         let Some(mode) = callback::mode(&self.name) else { return Err(required(needs_oauth_message(&self.name))) };
-        tracing::info!("mcp_oauth_authorize name={} url={}", self.name, url);
+        tracing::info!("mcp_oauth_authorize name={} url={}", self.name, url_for_log(url.as_ref()));
         let result = match &*mode {
             Mode::ServerBrowser => {
                 if let Err(e) = open_browser(&url) {

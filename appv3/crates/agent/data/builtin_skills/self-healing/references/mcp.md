@@ -14,7 +14,7 @@ Connectors and in the message box's "+" menu. Use that word with the user.
 `mcp(action='servers')` lists every server with its state (`ready`,
 `starting`, `error`, `auth_required`, disabled), its error, its tools, and its
 config. Secrets show as `********`. It works in Plan mode too. Use it instead
-of reading `mcp.json` or calling the API.
+of reading `mcp.json` or calling the API; the file tools cannot open `mcp.json`.
 
 ## Add, change or remove a server
 
@@ -60,6 +60,9 @@ Never ask the user to paste a token into the chat, and never put one in
 - A token in `env` or `headers` → Settings → Connectors → the server → edit. A
   `${NAME}` reference (for example `"Authorization": "Bearer ${GITHUB_TOKEN}"`)
   reads a variable or a named secret instead.
+- Any literal `env`, header or OAuth value is stored in `credentials.yaml` when
+  the entry is saved, and `mcp.json` keeps a `${NAME}` reference to it; both
+  show as `********` in `servers`.
 - OAuth needs nothing in `config`: an http or sse server that asks for sign-in
   goes to `auth_required`, and the user clicks **Sign in** in Settings → Connectors
   (OpenAgentd registers itself with the server). Its tools appear once they
@@ -76,7 +79,9 @@ A repository can ship servers for everyone who opens it in
 `mcpServers`, so another client's `.mcp.json` can be copied in as it is). A
 stdio server runs in the project folder. Write or edit that file with `patch`
 when the user wants servers for this project only, or shared with their team;
-`save` and `remove` do not apply to it.
+`save` and `remove` do not apply to it. The file is committed, so never write
+a secret in it: use a `${NAME}` the user sets in their environment or as a
+named secret (a model provider's stored key is not read for these servers).
 
 They run only in that workspace, and only once the user approves each one as
 its entry is: searching or calling one that waits (`needs_approval` in

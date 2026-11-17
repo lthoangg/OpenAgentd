@@ -373,6 +373,8 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
         ServerConfig::Stdio { command, args, env, cwd, .. } => {
             let command = program_in(command, cwd.as_deref());
             let command = command.as_ref();
+            // References filled in first: a `PATH` stored as a secret is a `${NAME}` here.
+            let env = config::resolve_env_dict_with(env, !project::is_project_key(name));
             let configured = env.get("PATH").cloned();
             let mut path = match &configured {
                 Some(p) => p.clone(),
@@ -395,7 +397,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             if !path.is_empty() {
                 launch_env.push(("PATH".into(), path));
             }
-            for (k, v) in config::resolve_env_dict(env) {
+            for (k, v) in env {
                 launch_env.retain(|(n, _)| *n != k);
                 launch_env.push((k, v));
             }
@@ -412,7 +414,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             if oauth.is_some() && oauth::interactive_oauth_allowed(name) && unresolved_client_id(cfg) {
                 return Err(RunError::AuthRequired(oauth_credentials_required_message(name)));
             }
-            let hdrs: Vec<(String, String)> = config::resolve_env_dict(headers).into_iter().collect();
+            let hdrs: Vec<(String, String)> = config::resolve_env_dict_with(headers, !project::is_project_key(name)).into_iter().collect();
             // MCP authorization is discovered on a 401, so a server with no
             // `oauth` block still signs in (dynamic client registration).
             let discovered = OAuthConfig { client_id: None, client_secret: None };
@@ -567,6 +569,11 @@ impl McpManager {
     /// Runs the user's servers from `mcp.json`, then the plugins' (a bad or
     /// empty `mcp.json` does not keep the plugins' servers from running).
     async fn start_locked(&self) {
+        match config::migrate_literal_secrets() {
+            Ok(moved) if !moved.is_empty() => tracing::info!("mcp_secrets_migrated entries={:?}", moved),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("mcp_secrets_migration_failed err={}", e),
+        }
         match config::load_config() {
             Err(e) => tracing::error!("mcp_config_invalid err={}", e),
             Ok(cfg) if cfg.servers.is_empty() => tracing::info!("mcp_no_servers_configured"),
@@ -816,7 +823,7 @@ pub fn masked_config_body(cfg: Option<&ServerConfig>) -> Value {
     match cfg {
         None => Value::Null,
         Some(c @ ServerConfig::Stdio { command, args, env, enabled, .. }) => {
-            with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}), c)
+            with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": admin::mask_map(env), "enabled": enabled}), c)
         }
         Some(c @ ServerConfig::Http { url, headers, oauth, enabled, .. }) => {
             let oauth = oauth.as_ref().map(|o| {

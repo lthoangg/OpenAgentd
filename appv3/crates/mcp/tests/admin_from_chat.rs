@@ -60,6 +60,10 @@ fn mcp_json(root: &std::path::Path) -> String {
     std::fs::read_to_string(root.join("config").join("mcp.json")).unwrap_or_default()
 }
 
+fn stored_secret(name: &str) -> Option<String> {
+    appv3_core::credentials::load().unwrap().secrets.get(name).cloned()
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn servers_are_added_changed_and_removed_only_on_apply() {
     let Some(py) = python() else { return };
@@ -76,7 +80,18 @@ async fn servers_are_added_changed_and_removed_only_on_apply() {
     appv3_agent::manager::init(pool.clone(), Arc::new(move |_, _| Ok(provider.clone())));
     let script = root.join("srv.py");
     std::fs::write(&script, SERVER).unwrap();
-    let path = std::env::var("PATH").unwrap_or_default();
+    // A bare command found only on the `PATH` the entry sets, which is
+    // stored as a secret like any `env` value.
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let launcher = bin.join("echoes-mcp");
+    std::fs::write(&launcher, format!("#!/bin/sh\nexec '{py}' '{}'\n", script.display())).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
 
     let sid = uuid::Uuid::now_v7();
     appv3_db::create_session(&pool, appv3_db::NewSession { id: Some(sid), workspace: root.display().to_string(), ..Default::default() }).await.unwrap();
@@ -102,7 +117,7 @@ async fn servers_are_added_changed_and_removed_only_on_apply() {
     };
 
     // ── add: nothing changes until Apply ────────────────────────────────
-    let config = json!({"command": py, "args": [script.display().to_string()], "env": {"PATH": path, "TOKEN": "s3cret-token"}});
+    let config = json!({"command": "echoes-mcp", "env": {"PATH": path, "TOKEN": "s3cret-token"}});
     assert_eq!(run(&hub, &ctx(&sid, "c1", false), json!({"action": "save", "server": "echoes", "config": config})).await.unwrap(), "<card>");
     assert!(!mcp_json(root).contains("echoes"), "saved before Apply");
     let row = card("c1").await;
@@ -111,7 +126,9 @@ async fn servers_are_added_changed_and_removed_only_on_apply() {
     assert!(!q.contains("s3cret"), "{q}");
     let text = answer(row, "Apply").await;
     assert_eq!(text, "The user applied the change. MCP server 'echoes' is ready with 1 tool: echoes_echo. Find them with mcp(action='search', server='echoes').");
-    assert!(mcp_json(root).contains("\"echoes\"") && mcp_json(root).contains("s3cret-token"));
+    assert!(mcp_json(root).contains("\"echoes\"") && !mcp_json(root).contains("s3cret-token"), "{}", mcp_json(root));
+    assert!(mcp_json(root).contains("${ECHOES_MCP_ENV_TOKEN}") && mcp_json(root).contains("${ECHOES_MCP_ENV_PATH}"), "{}", mcp_json(root));
+    assert_eq!(stored_secret("ECHOES_MCP_ENV_TOKEN").as_deref(), Some("s3cret-token"));
     assert_eq!(mcp_manager().get_status("echoes").unwrap().state, "ready");
 
     // ── the agent's view masks the secret, and the definition is frozen ──
@@ -128,19 +145,20 @@ async fn servers_are_added_changed_and_removed_only_on_apply() {
     assert!(appv3_db::get_pending_question(&pool, &sid).await.unwrap().is_none());
 
     // ── update keeps a masked secret ─────────────────────────────────────
-    let masked = json!({"command": py, "args": [script.display().to_string()], "env": {"PATH": "********", "TOKEN": "********", "MODE": "debug"}});
+    let masked = json!({"command": "echoes-mcp", "env": {"PATH": "********", "TOKEN": "********", "MODE": "debug"}});
     run(&hub, &ctx(&sid, "c4", false), json!({"action": "save", "server": "echoes", "config": masked})).await.unwrap();
     let row = card("c4").await;
     assert!(row.questions()[0]["question"].as_str().unwrap().starts_with("Update MCP server **echoes**"));
     assert!(answer(row, "Apply").await.contains("is ready"));
-    assert!(mcp_json(root).contains("s3cret-token") && mcp_json(root).contains("\"MODE\": \"debug\""), "{}", mcp_json(root));
+    assert!(mcp_json(root).contains("${ECHOES_MCP_ENV_TOKEN}") && mcp_json(root).contains("${ECHOES_MCP_ENV_MODE}"), "{}", mcp_json(root));
+    assert_eq!((stored_secret("ECHOES_MCP_ENV_TOKEN").as_deref(), stored_secret("ECHOES_MCP_ENV_MODE").as_deref()), (Some("s3cret-token"), Some("debug")));
     let e = run(&hub, &ctx(&sid, "c5", false), json!({"action": "save", "server": "other", "config": {"command": "x", "env": {"K": "********"}}})).await.unwrap_err();
     assert!(e.contains("stands for a stored value, and 'other' has none"), "{e}");
 
     // ── remove re-checks the entry, and Cancel keeps it ──────────────────
     run(&hub, &ctx(&sid, "c6", false), json!({"action": "remove", "server": "echoes"})).await.unwrap();
     let row = card("c6").await;
-    let edited = mcp_json(root).replace("\"debug\"", "\"trace\"");
+    let edited = mcp_json(root).replace("\"enabled\": true", "\"enabled\": false");
     std::fs::write(root.join("config").join("mcp.json"), edited).unwrap();
     let text = answer(row, "Apply").await;
     assert!(text.contains("not applied: MCP server 'echoes' changed since this was proposed."), "{text}");
@@ -152,5 +170,6 @@ async fn servers_are_added_changed_and_removed_only_on_apply() {
     assert_eq!(answer(card("c8").await, "Apply").await, "The user applied the change. MCP server 'echoes' is removed and stopped.");
     assert!(!mcp_json(root).contains("echoes"));
     assert!(mcp_manager().get_status("echoes").is_none());
+    assert_eq!(stored_secret("ECHOES_MCP_ENV_TOKEN"), None, "removing the server deletes its secrets");
     assert_eq!(serde_json::to_string(&hub.definition_for(&ctx(&sid, "c9", false))).unwrap(), definition);
 }

@@ -260,8 +260,8 @@ async fn update_server(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Re
     let mut cfg = cfgmod::load_config().map_err(internal)?;
     let Some(existing) = cfg.servers.get(&name).cloned() else { return Err(ApiError::not_found(format!("MCP server '{name}' not found."))) };
     let mut sc = server.expect("validated");
+    sc = merge_masked(sc, Some(&existing));
     if matches!(sc, ServerConfig::Http { .. }) {
-        sc = merge_masked(sc, Some(&existing));
         sc = store_oauth_secrets(&name, sc).map_err(internal)?;
     }
     cfg.servers.insert(name.clone(), sc.clone());

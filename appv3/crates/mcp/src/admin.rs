@@ -32,9 +32,7 @@ fn whole_ref_re() -> &'static regex::Regex {
 }
 
 fn oauth_env_key(name: &str, field: &str) -> String {
-    let re = regex::Regex::new(r"[^A-Za-z0-9]+").unwrap();
-    let p = re.replace_all(name, "_").trim_matches('_').to_uppercase();
-    format!("{}_MCP_{field}", if p.is_empty() { "MCP".to_string() } else { p })
+    cfgmod::secret_name(name, field)
 }
 
 /// Store a connector's API key as a named secret in `credentials.yaml` and
@@ -117,7 +115,7 @@ fn has_mask(cfg: &ServerConfig) -> bool {
 }
 
 fn mask_value(v: &str) -> String {
-    if whole_ref_re().is_match(v) {
+    if whole_ref_re().is_match(v) && !cfgmod::is_stored_secret_ref(v) {
         v.to_string()
     } else {
         MASK.to_string()

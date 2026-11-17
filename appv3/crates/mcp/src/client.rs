@@ -1153,7 +1153,7 @@ impl McpClient {
     async fn initialize_legacy(&self, params: Value, refused: McpError) -> Result<Value, McpError> {
         let Transport::Http(h) = self.transport() else { return Err(refused) };
         let Some(status) = (*h.init_refused.lock().unwrap()).filter(|_| h.fallback) else { return Err(refused) };
-        tracing::info!("mcp_http_legacy_fallback url={} status={}", h.url, status);
+        tracing::info!("mcp_http_legacy_fallback url={} status={}", crate::config::url_for_log(h.url.as_ref()), status);
         let sse = Arc::new(Sse::new(&h.url, &h.headers, h.auth.clone())?);
         *self.transport.lock().unwrap() = Transport::Sse(sse.clone());
         match self.request("initialize", Some(params)).await {

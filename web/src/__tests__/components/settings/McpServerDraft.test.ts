@@ -184,6 +184,23 @@ describe('draftToServerBody', () => {
     expect(result).toEqual({ ok: true, body })
   })
 
+  it('sends masked stdio env values back unchanged, so the server keeps them', () => {
+    // The API shows a stored secret as ******** and keeps it when that comes back.
+    const body: ServerBody = {
+      transport: 'stdio',
+      command: 'discord-mcp',
+      args: [],
+      env: { DISCORD_TOKEN: '********', REF: '${GITHUB_TOKEN}' },
+      enabled: true,
+    }
+    const draft = draftFromServerBody('discord', body)
+    const edited = { ...draft, envPairs: [...draft.envPairs, { key: 'MODE', value: 'fast' }] }
+    expect(draftToServerBody(edited)).toEqual({
+      ok: true,
+      body: { ...body, env: { DISCORD_TOKEN: '********', REF: '${GITHUB_TOKEN}', MODE: 'fast' } },
+    })
+  })
+
   it('treats sse and http drafts of the same URL as different', () => {
     const base = { ...emptyDraft(), name: 'x', url: 'https://mcp.example.com/sse' }
     expect(draftEquals({ ...base, transport: 'sse' }, { ...base, transport: 'http' })).toBe(false)

@@ -26,8 +26,10 @@ pub fn builtin_skills_root() -> PathBuf {
 }
 
 /// Files in the config dir that hold secrets: the credential store, its
-/// lock, and the dotenv backups the migrations keep. Agent tools never
-/// touch them.
+/// lock, the dotenv backups the migrations keep, and the user's `mcp.json`
+/// (its secrets live in the store, but one edited by hand holds them until
+/// the next start; the agent changes it with the `mcp` tool). Agent tools
+/// never touch them.
 pub fn secret_config_files() -> Vec<PathBuf> {
     let cfg = &appv3_core::settings().config_dir;
     vec![
@@ -35,6 +37,7 @@ pub fn secret_config_files() -> Vec<PathBuf> {
         cfg.join(format!(".{}.lock", appv3_core::credentials::FILE_NAME)),
         cfg.join(".env.migrated"),
         cfg.join(appv3_core::runtime_settings::DOTENV_BACKUP),
+        cfg.join("mcp.json"),
     ]
 }
 

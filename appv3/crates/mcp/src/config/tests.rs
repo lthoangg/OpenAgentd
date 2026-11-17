@@ -1,5 +1,123 @@
 use super::*;
 
+fn cfg(v: Value) -> McpConfig {
+    parse_config(&v).unwrap()
+}
+
+fn stored(creds: &Path) -> IndexMap<String, String> {
+    appv3_core::credentials::load_from(creds).unwrap().secrets.clone()
+}
+
+#[cfg(unix)]
+fn mode(p: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(p).unwrap().permissions().mode() & 0o777
+}
+
+#[test]
+fn saving_moves_literal_secrets_to_the_credential_store() {
+    let d = tempfile::tempdir().unwrap();
+    let (p, creds) = (d.path().join("mcp.json"), d.path().join("credentials.yaml"));
+    let c = cfg(json!({"servers": {
+        "discord": {"command": "discord-mcp", "env": {"DISCORD_TOKEN": "tok-1", "REF": "${GITHUB_TOKEN}", "MIXED": "x-$HOME", "EMPTY": ""}},
+        "web": {"url": "https://x/mcp", "headers": {"Authorization": "Bearer hdr-1"}, "oauth": {"client_id": "cid-1", "client_secret": "sec-1"}}
+    }}));
+    save_config_at(&c, &p, &creds).unwrap();
+
+    let text = std::fs::read_to_string(&p).unwrap();
+    for literal in ["tok-1", "hdr-1", "cid-1", "sec-1"] {
+        assert!(!text.contains(literal), "{literal} left in mcp.json: {text}");
+    }
+    let back = load_config_from(&p).unwrap();
+    let ServerConfig::Stdio { env, .. } = &back.servers["discord"] else { panic!() };
+    assert_eq!(env["DISCORD_TOKEN"], "${DISCORD_MCP_ENV_DISCORD_TOKEN}");
+    assert_eq!((env["REF"].as_str(), env["MIXED"].as_str(), env["EMPTY"].as_str()), ("${GITHUB_TOKEN}", "x-$HOME", ""), "references and empty values stay as written");
+    let ServerConfig::Http { headers, oauth, .. } = &back.servers["web"] else { panic!() };
+    assert_eq!(headers["Authorization"], "${WEB_MCP_HEADER_AUTHORIZATION}");
+    let o = oauth.as_ref().unwrap();
+    assert_eq!((o.client_id.as_deref(), o.client_secret.as_deref()), (Some("${WEB_MCP_CLIENT_ID}"), Some("${WEB_MCP_CLIENT_SECRET}")));
+
+    let s = stored(&creds);
+    assert_eq!(s["DISCORD_MCP_ENV_DISCORD_TOKEN"], "tok-1");
+    assert_eq!(s["WEB_MCP_HEADER_AUTHORIZATION"], "Bearer hdr-1");
+    assert_eq!((s["WEB_MCP_CLIENT_ID"].as_str(), s["WEB_MCP_CLIENT_SECRET"].as_str()), ("cid-1", "sec-1"));
+    #[cfg(unix)]
+    assert_eq!((mode(&p), mode(&creds)), (0o600, 0o600));
+}
+
+#[test]
+fn a_removed_key_or_server_forgets_only_its_own_secret() {
+    let d = tempfile::tempdir().unwrap();
+    let (p, creds) = (d.path().join("mcp.json"), d.path().join("credentials.yaml"));
+    appv3_core::credentials::update_at(&creds, |f| f.secrets.insert("GITHUB_TOKEN".into(), "mine".into())).unwrap();
+    save_config_at(&cfg(json!({"servers": {"s": {"command": "x", "env": {"A": "a-1", "B": "b-1", "G": "${GITHUB_TOKEN}"}}}})), &p, &creds).unwrap();
+    assert!(stored(&creds).contains_key("S_MCP_ENV_B"));
+
+    let mut c = load_config_from(&p).unwrap();
+    if let Some(ServerConfig::Stdio { env, .. }) = c.servers.get_mut("s") {
+        env.shift_remove("B");
+    }
+    save_config_at(&c, &p, &creds).unwrap();
+    let s = stored(&creds);
+    assert!(!s.contains_key("S_MCP_ENV_B") && s["S_MCP_ENV_A"] == "a-1", "{:?}", s.keys());
+
+    save_config_at(&McpConfig::default(), &p, &creds).unwrap();
+    let s = stored(&creds);
+    assert!(!s.contains_key("S_MCP_ENV_A"), "{:?}", s.keys());
+    assert_eq!(s["GITHUB_TOKEN"], "mine", "a secret the user named is never removed");
+}
+
+#[test]
+fn keys_that_normalize_alike_get_their_own_secret() {
+    let (out, store, moved) = take_literal_secrets(&cfg(json!({"servers": {"s": {"command": "x", "env": {"a-b": "1", "A_B": "2"}}}})));
+    assert_eq!(store, vec![("S_MCP_ENV_A_B".to_string(), "1".to_string()), ("S_MCP_ENV_A_B_2".to_string(), "2".to_string())]);
+    assert_eq!(moved, ["s.a-b", "s.A_B"]);
+    let ServerConfig::Stdio { env, .. } = &out.servers["s"] else { panic!() };
+    assert_eq!(env["A_B"], "${S_MCP_ENV_A_B_2}");
+}
+
+#[test]
+fn migration_moves_literals_tightens_the_file_and_skips_a_bad_one() {
+    let d = tempfile::tempdir().unwrap();
+    let (p, creds) = (d.path().join("mcp.json"), d.path().join("credentials.yaml"));
+    assert_eq!(migrate_literal_secrets_at(&p, &creds).unwrap(), Vec::<String>::new(), "no file, nothing to do");
+
+    std::fs::write(&p, r#"{"servers":{"discord":{"command":"discord-mcp","env":{"DISCORD_TOKEN":"tok-1","REF":"${GITHUB_TOKEN}"}}}}"#).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    assert_eq!(migrate_literal_secrets_at(&p, &creds).unwrap(), ["discord.DISCORD_TOKEN"]);
+    assert!(!std::fs::read_to_string(&p).unwrap().contains("tok-1"));
+    assert_eq!(stored(&creds)["DISCORD_MCP_ENV_DISCORD_TOKEN"], "tok-1");
+    #[cfg(unix)]
+    assert_eq!(mode(&p), 0o600);
+
+    let clean = std::fs::read_to_string(&p).unwrap();
+    assert!(migrate_literal_secrets_at(&p, &creds).unwrap().is_empty());
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), clean, "a clean file is not rewritten");
+
+    std::fs::write(&p, r#"{"servers":{"a":{"command":"x","env":{"T":"lit"}}"#).unwrap();
+    assert!(migrate_literal_secrets_at(&p, &creds).is_err());
+    assert!(std::fs::read_to_string(&p).unwrap().contains("lit"), "a file that does not parse is left as it is");
+}
+
+#[test]
+fn stored_secret_references_are_recognised() {
+    assert!(is_stored_secret_ref("${DISCORD_MCP_ENV_DISCORD_TOKEN}"));
+    assert!(is_stored_secret_ref("${GH_MCP_API_KEY}") && is_stored_secret_ref("${X_MCP_CLIENT_SECRET}"));
+    assert!(!is_stored_secret_ref("${GITHUB_TOKEN}"));
+    assert!(!is_stored_secret_ref("Bearer ${GH_MCP_API_KEY}"), "only a whole reference");
+    assert_eq!(secret_name("my-server", "ENV_api.key"), "MY_SERVER_MCP_ENV_API_KEY");
+}
+
+#[test]
+fn logged_urls_drop_what_may_carry_a_key() {
+    assert_eq!(url_for_log("https://u:p@mcp.example.com/mcp?api_key=k1#f"), "https://mcp.example.com/mcp");
+    assert_eq!(url_for_log("not a url?k=1"), "not a url");
+}
+
 #[test]
 fn roundtrip_and_errors() {
     let d = tempfile::tempdir().unwrap();

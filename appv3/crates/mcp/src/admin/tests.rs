@@ -9,6 +9,8 @@ fn the_agent_view_masks_every_secret_but_references() {
     let v = agent_view(&entry(json!({"command": "npx", "args": ["-y", "srv"], "env": {"TOKEN": "ghp_live", "REF": "${GITHUB_TOKEN}"}})));
     assert_eq!(v["env"], json!({"TOKEN": MASK, "REF": "${GITHUB_TOKEN}"}));
     assert_eq!(v["args"], json!(["-y", "srv"]));
+    let v = agent_view(&entry(json!({"command": "npx", "env": {"TOKEN": "${S_MCP_ENV_TOKEN}"}})));
+    assert_eq!(v["env"], json!({"TOKEN": MASK}), "a value OpenAgentd stored shows masked, like the value itself");
     let v = agent_view(&entry(json!({"url": "https://x/mcp", "headers": {"Authorization": "Bearer abc"}, "oauth": {"client_id": "id", "client_secret": "sec"}})));
     assert_eq!(v["headers"], json!({"Authorization": MASK}));
     assert_eq!(v["oauth"], json!({"client_id": MASK, "client_secret": MASK}));

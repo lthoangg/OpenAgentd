@@ -51,6 +51,11 @@ pub fn runner_key(workspace: &str, name: &str) -> String {
     format!("{name}@{}", &hex(&digest)[..10])
 }
 
+/// Whether `key` is a project server's [`runner_key`].
+pub fn is_project_key(key: &str) -> bool {
+    key.contains('@')
+}
+
 /// A fingerprint of an entry, stable across runs: what an approval is for.
 pub fn fingerprint(cfg: &ServerConfig) -> String {
     let mut v = cfg.dump();
@@ -162,18 +167,14 @@ impl Approvals {
     }
 }
 
-/// The `${NAME}` / `$NAME` references in a server's `env` and `headers` (the
-/// values filled in from the environment and stored secrets when it starts),
-/// in order, once each: what the approval card names. Their values are never
-/// shown.
+/// The `${NAME}` / `$NAME` references in a server's `env`, headers and OAuth
+/// client fields (the values filled in from the environment and named
+/// secrets when it starts), in order, once each: what the approval card
+/// names. Their values are never shown.
 pub fn referenced_variables(cfg: &ServerConfig) -> Vec<String> {
     let re = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)").unwrap();
-    let texts: Vec<&str> = match cfg {
-        ServerConfig::Stdio { env, .. } => env.values().map(String::as_str).collect(),
-        ServerConfig::Http { headers, .. } => headers.values().map(String::as_str).collect(),
-    };
     let mut out: Vec<String> = vec![];
-    for t in texts {
+    for t in crate::config::secret_values(cfg) {
         for c in re.captures_iter(t) {
             let name = c.get(1).or_else(|| c.get(2)).unwrap().as_str().to_string();
             if !out.contains(&name) {

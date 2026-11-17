@@ -19,6 +19,9 @@
 //!
 //! [`Flow`] is the client-ack window the WebSocket layer applies on top.
 
+mod life;
+
+use life::{Life, LifeEvent, LifeMachine};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
@@ -355,7 +358,8 @@ pub struct TerminalSession {
     writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     last_activity: Arc<Mutex<Instant>>,
-    closed: AtomicBool,
+    /// Whether it is alive (`life.rs`); [`Self::life`] brings it up to date.
+    life: Mutex<Life>,
 }
 
 fn sessions() -> &'static Mutex<HashMap<String, Arc<TerminalSession>>> {
@@ -411,7 +415,7 @@ impl TerminalSession {
     }
 
     pub async fn write(&self, data: Vec<u8>) -> std::io::Result<()> {
-        if self.closed.load(Ordering::SeqCst) || self.output.eof() {
+        if !self.alive() {
             return Ok(());
         }
         self.touch();
@@ -429,7 +433,7 @@ impl TerminalSession {
 
     /// TIOCSWINSZ + SIGWINCH, clamped like v2.
     pub fn resize(&self, rows: i64, cols: i64) {
-        if self.closed.load(Ordering::SeqCst) {
+        if matches!(*self.life.lock().unwrap(), Life::Closing | Life::Closed) {
             return;
         }
         let rows = rows.clamp(1, 1000) as u16;
@@ -447,8 +451,17 @@ impl TerminalSession {
         matches!(self.child.lock().unwrap().try_wait(), Ok(None))
     }
 
+    /// Its life, after noting an exit the output or the process shows.
+    fn life(&self) -> Life {
+        let mut life = self.life.lock().unwrap();
+        if *life == Life::Running && (self.output.eof() || !self.process_alive()) {
+            let _ = appv3_core::machine::apply::<LifeMachine>(&mut life, &LifeEvent::Exit);
+        }
+        *life
+    }
+
     pub fn alive(&self) -> bool {
-        !self.closed.load(Ordering::SeqCst) && !self.output.eof() && self.process_alive()
+        self.life() == Life::Running
     }
 
     /// True while a command runs in the shell: the PTY's foreground process
@@ -467,8 +480,11 @@ impl TerminalSession {
 
     /// SIGHUP the process group, grace period, then SIGKILL; release the PTY.
     pub async fn close(&self) {
-        if self.closed.swap(true, Ordering::SeqCst) {
-            return;
+        {
+            let mut life = self.life.lock().unwrap();
+            // Closing or closed already: one close does the work.
+            let Some(next) = <LifeMachine as appv3_core::machine::Machine>::step(&life, &LifeEvent::Close) else { return };
+            *life = next;
         }
         sessions().lock().unwrap().remove(&self.session_id);
         // Unblock a reader held back by an attachment, and end attachments
@@ -501,6 +517,7 @@ impl TerminalSession {
         }
         self.writer.lock().unwrap().take();
         self.master.lock().unwrap().take();
+        let _ = appv3_core::machine::apply::<LifeMachine>(&mut self.life.lock().unwrap(), &LifeEvent::Released);
         tracing::info!("terminal_session_closed session_id={} pid={:?}", self.session_id, self.pid);
     }
 }
@@ -566,7 +583,7 @@ pub fn create_session(workspace: &str, rows: i64, cols: i64) -> Result<Arc<Termi
         writer: Arc::new(Mutex::new(Some(writer))),
         child: Mutex::new(child),
         last_activity,
-        closed: Default::default(),
+        life: Mutex::new(Life::Running),
     });
     session.resize(rows, cols);
     sessions().lock().unwrap().insert(session.session_id.clone(), session.clone());

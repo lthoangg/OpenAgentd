@@ -83,20 +83,25 @@ pub struct SideOutcome<'a> {
     pub usage: Option<&'a Value>,
 }
 
-/// Write the final state of a side question. Returns whether a row matched.
+/// Write the final state of a side question that is still streaming.
+/// Returns whether it was (`false`: it had already ended, or is gone).
 pub async fn finish_side_question(pool: &DbPool, session_id: &str, id: &str, out: SideOutcome<'_>) -> Result<bool> {
     let usage = out.usage.map(|u| json_db(Some(u)));
-    let res = sqlx::query("UPDATE side_questions SET status = ?, answer = ?, error = ?, model = ?, usage = ?, updated_at = ? WHERE session_id = ? AND id = ?")
-        .bind(out.status)
-        .bind(out.answer)
-        .bind(out.error)
-        .bind(out.model)
-        .bind(usage)
-        .bind(now_db())
-        .bind(db_id(session_id))
-        .bind(db_id(id))
-        .execute(pool)
-        .await?;
+    // Streaming is the only state a side question leaves, once: a finished
+    // answer is never overwritten (a list healing a row it read as
+    // streaming just before the answer landed).
+    let res =
+        sqlx::query("UPDATE side_questions SET status = ?, answer = ?, error = ?, model = ?, usage = ?, updated_at = ? WHERE session_id = ? AND id = ? AND status = 'streaming'")
+            .bind(out.status)
+            .bind(out.answer)
+            .bind(out.error)
+            .bind(out.model)
+            .bind(usage)
+            .bind(now_db())
+            .bind(db_id(session_id))
+            .bind(db_id(id))
+            .execute(pool)
+            .await?;
     Ok(res.rows_affected() > 0)
 }
 
@@ -153,6 +158,19 @@ mod tests {
 
     const SID: &str = "0190f2a8-7c1e-7d3a-9b2c-111111111111";
     const OTHER: &str = "0190f2a8-7c1e-7d3a-9b2c-222222222222";
+
+    #[tokio::test]
+    async fn a_side_question_finishes_once() {
+        let (_d, pool) = pool().await;
+        let q = insert_side_question(&pool, SID, "why?").await.unwrap();
+        let done = SideOutcome { status: SIDE_DONE, answer: "because", ..Default::default() };
+        assert!(finish_side_question(&pool, SID, &q.id, done).await.unwrap());
+        // A list that read it as streaming before the answer landed heals it late.
+        let stale = SideOutcome { status: SIDE_STOPPED, answer: "", ..Default::default() };
+        assert!(!finish_side_question(&pool, SID, &q.id, stale).await.unwrap());
+        let row = list_side_questions(&pool, SID, 10).await.unwrap().remove(0);
+        assert_eq!((row.status.as_str(), row.answer.as_str()), (SIDE_DONE, "because"));
+    }
 
     #[tokio::test]
     async fn insert_finish_list_count_clear() {

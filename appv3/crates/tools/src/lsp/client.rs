@@ -94,6 +94,15 @@ struct Inner {
     open_docs: HashMap<String, i64>,
 }
 
+/// Where a language server's process is: not started (or stopped and
+/// released), running, or exited on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerProcess {
+    None,
+    Running,
+    Exited,
+}
+
 pub struct LspClient {
     pub command: Vec<String>,
     pub workspace_root: PathBuf,
@@ -129,25 +138,29 @@ impl LspClient {
         *self.last_used.lock().unwrap() = Instant::now();
     }
 
+    /// The server process, read from the one place that knows: the child
+    /// slot and the OS. Every "is it alive?" question is a match on this.
+    pub fn process(&self) -> ServerProcess {
+        match self.child.lock().unwrap().as_mut().map(|c| c.try_wait()) {
+            None => ServerProcess::None,
+            Some(Ok(None)) => ServerProcess::Running,
+            Some(_) => ServerProcess::Exited,
+        }
+    }
+
     /// `self.process is not None`.
     pub fn has_process(&self) -> bool {
-        self.child.lock().unwrap().is_some()
+        self.process() != ServerProcess::None
     }
 
     /// `self.process and self.process.returncode is None`.
     pub fn is_running(&self) -> bool {
-        match self.child.lock().unwrap().as_mut() {
-            Some(c) => matches!(c.try_wait(), Ok(None)),
-            None => false,
-        }
+        self.process() == ServerProcess::Running
     }
 
     /// `self.process and self.process.returncode is not None`.
     pub fn process_died(&self) -> bool {
-        match self.child.lock().unwrap().as_mut() {
-            Some(c) => matches!(c.try_wait(), Ok(Some(_))),
-            None => false,
-        }
+        self.process() == ServerProcess::Exited
     }
 
     pub async fn start(&self) -> LspResult<()> {

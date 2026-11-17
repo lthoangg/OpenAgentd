@@ -160,10 +160,17 @@ pub fn stop_session(session_id: &str) -> usize {
 /// `streaming` by a process that is gone is stored and returned as `stopped`.
 pub async fn list(pool: &DbPool, session_id: &str, limit: i64) -> anyhow::Result<Vec<SideQuestion>> {
     let mut rows = db::list_side_questions(pool, session_id, limit).await?;
+    let mut finished_meanwhile = false;
     for r in rows.iter_mut().filter(|r| r.status == db::SIDE_STREAMING && !is_running(&r.id)) {
         let out = SideOutcome { status: db::SIDE_STOPPED, answer: &r.answer, ..Default::default() };
-        db::finish_side_question(pool, session_id, &r.id, out).await?;
-        r.status = db::SIDE_STOPPED.into();
+        if db::finish_side_question(pool, session_id, &r.id, out).await? {
+            r.status = db::SIDE_STOPPED.into();
+        } else {
+            finished_meanwhile = true;
+        }
+    }
+    if finished_meanwhile {
+        rows = db::list_side_questions(pool, session_id, limit).await?;
     }
     Ok(rows)
 }

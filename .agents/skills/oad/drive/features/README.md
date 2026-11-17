@@ -21,6 +21,7 @@ view; find code paths in the source when you need them.
 | [Secrets](secrets.md) | `secrets` | The agent asks for keys on a card; a pasted value reaches only the store, a command uses it as `$NAME` with its output masked, and Settings → Secrets lists it |
 | [Agent preview without the tab](preview.md) | `preview` | After the Preview tab closes and the app reloads on another session, the first session's agent still clicks and reads its page |
 | [Plan review](plan-review.md) | `plan-review` | A comment on a submitted plan goes to the chat box with Reply in chat and is sent as a message with a Plan comments card the model reads; a resubmitted plan is approved with Keep going |
+| [Failure, loading and confirm states](ui-states.md) | `ui-states` | A failed folder list and a failed session lookup say so with Retry; a group delete asks with Cancel; ✎'s hold opens an action sheet on a phone |
 
 Not mapped yet: switching to Plan mode, subagents, scheduled tasks, the
 command palette, attachments, web preview, undo, the account and remote

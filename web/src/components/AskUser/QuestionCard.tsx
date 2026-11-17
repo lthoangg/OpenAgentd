@@ -35,7 +35,7 @@ import { hasFinePointer } from '@/lib/pointer'
 import { cn } from '@/lib/utils'
 import { InlineMarkdown } from '@/utils/inline-markdown'
 import { MarkdownBlock } from '@/utils/markdown'
-import type { PendingQuestion, QuestionItem } from '@/api/types'
+import type { PendingQuestion, QuestionItem } from '@/api/question-types'
 import {
   readQuestionDraft,
   writeQuestionDraft,

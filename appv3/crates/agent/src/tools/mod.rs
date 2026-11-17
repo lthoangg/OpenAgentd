@@ -5,6 +5,7 @@ pub mod goal;
 pub mod plan;
 pub mod preview;
 pub mod script;
+pub mod secret;
 pub mod team;
 pub mod workspace;
 

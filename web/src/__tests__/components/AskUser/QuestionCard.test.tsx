@@ -23,7 +23,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 import { QuestionCard } from '@/components/AskUser/QuestionCard'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { normalizeQuestions } from '@/stores/useAgentStore/sse-questions'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 
 afterEach(() => {
   cleanup()

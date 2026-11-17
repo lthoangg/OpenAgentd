@@ -21,7 +21,7 @@ import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { cn } from '@/lib/utils'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 import { parsePlanReview } from './plan-comments'
 
 /** Mirrors the pending-question placeholder the server writes as the result. */

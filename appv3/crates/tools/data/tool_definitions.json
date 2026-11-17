@@ -244,6 +244,14 @@
             "default": false,
             "description": "For long-lived processes and any command that may exceed 270s; returns the PID and discards output, so redirect output to a log file to read later. Stay in the foreground when you need the result within 270s.",
             "type": "boolean"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": null,
+            "description": "Names of secrets (see `secret`) to set as environment variables for this command only; use them as $NAME. A value in output reads [secret NAME]."
           }
         },
         "required": [
@@ -934,6 +942,72 @@
           }
         },
         "required": []
+      }
+    }
+  },
+  "secret": {
+    "type": "function",
+    "function": {
+      "name": "secret",
+      "description": "Ask the user for API keys or tokens by name; you never see the values, so never ask for one in chat or read it from .env or key files. 'request' shows a card with a masked field per key and pauses your turn (keys this project already has return at once). Then pass them to shell with secrets: [\"NAME\"] and use $NAME. If a saved key is rejected, request it again with replace=true. 'list' names the keys this project can use.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "request",
+              "list"
+            ],
+            "description": "'request' or 'list'."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 600,
+            "default": null,
+            "description": "[request] Why the task needs them; shown on the card."
+          },
+          "keys": {
+            "type": "array",
+            "default": null,
+            "description": "[request] 1 to 8 keys, named as the code reads them from the environment.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "UPPER_SNAKE_CASE, e.g. STRIPE_SECRET_KEY."
+                },
+                "help_url": {
+                  "type": "string",
+                  "default": null,
+                  "description": "Link to where the user gets this key."
+                },
+                "optional": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "The task works without it."
+                },
+                "multiline": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "A multi-line value (PEM key, JSON)."
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "replace": {
+            "type": "boolean",
+            "default": false,
+            "description": "[request] A saved key was rejected; say why in reason."
+          }
+        },
+        "required": [
+          "action"
+        ]
       }
     }
   }

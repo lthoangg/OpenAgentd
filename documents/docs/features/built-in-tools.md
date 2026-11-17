@@ -25,8 +25,23 @@ MCP.
 | Session goal | `update_goal` (lead agent; claims the goal of a plan approved with Keep going complete or blocked) `[v3.32.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
 | Scripted tool calls | `script` (every agent, lead and member) `[v3.57.0]` |
+| Secrets | `secret` (lead agent with a workspace); `shell` takes `secrets` `[v3.59.0]` |
 | Utility | `skill` |
 
+- **`secret` — ask for API keys without seeing them** `[v3.59.0]` — when a
+  task needs keys, the agent names them (up to 8 on one card, with a reason
+  and an optional link to where each is made). The card in the chat, on
+  desktop or phone, has a masked field per key; each value goes straight to
+  the secret store and the agent learns only which names it got. It then
+  runs commands with `secrets: ["NAME"]` on `shell` (and so `script`), which
+  sets just those variables for that one command. A key is saved for this
+  project or for every project; worktrees share their repository's keys.
+  One name can hold a different value per project (`STRIPE_SECRET_KEY` for
+  two clients): a project that lacks one is offered the saved value or a
+  new one, with neither picked. A key the project can already use needs no
+  card, and one a service rejected is replaced everywhere or only here.
+  Provider keys and connector secrets are never available to commands, names
+  such as `PATH` or `LD_PRELOAD` are refused, and scheduled runs cannot ask.
 - **`script` — chain tool calls in one step** `[v3.57.0]` — the agent can write a
   short JavaScript or TypeScript snippet that calls its other tools as
   `await tools.grep({...})`, with loops, filters and `Promise.all`, and gets

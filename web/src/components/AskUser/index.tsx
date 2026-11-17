@@ -29,9 +29,12 @@ import { useCallback, useLayoutEffect, useSyncExternalStore, type ReactNode } fr
 
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
-import type { ContentBlock, QuestionItem } from '@/api/types'
+import type { ContentBlock } from '@/api/types'
+import type { QuestionItem } from '@/api/question-types'
 import { QuestionCard } from './QuestionCard'
 import { useQuestionResolver } from './useQuestionResolver'
+import { SecretRequestCard } from '@/components/SecretRequest/SecretRequestCard'
+import { secretSummaryFromResult } from '@/components/SecretRequest/summary'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { useIsPhone } from '@/hooks/use-is-phone'
 import { cn } from '@/lib/utils'
@@ -180,12 +183,15 @@ export function AskUser({
   toolCallId,
   args,
   result,
+  secret = false,
 }: {
   toolCallId?: string
   /** Raw tool-call arguments — the only record of what was asked once a
    *  question closes without an answer and the store has been reloaded. */
   args?: string
   result?: string
+  /** A ``secret`` request's card: masked fields, and a summary of names. */
+  secret?: boolean
 }) {
   const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
   const openCallId = useAgentStore(selectOpenQuestionCallId)
@@ -200,24 +206,61 @@ export function AskUser({
   // It is answered in the card pinned above the composer (PinnedQuestion).
   // A phone's chat always has one; on desktop it waits for the host.
   const pinned = isOpen && (isPhone || hostMounted) && pendingQuestion.kind !== 'plan_review'
-  const { submitting, error, answer } = useQuestionResolver(isOpen && !pinned ? pendingQuestion : null)
+  const { submitting, error, answer, answerSecret } = useQuestionResolver(isOpen && !pinned ? pendingQuestion : null)
 
   if (!isOpen) {
-    const { waiting, body } = describeResolution(resolved, result, args, inLiveTurn)
-    return <QuestionShell waiting={waiting}>{body}</QuestionShell>
+    const { waiting, body } = secret ? describeSecretResolution(resolved, result, inLiveTurn) : describeResolution(resolved, result, args, inLiveTurn)
+    return <QuestionShell waiting={waiting} secret={secret}>{body}</QuestionShell>
   }
-  if (pinned) return <QuestionShell waiting><QuestionNote text="Answer below" /></QuestionShell>
+  if (pinned) return <QuestionShell waiting secret={secret}><QuestionNote text="Answer below" /></QuestionShell>
 
   return (
-    <QuestionShell waiting open>
-      <QuestionCard
-        key={pendingQuestion.id}
-        question={pendingQuestion}
-        submitting={submitting}
-        error={error}
-        onSubmit={answer}
-      />
+    <QuestionShell waiting open secret={secret}>
+      {pendingQuestion.kind === 'secret_request' ? (
+        <SecretRequestCard key={pendingQuestion.id} question={pendingQuestion} submitting={submitting} error={error} onSave={answerSecret} />
+      ) : (
+        <QuestionCard
+          key={pendingQuestion.id}
+          question={pendingQuestion}
+          submitting={submitting}
+          error={error}
+          onSubmit={answer}
+        />
+      )}
     </QuestionShell>
+  )
+}
+
+/** A secret request's outcome: names only, from the local answer or the persisted result. */
+function describeSecretResolution(
+  resolved: ResolvedQuestion | undefined,
+  result: string | undefined,
+  inLiveTurn: boolean,
+): { waiting: boolean; body: ReactNode } {
+  const lines = resolved?.answers?.[0]
+  if (resolved && lines && lines.every((l) => typeof l === 'string')) return { waiting: false, body: <SummaryLines lines={lines} /> }
+  if (resolved && resolved.answers === null) {
+    return { waiting: false, body: <ClosedQuestions reason={resolved.reason} questions={[]} /> }
+  }
+  if (isUnsettledResult(result)) {
+    if (inLiveTurn) return { waiting: false, body: <QuestionNote text="Asking…" /> }
+    return { waiting: false, body: <ClosedQuestions reason="unrecorded" questions={[]} /> }
+  }
+  const text = (result ?? '').trim()
+  const reason = RESOLUTION_PREFIXES.find(([prefix]) => text.startsWith(prefix))?.[1]
+  if (reason) return { waiting: false, body: <ClosedQuestions reason={reason} questions={[]} /> }
+  return { waiting: false, body: <SummaryLines lines={secretSummaryFromResult(text)} /> }
+}
+
+function SummaryLines({ lines }: { lines: string[] }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-3 pt-1 pb-2.5">
+      {lines.map((line, index) => (
+        <span key={index} className="text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
+          {line}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -233,8 +276,9 @@ export function PinnedQuestion() {
   const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
   const openCallId = useAgentStore(selectOpenQuestionCallId)
   const show = pendingQuestion !== null && openCallId !== null && pendingQuestion.kind !== 'plan_review'
-  const { submitting, error, answer } = useQuestionResolver(show ? pendingQuestion : null)
+  const { submitting, error, answer, answerSecret } = useQuestionResolver(show ? pendingQuestion : null)
   if (!show) return null
+  const secret = pendingQuestion.kind === 'secret_request'
   return (
     <div
       data-question-pinned=""
@@ -244,14 +288,18 @@ export function PinnedQuestion() {
         isPhone ? 'max-h-[55dvh]' : 'max-h-[45vh]',
       )}
     >
-      <div className="px-3 pt-2 pb-1 label-caps text-(--accent-orange-text)">Needs you · a question</div>
-      <QuestionCard
-        key={pendingQuestion.id}
-        question={pendingQuestion}
-        submitting={submitting}
-        error={error}
-        onSubmit={answer}
-      />
+      <div className="px-3 pt-2 pb-1 label-caps text-(--accent-orange-text)">{secret ? 'Needs you · secrets' : 'Needs you · a question'}</div>
+      {secret ? (
+        <SecretRequestCard key={pendingQuestion.id} question={pendingQuestion} submitting={submitting} error={error} onSave={answerSecret} />
+      ) : (
+        <QuestionCard
+          key={pendingQuestion.id}
+          question={pendingQuestion}
+          submitting={submitting}
+          error={error}
+          onSubmit={answer}
+        />
+      )}
     </div>
   )
 }
@@ -260,17 +308,20 @@ export function PinnedQuestion() {
 function QuestionShell({
   waiting,
   open = false,
+  secret = false,
   children,
 }: {
   waiting: boolean
   /** Still answerable here; the transcript's timeline marks it. */
   open?: boolean
+  /** A secret request: labelled as such. */
+  secret?: boolean
   children: ReactNode
 }) {
   return (
     <div data-question-waiting={open ? '' : undefined} className={cn('tool-row-enter my-2', TRANSCRIPT_CARD)}>
       <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 label-caps text-(--color-text-muted)">
-        {waiting ? 'Needs you · a question' : 'Your input'}
+        {waiting ? (secret ? 'Needs you · secrets' : 'Needs you · a question') : secret ? 'Secrets' : 'Your input'}
       </div>
       {children}
     </div>

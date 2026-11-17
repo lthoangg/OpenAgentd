@@ -63,6 +63,11 @@ export {
   useUpdateDeniedPathsSettingsMutation,
 } from './useDeniedPathsSettingsQuery'
 export {
+  useSecretsQuery,
+  useSaveSecretMutation,
+  useDeleteSecretMutation,
+} from './useSecretsQuery'
+export {
   useProvidersQuery,
   useProviderModelsMutation,
   useProviderUsageQuery,

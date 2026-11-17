@@ -309,6 +309,16 @@ pub fn interaction_mode(agent: &str, mode: &str) -> Envelope {
     Envelope::typed(json!({"type": "interaction_mode", "agent": agent, "interaction_mode": mode}))
 }
 
+/// `question_asked` for a secret request: the same event, with `kind` and
+/// the card's `secret` data (names and states, never a value).
+pub fn secret_request_asked(question_id: &str, session_id: &str, tool_call_id: &str, questions: &[Value], secret: &Value) -> Envelope {
+    Envelope::typed(json!({
+        "type": "question_asked", "question_id": question_id, "session_id": session_id,
+        "tool_call_id": tool_call_id, "questions": questions, "kind": crate::secret_request::SECRET_KIND,
+        "secret": secret, "metadata": {}
+    }))
+}
+
 pub fn question_dismissed(question_id: &str, session_id: &str, reason: &str) -> Envelope {
     Envelope::typed(json!({
         "type": "question_dismissed", "question_id": question_id, "session_id": session_id,

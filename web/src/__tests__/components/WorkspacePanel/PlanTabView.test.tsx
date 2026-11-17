@@ -20,7 +20,8 @@ import { clearPlanReviewDrafts, readPlanReviewDraft, writePlanReviewDraft } from
 import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import type { ContentBlock, PendingQuestion, SessionGoal, SessionPlan } from '@/api/types'
+import type { ContentBlock, SessionGoal, SessionPlan } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',

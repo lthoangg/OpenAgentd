@@ -1,5 +1,6 @@
 //! Core configuration, paths, auth policy, path locking, and error primitives.
 
+pub mod agent_secrets;
 pub mod auth;
 pub mod credentials;
 pub mod env;
@@ -16,6 +17,7 @@ pub mod pyyaml;
 pub mod release;
 pub mod runtime_settings;
 pub mod secret_files;
+pub mod secret_mask;
 pub mod security;
 pub mod settings;
 pub mod slug;

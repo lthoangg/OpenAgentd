@@ -4,7 +4,7 @@
  */
 import { applyQuestionResolution, parseQuestionClosedReason } from './helpers'
 import type { StoreSet } from './types'
-import type { PendingQuestion, QuestionItem } from '@/api/types'
+import type { PendingQuestion, QuestionItem, SecretRequestCard } from '@/api/question-types'
 
 /**
  * Coerce the ``question_asked`` payload into ``QuestionItem[]``.
@@ -50,6 +50,7 @@ export function toPendingQuestion(raw: {
   questions?: unknown
   kind?: unknown
   plan_revision?: unknown
+  secret?: unknown
 }): PendingQuestion | null {
   const id = typeof raw.id === 'string' ? raw.id : ''
   const questions = normalizeQuestions(raw.questions)
@@ -64,7 +65,39 @@ export function toPendingQuestion(raw: {
     question.kind = 'plan_review'
     if (typeof raw.plan_revision === 'number') question.planRevision = raw.plan_revision
   }
+  if (raw.kind === 'secret_request') {
+    const secret = toSecretCard(raw.secret)
+    // A card with no key to fill cannot be answered: show nothing rather
+    // than an empty form (the older-client question text is not answerable).
+    if (!secret) return null
+    question.kind = 'secret_request'
+    question.secret = secret
+  }
   return question
+}
+
+/** Coerce a secret card's wire data; ``null`` when no key needs the user. */
+export function toSecretCard(raw: unknown): SecretRequestCard | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const states = ['new', 'elsewhere', 'replace', 'available'] as const
+  const keys = (Array.isArray(r.keys) ? r.keys : []).flatMap((entry) => {
+    const k = (entry ?? {}) as Record<string, unknown>
+    const state = states.find((s) => s === k.state)
+    if (!str(k.name) || !state) return []
+    const values = (Array.isArray(k.values) ? k.values : []).map((v) => {
+      const o = (v ?? {}) as Record<string, unknown>
+      const projects = (Array.isArray(o.projects) ? o.projects : []).map((p) => {
+        const q = (p ?? {}) as Record<string, unknown>
+        return { key: str(q.key), name: str(q.name) }
+      })
+      return { id: str(o.id), all: o.all === true, projects, updated: str(o.updated) || undefined }
+    })
+    return [{ name: str(k.name), help_url: str(k.help_url) || null, optional: k.optional === true, multiline: k.multiline === true, state, values }]
+  })
+  if (!keys.some((k) => k.state !== 'available')) return null
+  return { project: str(r.project), project_name: str(r.project_name), reason: str(r.reason), replace: r.replace === true, keys }
 }
 
 export function onQuestionAsked(set: StoreSet, d: Record<string, unknown>) {

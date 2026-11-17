@@ -298,6 +298,7 @@ dependencies = [
 name = "appv3-core"
 version = "3.58.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "base64 0.23.1",
  "chrono",

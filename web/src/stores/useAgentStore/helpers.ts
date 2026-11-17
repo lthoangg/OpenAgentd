@@ -1,4 +1,5 @@
-import type { ContentBlock, PendingQuestion } from '@/api/types'
+import type { ContentBlock } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 import { patchFiles } from '@/components/ToolCall/diffUtils'
 import { isGoalTurnBlock } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'

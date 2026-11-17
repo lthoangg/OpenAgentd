@@ -16,7 +16,7 @@ mock.module('@/api/client', () => ({ answerQuestion, agentStream }))
 import { ToolCall } from '@/components/ToolCall'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 
 const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
 const SAVE_ARGS = JSON.stringify({ action: 'save', server: 'excalidraw', config: { transport: 'http', url: 'https://mcp.excalidraw.com', enabled: true } })

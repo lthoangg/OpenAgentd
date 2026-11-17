@@ -353,6 +353,7 @@ impl Agent {
                 }
             }));
         }
+        let live_mask = crate::tool_mask::LiveMask::wrap(&mut scope.output); // stored credentials never leave a call
         let mode = meta.lock().unwrap().get("interaction_mode").and_then(|v| v.as_str()).map(String::from);
         let unattended = meta.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
         let unattended_reason = meta.lock().unwrap().get(UNATTENDED_REASON_META).and_then(Value::as_str).map(String::from);
@@ -372,11 +373,11 @@ impl Agent {
                         // The script's nested calls come back through this loop.
                         let runner = self.nested_runner(ctx, meta, hooks, tools, &tctx, &call.id);
                         let out = crate::tools::script::NESTED.scope(runner, appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments)).await?;
-                        Ok::<_, Suspension>((out.text, (out.parts, out.mcp_app)))
+                        Ok::<_, Suspension>((crate::tool_mask::masked(out.text), (out.parts, out.mcp_app)))
                     }
                     _ => {
                         let out = appv3_tools::execute(tools, &tctx, &call.function.name, &call.function.arguments).await?;
-                        Ok::<_, Suspension>((out.text, (out.parts, out.mcp_app)))
+                        Ok::<_, Suspension>((crate::tool_mask::masked(out.text), (out.parts, out.mcp_app)))
                     }
                 }
             }
@@ -395,7 +396,9 @@ impl Agent {
                 crate::plugins::PluginCtx { tool: &tc.function.name, session_id: ctx.session_id.as_deref(), run_id: &ctx.run_id, agent_name: &ctx.agent_name, call_id: &tc.id };
             crate::plugins::wrap_tool_call(&plugins, pctx, tc, exec).await?
         };
-        // The app's page is kept once on disk, not in every result and event.
+        live_mask.finish();
+        text = crate::tool_mask::masked(text); // a plugin's wrapper may have added output
+                                               // The app's page is kept once on disk, not in every result and event.
         if let Some(app) = mcp_app.as_mut() {
             crate::mcp_apps::store_html(app).await;
         }
@@ -841,6 +844,7 @@ impl Agent {
                 match r {
                     None => {
                         let (duration_ms, text) = p.cancelled();
+                        let text = crate::tool_mask::masked(text);
                         for h in &hooks {
                             h.on_tool_cancelled(&ctx, tc, &text, duration_ms).await;
                         }

@@ -16,7 +16,8 @@ import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
 import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { PendingQuestion, SessionPlan } from '@/api/types'
+import type { SessionPlan } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 
 const PLAN: SessionPlan = {
   content: '# Ship it\n\n1. Write the migration\n2. Wire the endpoint',

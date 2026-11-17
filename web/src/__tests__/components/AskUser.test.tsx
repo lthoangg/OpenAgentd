@@ -31,7 +31,7 @@ import { AskUser } from '@/components/AskUser'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 
 const PLACEHOLDER =
   'Waiting for the user to answer. Do not continue until their reply arrives.'

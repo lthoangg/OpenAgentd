@@ -22,6 +22,10 @@ message:
 - a user message holding ``drive:preview <JSON arguments>``: one ``preview``
   tool call with those arguments, e.g. ``{"action": "open", "path": "a.html"}``
   (only when the request offers a ``preview`` tool)
+- a user message holding ``drive:secret <JSON arguments>``: one ``secret``
+  tool call with those arguments (only when the request offers ``secret``)
+- ``drive:shell`` followed by a JSON object passes it as the ``shell`` call's
+  arguments, e.g. ``{"command": "echo $K", "secrets": ["K"]}``
 - any other user message: ``Stub reply (<protocol>): <the message>``, streamed
   word by word
 - a request without ``stream``: the title request's own ``<message>`` text,
@@ -46,7 +50,7 @@ from typing import Any
 
 MODEL = "stub"
 # A directive names the tool to call; the rest of its line is the tool's input.
-DIRECTIVE = re.compile(r"drive:(shell|script|preview)\s+(.+)")
+DIRECTIVE = re.compile(r"drive:(shell|script|preview|secret)\s+(.+)")
 TITLE_MESSAGE = re.compile(r"<message>\s*(.*?)\s*</message>", re.S)
 # Each tool call gets its own id, so a session with several calls can read
 # each result back by id (`/agent/<session>/tool-results/<id>`).
@@ -100,7 +104,7 @@ def plan(protocol: str, body: dict[str, Any]) -> tuple[str, str]:
 
 def tool_arguments(kind: str, value: str) -> str:
     """The JSON arguments of the tool call a directive asks for."""
-    if kind == "preview":
+    if kind in ("preview", "secret") or (kind == "shell" and value.lstrip().startswith("{")):
         return json.dumps(json.loads(value))
     return json.dumps({"command": value} if kind == "shell" else {"description": "Drive script", "code": value})
 

@@ -167,8 +167,12 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
     let sid = path_uuid("session_id", &sid_raw)?;
     let qid = path_uuid("question_id", &qid_raw)?;
     let b = body_value(&body)?;
-    let answers = parse_answers(&b)?;
     let row = open_question(&st.pool, &sid, &qid).await?;
+    if row.kind().as_deref() == Some(appv3_agent::secret_request::SECRET_KIND) {
+        crate::cloud::letters::mark_seen(&sid);
+        return answer_secret_request(&st.pool, &sid, &qid, &b).await;
+    }
+    let answers = parse_answers(&b)?;
     // Answered on some screen: its "Needs you" letter need not reach the phone.
     crate::cloud::letters::mark_seen(&sid);
     if row.kind().as_deref() == Some(plan::PLAN_REVIEW_KIND) {
@@ -205,6 +209,30 @@ async fn answer_confirm_change(pool: &DbPool, sid: &str, qid: &str, row: &db::Pe
         end_turn(sid);
     }
     tracing::info!("confirm_change_answer_handled session_id={} question_id={} resumed={}", sid, qid, resumed);
+    Ok(json(json!({"status": "ok", "resumed": resumed})))
+}
+
+/// Close a secret card. Its answer names keys and choices only: values go
+/// to `PUT /api/secrets` before it, so this route never receives one. A
+/// typed `answers` (an older client's free text) is refused, not stored.
+async fn answer_secret_request(pool: &DbPool, sid: &str, qid: &str, b: &Value) -> ApiResult<Response> {
+    let Some(raw) = b.get("secret").filter(|v| v.is_object()) else {
+        return Err(ApiError::unprocessable("This card asks for secrets; answer it in an up-to-date OpenAgentd, which sends each value to the secret store, not the chat."));
+    };
+    let a: appv3_agent::secret_request::SecretAnswer = serde_json::from_value(raw.clone()).map_err(|e| ApiError::unprocessable(format!("Invalid secret answer: {e}")))?;
+    if a.keys.iter().any(|k| !matches!(k.action.as_str(), "provided" | "reuse" | "skip")) {
+        return Err(ApiError::unprocessable("Each key's action must be 'provided', 'reuse' or 'skip'."));
+    }
+    let Some(_) = appv3_agent::secret_request::answer(pool, sid, qid, &a).await.map_err(ApiError::internal)? else {
+        return Err(ApiError::conflict("Question already resolved."));
+    };
+    let summary = appv3_agent::secret_request::answered_summary(pool, qid).await;
+    store().push_event(sid, &events::question_answered(qid, sid, &summary), true);
+    let resumed = resume_agent(pool, sid, qid).await;
+    if !resumed {
+        end_turn(sid);
+    }
+    tracing::info!("secret_request_answer_handled session_id={} question_id={} resumed={}", sid, qid, resumed);
     Ok(json(json!({"status": "ok", "resumed": resumed})))
 }
 

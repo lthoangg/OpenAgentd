@@ -399,6 +399,9 @@ pub fn pending_question_response(q: &PendingQuestion) -> Value {
     if let Some(kind) = q.kind() {
         v["kind"] = Value::String(kind);
         v["plan_revision"] = q.plan_revision().map(Value::from).unwrap_or(Value::Null);
+        if let Some(secret) = q.secret_request() {
+            v["secret"] = secret;
+        }
     }
     v
 }

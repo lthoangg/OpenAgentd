@@ -15,6 +15,7 @@ pub mod multimodal;
 pub mod patch;
 pub mod read;
 pub mod shell;
+mod shell_env;
 pub mod shell_snapshot;
 pub mod todo;
 pub mod web;

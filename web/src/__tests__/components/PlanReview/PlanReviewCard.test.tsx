@@ -20,7 +20,8 @@ import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { APP_EVENTS } from '@/lib/app-events'
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { PendingQuestion, SessionPlan } from '@/api/types'
+import type { SessionPlan } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 
 /** Kept so a card can render inside the app's providers. */
 function render(ui: ReactElement) {

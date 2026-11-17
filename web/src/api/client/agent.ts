@@ -1,4 +1,4 @@
-// size-ceiling: 873 — 63 request functions: group them by resource into modules
+// size-ceiling: 872 — 63 request functions: group them by resource into modules
 /**
  * OpenAgentd API client — agent sessions, workspace, and files.
  */
@@ -17,8 +17,6 @@ import type {
   SessionResponse,
   SessionHistoryResponse,
   AgentRegistryResponse,
-  PendingQuestionEnvelope,
-  QuestionResolveResult,
   WorkspaceValidationResponse,
   WorktreeCreateResponse,
   WorktreeInfo,
@@ -53,6 +51,7 @@ import type {
   SessionGoal,
   SessionGoalResponse,
 } from '../types'
+import type { PendingQuestionEnvelope, QuestionResolveResult } from '../question-types'
 
 export async function postAgentChat(
   message: string | null,

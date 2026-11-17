@@ -2,12 +2,11 @@ import type {
   ContentBlock,
   AgentUsage,
   MessageAttachment,
-  PendingQuestion,
-  QuestionItem,
   AgentCommandResponse,
   SessionInteractionMode,
   SessionSentFrom,
 } from '@/api/types'
+import type { PendingQuestion, QuestionItem } from '@/api/question-types'
 import type { OrphanToolResult } from '@/utils/messages'
 
 export interface AgentError {

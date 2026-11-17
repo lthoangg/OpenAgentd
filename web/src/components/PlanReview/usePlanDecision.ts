@@ -11,7 +11,7 @@
  */
 import { create } from 'zustand'
 
-import type { PendingQuestion } from '@/api/types'
+import type { PendingQuestion } from '@/api/question-types'
 import { useGoalSettingsQuery } from '@/queries/useGoalSettingsQuery'
 import { useQuestionResolver } from '../AskUser/useQuestionResolver'
 

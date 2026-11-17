@@ -1,12 +1,13 @@
 //! The `shell` tool and its runtime.
 
 use crate::args::Args;
+use crate::shell_env;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
 use regex::bytes::Regex as BRegex;
 use serde_json::Value;
 use std::collections::VecDeque;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -385,44 +386,6 @@ fn format_exit_code(code: Option<i32>, signal: Option<i32>) -> String {
     code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".into())
 }
 
-fn scrubbed_env(cmd: &mut tokio::process::Command) {
-    for k in appv3_core::env::child_env_blocklist() {
-        cmd.env_remove(k);
-    }
-    // Whoever embeds this tool, its commands are the agent's.
-    cmd.env(appv3_core::auth::AGENT_MARKER_ENV, "1");
-}
-
-/// `PATH` for the commands the agent runs, when it needs a change: `path`
-/// plus, at the end, the folder of the running `exe` when no `agentd` is
-/// reachable through `path`.
-///
-/// The desktop app keeps `agentd` inside its bundle and puts nothing on
-/// `PATH`, so without this the `agentd plugin` commands the self-healing
-/// skill points to would not exist for the agent. Appended, so an `agentd`
-/// the user installed still wins. Nothing when `exe` is not `agentd` (tests,
-/// embedders), or when `PATH` is unset: setting it would drop the shell's
-/// default.
-fn path_with_cli(path: Option<&OsStr>, exe: Option<&Path>) -> Option<OsString> {
-    let (path, exe) = (path?, exe?);
-    let dir = exe.parent()?;
-    if exe.file_stem() != Some(OsStr::new("agentd")) || appv3_core::which::which_in("agentd", path).is_some() {
-        return None;
-    }
-    std::env::join_paths(std::env::split_paths(path).chain([dir.to_path_buf()])).ok()
-}
-
-/// [`path_with_cli`] for this process, worked out once: the server's own
-/// `PATH` does not change while it runs.
-fn command_path() -> Option<&'static OsStr> {
-    static P: OnceLock<Option<OsString>> = OnceLock::new();
-    P.get_or_init(|| {
-        let exe = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok());
-        path_with_cli(std::env::var_os("PATH").as_deref(), exe.as_deref())
-    })
-    .as_deref()
-}
-
 fn snapshot_cache() -> &'static crate::shell_snapshot::Cache {
     static C: OnceLock<crate::shell_snapshot::Cache> = OnceLock::new();
     C.get_or_init(Default::default)
@@ -442,7 +405,7 @@ async fn snapshot_argv(shell_bin: &str, command: &str) -> Option<Vec<String>> {
     let mut env: std::collections::HashMap<String, String> =
         std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).filter(|(k, _)| !blocked.contains(k)).collect();
     // The rc sees the PATH commands get, so a PATH it exports keeps the addition.
-    if let Some(p) = command_path().and_then(OsStr::to_str) {
+    if let Some(p) = shell_env::command_path().and_then(OsStr::to_str) {
         env.insert("PATH".into(), p.into());
     }
     let dir = appv3_core::settings().cache_dir.join("shell-snapshots");
@@ -525,7 +488,10 @@ impl Tool for ShellTool {
         let workdir = a.opt_str(&["workdir", "cwd", "dir"]);
         let timeout_s = a.opt_int(&["timeout_seconds"], Some(1), None).map(|n| n as u64).unwrap_or(DEFAULT_TIMEOUT_SECONDS).min(MAX_TIMEOUT_SECONDS);
         let background = a.bool_or(&["background"], false);
+        let secret_names = shell_env::secret_names(a.raw(&["secrets"]));
         a.finish()?;
+        let secret_names = secret_names.map_err(|e| ToolError::Argument(format!("Invalid arguments for tool 'shell': secrets: {e}")))?;
+        let secrets = shell_env::resolve_secrets(ctx, &secret_names)?;
         let cwd = match &workdir {
             None => ctx.denied.workspace_root.clone(),
             Some(w) => {
@@ -562,9 +528,14 @@ impl Tool for ShellTool {
         };
         let mut cmd = tokio::process::Command::new(&shell_bin);
         appv3_core::proctree::hide_window(&mut cmd).args(&argv).current_dir(&cwd).stdin(std::process::Stdio::null());
-        scrubbed_env(&mut cmd);
-        if let Some(p) = command_path() {
+        shell_env::scrubbed_env(&mut cmd);
+        if let Some(p) = shell_env::command_path() {
             cmd.env("PATH", p);
+        }
+        // Only the secrets this call names, after the scrub, so none leaks
+        // into commands that did not ask for it.
+        for (name, value) in &secrets {
+            cmd.env(name, value);
         }
         #[cfg(unix)]
         cmd.process_group(0);
@@ -750,41 +721,11 @@ mod tests {
     #[test]
     fn child_env_never_inherits_openagentd_secrets() {
         let mut cmd = tokio::process::Command::new("sh");
-        scrubbed_env(&mut cmd);
+        shell_env::scrubbed_env(&mut cmd);
         let removed: Vec<String> = cmd.as_std().get_envs().filter(|(_, v)| v.is_none()).map(|(k, _)| k.to_string_lossy().into_owned()).collect();
         for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "OPENAGENTD_HANDSHAKE_FILE"] {
             assert!(removed.iter().any(|r| r == k), "{k} reaches agent shell commands: {removed:?}");
         }
-    }
-
-    #[test]
-    fn commands_reach_the_running_agentd_when_path_has_none() {
-        let make_exe = |dir: &Path, stem: &str| {
-            std::fs::create_dir_all(dir).unwrap();
-            let p = dir.join(if cfg!(windows) { format!("{stem}.exe") } else { stem.to_string() });
-            std::fs::write(&p, b"").unwrap();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-            }
-            p
-        };
-        let d = tempfile::tempdir().unwrap();
-        let (app, user, usr) = (d.path().join("App/sidecar/bin"), d.path().join("user/bin"), d.path().join("usr/bin"));
-        let exe = make_exe(&app, "agentd");
-        make_exe(&usr, "ls");
-        let path = std::env::join_paths([&usr]).unwrap();
-
-        // The desktop app's case: no agentd on PATH, so its folder is added last.
-        assert_eq!(path_with_cli(Some(&path), Some(&exe)), Some(std::env::join_paths([&usr, &app]).unwrap()));
-        // An agentd the user installed is left to win.
-        make_exe(&user, "agentd");
-        assert_eq!(path_with_cli(Some(&std::env::join_paths([&usr, &user]).unwrap()), Some(&exe)), None);
-        // A binary that is not agentd (a test, an embedder) adds nothing.
-        assert_eq!(path_with_cli(Some(&path), Some(&make_exe(&app, "embedder"))), None);
-        // Without PATH the shell's default stays in force.
-        assert_eq!(path_with_cli(None, Some(&exe)), None);
     }
 
     #[test]

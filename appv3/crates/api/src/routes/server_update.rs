@@ -31,9 +31,11 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use serde_json::{json as j, Value};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+mod state;
+use state::{UpdateEvent, UpdateState};
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/update", get(status).post(start))
@@ -54,18 +56,49 @@ pub struct Launch {
 }
 
 static LAUNCH: OnceLock<Launch> = OnceLock::new();
-/// Held while a POST records and spawns the helper. After that the status
+/// The update this server is starting (`state.rs`). After the POST the status
 /// file says `running` until the helper writes how it went, so a helper that
 /// fails without stopping this server does not block the next try.
-static IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static UPDATE: Mutex<UpdateState> = Mutex::new(UpdateState::Idle);
 
+/// Lets the POST go of its `Starting` however it returns.
 struct StartGuard;
 
 impl Drop for StartGuard {
     fn drop(&mut self) {
-        IN_PROGRESS.store(false, Ordering::SeqCst);
+        state::apply(&mut UPDATE.lock().unwrap(), UpdateEvent::Release);
     }
 }
+
+/// Settle a desktop request the app did not collect in time: it never
+/// started, and the client says so with Retry instead of "Updating…".
+fn expire_overdue_request() {
+    let mut update = UPDATE.lock().unwrap();
+    if !update.overdue(Instant::now()) {
+        return;
+    }
+    state::apply(&mut update, UpdateEvent::Expire);
+    drop(update);
+    if let Some(done) = last_upgrade().and_then(|last| not_collected(&last)) {
+        write_status(&done);
+    }
+    tracing::warn!("server_update_request_not_collected within_secs={}", state::PICKUP_WITHIN.as_secs());
+}
+
+/// The run a desktop request recorded, settled as never started.
+fn not_collected(last: &Value) -> Option<Value> {
+    if last["state"] != "running" || last["by"] != BY_DESKTOP_APP {
+        return None;
+    }
+    let mut done = last.clone();
+    done["state"] = j!("finished");
+    done["ok"] = j!(false);
+    done["message"] = j!(NOT_COLLECTED);
+    done["finished_at"] = j!(chrono::Utc::now().to_rfc3339());
+    Some(done)
+}
+
+const NOT_COLLECTED: &str = "Couldn't start the update: OpenAgentd on the computer didn't pick up the request. Check that the app is open there, then retry.";
 
 pub fn set_launch(launch: Launch) {
     if launch.desktop_sidecar {
@@ -173,15 +206,14 @@ const BY_DESKTOP_APP: &str = "desktop_app";
 /// The longest outcome message kept from the app.
 const MESSAGE_MAX_CHARS: usize = 500;
 
-/// The request the app has not collected yet: `{target, started_at}`.
-fn desktop_request() -> &'static Mutex<Option<Value>> {
-    static R: OnceLock<Mutex<Option<Value>>> = OnceLock::new();
-    R.get_or_init(|| Mutex::new(None))
-}
-
-/// Hand the pending request to the desktop app, once.
+/// Hand the pending request (`{target, started_at}`) to the desktop app, once.
 pub fn take_desktop_request() -> Option<Value> {
-    desktop_request().lock().unwrap().take()
+    expire_overdue_request();
+    let mut update = UPDATE.lock().unwrap();
+    let UpdateState::Requested { request, .. } = &*update else { return None };
+    let request = request.clone();
+    state::apply(&mut update, UpdateEvent::Collect);
+    Some(request)
 }
 
 /// The desktop app says how its update went. It only ever reports a failure
@@ -227,11 +259,13 @@ fn method_name(launch: &Launch, method: InstallMethod) -> Option<&'static str> {
     }
 }
 
-fn body(launch: &Launch, method: InstallMethod, latest: &Result<String, String>, last: Option<Value>) -> Value {
+/// `starting`: this server is starting an update (the POST runs, or the
+/// desktop app has not collected its request yet).
+fn body(launch: &Launch, method: InstallMethod, latest: &Result<String, String>, last: Option<Value>, starting: bool) -> Value {
     let reason = blocker(launch, method, release::target_triple());
     let latest_v = latest.as_ref().ok();
     let available = latest_v.is_some_and(|l| release::is_newer(l, VERSION));
-    let in_progress = IN_PROGRESS.load(Ordering::SeqCst) || helper_running(last.as_ref());
+    let in_progress = starting || helper_running(last.as_ref());
     j!({
         "current": VERSION,
         "latest": latest_v,
@@ -253,7 +287,10 @@ async fn status(q: Qs) -> ApiResult<Response> {
     let refresh = q.bool("refresh", false)?;
     let launch = launch();
     let method = tokio::task::spawn_blocking(install_method).await.unwrap_or(InstallMethod::Release);
-    Ok(json(body(&launch, method, &latest(refresh).await, last_upgrade())))
+    let latest = latest(refresh).await;
+    expire_overdue_request();
+    let starting = *UPDATE.lock().unwrap() != UpdateState::Idle;
+    Ok(json(body(&launch, method, &latest, last_upgrade(), starting)))
 }
 
 async fn start() -> ApiResult<Response> {
@@ -266,7 +303,8 @@ async fn start() -> ApiResult<Response> {
     if !release::is_newer(&target, VERSION) {
         return Err(ApiError::conflict(format!("Already on the latest release (v{VERSION}).")));
     }
-    if IN_PROGRESS.swap(true, Ordering::SeqCst) {
+    expire_overdue_request();
+    if !state::try_begin(&mut UPDATE.lock().unwrap()) {
         return Err(ApiError::conflict("An update is already running."));
     }
     let _guard = StartGuard;
@@ -276,7 +314,7 @@ async fn start() -> ApiResult<Response> {
     let started_at = chrono::Utc::now().to_rfc3339();
     if by_desktop_app(&launch) {
         write_status(&j!({"state": "running", "by": BY_DESKTOP_APP, "from": VERSION, "to": target, "started_at": started_at}));
-        *desktop_request().lock().unwrap() = Some(j!({"target": target, "started_at": started_at}));
+        state::apply(&mut UPDATE.lock().unwrap(), UpdateEvent::Request { request: j!({"target": target, "started_at": started_at}), at: Instant::now() });
         tracing::info!("server_update_requested from={} to={} method={}", VERSION, target, BY_DESKTOP_APP);
         return Ok(json_code(202, j!({"status": "started", "from": VERSION, "target": target, "started_at": started_at, "method": BY_DESKTOP_APP})));
     }
@@ -348,10 +386,10 @@ mod tests {
         let by_hand = Launch { desktop_updates: true, ..daemon() };
         assert_eq!(blocker(&by_hand, InstallMethod::DesktopBundled, target), Some("desktop_sidecar"), "the app is not running it");
 
-        let v = body(&app(true), InstallMethod::DesktopBundled, &Ok("99.0.0".into()), None);
+        let v = body(&app(true), InstallMethod::DesktopBundled, &Ok("99.0.0".into()), None, false);
         assert_eq!((v["can_upgrade"].as_bool(), v["method"].as_str(), v["reason"].is_null()), (Some(true), Some("desktop_app"), true));
         assert_eq!(v["confirm_on_computer"], cfg!(windows));
-        let v = body(&app(false), InstallMethod::DesktopBundled, &Ok("99.0.0".into()), None);
+        let v = body(&app(false), InstallMethod::DesktopBundled, &Ok("99.0.0".into()), None, false);
         assert_eq!((v["can_upgrade"].as_bool(), v["method"].is_null(), v["confirm_on_computer"].as_bool()), (Some(false), true, Some(false)));
     }
 
@@ -377,17 +415,30 @@ mod tests {
     }
 
     #[test]
+    fn a_request_the_app_never_collects_settles_as_not_started() {
+        let running = j!({"state": "running", "by": "desktop_app", "from": "3.1.0", "to": "3.2.0", "started_at": "2026-01-01T00:00:00Z"});
+        let done = not_collected(&running).expect("settled");
+        assert_eq!((done["state"].as_str(), done["ok"].as_bool()), (Some("finished"), Some(false)));
+        assert!(done["message"].as_str().unwrap().starts_with("Couldn't start the update"));
+        assert_eq!(done["started_at"], "2026-01-01T00:00:00Z", "the device that asked recognises its run");
+        assert_eq!(not_collected(&j!({"state": "running", "from": "3.1.0"})), None, "the CLI helper writes its own outcome");
+
+        let v = body(&daemon(), InstallMethod::Release, &Ok("99.0.0".into()), Some(done), false);
+        assert_eq!(v["in_progress"], false, "the client offers Retry, not Updating…");
+    }
+
+    #[test]
     fn status_says_what_is_available_and_why_not() {
-        let v = body(&daemon(), InstallMethod::Release, &Ok("99.0.0".into()), None);
+        let v = body(&daemon(), InstallMethod::Release, &Ok("99.0.0".into()), None, false);
         assert_eq!((v["available"].as_bool(), v["can_upgrade"].as_bool(), v["reason"].is_null()), (Some(true), Some(true), true));
         assert_eq!(v["latest"], "99.0.0");
         assert_eq!(v["method"], "release");
         assert!(v["release_url"].as_str().unwrap().ends_with("/tag/v99.0.0"));
 
-        let v = body(&Launch::default(), InstallMethod::Brew, &Ok(VERSION.into()), None);
+        let v = body(&Launch::default(), InstallMethod::Brew, &Ok(VERSION.into()), None, false);
         assert_eq!((v["available"].as_bool(), v["can_upgrade"].as_bool(), v["reason"].as_str()), (Some(false), Some(false), Some("foreground")));
 
-        let v = body(&daemon(), InstallMethod::Release, &Err("offline".into()), None);
+        let v = body(&daemon(), InstallMethod::Release, &Err("offline".into()), None, false);
         assert_eq!((v["latest"].is_null(), v["available"].as_bool(), v["check_error"].as_str()), (true, Some(false), Some("offline")));
     }
 

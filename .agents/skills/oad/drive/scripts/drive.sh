@@ -99,6 +99,7 @@ cmd_up() {
       OPENAGENTD_DATA_DIR="$DRIVE_DIR/data" OPENAGENTD_CONFIG_DIR="$DRIVE_DIR/config" \
       OPENAGENTD_STATE_DIR="$DRIVE_DIR/state" OPENAGENTD_CACHE_DIR="$DRIVE_DIR/cache" \
       OPENAGENTD_WORKSPACE_DIR="$DRIVE_DIR/workspace" AGENT_MEMORY_DIR="$DRIVE_DIR/memory" \
+      ${DRIVE_SERVER_ENV:-} \
       OLLAMA_BASE_URL="http://127.0.0.1:$MODEL_PORT/v1" \
       ANTHROPIC_BASE_URL="http://127.0.0.1:$MODEL_PORT" ANTHROPIC_API_KEY="drive-stub-not-a-key" \
       "$ROOT/appv3/target/debug/agentd" server serve --port "$API_PORT"

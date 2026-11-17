@@ -31,6 +31,9 @@ change. The backend runs with a cleared environment, so no key, token, or
 `OPENAGENTD_*` setting of yours reaches it, and it runs beside your own
 `make dev` without sharing a port or a file. `up` refuses to start when a port
 is taken or when `DRIVE_DIR` was not made by this script.
+To give the backend a setting on purpose, list it in `DRIVE_SERVER_ENV`
+(space-separated `NAME=value` words), for example
+`DRIVE_SERVER_ENV="OPENAGENTD_GALLERY_URL=https://…" drive.sh up`.
 
 The only model is the stub. It answers over the three wire protocols the
 backend speaks, so each provider's real request and stream code runs:

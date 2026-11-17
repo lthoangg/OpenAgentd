@@ -184,16 +184,17 @@ async fn names_follow_the_account_and_departed_devices_are_hidden() {
     })
     .await;
     assert_eq!(named, hostname);
-    assert_eq!(stored_identity().name_synced.as_deref(), Some(hostname.as_str()), "what both agree on is remembered");
+    // The push lands in the account just before it is remembered here.
+    eventually("what both agree on is remembered", || async { (stored_identity().name_synced.as_deref() == Some(hostname.as_str())).then_some(()) }).await;
 
     // 3. A rename in the account reaches this computer, and one here reaches the account.
     phone.cloud.set_device_name(&host_id, Some("Work Mac")).await.unwrap();
+    // The name is taken first and remembered as agreed right after: wait for both.
     eventually("the account's name here", || async {
         nudge(&fake, &account);
-        (server_name(&app).await == ("Work Mac".to_string(), true)).then_some(())
+        (server_name(&app).await == ("Work Mac".to_string(), true) && stored_identity().name_synced.as_deref() == Some("Work Mac")).then_some(())
     })
     .await;
-    assert_eq!(stored_identity().name_synced.as_deref(), Some("Work Mac"));
     let (s, v) = local(&app, "PUT", "/api/server/name", Some(json!({ "name": "Studio B" }))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     eventually("the new server name in the account", || async { (names_in_account(&phone).await[&host_id].as_deref() == Some("Studio B")).then_some(()) }).await;

@@ -128,6 +128,36 @@ describe('useBtwStore', () => {
     expect(state().live).toMatchObject({ status: 'stopped', text: 'Par', error: null })
   })
 
+  it('a stop that crosses the finished answer leaves it done', async () => {
+    const encoder = new TextEncoder()
+    let push: (e: object) => void = () => {}
+    let end: () => void = () => {}
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (e) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`))
+        end = () => controller.close()
+      },
+    })
+    installFetch(async (call) => {
+      if (call.url.endsWith('/stop')) {
+        // The answer finished while Stop was on its way: the server no
+        // longer has a running question to stop.
+        push({ type: 'btw_done', id: 'q1', answer: 'Whole answer.', model: 'mock:m', usage: null })
+        end()
+        await new Promise((r) => setTimeout(r, 10))
+        return new Response(null, { status: 404 })
+      }
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    })
+    const asking = useBtwStore.getState().ask(S, 'q')
+    await new Promise((r) => setTimeout(r, 0))
+    push({ type: 'btw_start', id: 'q1', question: 'q' })
+    await new Promise((r) => setTimeout(r, 10))
+    await useBtwStore.getState().stop(S)
+    await asking
+    expect(state().live).toMatchObject({ status: 'done', text: 'Whole answer.' })
+  })
+
   it('a new ask stops the running one and only the newest writes', async () => {
     const first = sse([{ type: 'btw_start', id: 'q1', question: 'one' }, { type: 'btw_delta', id: 'q1', text: 'old' }], { hold: true })
     const calls = installFetch((call) => {

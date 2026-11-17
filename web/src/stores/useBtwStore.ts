@@ -138,10 +138,12 @@ export const useBtwStore = create<BtwStore>()((set, get) => {
         const stopped = await stopSideQuestion(sessionId, live.id).catch(() => false)
         if (stopped) return
       }
-      // Not started yet, or already over on the server: end it here.
+      // Not started yet, or already over on the server: end it here. An
+      // answer that finished meanwhile (``btw_done`` crossed the stop)
+      // stays done: only a streaming answer becomes stopped.
       controllers.get(sessionId)?.abort()
       controllers.delete(sessionId)
-      patch(sessionId, (cur) => (cur.live ? { live: { ...cur.live, status: 'stopped' } } : {}))
+      patch(sessionId, (cur) => (cur.live?.status === 'streaming' ? { live: { ...cur.live, status: 'stopped' } } : {}))
       bump(sessionId)
     },
 

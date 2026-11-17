@@ -148,6 +148,29 @@ describe('usePressSlide', () => {
     fireEvent.pointerUp(screen.getByText('a'), touch(60))
   })
 
+  it('swallows the click a hold\'s release raises on a sheet outside the container, but not a new tap there', async () => {
+    // ✎'s hold opens an action sheet in a portal; its Cancel row lies under
+    // the finger, and the release's click would close it.
+    const onCancelRow = mock(() => {})
+    render(
+      <>
+        <Harness onRelease={() => {}} onHold={() => {}} />
+        <button type="button" onClick={onCancelRow}>Cancel</button>
+      </>,
+    )
+    const c = screen.getByText('c')
+    fireEvent.pointerDown(c, touch(100))
+    await act(() => new Promise((resolve) => setTimeout(resolve, LONG_PRESS_MS + 40)))
+    fireEvent.pointerUp(c, touch(100))
+    fireEvent.click(screen.getByText('Cancel'))
+    expect(onCancelRow).not.toHaveBeenCalled()
+
+    // A real tap begins with its own press.
+    fireEvent.pointerDown(screen.getByText('Cancel'), touch(300))
+    fireEvent.click(screen.getByText('Cancel'))
+    expect(onCancelRow).toHaveBeenCalledTimes(1)
+  })
+
   it('resets on pointercancel without a release', () => {
     const onRelease = mock(() => {})
     const onCancel = mock(() => {})

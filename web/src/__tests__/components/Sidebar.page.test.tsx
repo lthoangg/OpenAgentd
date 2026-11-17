@@ -840,6 +840,11 @@ describe('Sidebar page mode: press and slide on the toolbar', () => {
     await waitFor(() => { if (!sheet()) throw new Error('no sheet yet') }, { timeout: 1500 })
     fireEvent.pointerUp(newButton(), at(320, 620))
   }
+  /** A finger tap on a sheet row: its own press, then the click. */
+  const tap = (element: HTMLElement) => {
+    fireEvent.pointerDown(element, { pointerType: 'touch', pointerId: 2 })
+    fireEvent.click(element)
+  }
   const rowLabels = () => [...(sheet() as HTMLElement).querySelectorAll('[data-action-sheet-item]')].map((row) => row.textContent)
 
   it('holds ✎ to open "New session in…": Chat, the recent workspaces and the current one last, with Cancel', async () => {
@@ -867,15 +872,24 @@ describe('Sidebar page mode: press and slide on the toolbar', () => {
     await renderPage()
     await holdNew()
 
-    fireEvent.click(within(sheet() as HTMLElement).getByText('web'))
+    tap(within(sheet() as HTMLElement).getByText('web'))
     expect(draftsIn()).toEqual(['/repo/web'])
+  })
+
+  it('keeps the sheet up through the click its hold\'s release raises', async () => {
+    await renderPage()
+    await holdNew()
+
+    // No press of its own: the release's echo, landing on the Cancel row.
+    fireEvent.click(within(sheet() as HTMLElement).getByRole('button', { name: 'Cancel' }))
+    expect(newButton().getAttribute('aria-expanded')).toBe('true')
   })
 
   it('closes from Cancel, starting nothing', async () => {
     await renderPage()
     await holdNew()
 
-    fireEvent.click(within(sheet() as HTMLElement).getByRole('button', { name: 'Cancel' }))
+    tap(within(sheet() as HTMLElement).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(newButton().getAttribute('aria-expanded')).toBe('false'))
     expect(navigate).not.toHaveBeenCalled()
   })

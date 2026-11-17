@@ -15,7 +15,9 @@
  * swallowed, since the release already did the work. It is swallowed at the
  * document, wherever it lands: a release that opens a sheet puts the sheet's
  * backdrop under the finger, and Chromium sends the click there, which
- * would close the sheet again.
+ * would close the sheet again. A hold's release is the same: the sheet it
+ * opened (✎'s, in a portal) has a row under the finger. The swallow ends at
+ * the next press, so a real tap after it always goes through.
  */
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
@@ -139,27 +141,27 @@ export function usePressSlide(options: PressSlideOptions): { active: string | nu
     if (!current || event.pointerId !== current.pointerId) return
     const id = slideTargetAt(current.container, event.clientX, event.clientY)
     const info = { moved: current.moved, held: current.held }
-    const { container } = current
     end()
     // The release did the work; the click it raises next must not again,
-    // on this container or on whatever the release put under the finger. A
-    // hold's release opens nothing new (its menu is already up, inside the
-    // container), so after one only a click in the container is the echo:
-    // one outside is a new tap (on the menu's scrim) and goes through.
+    // on this container or on whatever the release or the hold put under the
+    // finger. That click comes before any new press: a press is a new tap,
+    // and ends the swallow.
     stopSwallow.current?.()
     const swallow = (click: MouseEvent) => {
       stopSwallow.current?.()
-      if (info.held && !(click.target instanceof Node && container.contains(click.target))) return
       click.preventDefault()
       click.stopPropagation()
     }
+    const newPress = () => stopSwallow.current?.()
     const timer = window.setTimeout(() => stopSwallow.current?.(), 600)
     stopSwallow.current = () => {
       window.clearTimeout(timer)
       document.removeEventListener('click', swallow, true)
+      document.removeEventListener('pointerdown', newPress, true)
       stopSwallow.current = null
     }
     document.addEventListener('click', swallow, true)
+    document.addEventListener('pointerdown', newPress, true)
     optionsRef.current.onRelease(id, info)
   }
 

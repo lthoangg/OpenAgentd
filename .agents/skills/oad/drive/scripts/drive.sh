@@ -84,6 +84,10 @@ cmd_up() {
   log "building backend"
   cargo build -q --manifest-path "$ROOT/appv3/Cargo.toml" -p appv3-cli
 
+  # The Anthropic stub thinks, so the run picker has levels to offer it;
+  # Ollama's stays without, a model the picker picks in one step.
+  printf 'anthropic:stub:\n  thinking:\n    levels: [low, medium, high]\n' >"$DRIVE_DIR/config/model_registry.yaml"
+
   log "starting model stub on :$MODEL_PORT"
   python3 "$HERE/stub_model.py" --port "$MODEL_PORT" --log "$DRIVE_DIR/model.jsonl" >"$DRIVE_DIR/model.log" 2>&1 &
   echo $! >"$DRIVE_DIR/model.pid"

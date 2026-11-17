@@ -58,7 +58,8 @@ export async function shell() {
 
 export async function roundtrip() {
   const srv = await listen({ port: 0 });
-  const got = srv.accept(5000);
+  // The fetch below builds the HTTP client first, slow under a loaded suite.
+  const got = srv.accept(60000);
   const resp = fetch(`http://127.0.0.1:${srv.port}/cb?code=1&state=s`);
   const req = await got;
   await req!.respond(200, "OK", { headers: { "Content-Type": "text/plain" }, body: "done" });
@@ -197,16 +198,21 @@ fn args_mode_returns_mutated_arguments() {
     assert_eq!(r.args.unwrap()[1], json!({"args": {"command": "rtk ls"}}));
 }
 
-#[test]
-fn subprocess_and_local_http() {
+// The local HTTP calls go through `call`, not `call_blocking`: this test is
+// about what a subprocess and a request return, and its first fetch builds
+// the HTTP client, which on macOS reads the system's trust settings and can
+// take longer than the blocking bound while the whole suite runs. That
+// bound has its own test (`blocking_call_times_out_on_a_promise_that_never_settles`).
+#[tokio::test(flavor = "multi_thread")]
+async fn subprocess_and_local_http() {
     let (_d, p) = setup();
-    let v = p.call_blocking(&Target::export(""), "shell", &[], Mode::Value).unwrap().value;
+    let v = p.call(&Target::export(""), "shell", &[], Mode::Value).await.unwrap().value;
     let r: Value = serde_json::from_str(&v["r"].to_string().replace("\\r\\n", "\\n")).unwrap();
     assert_eq!(r, json!({"code": 3, "stdout": "hi\n", "stderr": "err\n", "timedOut": false}));
     assert_eq!(v["timedOut"], true);
-    let v = p.call_blocking(&Target::export(""), "roundtrip", &[], Mode::Value).unwrap().value;
+    let v = p.call(&Target::export(""), "roundtrip", &[], Mode::Value).await.unwrap().value;
     assert_eq!(v, json!({"path": "/cb", "query": "code=1&state=s", "status": 200, "body": "done", "ct": "text/plain"}));
-    let v = p.call_blocking(&Target::export(""), "netfail", &[], Mode::Value).unwrap().value;
+    let v = p.call(&Target::export(""), "netfail", &[], Mode::Value).await.unwrap().value;
     assert_eq!(v, json!(["NetworkError", "network", true]));
 }
 

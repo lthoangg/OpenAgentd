@@ -103,6 +103,60 @@ pub enum ServerProcess {
     Exited,
 }
 
+/// What moves a server process: [`LspClient::start`] and [`LspClient::stop`]
+/// fill and empty the child slot, and the OS reports the exit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessEvent {
+    Start,
+    Exit,
+    Stop,
+}
+
+/// The table for [`ServerProcess`] (`appv3/AGENTS.md` → State machines).
+/// The state is never stored: [`LspClient::process`] reads it from the
+/// child slot and the OS, and `start` asks this table before it spawns, so
+/// a client never runs two servers.
+pub struct ServerProcessMachine;
+
+impl appv3_core::machine::Machine for ServerProcessMachine {
+    const NAME: &'static str = "lsp server process";
+    const TRANSITIONS: &'static [(&'static str, &'static str, &'static str)] = &[
+        ("none", "start", "running"),
+        ("running", "exit", "exited"),
+        ("running", "stop", "none"),
+        ("exited", "stop", "none"),
+        // A start that failed is stopped too, to release what it opened.
+        ("none", "stop", "none"),
+    ];
+    type State = ServerProcess;
+    type Event = ProcessEvent;
+
+    fn state_kind(s: &ServerProcess) -> &'static str {
+        match s {
+            ServerProcess::None => "none",
+            ServerProcess::Running => "running",
+            ServerProcess::Exited => "exited",
+        }
+    }
+
+    fn event_kind(e: &ProcessEvent) -> &'static str {
+        match e {
+            ProcessEvent::Start => "start",
+            ProcessEvent::Exit => "exit",
+            ProcessEvent::Stop => "stop",
+        }
+    }
+
+    fn step(s: &ServerProcess, e: &ProcessEvent) -> Option<ServerProcess> {
+        Some(match (s, e) {
+            (ServerProcess::None, ProcessEvent::Start) => ServerProcess::Running,
+            (ServerProcess::Running, ProcessEvent::Exit) => ServerProcess::Exited,
+            (_, ProcessEvent::Stop) => ServerProcess::None,
+            _ => return None,
+        })
+    }
+}
+
 pub struct LspClient {
     pub command: Vec<String>,
     pub workspace_root: PathBuf,
@@ -164,6 +218,12 @@ impl LspClient {
     }
 
     pub async fn start(&self) -> LspResult<()> {
+        use appv3_core::machine::Machine;
+        let now = self.process();
+        if ServerProcessMachine::step(&now, &ProcessEvent::Start).is_none() {
+            tracing::warn!(machine = ServerProcessMachine::NAME, from = ServerProcessMachine::state_kind(&now), event = "start", "illegal_transition");
+            return Err("the language server was already started".into());
+        }
         tracing::info!("Starting LSP server: {} in {}", py_list_repr(&self.command), self.workspace_root.display());
         let mut cmd = tokio::process::Command::new(&self.command[0]);
         appv3_core::proctree::hide_window(&mut cmd);
@@ -483,4 +543,33 @@ fn handle_message(inner: &Arc<Mutex<Inner>>, message: Value) -> Result<(), Strin
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod process_tests {
+    use super::*;
+    use appv3_core::machine::{check_table, Machine};
+
+    #[test]
+    fn step_allows_exactly_the_table() {
+        check_table::<ServerProcessMachine>(&[ServerProcess::None, ServerProcess::Running, ServerProcess::Exited], &[ProcessEvent::Start, ProcessEvent::Exit, ProcessEvent::Stop]);
+    }
+
+    #[test]
+    fn a_client_never_starts_a_second_server() {
+        assert_eq!(ServerProcessMachine::step(&ServerProcess::Running, &ProcessEvent::Start), None);
+        assert_eq!(ServerProcessMachine::step(&ServerProcess::Exited, &ProcessEvent::Start), None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn start_refuses_a_client_whose_server_already_ran() {
+        // A child that has exited: the slot is filled, so start must refuse.
+        let client = LspClient::new(vec!["true".into()], std::env::temp_dir(), None, None);
+        let mut child = tokio::process::Command::new("true").spawn().unwrap();
+        let _ = child.wait().await;
+        *client.child.lock().unwrap() = Some(child);
+        assert_eq!(client.process(), ServerProcess::Exited);
+        assert!(client.start().await.unwrap_err().contains("already started"));
+    }
 }

@@ -9,7 +9,15 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   folders." with Retry; Open folder… still works.
 - Opening a workspace from the sidebar when its sessions cannot be read: a
   toast "Couldn't open the last session" with Retry, not a blank draft.
+- A folder missing TypeScript tools: one status line, "Install TypeScript
+  tools for demo?" with Later and Install, not a dialog.
+- Usage opened on one session: the filter chip shows a skeleton until the
+  session's title loads, not a word. Once closed, Usage stays closed when
+  the app opens again (the `/telemetry` link is not saved as the route to
+  reopen).
 - Deleting a workspace group: the shared confirm, with Cancel.
+- The QR scanner: focus lands on Cancel, Escape cancels it, and focus goes
+  back to the button that opened it.
 - Phone: holding ✎ (New session) opens "New session in…" as an action sheet
   with a Cancel row.
 
@@ -17,7 +25,13 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
 
 - **Folder picker:** a new session (phone: ✎), the folder chip.
 - **Workspace:** the workspace's row in the sidebar (phone: Sessions).
+- **TypeScript line:** the server announces it when an edit in a folder
+  needs the tools it does not have.
+- **Usage on a session:** a turn's footer → its usage, or a
+  `/telemetry?session=<id>` link (phone: Filters shows the chip).
 - **Groups:** Settings → Workspaces → New group, then the row's trash button.
+- **QR scanner (phone app only):** Computers (Back from Sessions) → Scan QR code
+  under the list.
 - **✎ sheet (phone only):** press and hold ✎ on Sessions.
 
 ## Driving it with Playwright
@@ -26,6 +40,12 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   `/agent/workspace/tree` and `/agent/sessions?…`; the route is removed
   before the next step.
 - The confirm is "Delete <group>?" with "Cancel" and "Delete group".
+- The TypeScript line comes from one faked `lsp_install_required` frame on
+  `/events/stream` (the route then lets the real stream through).
+- The Usage skeleton stays on screen because `/observability/summary` is
+  held for 6 s.
+- The QR scanner is mounted beside an "Open the scanner" button by the
+  journey, from the dev server's own `QrScanOverlay.tsx` and React.
 
 ## Gotchas
 
@@ -34,13 +54,16 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   "Couldn't load workspaces." with Retry. A phone also reopens the last
   session at `/`: the journey goes Back to Sessions first.
 - The app retries a failed read a few times (about 7 s) before it says so.
-- The loading skeletons (a text file in the gallery, a Read row's line
-  count, the Usage session filter) are not driven: a text attachment comes
-  with its text, so the gallery never waits, and the others last a moment.
-  `FileLightbox.test.tsx` and `ToolCall/ReadView.test.tsx` cover them.
-
-- The QR scanner (Scan QR code) needs the native camera, so it is not
-  reachable in a browser; its focus and Escape are covered by
-  `web/src/__tests__/components/phone/QrScanOverlay.test.tsx`.
-- The LSP install line appears only when the server reports missing
-  TypeScript tools; its status role is covered by `LspInstallPrompt.test.tsx`.
+- The lightbox and Read-row skeletons are not driven: a text attachment
+  comes with its text, so the gallery never waits, and a Read row's count
+  lasts a moment. `FileLightbox.test.tsx` and `ToolCall/ReadView.test.tsx`
+  cover them.
+- The server's own TypeScript announcement cannot fire in the drive: the
+  machine's `/etc/paths.d` puts `typescript-language-server` on the
+  backend's PATH, so the tools are never missing. Hence the faked frame.
+- The QR scanner needs the native camera, which a browser lacks, so the
+  journey mounts the overlay itself instead of going through Settings. The
+  camera window shows the page behind it, where the phone shows the camera.
+- `/telemetry` and `/scheduler` hand the address back to `/` at once. Until
+  [v3.59.0] the root saved them as the route to reopen, so every later
+  launch reopened Usage (this journey's QR step met it as a stolen focus).

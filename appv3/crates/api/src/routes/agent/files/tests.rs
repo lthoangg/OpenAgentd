@@ -160,7 +160,9 @@ fn git_spawns(root: &Path) -> usize {
     GIT_SPAWNS.lock().unwrap().iter().filter(|(p, _)| p.starts_with(root)).map(|(_, n)| n).sum()
 }
 
-/// `dir`, canonical, with its file watcher running.
+/// `dir`, canonical, with its file watcher running: for a test of what the
+/// watcher's events do. Starting one waits on the system's file events,
+/// which a loaded machine (the whole suite at once) delivers slowly.
 fn watched(dir: &Path) -> PathBuf {
     let root = dunce::canonicalize(dir).unwrap();
     crate::watch::touch_workspace(&root, "test");
@@ -168,9 +170,11 @@ fn watched(dir: &Path) -> PathBuf {
     root
 }
 
-/// Whether `cond` holds within 10 s (file watcher events take a moment).
+/// Whether `cond` holds within 60 s. File watcher events take a moment, and
+/// far longer while the whole suite starts watchers at once; a pass returns
+/// as soon as `cond` holds.
 fn eventually(cond: impl Fn() -> bool) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !cond() {
         if Instant::now() > deadline {
             return false;
@@ -209,7 +213,8 @@ fn untracking_an_ignored_file_is_seen_without_a_watcher_event() {
     git_ok(d.path(), &["add", ".gitignore"]);
     git_ok(d.path(), &["add", "-f", "keep.log"]);
     git_ok(d.path(), &["commit", "-qm", "logs"]);
-    let root = watched(d.path());
+    // Only the cache matters here: the change is one the watcher never reports.
+    let root = crate::watch::watch_without_events(d.path());
     assert!(eventually(|| {
         listed(&root);
         listed(&root) == [".gitignore", "a.txt", "keep.log"] && ignored_of(&root).is_empty()
@@ -250,7 +255,7 @@ fn spawns_of_one_listing(root: &Path) -> usize {
 #[test]
 fn a_cache_miss_reuses_the_known_index_path() {
     let d = repo_on_main();
-    let root = watched(d.path());
+    let root = crate::watch::watch_without_events(d.path());
     let first = spawns_of_one_listing(&root);
     force_miss(&root);
     // `git ls-files` for the listing, but no `git rev-parse` for the index again.
@@ -265,7 +270,7 @@ fn a_cache_miss_reuses_the_known_index_path() {
 fn a_miss_notices_git_init_and_a_removed_git_dir() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("a.txt"), "a").unwrap();
-    let root = watched(d.path());
+    let root = crate::watch::watch_without_events(d.path());
     listed(&root);
     assert_eq!(cached_index(&root), None);
     git_ok(&root, &["init", "-q"]);
@@ -283,7 +288,7 @@ fn a_miss_notices_git_init_in_a_subdirectory_workspace() {
     let d = repo_on_main();
     std::fs::create_dir_all(d.path().join("app")).unwrap();
     std::fs::write(d.path().join("app/m.rs"), "m").unwrap();
-    let root = watched(&d.path().join("app"));
+    let root = crate::watch::watch_without_events(&d.path().join("app"));
     listed(&root);
     assert!(cached_index(&root).is_some_and(|p| !p.starts_with(root.join(".git"))));
     git_ok(&root, &["init", "-q"]);

@@ -104,8 +104,17 @@ over flags, `Option`s and status strings.
   session refusing a second turn); check and move under one lock.
 - **Wire and disk.** The status string the API, SSE or a database column
   carries is derived from the variant (`as_str`), never stored beside it. A
-  status column has a `CHECK` constraint listing its values. The session
-  states the web reads are `crates/agent/data/session_states.json`.
+  status column accepts only the values in `db::migrations::STATUS_VALUES`
+  (triggers from migration 00000034; add a column's list there and a
+  migration when you add a machine that stores one), and the machine tests
+  its states against that list. The session states the web reads are
+  `crates/agent/data/session_states.json`.
+- **A row-backed machine.** When the state lives in a database row's columns
+  (`scheduler/state.rs`, `goal/state.rs`), `TaskState::of(row)` reads it and
+  one `transition(row, event)` writes every column it encodes; a test in the
+  module scans its callers' source for any other write to those columns.
+  A table whose event's data picks the target writes `a|b` in the row and
+  checks it as the scheduler's test does.
 - **Test it** with `machine::check_table` over a sample of every state and
   event, a test per illegal move that matters, and a race test where two
   callers can move it at once.

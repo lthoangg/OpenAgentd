@@ -116,6 +116,11 @@ MCP.
   tools finish, without pausing; leave it and the turn pauses on it as
   before. Sending a message instead supersedes it, and Stop dismisses it.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
+  A run that fails on the task's last allowed run stops the task (shown as
+  failed, with nothing scheduled) instead of firing again past the limit;
+  Run now or Resume retries it. A scheduled run aimed at your own session
+  waits for a message you are sending and then skips that slot, so it never
+  starts a second turn beside yours `[v3.59.0]`.
   Every session lists the same tools on every turn, whoever started it, so a
   scheduled run never invalidates the prompt cache. A task that runs in your
   own session (`"current"` or a session ID) no longer takes `ask_user`,

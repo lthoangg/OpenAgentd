@@ -247,9 +247,11 @@ impl FireOutcome {
 }
 
 /// Count one run on the stored task, record its error, and set what comes
-/// next: `failed` keeps the schedule (the next slot fires again), a
-/// `max_runs` reached or an `at` task completes, and anything else waits for
-/// its next slot. A task paused while it ran stays paused.
+/// next: `failed` keeps the schedule while runs remain (the next slot fires
+/// again) and stops the task on its last allowed run, so it never fires past
+/// `max_runs` (Run now or Resume retries it); a `max_runs` reached or an `at`
+/// task completes, and anything else waits for its next slot. A task paused
+/// while it ran stays paused.
 fn record_run(t: &mut ScheduledTask, error: Option<String>, now: DateTime<Utc>) {
     let was_paused = !t.enabled || t.status == "paused";
     t.run_count += 1;
@@ -259,9 +261,13 @@ fn record_run(t: &mut ScheduledTask, error: Option<String>, now: DateTime<Utc>) 
     }
     let failed = t.last_error.is_some();
     let nxt = nf(t, Some(now));
-    let finite_complete = !failed && matches!(t.max_runs, Some(m) if t.run_count >= m);
-    t.next_fire_at = if finite_complete { None } else { nxt };
+    let at_limit = matches!(t.max_runs, Some(m) if t.run_count >= m);
+    let finite_complete = !failed && at_limit;
+    t.next_fire_at = if at_limit { None } else { nxt };
     t.status = if failed {
+        if at_limit {
+            t.enabled = false;
+        }
         "failed".into()
     } else if finite_complete {
         t.enabled = false;
@@ -739,6 +745,11 @@ impl TaskScheduler {
             if self.version(&task.id) != v {
                 return Ok(FireOutcome::Superseded);
             }
+            // Held from the busy check through the dispatch, as the chat
+            // route holds it while it sends: a message being sent finishes
+            // first (and this run skips), and one sent after waits and
+            // queues behind this run, so the session never runs two turns.
+            let _sending = agent.user_message_lock.lock().await;
             if !fresh && agent.has_active_user_turn() {
                 self.reschedule_without_firing(task, v).await;
                 tracing::info!("scheduler_skip_active_session task_slug={} name={} session_id={:?}", task.slug, task.name, resolved_sid);

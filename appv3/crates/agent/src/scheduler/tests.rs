@@ -186,6 +186,22 @@ async fn a_fire_that_fails_before_dispatch_counts_a_failed_run() {
     assert!(fresh.enabled && fresh.next_fire_at.is_some(), "a failed run keeps the schedule");
 }
 
+/// A task whose last allowed run fails stops there instead of firing past
+/// `max_runs` at every later slot.
+#[tokio::test]
+async fn a_failed_last_allowed_run_stops_the_task() {
+    let (s, _dir) = own_scheduler().await;
+    let mut t = hourly_task(&s, "last-run-fails").await;
+    t.max_runs = Some(1);
+    let t = db::save_task(&s.pool, &t).await.unwrap();
+
+    s.clone().fire_task(t.clone(), Some(0)).await;
+
+    let fresh = db::get_task(&s.pool, &t.id).await.unwrap().unwrap();
+    assert_eq!((fresh.status.as_str(), fresh.run_count), ("failed", 1));
+    assert!(!fresh.enabled && fresh.next_fire_at.is_none(), "a task fired past max_runs after its last run failed");
+}
+
 /// An edit that lands after a fire passed its version check, but before
 /// it marked the task running, supersedes that fire. The fire used to mark
 /// the edited task running anyway and then return as stale, so the task
@@ -246,8 +262,11 @@ fn a_counted_run_sets_the_tasks_next_state() {
     };
     assert_eq!(run(task("every", "running", true, 0, None), None), ("pending".into(), true, 1, true, None));
     assert_eq!(run(task("every", "running", true, 1, Some(2)), None), ("completed".into(), false, 2, false, None));
-    // A failed run keeps its schedule, even on its last allowed run.
-    assert_eq!(run(task("every", "running", true, 1, Some(2)), Some("boom")), ("failed".into(), true, 2, true, Some("boom".into())));
+    // A failed run keeps its schedule while runs remain.
+    assert_eq!(run(task("every", "running", true, 0, Some(2)), Some("boom")), ("failed".into(), true, 1, true, Some("boom".into())));
+    // A failure on the last allowed run stops the task: it never fires past
+    // `max_runs`. Run now or Resume retries it.
+    assert_eq!(run(task("every", "running", true, 1, Some(2)), Some("boom")), ("failed".into(), false, 2, false, Some("boom".into())));
     assert_eq!(run(task("at", "running", true, 0, None), None).0, "completed");
     // Paused while it ran: counted, but the pause stands.
     assert_eq!(run(task("every", "paused", false, 0, None), None), ("paused".into(), false, 1, false, None));

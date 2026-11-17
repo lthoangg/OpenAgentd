@@ -13,35 +13,10 @@ use appv3_agent::scheduler::{self, TaskCreate};
 use appv3_providers::mock::{MockProvider, MockTurn};
 use appv3_providers::{ChatMessage, ChunkStream, Kwargs, LlmProvider, ProviderResult, ToolSpec};
 use async_trait::async_trait;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use common::wait_until_async;
-
-fn setup_roots(root: &Path) {
-    for (k, d) in [
-        ("OPENAGENTD_DATA_DIR", "data"),
-        ("OPENAGENTD_CONFIG_DIR", "config"),
-        ("OPENAGENTD_STATE_DIR", "state"),
-        ("OPENAGENTD_CACHE_DIR", "cache"),
-        ("OPENAGENTD_WORKSPACE_DIR", "ws"),
-    ] {
-        std::env::set_var(k, root.join(d));
-    }
-    std::env::set_var("HOME", root.join("home"));
-    std::env::set_var("USERPROFILE", root.join("home"));
-    std::env::remove_var("CHAT_WORKSPACE_DIR");
-    std::env::remove_var("AGENTS_DIR");
-    std::env::set_var("OPENAGENTD_SHELL_SNAPSHOT", "false");
-    std::fs::create_dir_all(root.join("home")).unwrap();
-    std::fs::create_dir_all(root.join("config")).unwrap();
-    std::fs::write(root.join("config").join("settings.yaml"), "title_generation:\n  enabled: false\n").unwrap();
-    appv3_core::settings::install(appv3_core::settings::Settings::from_env());
-    let agents = appv3_core::settings::settings().agents_dir.clone();
-    std::fs::create_dir_all(&agents).unwrap();
-    std::fs::write(agents.join("code.md"), "---\nname: code\nmodel: mock:mock\ntools: []\n---\nYou are the coding agent.\n").unwrap();
-}
+use common::{setup_roots, wait_until_async};
 
 /// Every model call waits for a permit from `gate`, then answers.
 struct GatedProvider {

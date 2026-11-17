@@ -6,6 +6,9 @@ import { Paperclip } from 'lucide-react'
 import { FilePreviewStrip } from '../FilePreviewStrip'
 import { Collapsible } from '@/components/ui/collapsible'
 import { DesignFeedbackStrip } from '../DesignFeedbackViews'
+import { PlanCommentsChip } from '../PlanReview/PlanCommentsViews'
+import { mergePlanComments, type PlanCommentsBlock } from '../PlanReview/plan-comments-block'
+import { composeMessageBlocks, splitMessageBlocks } from './blocks'
 import { findActiveMention, type FileRef } from './mentions'
 import { useCommittedMentions } from './committedMentions'
 import { COMPOSER_TEXT_CLASS, MentionOverlay } from './overlay'
@@ -19,7 +22,7 @@ import { buildAcceptString } from './files'
 import { useInputComposerAttachments } from './attachments'
 import { useKeepKeyboard } from './keepKeyboard'
 import { cn } from '@/lib/utils'
-import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
+import { designFeedbackMentions, type DesignFeedback } from '@/lib/design-feedback'
 import { usePromptHistory } from './history'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { focusQuietly } from '@/lib/focus/quiet'
@@ -113,6 +116,13 @@ export interface InputComposerProps {
   onHistoryRecall?: (prompt: string | null) => void
   /** A design feedback chip's x was clicked; the chip is already gone. */
   onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
+  /**
+   * The plan comments chip left the draft without being sent (its x, or a
+   * draft replaced): the comments go back to the plan.
+   */
+  onPlanCommentsRemoved?: (block: PlanCommentsBlock) => void
+  /** The draft's plan comments changed (``null``: none). */
+  onPlanCommentsChange?: (block: PlanCommentsBlock | null) => void
 }
 
 export interface InputComposerHandle {
@@ -130,6 +140,8 @@ export interface InputComposerHandle {
   appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => void
   /** Attach design feedback from a Preview tab as a removable chip. */
   addDesignFeedback: (feedback: DesignFeedback) => void
+  /** Attach comments from the Plan tab; they merge into the one plan comments chip. */
+  addPlanComments: (block: PlanCommentsBlock) => void
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
   addFiles: (files: File[]) => void
@@ -176,6 +188,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   historyPrompts = [],
   onHistoryRecall,
   onDesignFeedbackRemoved,
+  onPlanCommentsRemoved,
+  onPlanCommentsChange,
 }, ref) {
   const [value, setValue] = useState('')
   const {
@@ -195,6 +209,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // Design feedback chips. Written into the message on send; text set from
   // outside (restores, history) has its blocks turned back into chips.
   const [designFeedback, setDesignFeedback] = useState<DesignFeedback[]>([])
+  // The Plan tab's comments: one chip, written after the design feedback.
+  const [planComments, setPlanComments] = useState<PlanCommentsBlock | null>(null)
   const [isComposing, setIsComposing] = useState(false)
 
   /** Last submitted draft, held only until the send is confirmed or restored. */
@@ -203,6 +219,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     files: File[]
     mentions: string[]
     designFeedback: DesignFeedback[]
+    planComments: PlanCommentsBlock | null
   } | null>(null)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -255,8 +272,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     historyPrompts,
     value,
     designFeedback,
+    hasPlanComments: planComments !== null,
     setValue,
     setDesignFeedback,
+    setPlanComments,
     setMentionRange,
     setSnippetRange,
     resize,
@@ -312,18 +331,21 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       else el.focus({ preventScroll: true })
     },
     setValue: (text: string) => {
-      // A restored message's design feedback blocks come back as chips.
-      const split = splitDesignFeedback(text)
+      // A restored message's blocks come back as chips.
+      const split = splitMessageBlocks(text)
       setValue(split.text)
-      setDesignFeedback(split.blocks)
+      setDesignFeedback(split.designFeedback)
+      setPlanComments(split.planComments)
       resetDraftState()
       // Recalculate height after injecting text programmatically — see
       // ``resizeAfterLayout`` for why this must wait two frames.
       resizeAfterLayout()
     },
     appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => {
-      const split = splitDesignFeedback(text)
-      if (split.blocks.length > 0) setDesignFeedback((prev) => [...prev, ...split.blocks])
+      const split = splitMessageBlocks(text)
+      if (split.designFeedback.length > 0) setDesignFeedback((prev) => [...prev, ...split.designFeedback])
+      const addedPlan = split.planComments
+      if (addedPlan) setPlanComments((prev) => mergePlanComments(prev, addedPlan))
       const added = split.text
       if (added) {
         setValue((prev) => {
@@ -346,6 +368,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     addDesignFeedback: (feedback: DesignFeedback) => {
       if (feedback.items.length === 0) return
       setDesignFeedback((prev) => [...prev, feedback])
+      resetDraftState()
+      resizeAfterLayout()
+    },
+    addPlanComments: (block: PlanCommentsBlock) => {
+      if (block.comments.length === 0) return
+      setPlanComments((prev) => mergePlanComments(prev, block))
       resetDraftState()
       resizeAfterLayout()
     },
@@ -380,12 +408,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // The failure can land seconds later, by which time the user may have
       // moved on and started typing. Their current draft wins; overwriting it
       // would trade one lost message for another.
-      if (value.trim().length > 0 || files.length > 0 || designFeedback.length > 0) return
+      if (value.trim().length > 0 || files.length > 0 || designFeedback.length > 0 || planComments) return
 
       setValue(snapshot.value)
       setFiles(snapshot.files)
       setMentions(snapshot.mentions)
       setDesignFeedback(snapshot.designFeedback)
+      setPlanComments(snapshot.planComments)
       resetDraftState()
       resizeAfterLayout(() => textareaRef.current?.focus())
     },
@@ -398,17 +427,17 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const submit = useCallback((delivery: SendDelivery = 'steer') => {
     if (disabled || sendBlockedReason) return
     const trimmed = value.trim()
-    const hasFeedback = designFeedback.length > 0
+    const hasFeedback = designFeedback.length > 0 || planComments !== null
     if (trimmed.length === 0 && files.length === 0 && !hasFeedback) return
     if (isStreaming && trimmed.length === 0 && !hasFeedback) return
 
     // Snapshot everything the clear below is about to throw away, so a
     // failed send can hand it back (see ``restoreLastSubmission``).
-    lastSubmissionRef.current = { value: trimmed, files, mentions, designFeedback }
+    lastSubmissionRef.current = { value: trimmed, files, mentions, designFeedback, planComments }
 
-    // Design feedback is written after the typed text (so slash commands
-    // still lead), and its workspace sources become mentions.
-    const message = composeWithDesignFeedback(trimmed, designFeedback)
+    // Design feedback and plan comments are written after the typed text (so
+    // slash commands still lead), and design sources become mentions.
+    const message = composeMessageBlocks(trimmed, designFeedback, planComments)
     const allMentions = [...new Set([...mentions, ...designFeedback.flatMap(designFeedbackMentions)])]
 
     onSubmit(
@@ -422,13 +451,14 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     setFiles([])
     setMentions([])
     setDesignFeedback([])
+    setPlanComments(null)
     resetDraftState()
     setMenuIndex(0)
 
     // Reset the visible height synchronously — see ``resetHeightNow`` for
     // why this can't wait for the next animation frame.
     resetHeightNow()
-  }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, rememberPrompt, resetDraftState, resetHeightNow, setFiles, setMentions, setMenuIndex])
+  }, [disabled, sendBlockedReason, value, files, isStreaming, onSubmit, mentions, designFeedback, planComments, rememberPrompt, resetDraftState, resetHeightNow, setFiles, setMentions, setMenuIndex])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
@@ -477,12 +507,15 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }
 
   const hasText = value.trim().length > 0
-  // Design feedback alone is a sendable message.
-  const hasMessage = hasText || designFeedback.length > 0
+  // Design feedback or plan comments alone are a sendable message.
+  const hasMessage = hasText || designFeedback.length > 0 || planComments !== null
   useEffect(() => {
-    // Drafts include the feedback blocks, so a restored draft brings the chips back.
-    onValueChange?.(designFeedback.length > 0 ? composeWithDesignFeedback(value, designFeedback) : value)
-  }, [onValueChange, value, designFeedback])
+    // Drafts include the blocks, so a restored draft brings the chips back.
+    onValueChange?.(designFeedback.length > 0 || planComments ? composeMessageBlocks(value, designFeedback, planComments) : value)
+  }, [onValueChange, value, designFeedback, planComments])
+  useEffect(() => {
+    onPlanCommentsChange?.(planComments)
+  }, [onPlanCommentsChange, planComments])
 
 
   // Surface "has uncommitted content" to the parent so a minimized bar
@@ -528,6 +561,16 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     />
   ) : null
 
+  const removePlanComments = useCallback(() => {
+    if (!planComments) return
+    setPlanComments(null)
+    onPlanCommentsRemoved?.(planComments)
+  }, [onPlanCommentsRemoved, planComments])
+
+  const planChip = planComments ? (
+    <PlanCommentsChip block={planComments} below={filesBelow} onRemove={removePlanComments} />
+  ) : null
+
   // Icon controls on the action row are borderless (DESIGN.md → Buttons):
   // ghost at rest, keycap fill on hover. The run deck's steps, as Send: 28px
   // on desktop, 32px in a narrow mouse window, 36px on touch (a phone too,
@@ -548,6 +591,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     setValue,
     setHistoryIndex,
     setDesignFeedback,
+    clearPlanComments: removePlanComments,
     resetDraftState,
     setMentionRange,
     setSnippetRange,
@@ -613,7 +657,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           if (findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
         }}
         onBlur={() => {
-          const empty = value.trim().length === 0 && files.length === 0 && designFeedback.length === 0
+          const empty = value.trim().length === 0 && files.length === 0 && designFeedback.length === 0 && !planComments
           onBlur?.(empty)
           // Close all pickers on blur — clicks on their items use
           // ``onMouseDown`` with ``preventDefault`` so they fire before the
@@ -745,6 +789,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
         {!filesBelow && filePreviews}
         {!filesBelow && feedbackChips}
+        {!filesBelow && planChip}
 
         <InputComposerSuggestions
           menu={menu}
@@ -760,6 +805,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
         {filesBelow && filePreviews}
         {filesBelow && feedbackChips}
+        {filesBelow && planChip}
 
         <input
           ref={fileInputRef}

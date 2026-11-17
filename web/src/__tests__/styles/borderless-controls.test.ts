@@ -46,6 +46,7 @@ const ALLOW: Record<string, number> = {
   'components/FileCard.tsx': 1,
   'components/FilePreviewStrip.tsx': 3,
   'components/DesignFeedbackViews.tsx': 1,
+  'components/PlanReview/PlanCommentsViews.tsx': 1,
 }
 
 // ── Scanner ──────────────────────────────────────────────────────────────────

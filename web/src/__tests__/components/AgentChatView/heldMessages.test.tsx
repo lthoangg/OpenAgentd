@@ -41,6 +41,7 @@ function fakeComposer() {
     addFiles: (files) => { added.push(...files) },
     restoreLastSubmission: () => {},
     addDesignFeedback: () => {},
+    addPlanComments: () => {},
   }
   return { ref: { current: handle }, appended, added }
 }

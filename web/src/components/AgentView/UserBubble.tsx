@@ -13,6 +13,8 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { FileRefContext } from '../FileRefLink'
 import { findCommittedMentions } from '../InputComposer/mentions'
 import { DesignFeedbackCard } from '../DesignFeedbackViews'
+import { PlanCommentsCard } from '../PlanReview/PlanCommentsViews'
+import { splitPlanComments } from '../PlanReview/plan-comments-block'
 import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
@@ -410,9 +412,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     setActionsOpen(true)
   })
 
-  // Design feedback from the Preview tab shows as cards, not raw text; the
-  // collapse and mention rendering below only see the typed text.
-  const { text, blocks: feedbackBlocks } = splitDesignFeedback(content)
+  // Design feedback from the Preview tab and comments from the Plan tab show
+  // as cards, not raw text; the collapse and mention rendering below only
+  // see the typed text.
+  const { text: withoutPlan, block: planComments } = splitPlanComments(content)
+  const { text, blocks: feedbackBlocks } = splitDesignFeedback(withoutPlan)
   const lines = text.split('\n')
   const renderedLines = useRenderedLines(textRef, text)
   const needsCollapse = (renderedLines ?? estimateWrappedLines(text)) > USER_COLLAPSE_AFTER_LINES
@@ -617,6 +621,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
          {feedbackBlocks.map((feedback, index) => (
            <DesignFeedbackCard key={index} feedback={feedback} onMentionFileOpen={onMentionFileOpen} />
          ))}
+         {planComments && <PlanCommentsCard block={planComments} />}
 
          {/* The prompt's row: model, Edit, Copy, time. Always rendered: Copy and
              Edit do not depend on the metadata, and a pending prompt has neither

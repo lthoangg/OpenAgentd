@@ -8,7 +8,9 @@
 // Compiler skipped; compiling it is a change of its own to verify.
 'use no memo'
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
+import type { DesignFeedback } from '@/lib/design-feedback'
+import type { PlanCommentsBlock } from '../PlanReview/plan-comments-block'
+import { splitMessageBlocks } from './blocks'
 import type { SuggestionRange } from './suggestionEngine'
 
 export function buildHistoryEntries(
@@ -30,8 +32,10 @@ export function usePromptHistory({
   historyPrompts,
   value,
   designFeedback,
+  hasPlanComments,
   setValue,
   setDesignFeedback,
+  setPlanComments,
   setMentionRange,
   setSnippetRange,
   resize,
@@ -41,8 +45,11 @@ export function usePromptHistory({
   historyPrompts: string[]
   value: string
   designFeedback: DesignFeedback[]
+  /** The draft holds plan comments: like design feedback, ↑ must not replace them. */
+  hasPlanComments: boolean
   setValue: Dispatch<SetStateAction<string>>
   setDesignFeedback: Dispatch<SetStateAction<DesignFeedback[]>>
+  setPlanComments: Dispatch<SetStateAction<PlanCommentsBlock | null>>
   setMentionRange: Dispatch<SetStateAction<SuggestionRange>>
   setSnippetRange: Dispatch<SetStateAction<SuggestionRange>>
   resize: () => void
@@ -60,8 +67,8 @@ export function usePromptHistory({
   const navigateHistory = useCallback((dir: 'up' | 'down') => {
     if (history.length === 0) return false
     const direction = dir === 'up' ? 1 : -1
-    // Attached design feedback counts as a draft: ↑ must not replace it.
-    const canEnterHistory = dir === 'up' && value.length === 0 && designFeedback.length === 0 && historyIndex === -1
+    // Attached design feedback or plan comments count as a draft: ↑ must not replace them.
+    const canEnterHistory = dir === 'up' && value.length === 0 && designFeedback.length === 0 && !hasPlanComments && historyIndex === -1
     const inHistory = historyIndex >= 0
 
     if (canEnterHistory || inHistory) {
@@ -70,6 +77,7 @@ export function usePromptHistory({
         setHistoryIndex(-1)
         setValue('')
         setDesignFeedback([])
+        setPlanComments(null)
         setMentionRange(null)
         setSnippetRange(null)
         requestAnimationFrame(resize)
@@ -78,11 +86,12 @@ export function usePromptHistory({
       }
       if (nextIndex >= history.length) return true
       const next = history[nextIndex]
-      // A recalled prompt's design feedback comes back as chips.
-      const recalled = splitDesignFeedback(next)
+      // A recalled prompt's blocks come back as chips.
+      const recalled = splitMessageBlocks(next)
       setHistoryIndex(nextIndex)
       setValue(recalled.text)
-      setDesignFeedback(recalled.blocks)
+      setDesignFeedback(recalled.designFeedback)
+      setPlanComments(recalled.planComments)
       setMentionRange(null)
       setSnippetRange(null)
       requestAnimationFrame(() => {
@@ -94,7 +103,7 @@ export function usePromptHistory({
       return true
     }
     return false
-  }, [history, value, designFeedback.length, historyIndex, resize, setValue, setDesignFeedback, setMentionRange, setSnippetRange, textareaRef, onHistoryRecall])
+  }, [history, value, designFeedback.length, hasPlanComments, historyIndex, resize, setValue, setDesignFeedback, setPlanComments, setMentionRange, setSnippetRange, textareaRef, onHistoryRecall])
 
   const handleHistoryKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {

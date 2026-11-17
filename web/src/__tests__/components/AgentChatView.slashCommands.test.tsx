@@ -193,6 +193,7 @@ describe('useSlashCommands', () => {
       focus: mock(() => {}),
       restoreLastSubmission: mock(() => {}),
       addDesignFeedback: mock(() => {}),
+      addPlanComments: mock(() => {}),
     },
   }
   const handleNewSession = mock(() => {})

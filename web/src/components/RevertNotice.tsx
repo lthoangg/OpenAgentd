@@ -13,7 +13,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Collapsible } from '@/components/ui/collapsible'
-import { designFeedbackPlainText } from '@/lib/design-feedback'
+import { messagePlainText } from './InputComposer/blocks'
 import { TRANSCRIPT_CARD } from '@/components/ui/panel-tokens'
 import { cn } from '@/lib/utils'
 
@@ -86,7 +86,7 @@ export function RevertNotice({ count, messages = [], keptFiles = false, onRedo, 
           <ul aria-label="Messages you undid" className="flex max-h-44 flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y">
             {messages.map((message, index) => (
               <li key={`${message.role}-${index}`} className="whitespace-pre-wrap text-(--color-text)">
-                {designFeedbackPlainText(message.content)}
+                {messagePlainText(message.content)}
               </li>
             ))}
           </ul>

@@ -9,7 +9,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
-import { designFeedbackPlainText } from '@/lib/design-feedback'
+import { messagePlainText } from './InputComposer/blocks'
 import { confirmedIdSet } from '@/utils/blocks'
 import { requestOpenSession } from '@/utils/workspace-messages'
 
@@ -41,7 +41,7 @@ function QueuedAttachmentList({ attachments }: { attachments: MessageAttachment[
 
 function QueuedMessageContent({ content: raw, attachments }: { content: string; attachments?: MessageAttachment[] }) {
   const [expanded, setExpanded] = useState(false)
-  const content = designFeedbackPlainText(raw)
+  const content = messagePlainText(raw)
   const lines = content.split('\n')
   const needsCollapse = lines.length > QUEUED_COLLAPSE_LINES || content.length > QUEUED_COLLAPSE_CHARS
   const visibleContent = needsCollapse && !expanded
@@ -195,7 +195,7 @@ function QueuedPhoneBubble({ content, label, onEdit }: {
 }) {
   // A steer waits for the server's cancel; a second tap would cancel it twice.
   const [busy, setBusy] = useState(false)
-  const text = designFeedbackPlainText(content).trim()
+  const text = messagePlainText(content).trim()
   const edit = async () => {
     if (busy) return
     setBusy(true)

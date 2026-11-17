@@ -3,8 +3,11 @@
  * with ``submit: true`` (or the former ``submit_plan`` tool).
  *
  * It marks where the agent submitted the plan, says how the review ended, and
- * opens the plan. It never decides the review: Approve and Request changes
- * live only in the Plan panel, which this card opens.
+ * opens the plan. It never decides the review: Approve and Reply in chat
+ * live only in the Plan panel, which this card opens. Comments sent with
+ * Reply in chat close the review as superseded and show in the user's
+ * message; an older review answered with Request changes still shows its
+ * comments here.
  *
  * The outcome comes from the store while this client saw the review close,
  * and otherwise from the persisted tool result, which is all a cold load has.
@@ -193,7 +196,7 @@ function selectOpenReview(state: AgentStoreState): PendingQuestion | null {
  * stays in sight (phone mockup J6, desktop 6.3). View opens the plan: full
  * screen on a phone, the Plan tab on desktop (which a new review already
  * brought forward once, but may since be closed or covered). Approve and
- * Request changes stay in the plan itself.
+ * Reply in chat stay in the plan itself.
  */
 export function PinnedPlanReview() {
   const isPhone = useIsPhone()

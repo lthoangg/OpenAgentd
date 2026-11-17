@@ -31,6 +31,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import type { DesignFeedback } from '@/lib/design-feedback'
+import type { PlanCommentsBlock } from '../PlanReview/plan-comments-block'
 
 /** Where the centered composer sat when the first message was sent. */
 export interface ComposerHandoff {
@@ -68,6 +69,8 @@ export interface ComposerProps {
   historyPrompts?: string[]
   onHistoryRecall?: (prompt: string | null) => void
   onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
+  onPlanCommentsRemoved?: (block: PlanCommentsBlock) => void
+  onPlanCommentsChange?: (block: PlanCommentsBlock | null) => void
   onValueChange?: (value: string) => void
   /** The run deck's "+" control. */
   renderPlus?: (actions: ComposerActions) => ReactNode
@@ -102,6 +105,7 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
     setValue: (text) => innerRef.current?.setValue(text),
     appendValue: (text, options) => innerRef.current?.appendValue(text, options),
     addDesignFeedback: (feedback) => innerRef.current?.addDesignFeedback(feedback),
+    addPlanComments: (block) => innerRef.current?.addPlanComments(block),
     insertText: (text) => innerRef.current?.insertText(text),
     setFiles: (files) => innerRef.current?.setFiles(files),
     addFiles: (files) => innerRef.current?.addFiles(files),

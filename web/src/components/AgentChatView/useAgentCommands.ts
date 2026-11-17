@@ -135,9 +135,9 @@ export function useAgentCommands({
           group: 'View' as const,
           label: 'Open Plan',
           description: planAwaitingReview
-            ? 'Needs you · approve or request changes'
+            ? 'Needs you · approve, or reply in chat with changes'
             : hasPlan ? "View or edit this session's plan" : 'No plan yet · in Plan mode the agent writes one here',
-          keywords: 'plan review approve request changes comment',
+          keywords: 'plan review approve request changes reply comment',
           action: handleOpenPlan,
         }]
       : []),

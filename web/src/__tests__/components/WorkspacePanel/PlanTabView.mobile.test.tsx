@@ -1,19 +1,21 @@
 /**
  * PlanTabView on a phone: the Comment action and the comment composer dock in
  * the review footer (on the soft keyboard), a touch selection survives the tap
- * that collapses it, the footer compacts while the keyboard is up, and a
- * half-written comment survives the tab remounting.
+ * that collapses it, the footer compacts while the keyboard is up, a
+ * half-written comment survives the tab remounting, and Reply in chat hands
+ * the comments to the chat composer.
  */
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => true, MOBILE_QUERY: '(max-width: 767px)' }))
 
-import { PlanTabView } from '@/components/WorkspacePanel/PlanTabView'
+import { PlanTabView, UNSENT_COMMENTS_HINT } from '@/components/WorkspacePanel/PlanTabView'
 import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { clearPlanReviewDrafts } from '@/components/PlanReview/plan-comments'
+import { usePlanCommentsInChat } from '@/components/PlanReview/plan-comments-in-chat'
 import { resetPlanDecisionChoice } from '@/components/PlanReview/usePlanDecision'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { SessionPlan } from '@/api/types'
@@ -49,9 +51,12 @@ const REVIEW: PendingQuestion = {
 }
 
 let answers: unknown[] = []
+const sendPlanComments = mock((..._args: unknown[]) => {})
 
 beforeEach(() => {
   answers = []
+  sendPlanComments.mockClear()
+  usePlanCommentsInChat.setState({ block: null })
   clearQuestionDrafts()
   clearPlanReviewDrafts()
   resetPlanDecisionChoice()
@@ -82,7 +87,7 @@ function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <PlanTabView plan={PLAN} sessionId="s-1" />
+      <PlanTabView plan={PLAN} sessionId="s-1" onSendPlanComments={sendPlanComments} />
     </QueryClientProvider>,
   )
 }
@@ -156,13 +161,13 @@ describe('PlanTabView on a phone', () => {
     const composer = screen.getByRole('group', { name: 'New comment' })
     expect(composer.closest('.oa-prose')).toBeNull()
     expect(document.activeElement).toBe(screen.getByLabelText('Comment'))
-    // One text box at a time: the overall feedback box steps aside.
-    expect(screen.queryByLabelText('Feedback on the plan')).toBeNull()
+    // The comment box takes the footer's place.
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'Make it reversible.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
     expect(screen.getByRole('list', { name: 'Comments on the plan' }).textContent).toContain('Make it reversible.')
-    expect(screen.getByLabelText('Feedback on the plan')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Reply in chat (1)' })).toBeTruthy()
   })
 
   it('keeps the comment box focused when the page selection is cleared (WebKit)', () => {
@@ -205,27 +210,30 @@ describe('PlanTabView on a phone', () => {
 
     await setKeyboardOpen(true)
     expect(screen.queryByRole('list', { name: 'Comments on the plan' })).toBeNull()
-    expect(screen.queryByText('Your comments go with Request changes')).toBeNull()
+    expect(screen.queryByText(UNSENT_COMMENTS_HINT)).toBeNull()
     const chip = screen.getByRole('button', { name: /1 comment/ })
     fireEvent.click(chip)
     expect(screen.getByRole('list', { name: 'Comments on the plan' })).toBeTruthy()
-    // Request changes stays in reach.
-    expect(screen.getByRole('button', { name: 'Request changes (1)' })).toBeTruthy()
+    // Reply in chat stays in reach.
+    expect(screen.getByRole('button', { name: 'Reply in chat (1)' })).toBeTruthy()
 
     await setKeyboardOpen(false)
-    expect(screen.getByText('Your comments go with Request changes')).toBeTruthy()
+    expect(screen.getByText(UNSENT_COMMENTS_HINT)).toBeTruthy()
   })
 
-  it('sends Request changes with the comments', async () => {
+  it('hands the comments to the chat box with Reply in chat, answering nothing', () => {
     const { container } = renderTab()
     selectText(planItem(container, 'Write the migration'))
     fireEvent.click(screen.getByRole('button', { name: 'Comment on selection' }))
     fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'Make it reversible.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Request changes (1)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in chat (1)' }))
 
-    await waitFor(() => expect(answers).toHaveLength(1))
-    expect(answers[0]).toEqual({ answers: [['**Comment 1**\n> Write the migration\n\nMake it reversible.']] })
+    expect(sendPlanComments.mock.calls[0]?.[0]).toEqual({
+      block: { path: '.agents/plans/ship-it-0000abcd.md', revision: 2, comments: [{ quote: 'Write the migration', text: 'Make it reversible.' }] },
+      text: '',
+    })
+    expect(answers).toHaveLength(0)
   })
 
   it('keeps the turns field mounted and focused when the keyboard opens for it', async () => {
@@ -245,14 +253,13 @@ describe('PlanTabView on a phone', () => {
     await waitFor(() => expect(screen.queryByLabelText('Turns for this goal')).toBeNull())
   })
 
-  it('rests as the chat composer: one line of feedback with the actions in the box', () => {
+  it('rests as one row of actions: no text box, Reply in chat ready', () => {
     renderTab()
-    const feedback = screen.getByLabelText('Feedback on the plan') as HTMLTextAreaElement
-    expect(feedback.getAttribute('rows')).toBe('1')
-    const box = feedback.parentElement as HTMLElement
-    expect(box.contains(screen.getByRole('button', { name: 'Approve' }))).toBe(true)
-    // Nothing to send yet, so Request changes is off.
-    expect((screen.getByRole('button', { name: 'Request changes' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('textbox')).toBeNull()
+    const deck = screen.getByRole('button', { name: 'Approve' }).closest('[data-review-deck]') as HTMLElement
+    expect(deck.contains(screen.getByRole('button', { name: 'Reply in chat' }))).toBe(true)
+    // With no comments it only takes the user to the chat box.
+    expect((screen.getByRole('button', { name: 'Reply in chat' }) as HTMLButtonElement).disabled).toBe(false)
     // The phone deck carries a toggle, not the worded checkbox that pushed Approve off screen.
     expect(screen.queryByRole('checkbox', { name: 'Keep going until done' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Keep going until done' })).toBeTruthy()
@@ -272,20 +279,5 @@ describe('PlanTabView on a phone', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
     const approve = screen.getByRole('button', { name: /^Approve and keep going/ })
     expect(approve.textContent).toBe('Approve')
-  })
-
-  it('takes the composer swipe: up on the box raises the keyboard for the feedback', () => {
-    renderTab()
-    const feedback = screen.getByLabelText('Feedback on the plan')
-    const box = feedback.parentElement as HTMLElement
-    expect(box.hasAttribute('data-keyboard-swipe')).toBe(true)
-    const focus = spyOn(feedback, 'focus')
-    const touch = (y: number) => ({ clientX: 100, clientY: y })
-    fireEvent.touchStart(box, { touches: [touch(300)] })
-    fireEvent.touchMove(box, { touches: [touch(260)] })
-    fireEvent.touchEnd(box, { changedTouches: [touch(240)] })
-    expect(document.activeElement).toBe(feedback)
-    // No page scroll to the box: iOS would shove the header and tabs up with it.
-    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
   })
 })

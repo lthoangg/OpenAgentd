@@ -99,6 +99,7 @@ describe('useSessionBootstrap type-to-focus', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
     }
     return inputRef
   }
@@ -341,6 +342,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
     }
 
     const loadSession = mock(async () => {
@@ -398,6 +400,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
       ...overrides,
     }
     return inputRef
@@ -448,6 +451,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
     }
     let result: ReturnType<typeof useSessionBootstrap> | null = null
     render(
@@ -572,6 +576,7 @@ describe('useSessionBootstrap new-session draft', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
     }
     return inputRef
   }
@@ -686,6 +691,7 @@ describe('useSessionBootstrap new-session draft', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
     }
     return { calls, inputRef }
   }
@@ -749,6 +755,7 @@ describe('useSessionBootstrap draft in two windows', () => {
       addFiles: () => {},
       restoreLastSubmission: () => {},
       addDesignFeedback: () => {},
+      addPlanComments: () => {},
     }
     return inputRef
   }

@@ -91,10 +91,10 @@ The server serves the API only: connect to the printed `Server:` address from th
     <td width="50%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="documents/assets/readme/plan-dark.webp">
-        <img src="documents/assets/readme/plan-light.webp" alt="Plan review with Approve and Request changes">
+        <img src="documents/assets/readme/plan-light.webp" alt="Plan review with comments on the plan and Approve">
       </picture>
       <h3>Plan first, then build</h3>
-      In Plan mode the agent explores without editing and writes a plan. Select any passage to comment on it, then <b>Approve</b> or <b>Request changes</b>. Approve with <b>Keep going</b> and it works until the plan is done. Press <kbd>Tab</kbd> in the composer to switch modes.
+      In Plan mode the agent explores without editing and writes a plan. Select any passage to comment on it, then <b>Approve</b>, or <b>Reply in chat</b> to send your comments as a normal message. Approve with <b>Keep going</b> and it works until the plan is done. Press <kbd>Tab</kbd> in the composer to switch modes.
     </td>
     <td width="50%" valign="top">
       <picture>

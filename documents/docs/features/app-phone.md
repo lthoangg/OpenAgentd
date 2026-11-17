@@ -94,16 +94,17 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   - Plan review on a phone: selecting plan text offers **Comment on selection**
     in the footer, the comment box docks on the keyboard, saved comments fold
     into a chip while you type, and a half-written comment survives closing
-    the sheet. Request changes and Approve stay in reach.
-  - The plan review footer is shaped like the chat composer: one framed box
-    holding the feedback (one line at rest, growing as you type) and its
-    actions, with comments above it. On a phone Keep going is a toggle in the
-    box and its turns show above it, so **Request changes** and **Approve**
-    always fit the screen, even on an iPhone mini. The comment box docks in
-    the same shape, and both take the composer's swipe (up for the keyboard,
-    down to put it away); the header and tabs stay put while the keyboard
-    rises. Request changes is off until there is a comment or feedback to
-    send. `[v3.49.0]`
+    the sheet. Reply in chat and Approve stay in reach.
+  - The plan review footer is one row of actions under your comments. On a
+    phone Keep going is a toggle in the row and its turns show above it, so
+    **Reply in chat** and **Approve** always fit the screen, even on an
+    iPhone mini. The comment box docks in the chat composer's shape and takes
+    its swipe (up for the keyboard, down to put it away); the header and tabs
+    stay put while the keyboard rises. `[v3.49.0, updated v3.59.0]`
+  - **Reply in chat** closes the plan sheet and focuses the chat box, with
+    your comments already in it as a chip, the way Preview comments arrive.
+    There is no feedback box in the sheet: you type the rest in the chat box
+    and send it as a normal message. `[v3.59.0]`
   - The chat re-pins to the newest message when the keyboard opens, Send and
     Steer keep the keyboard up, and tapping the transcript puts it away.
     Since `[v3.49.0]` scrolling the transcript keeps the keyboard up, so you

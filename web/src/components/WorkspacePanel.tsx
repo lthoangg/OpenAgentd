@@ -65,6 +65,7 @@ import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
+import type { PlanCommentsHandoff } from './PlanReview/plan-comments-block'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { PhoneReviewBar } from './WorkspacePanel/PhoneReviewBar'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
@@ -153,6 +154,7 @@ export function WorkspacePanel({
   onFileSelect,
   onAddComment,
   onSendPreviewComments,
+  onSendPlanComments,
   chatWorkspace = false,
   onRequestClose,
   slideIn = false,
@@ -214,6 +216,8 @@ export function WorkspacePanel({
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   /** Adds a preview's design comments to the composer as a chip. */
   onSendPreviewComments?: (feedback: DesignFeedback) => void
+  /** Moves the plan review's comments to the composer as a chip (Plan tab: Reply in chat). */
+  onSendPlanComments?: (handoff: PlanCommentsHandoff) => void
   /**
    * True when ``workspace`` is the chat root (see ``useChatWorkspace``).
    * Chat workspaces are not repositories: the Git review tab is hidden and its
@@ -575,6 +579,7 @@ export function WorkspacePanel({
             onOpenFile={openChangedFile}
             onOpenPreview={canPreview ? openFilePreview : undefined}
             workspace={workspace}
+            onSendPlanComments={onSendPlanComments}
           />
         )
       case 'btw':

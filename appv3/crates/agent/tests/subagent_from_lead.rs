@@ -68,7 +68,7 @@ async fn the_lead_tags_every_message_it_sends_a_member() {
     let root = tmp.path();
     setup_roots(root);
     let release = root.join("release");
-    let block = serde_json::json!({ "command": format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo done", release.display()) }).to_string();
+    let block = serde_json::json!({ "command": common::wait_for_file(&release, "done") }).to_string();
     let lead_mock = Arc::new(MockProvider::new(vec![]));
     let worker_mock = Arc::new(MockProvider::new(vec![
         MockProvider::tool_call("call_w", "shell", &block),

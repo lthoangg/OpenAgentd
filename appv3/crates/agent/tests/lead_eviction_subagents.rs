@@ -52,7 +52,7 @@ async fn a_lead_with_a_working_subagent_is_not_evicted() {
     let root = tmp.path();
     setup_roots(root);
     let release = root.join("release");
-    let build = format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo built", release.display());
+    let build = common::wait_for_file(&release, "built");
     let args = serde_json::json!({ "command": build }).to_string();
     // Lead turn, member tool call, member report, then the lead's turn on that report.
     let mock = Arc::new(MockProvider::new(vec![

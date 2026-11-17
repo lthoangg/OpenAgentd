@@ -244,7 +244,7 @@ async fn idle_compaction_runs_while_a_subagent_works_and_its_report_follows() {
     let _serial = SERIAL.lock().await;
     let root = setup_env();
     let release = root.join("release");
-    let build = format!("while [ ! -f '{}' ]; do sleep 0.05; done; echo built", release.display());
+    let build = common::wait_for_file(&release, "built");
     let build_args = serde_json::json!({ "command": build }).to_string();
     let delegate_args = serde_json::json!({ "profile": "worker", "task": "run the build" }).to_string();
     // The lead delegates and ends its turn (calls 0-1), summarises when idle

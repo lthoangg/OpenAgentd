@@ -11,6 +11,8 @@ import { errorMessage } from '@/utils/errors'
 
 export type ServerUpdatePhase =
   | { kind: 'idle' }
+  /** Asking the server to start; nothing is running yet. */
+  | { kind: 'starting' }
   | { kind: 'updating'; from: string; target: string }
   | { kind: 'done'; from: string; to: string }
   | { kind: 'failed'; message: string; log?: string }
@@ -37,6 +39,12 @@ interface ServerUpdateStore {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /**
+ * Which `start` may still write the phase. A newer start or a reset bumps
+ * it, so an older loop that wakes up later stops instead of overwriting.
+ */
+let run = 0
+
+/**
  * What one answer during the restart means: `null` keeps waiting. The run
  * is ours when its `started_at` is the one the POST returned.
  */
@@ -60,9 +68,17 @@ export function readProgress(status: ServerUpdateStatus, started: { target: stri
 
 export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
   phase: { kind: 'idle' },
-  reset: () => set({ phase: { kind: 'idle' } }),
+  reset: () => {
+    run += 1
+    set({ phase: { kind: 'idle' } })
+  },
   start: async (options) => {
-    if (get().phase.kind === 'updating') return
+    const busy = get().phase.kind
+    if (busy === 'starting' || busy === 'updating') return
+    // Set before the first await, so a second click in the meantime sees it.
+    const mine = ++run
+    set({ phase: { kind: 'starting' } })
+    const current = () => run === mine
     // The connection banner reads this store at startup; the API calls load
     // only when an update starts, keeping them out of the startup bundle.
     let getServerUpdate: typeof import('@/api/client/server-update').getServerUpdate
@@ -72,16 +88,20 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
       getServerUpdate = api.getServerUpdate
       started = await api.startServerUpdate()
     } catch (error) {
-      set({ phase: { kind: 'failed', message: errorMessage(error) } })
-      options?.onSettled?.()
+      if (current()) {
+        set({ phase: { kind: 'failed', message: errorMessage(error) } })
+        options?.onSettled?.()
+      }
       return
     }
+    if (!current()) return
     const { from, target } = started
     set({ phase: { kind: 'updating', from, target } })
     const giveUp = giveUpAfter(started.method)
     const deadline = Date.now() + giveUp
     while (Date.now() < deadline) {
       await sleep(POLL_MS)
+      if (!current()) return
       let status: ServerUpdateStatus
       try {
         status = await getServerUpdate(false)
@@ -89,6 +109,7 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
         // Down for the restart (or answering 5xx while it starts): wait.
         continue
       }
+      if (!current()) return
       const next = readProgress(status, { target, startedAt: started.started_at })
       if (next) {
         set({ phase: next.kind === 'done' ? { kind: 'done', from, to: next.to } : next })
@@ -96,8 +117,10 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => ({
         return
       }
     }
-    set({ phase: { kind: 'failed', message: `The server did not come back on v${target} within ${giveUp / 60_000} minutes.` } })
-    options?.onSettled?.()
+    if (current()) {
+      set({ phase: { kind: 'failed', message: `The server did not come back on v${target} within ${giveUp / 60_000} minutes.` } })
+      options?.onSettled?.()
+    }
   },
 }))
 

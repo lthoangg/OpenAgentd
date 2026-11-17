@@ -69,7 +69,7 @@ export function ServerUpdateButton({ onRequest, ownApp = false }: { onRequest: (
   const { data } = useServerUpdateQuery()
   const phase = useServerUpdateStore((s) => s.phase)
   if (ownApp) return null
-  if (phase.kind === 'updating') {
+  if (phase.kind === 'starting' || phase.kind === 'updating') {
     return (
       <Button size="sm" variant="default" disabled>
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />

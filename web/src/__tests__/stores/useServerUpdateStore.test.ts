@@ -97,7 +97,7 @@ describe('useServerUpdateStore.start', () => {
     const unsubscribe = useServerUpdateStore.subscribe((s) => { phases.push(s.phase) })
     await useServerUpdateStore.getState().start({ onSettled: settled })
     unsubscribe()
-    expect(phases[0]).toEqual({ kind: 'updating', from: '3.50.0', target: '3.51.0' })
+    expect(phases.slice(0, 2)).toEqual([{ kind: 'starting' }, { kind: 'updating', from: '3.50.0', target: '3.51.0' }])
     expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'done', from: '3.50.0', to: '3.51.0' })
     expect(getServerUpdate).toHaveBeenCalledTimes(4)
     expect(settled).toHaveBeenCalledTimes(1)
@@ -114,5 +114,24 @@ describe('useServerUpdateStore.start', () => {
     useServerUpdateStore.setState({ phase: { kind: 'updating', from: '3.50.0', target: '3.51.0' } })
     await useServerUpdateStore.getState().start()
     expect(startServerUpdate).not.toHaveBeenCalled()
+  })
+
+  it('sends one update request for two quick clicks', async () => {
+    answers.push(status({ current: '3.51.0' }))
+    const first = useServerUpdateStore.getState().start()
+    const second = useServerUpdateStore.getState().start()
+    await Promise.all([first, second])
+    expect(startServerUpdate).toHaveBeenCalledTimes(1)
+    expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'done', from: '3.50.0', to: '3.51.0' })
+  })
+
+  it('reset ends the wait: a later answer does not bring the update back', async () => {
+    const following = useServerUpdateStore.getState().start()
+    await new Promise((r) => realSetTimeout(r, 5))
+    expect(useServerUpdateStore.getState().phase.kind).toBe('updating')
+    useServerUpdateStore.getState().reset()
+    answers.push(status({ current: '3.51.0' }))
+    await following
+    expect(useServerUpdateStore.getState().phase).toEqual({ kind: 'idle' })
   })
 })

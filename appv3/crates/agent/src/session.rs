@@ -354,6 +354,31 @@ impl AgentSession {
         tracing::debug!(session_id = %self.session_id(), ?event, from = from.as_str(), to = to.as_str(), owns_turn, "session_transition");
     }
 
+    /// Claim a free session for a new turn: the busy check, `StartTurn` and
+    /// `ClaimTurn` happen under one lock, so two commands sent together cannot
+    /// both start a turn. `false` when the session is busy (nothing changes).
+    /// A claim whose setup then fails is handed back with [`Self::abandon_turn`].
+    fn try_begin_turn(&self) -> bool {
+        {
+            let mut control = self.control.lock().unwrap();
+            if control.is_busy() {
+                return false;
+            }
+            // Under the control lock, so `is_stopping` never sees the new
+            // claim with the previous turn's Stop still set.
+            self.clear_cancel();
+            control.apply(Transition::StartTurn);
+        }
+        self.transition(Transition::ClaimTurn);
+        true
+    }
+
+    /// Hand back a claim from [`Self::try_begin_turn`] whose turn never started.
+    fn abandon_turn(&self) {
+        self.transition(Transition::BecomeIdle);
+        self.transition(Transition::ReleaseTurn);
+    }
+
     #[cfg(test)]
     pub(crate) fn set_state(&self, s: &str) {
         self.transition(match s {
@@ -796,27 +821,27 @@ impl AgentSession {
         model: Option<String>,
         thinking_level: Option<String>,
     ) -> Result<(String, String), SessionError> {
-        if self.is_busy() {
+        if !self.try_begin_turn() {
             return Err(SessionError::precondition("Cannot continue while agent is busy."));
         }
-        self.bind_session(session_id, workspace, None).await?;
+        if let Err(e) = self.bind_session(session_id, workspace, None).await {
+            self.abandon_turn();
+            return Err(e.into());
+        }
         store().init_turn(session_id, true);
-        self.transition(Transition::StartTurn);
-        self.clear_cancel();
-        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { starts_run: true, runtime_model: model, runtime_thinking_level: thinking_level, ..Default::default() });
         Ok((session_id.to_string(), uuid::Uuid::new_v4().to_string()))
     }
 
     pub async fn handle_compact(&self, session_id: &str, workspace: Option<&str>) -> Result<String, SessionError> {
-        if self.is_busy() {
+        if !self.try_begin_turn() {
             return Err(SessionError::precondition("Cannot compact while agent is busy."));
         }
-        self.bind_session(session_id, workspace, None).await?;
+        if let Err(e) = self.bind_session(session_id, workspace, None).await {
+            self.abandon_turn();
+            return Err(e.into());
+        }
         store().init_turn(session_id, true);
-        self.transition(Transition::StartTurn);
-        self.clear_cancel();
-        self.transition(Transition::ClaimTurn);
         self.spawn_turn(TurnOptions { starts_run: true, force_compaction: true, ..Default::default() });
         Ok(session_id.to_string())
     }

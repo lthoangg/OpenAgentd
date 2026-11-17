@@ -1,5 +1,6 @@
 /**
- * /scheduler — kept for deep links and restored routes (``?task=<id>``).
+ * /scheduler — kept for deep links (``?task=<id>``); never saved as the
+ * route to reopen (``shouldRememberRoute``).
  * The scheduler lives in the chat view now: ask it to open, on the linked
  * task, and hand the URL back to the app.
  */

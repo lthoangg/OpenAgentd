@@ -360,10 +360,10 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
   // Arrow: a 5×5 rotated square positioned at the edge facing the trigger
   // (its two outward sides carry the box's hairline).
   const arrowClass = {
-    top: 'bottom-[-4px] left-1/2 -translate-x-1/2 border-r border-b',
-    bottom: 'top-[-4px] left-1/2 -translate-x-1/2 border-t border-l',
-    left: 'right-[-4px] top-1/2 -translate-y-1/2 border-t border-r',
-    right: 'left-[-4px] top-1/2 -translate-y-1/2 border-b border-l',
+    top: '-bottom-1 left-1/2 -translate-x-1/2 border-r border-b',
+    bottom: '-top-1 left-1/2 -translate-x-1/2 border-t border-l',
+    left: '-right-1 top-1/2 -translate-y-1/2 border-t border-r',
+    right: '-left-1 top-1/2 -translate-y-1/2 border-b border-l',
   }[placement]
 
   return createPortal(
@@ -391,7 +391,7 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       <span
         aria-hidden="true"
         className={cn(
-          'absolute size-[7px] rotate-45 border-(--color-tooltip-border) bg-(--bg-tooltip)',
+          'absolute size-1.75 rotate-45 border-(--color-tooltip-border) bg-(--bg-tooltip)',
           arrowClass,
         )}
       />

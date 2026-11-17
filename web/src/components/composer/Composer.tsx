@@ -229,7 +229,7 @@ export const Composer = memo(forwardRef<InputComposerHandle, ComposerProps>(func
 
   if (placement === 'inline' && !isMobile) {
     return (
-      <div ref={rootRef} data-testid="inline-inputbar-container" data-focus-region="composer" className="relative mx-auto w-full max-w-[640px]">
+      <div ref={rootRef} data-testid="inline-inputbar-container" data-focus-region="composer" className="relative mx-auto w-full max-w-160">
         {aboveComposer}
         {composer}
       </div>

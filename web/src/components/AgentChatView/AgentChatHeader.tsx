@@ -294,7 +294,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             data-header-cap="dock"
             // Windows: this header is the title bar, and the page's caption
             // buttons (fixed at the top right) take its last 3 × 46px.
-            className={cn('oa-header-cap-dock flex shrink-0 items-center justify-end gap-0.5 pl-1', captionInset ? 'pr-[138px]' : 'pr-1')}
+            className={cn('oa-header-cap-dock flex shrink-0 items-center justify-end gap-0.5 pl-1', captionInset ? 'pr-34.5' : 'pr-1')}
           >
             <AgentTopbar
               todosAction={{
@@ -372,7 +372,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       className={cn(
         'mobile-safe-header grid h-(--spacing-app-header) shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-b border-transparent bg-(--bg-page) transition-colors duration-(--motion-fast) in-data-[transcript-scrolled]:border-(--color-border) md:dark:bg-(--bg-sidebar)',
         isMacOverlay && 'select-none pl-(--spacing-mac-traffic-inset)',
-        captionInset && 'select-none pr-[138px]',
+        captionInset && 'select-none pr-34.5',
       )}
     >
         <div className={`mr-1 flex h-full min-w-0 items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>

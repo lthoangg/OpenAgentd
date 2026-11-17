@@ -31,6 +31,9 @@ interface Rule {
   allow: Record<string, number>
 }
 
+/** A spacing or size utility with a px literal, under any variants (``phone:w-[51px]``, ``before:-inset-y-[7px]``). */
+const PX_SIZE = /(?<![\w-])-?(?:p[xytblrse]?|m[xytblrse]?|gap(?:-[xy])?|space-[xy]|[hw]|size|min-[hw]|max-[hw]|inset(?:-[xy])?|top|bottom|left|right|start|end|translate-[xy]|basis|indent|scroll-[mp][xytblr]?)-\[-?\d+(?:\.\d+)?px\]/g
+
 const RULES: Rule[] = [
   {
     name: 'px-text',
@@ -87,6 +90,12 @@ const RULES: Rule[] = [
     name: 'invalid-fraction',
     why: 'spacing only accepts quarter steps; anything else generates no CSS',
     pattern: /(?<![\w-])-?(?:p[xytblr]?|m[xytblr]?|gap(?:-[xy])?|[hw]|min-[hw]|max-[hw]|size|top|left|right|bottom|inset(?:-[xy])?|space-[xy])-\d+\.[1-46-9](?![\w.])/g,
+    allow: {},
+  },
+  {
+    name: 'px-size',
+    why: 'a spacing or size is a quarter step of the scale (w-30, -top-1, pr-4.75) or a named --spacing-* token in index.css for geometry the OS fixes in points (the phone switch, the alert), never w-[120px]',
+    pattern: PX_SIZE,
     allow: {},
   },
   {
@@ -367,6 +376,13 @@ describe('design lint', () => {
       expect(countMatches(rule.pattern)).toEqual(rule.allow)
     })
   }
+
+  // The px-size rule must keep catching what it names, or an empty count proves nothing.
+  it('px-size catches px sizes under variants and leaves the scale and named tokens alone', () => {
+    const hits = (text: string) => text.match(PX_SIZE)?.length ?? 0
+    expect(hits('w-[120px] phone:h-[31px] before:-inset-y-[7px] bottom-[-4px] max-w-[640px] pr-[19px]')).toBe(6)
+    expect(hits('w-30 phone:h-switch-phone-h -inset-y-2.75 max-w-160 max-w-[calc(100%-2rem)] text-[13px] border-[1.5px]')).toBe(0)
+  })
 
   // A bare ``transition-colors`` (a hover) takes Tailwind's default timing,
   // so the theme pins it to the hover step instead of Tailwind's 150ms:

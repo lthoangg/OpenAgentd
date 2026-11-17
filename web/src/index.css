@@ -94,6 +94,21 @@
     --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
     --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
 
+    /* Geometry the OS fixes in points, so it stays px while iOS Dynamic
+     * Type scales the rem sizes around it. The phone switch is iOS's
+     * 51×31: 2px around a 27px thumb that stretches to 33px on a press and
+     * rests 20px (14px stretched) from the left; 7px above and below make
+     * its hit area 44px. The phone's confirm is iOS's 270pt alert. */
+    --spacing-switch-phone-w: 51px;
+    --spacing-switch-phone-h: 31px;
+    --spacing-switch-phone-pad: 2px;
+    --spacing-switch-phone-thumb: 27px;
+    --spacing-switch-phone-thumb-pressed: 33px;
+    --spacing-switch-phone-travel: 20px;
+    --spacing-switch-phone-travel-pressed: 14px;
+    --spacing-switch-phone-hit: 7px;
+    --spacing-alert: 270px;
+
     /* A bare transition-colors / -opacity / -transform takes the hover
      * step (DESIGN.md → Motion: buttons change colour at instant); a fold,
      * slide or fade names its own duration-(--motion-*). */

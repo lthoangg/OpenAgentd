@@ -119,8 +119,8 @@ function Switch({
       }}
       className={cn(
         // Track — a solid pill with no border, like an OS switch; a phone
-        // draws it at the iOS 51×31.
-        'relative inline-flex h-[22px] w-10 shrink-0 phone:h-[31px] phone:w-[51px]',
+        // draws it at the iOS 51×31 (px tokens in index.css: iOS fixes it).
+        'relative inline-flex h-5.5 w-10 shrink-0 phone:h-switch-phone-h phone:w-switch-phone-w',
         'rounded-full',
         // A horizontal drag moves the thumb; vertical pans still scroll the page.
         'touch-pan-y',
@@ -132,8 +132,8 @@ function Switch({
         // Transitions: the track's colour crossfades while the thumb slides
         'transition-colors duration-(--motion-base) ease-(--ease-in-out)',
         // Touch: a 44px hit area around the 40×22 track (51×31 on a phone), without moving the layout.
-        "pointer-coarse:before:absolute pointer-coarse:before:-inset-x-0.5 pointer-coarse:before:-inset-y-[11px] pointer-coarse:before:content-['']",
-        'phone:before:-inset-y-[7px]',
+        "pointer-coarse:before:absolute pointer-coarse:before:-inset-x-0.5 pointer-coarse:before:-inset-y-2.75 pointer-coarse:before:content-['']",
+        'phone:before:-inset-y-switch-phone-hit',
         // Focus ring
         'focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1 outline-none',
         // Disabled
@@ -148,8 +148,8 @@ function Switch({
         className={cn(
           // On, the thumb takes the ink that sits on the accent: white on
           // Bark, near-black on cream.
-          'absolute top-[3px] left-[3px] block h-4 rounded-full shadow-(--shadow-depth)',
-          'phone:top-[2px] phone:left-[2px] phone:h-[27px]',
+          'absolute top-0.75 left-0.75 block h-4 rounded-full shadow-(--shadow-depth)',
+          'phone:top-switch-phone-pad phone:left-switch-phone-pad phone:h-switch-phone-thumb',
           checked ? 'bg-(--color-text-on-accent)' : 'bg-(--color-surface) dark:bg-(--color-text)',
           // A slight spring at the end of its travel, like an OS switch. The
           // press stretch animates ``width``: the one layout property we
@@ -159,8 +159,8 @@ function Switch({
           // 40px track − 6px padding: the right edge rests at 34px, so a 22px
           // thumb sits at 12px and a 16px one at 18px. A phone's 51px track −
           // 4px: a 33px thumb sits at 14px and a 27px one at 20px.
-          pressed ? 'w-[22px] phone:w-[33px]' : 'w-4 phone:w-[27px]',
-          side ? (pressed ? 'translate-x-[12px] phone:translate-x-[14px]' : 'translate-x-[18px] phone:translate-x-[20px]') : 'translate-x-0',
+          pressed ? 'w-5.5 phone:w-switch-phone-thumb-pressed' : 'w-4 phone:w-switch-phone-thumb',
+          side ? (pressed ? 'translate-x-3 phone:translate-x-switch-phone-travel-pressed' : 'translate-x-4.5 phone:translate-x-switch-phone-travel') : 'translate-x-0',
         )}
       />
     </button>

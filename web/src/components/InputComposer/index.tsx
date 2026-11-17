@@ -717,7 +717,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         <span
           aria-hidden="true"
           data-composer-scroll-thumb=""
-          className="pointer-events-none absolute -right-1.5 w-[3px] rounded-full bg-(--color-border-strong)"
+          className="pointer-events-none absolute -right-1.5 w-0.75 rounded-full bg-(--color-border-strong)"
           style={{ top: `${Math.round(scrollThumb.top * 10_000) / 100}%`, height: `${Math.round(scrollThumb.height * 10_000) / 100}%` }}
         />
       )}

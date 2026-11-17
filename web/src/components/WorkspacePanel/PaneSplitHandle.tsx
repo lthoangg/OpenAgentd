@@ -92,8 +92,8 @@ export function PaneSplitHandle({
       className={cn(
         'group/split absolute z-10 touch-none outline-none',
         row
-          ? 'w-[7px] cursor-col-resize before:absolute before:inset-y-0 before:left-[3px] before:w-px'
-          : 'h-[7px] cursor-row-resize before:absolute before:inset-x-0 before:top-[3px] before:h-px',
+          ? 'w-1.75 cursor-col-resize before:absolute before:inset-y-0 before:left-0.75 before:w-px'
+          : 'h-1.75 cursor-row-resize before:absolute before:inset-x-0 before:top-0.75 before:h-px',
         // Hover and drag darken the hairline (warm, not Signal Blue); keyboard
         // focus keeps the focus colour.
         'before:bg-(--color-border-subtle) hover:before:bg-(--color-border-strong) focus-visible:before:bg-(--focus-outline)',

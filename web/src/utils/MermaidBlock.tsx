@@ -109,7 +109,7 @@ function MermaidFullscreen({ source, onClose }: { source: string; onClose: () =>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:pb-6">
         <div
-          className="oa-diagram max-h-full w-full max-w-[1400px] overflow-auto bg-(--bg-card) p-3 sm:p-6"
+          className="oa-diagram max-h-full w-full max-w-350 overflow-auto bg-(--bg-card) p-3 sm:p-6"
           onClick={(e) => e.stopPropagation()}
         >
           <div ref={hostRef} className="w-full" />

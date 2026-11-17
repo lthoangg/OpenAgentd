@@ -95,9 +95,12 @@ describe('phone scale', () => {
 describe('phone controls', () => {
   it('draws the switch at the iOS 51×31 on a phone', () => {
     const sw = read('../../components/ui/switch.tsx')
-    expect(sw).toContain('phone:h-[31px] phone:w-[51px]')
-    expect(sw).toContain('phone:h-[27px]')
-    expect(sw).toContain("'w-4 phone:w-[27px]'")
+    expect(sw).toContain('phone:h-switch-phone-h phone:w-switch-phone-w')
+    expect(sw).toContain('phone:h-switch-phone-thumb')
+    expect(sw).toContain("'w-4 phone:w-switch-phone-thumb'")
+    // px, not rem: iOS fixes the switch in points while Dynamic Type scales rem.
+    expect(css).toMatch(/--spacing-switch-phone-w:\s*51px;/)
+    expect(css).toMatch(/--spacing-switch-phone-h:\s*31px;/)
   })
 
   it('keeps Send a 36px circle on a phone, its touch area grown to 44px', () => {

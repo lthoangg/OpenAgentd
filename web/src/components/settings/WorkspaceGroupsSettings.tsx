@@ -52,7 +52,7 @@ const ROW_ACTION_CLASS = cn(
 )
 
 /** Indent that lines content up with the group name, past the colour dot. */
-const TEXT_COLUMN = 'pl-[22px]'
+const TEXT_COLUMN = 'pl-5.5'
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong'

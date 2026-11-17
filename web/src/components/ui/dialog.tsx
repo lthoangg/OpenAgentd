@@ -188,7 +188,7 @@ const DialogPaddingContext = createContext<keyof typeof DIALOG_PADDING>('default
 const DialogAlertContext = createContext(false)
 
 /** The card of a phone alert: UIAlertController's 270pt, narrower on a small screen. */
-const ALERT_PANEL = 'w-[270px] max-w-[calc(100%-2rem)] text-center'
+const ALERT_PANEL = 'w-alert max-w-[calc(100%-2rem)] text-center'
 
 /**
  * The alert's actions, whatever buttons the caller passes: plain text on the

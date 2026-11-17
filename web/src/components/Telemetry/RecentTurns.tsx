@@ -84,7 +84,7 @@ export function RecentTurns({
             ))}
           </ul>
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[520px] text-xs">
+            <table className="w-full min-w-130 text-xs">
               <thead>
                 <tr className="border-b border-(--color-border)/60 text-left">
                   <th scope="col" className={TH}>When</th>

@@ -455,7 +455,7 @@ function OptionRow({
             // keycap-filled row, so it takes the card fill (or a lighter Bark).
             <span
               className={cn(
-                'ml-1.5 inline-flex h-[18px] items-center rounded-xs px-1.5 align-middle text-meta leading-none font-medium whitespace-nowrap',
+                'ml-1.5 inline-flex h-4.5 items-center rounded-xs px-1.5 align-middle text-meta leading-none font-medium whitespace-nowrap',
                 checked ? 'bg-(--color-text-on-selected)/20 text-(--color-text-on-selected)' : 'bg-(--bg-card) text-(--color-text-muted)',
               )}
             >

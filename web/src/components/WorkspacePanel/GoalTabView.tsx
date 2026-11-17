@@ -69,11 +69,11 @@ function GoalRing({ tone }: { tone: GoalTone }) {
     <span
       aria-hidden="true"
       className={cn(
-        'relative mt-[3px] size-3 shrink-0 rounded-full border-2 border-current',
+        'relative mt-0.75 size-3 shrink-0 rounded-full border-2 border-current',
         tone === 'active' && 'oa-breathe',
       )}
     >
-      {(tone === 'active' || tone === 'blocked') && <span className="absolute inset-[2px] rounded-full bg-current" />}
+      {(tone === 'active' || tone === 'blocked') && <span className="absolute inset-0.5 rounded-full bg-current" />}
     </span>
   )
 }

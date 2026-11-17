@@ -148,17 +148,17 @@ export function NewSessionScreen({
             {picker}
             {treeError}
           </div>
-          {setup && <div className="mx-auto mt-2 w-full max-w-[640px]">{setup}</div>}
+          {setup && <div className="mx-auto mt-2 w-full max-w-160">{setup}</div>}
           {/* ``text-left``: the hero is centered, and the composer's
               textarea, chips and menus must not inherit it. */}
           {composer && <div className="mt-2 w-full text-left">{composer}</div>}
-          {chatNote && <div className="mx-auto mt-1 w-full max-w-[640px] text-left">{chatNote}</div>}
+          {chatNote && <div className="mx-auto mt-1 w-full max-w-160 text-left">{chatNote}</div>}
           {leaving && composerPlaceholderHeight !== undefined && (
             <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
           )}
         </div>
 
-        <div className={`mx-auto mt-8 flex w-full flex-col gap-6 ${isMobile ? 'mt-6' : 'max-w-[640px]'}`}>
+        <div className={`mx-auto mt-8 flex w-full flex-col gap-6 ${isMobile ? 'mt-6' : 'max-w-160'}`}>
           {recentSessions.length > 0 && (
             <RecentSessionsList
               sessions={recentSessions}

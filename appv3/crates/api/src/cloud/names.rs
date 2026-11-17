@@ -61,14 +61,13 @@ pub fn merge(local: Option<&str>, cloud: Option<&str>, synced: Option<&str>) -> 
 
 /// Remembers the name this device and the account agree on.
 pub(super) fn store_synced(name: Option<String>) {
-    let store = super::identity_store();
-    if let Ok(Some(mut id)) = idstore::load(&store) {
-        if id.name_synced != name {
-            id.name_synced = name;
-            if let Err(e) = idstore::save(&store, &id) {
-                tracing::warn!("cloud_name_save_failed error={e}");
-            }
-        }
+    let saved = super::state::update_identity(&super::identity_store(), |id| {
+        let changed = id.name_synced != name;
+        id.name_synced = name;
+        changed
+    });
+    if let Err(e) = saved {
+        tracing::warn!("cloud_name_save_failed error={e}");
     }
 }
 

@@ -19,6 +19,7 @@ pub mod letters;
 pub mod names;
 pub mod routes;
 pub mod signer;
+mod state;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -32,7 +33,7 @@ use openagentd_cloud::flows::{FlowError, GenesisDraft, Member, Removal, Session}
 use openagentd_cloud::keys::Roles;
 use openagentd_cloud::relay::{self, HostHandler, HostOptions, RelayError, Sessions, TunnelEnd};
 use openagentd_cloud::roster::{self, Chain, Roster};
-use openagentd_cloud::store::{self as idstore, FileStore, Identity, SecretStore};
+use openagentd_cloud::store::{self as idstore, FileStore, Identity};
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
@@ -303,7 +304,7 @@ pub fn ack_recovered() -> Status {
 }
 
 fn set_status(s: Status) {
-    *host().status.lock().expect("cloud status") = s;
+    let _ = state::transition(&mut host().status.lock().expect("cloud status"), s);
 }
 
 fn guest(notice: Option<Notice>) -> Status {
@@ -469,7 +470,7 @@ fn finish_join(outcome: Result<engine::Outcome, FlowError>) {
 fn finish_join_as(outcome: Result<engine::Outcome, FlowError>, recovered: bool) {
     match outcome {
         Ok(engine::Outcome::Joined(identity)) => {
-            if let Err(e) = idstore::save(&identity_store(), &identity) {
+            if let Err(e) = state::save_identity(&identity_store(), &identity) {
                 tracing::warn!("cloud_identity_save_failed error={e}");
                 set_status(guest(Some(Notice::Failed)));
                 return;
@@ -561,7 +562,7 @@ pub async fn sign_out() -> Status {
         }
     }
     stop().await;
-    if let Err(e) = store.clear() {
+    if let Err(e) = state::clear_identity(&store) {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
     host().recovered.store(false, Ordering::Relaxed);
@@ -624,12 +625,12 @@ fn read_roster_note(me: &str, known_version: u64, version: u64, revoked: &[Strin
 
 /// Saves the ledger next to `K`.
 fn persist_ledger(l: &ledger::Ledger) {
-    let store = identity_store();
-    if let Ok(Some(mut id)) = idstore::load(&store) {
-        l.write_into(&mut id);
-        if let Err(e) = idstore::save(&store, &id) {
-            tracing::warn!("cloud_ledger_save_failed error={e}");
-        }
+    let saved = state::update_identity(&identity_store(), |id| {
+        l.write_into(id);
+        true
+    });
+    if let Err(e) = saved {
+        tracing::warn!("cloud_ledger_save_failed error={e}");
     }
 }
 
@@ -708,7 +709,7 @@ fn forget(notice: Notice) {
     host().recovered.store(false, Ordering::Relaxed);
     controller::publish(None);
     controller::forget_addresses();
-    if let Err(e) = identity_store().clear() {
+    if let Err(e) = state::clear_identity(&identity_store()) {
         tracing::warn!("cloud_identity_clear_failed error={e}");
     }
     set_status(guest(Some(notice)));
@@ -842,13 +843,13 @@ fn after_presence(ended: &RelayError, now_ms: u64) -> Next {
 
 /// Saves a newly verified roster as the host's `K`.
 pub(crate) fn persist_roster(r: &Roster) {
-    let store = identity_store();
-    if let Ok(Some(mut id)) = idstore::load(&store) {
+    let saved = state::update_identity(&identity_store(), |id| {
         id.roster = Some(r.blob.clone());
         id.problem = None;
-        if let Err(e) = idstore::save(&store, &id) {
-            tracing::warn!("cloud_roster_save_failed error={e}");
-        }
+        true
+    });
+    if let Err(e) = saved {
+        tracing::warn!("cloud_roster_save_failed error={e}");
     }
 }
 

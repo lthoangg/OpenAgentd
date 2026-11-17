@@ -131,6 +131,30 @@ describe('NewSessionScreen', () => {
     expect(urls.some((url) => url.includes('/workspace/status'))).toBe(false)
   })
 
+  it('says when the folders could not load, with Retry, instead of showing none', async () => {
+    const user = userEvent.setup()
+    let fail = true
+    globalThis.fetch = mock((input: unknown) => {
+      if (String(input).includes('/agent/workspace/tree')) {
+        return Promise.resolve(fail ? new Response('{"detail":"boom"}', { status: 500 }) : Response.json(tree))
+      }
+      return new Promise<Response>(() => {})
+    }) as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <NewSessionScreen workspace={REPO} workspaceName="openagentd" isChat={false} chatWorkspace={CHAT} isMobile={false} onSelectWorkspace={() => {}} onOpenFolder={() => {}} />
+      </QueryClientProvider>,
+    )
+
+    expect((await screen.findByRole('alert')).textContent).toBe("Couldn't load folders.")
+    // The chip still opens the picker, so Open workspace… stays in reach.
+    expect(screen.getByRole('button', { name: 'Folder: openagentd. Change folder' })).toBeTruthy()
+    fail = false
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
   it('says on a first Chat how to work with Undo, and opens the folder picker from there', async () => {
     const user = userEvent.setup()
     const { onOpenFolder } = renderScreen({ workspace: CHAT.path, isChat: true })

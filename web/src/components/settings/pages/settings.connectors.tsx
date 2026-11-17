@@ -2,6 +2,7 @@ import { Plug } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { McpStatusChip } from '@/components/McpStatusChip'
+import { ConnectorGallery } from '@/components/settings/ConnectorGallery'
 import { Chip } from '@/components/ui/chip'
 import { TERMS } from '@/components/ui/term'
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
@@ -41,16 +42,18 @@ export function ConnectorsListPage({ selectedName, onSelect, onNew }: McpListPag
     <SettingsListView
       title="Connectors"
       description="Outside tools and services your agents can use, such as Notion, Slack or GitHub."
-      newLabel="New connector"
+      newLabel="Add your own"
       onNew={onNew}
-      filterPlaceholder="Filter connectors…"
+      filterPlaceholder="Filter your connectors…"
+      lead={<ConnectorGallery onOpen={onSelect} />}
+      listTitle="Your connectors"
       rows={rows}
       isLoading={isLoading}
       isError={isError}
       error={error}
       onRetry={() => void refetch()}
       emptyTitle="No connectors yet"
-      emptyBody="A connector gives your agents another tool to work with. Most need only a web address and a sign-in."
+      emptyBody="Turn one on above, or add your own: most need only a web address and a sign-in."
       emptyIcon={Plug}
     />
   )

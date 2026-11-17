@@ -78,13 +78,12 @@ describe('a call refused for sign-in', () => {
     expect(screen.queryByRole('button', { name: 'Sign in to excalidraw' })).toBeNull()
   })
 
-  it('adds nothing on the phone', () => {
+  it('offers sign-in on the phone too: it opens on the device in hand', () => {
     phone = true
     servers = [{ name: 'excalidraw', enabled: true, state: 'auth_required', transport: 'http' }]
     render(<ToolCall name="mcp" args={CALL} done result={REFUSED} />)
 
-    expect(screen.queryByRole('button', { name: 'Sign in to excalidraw' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Open in Settings' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sign in to excalidraw' })).toBeTruthy()
   })
 
   it('adds nothing to other mcp answers', () => {

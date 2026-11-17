@@ -288,7 +288,7 @@ describe('SessionMcpServers', () => {
     expect(within(linear).queryByRole('button')).toBeNull()
   })
 
-  it('starts the OAuth flow when connect is pressed', async () => {
+  it('starts the sign-in when connect is pressed', async () => {
     mockServerList([
       makeServer({
         name: 'linear',
@@ -299,9 +299,9 @@ describe('SessionMcpServers', () => {
     ])
     let connectCalled = false
     server.use(
-      http.post('http://localhost/api/mcp/servers/linear/oauth/connect', () => {
+      http.post('http://localhost/api/mcp/servers/linear/oauth/start', () => {
         connectCalled = true
-        return HttpResponse.json({ name: 'linear', state: 'ready' })
+        return HttpResponse.json({ status: 'done', server: { name: 'linear', state: 'ready' } })
       }),
     )
 

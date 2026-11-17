@@ -1,4 +1,5 @@
 /** TanStack Query hooks for the MCP server CRUD API. */
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listMcpServers,
@@ -7,10 +8,14 @@ import {
   updateMcpServer,
   deleteMcpServer,
   restartMcpServer,
-  connectMcpOAuth,
+  signOutMcpServer,
+  getConnectorGallery,
+  enableGalleryConnector,
+  updateGalleryConnector,
   type ServerBody,
   type ServerStatus,
 } from '@/api/client'
+import { signInToMcpServer } from '@/lib/mcp-sign-in'
 import { queryKeys } from './keys'
 import { CAPABILITY, useServerCapability } from './useHealthQuery'
 
@@ -125,13 +130,66 @@ export function useRestartMcpServerMutation() {
   })
 }
 
+/**
+ * Sign in to a URL connector from this device (the browser opens the
+ * service's page; the code comes back through the server or the relay page).
+ * Call `mutate` straight from the click.
+ */
 export function useConnectMcpOAuthMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (name: string) => connectMcpOAuth(name),
+    mutationFn: (name: string) => signInToMcpServer(name),
     onSettled: (_data, _error, name) => {
       client.invalidateQueries({ queryKey: queryKeys.mcp.detail(name) })
       invalidateAll(client)
     },
+  })
+}
+
+export function useSignOutMcpServerMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => signOutMcpServer(name),
+    onSettled: (_data, _error, name) => {
+      client.invalidateQueries({ queryKey: queryKeys.mcp.detail(name) })
+      invalidateAll(client)
+    },
+  })
+}
+
+/**
+ * The connector gallery. It shows the server's current list at once, and
+ * opening it also asks for a newer cloud list in the background.
+ */
+export function useConnectorGalleryQuery() {
+  const client = useQueryClient()
+  const query = useQuery({
+    queryKey: queryKeys.mcp.gallery(),
+    queryFn: () => getConnectorGallery(false),
+    staleTime: 10_000,
+  })
+  useEffect(() => {
+    let live = true
+    getConnectorGallery(true)
+      .then((g) => { if (live) client.setQueryData(queryKeys.mcp.gallery(), g) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [client])
+  return query
+}
+
+export function useEnableGalleryConnectorMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, key }: { id: string; key?: string }) => enableGalleryConnector(id, key),
+    onSettled: () => invalidateAll(client),
+  })
+}
+
+export function useUpdateGalleryConnectorMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => updateGalleryConnector(id),
+    onSettled: () => invalidateAll(client),
   })
 }

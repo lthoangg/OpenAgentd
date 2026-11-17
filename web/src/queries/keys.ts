@@ -142,6 +142,7 @@ export const queryKeys = {
     all: () => ['mcp'] as const,
     list: () => ['mcp', 'list'] as const,
     detail: (name: string) => ['mcp', 'detail', name] as const,
+    gallery: () => ['mcp', 'gallery'] as const,
   },
   settings: {
     deniedPaths: () => ['settings', 'denied-paths'] as const,

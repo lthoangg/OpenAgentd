@@ -45,6 +45,30 @@ Four orthogonal ways to add capability.
     MCP spec describes. Plugin MCP servers sign in the same way. A server that
     does not ask connects as before, one with its own `Authorization` header
     keeps using it, and a background start never registers a client.
+  - **Connector gallery** `[v3.58.0]` — Settings → Connectors opens on ready-made
+    connectors. Free ones (Context7, DeepWiki, Microsoft Learn, AWS Knowledge,
+    Cloudflare Docs, Exa, Hugging Face) turn on with a switch. Account ones
+    (Notion, Linear, Atlassian, Sentry, Stripe, …) turn on and sign in with one
+    **Connect**. GitHub takes a pasted token, which is stored as a secret. The
+    list is a signed file on openagentd.dev, so new connectors appear without an
+    update. The server keeps the last good list and falls back to the copy in the
+    app (`OPENAGENTD_GALLERY=off` uses only that copy; `OPENAGENTD_GALLERY_URL`
+    and `OPENAGENTD_GALLERY_KEY` point at an organization's own list). Turning one
+    on writes an ordinary `mcp.json` entry. A connector already added by hand
+    shows as on, and one on an old address of a connector is offered **Update**.
+    The agent's `mcp` `servers` action lists the gallery's connectors too.
+  - **Sign in from any device** `[v3.58.0]` — connector sign-in opens on the device
+    in hand: a browser on another computer, the phone app, or through a proxy or
+    the relay. The code comes back through
+    `account.openagentd.dev/oauth/callback`, which asks the user to confirm, then
+    passes it to the app (`openagentd://mcp-oauth`) or to `oauth-done.html`
+    beside the web app. A browser on the server's machine still uses localhost.
+    While a sign-in waits, the card has **Cancel** and **Paste address** (for a
+    page that could not come back by itself), and the phone shows **Sign in**
+    under a tool call that needs it. **Sign out** forgets a sign-in and keeps the
+    connector, and removing a connector forgets its sign-in too.
+    `OPENAGENTD_MCP_OAUTH_CALLBACK=self` sends codes straight to an HTTPS
+    deployment's own `oauth-done.html`.
   - **Legacy HTTP+SSE servers** `[v3.45.0]` — `mcp.json` takes `type` as well
     as `transport`, with `stdio`, `http` (or `streamable-http`) and `sse`.
     `sse` reaches servers that still speak the 2024-11-05 HTTP+SSE transport,

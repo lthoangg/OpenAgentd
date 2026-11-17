@@ -3,9 +3,10 @@ import { RotateCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFullDateTime } from '@/utils/format'
 
-import type { ServerStatus } from '@/api/client'
+import { cancelMcpSignIn, type ServerStatus } from '@/api/client'
 import {
   useConnectMcpOAuthMutation,
+  useSignOutMcpServerMutation,
   useDeleteMcpServerMutation,
   useMcpServerQuery,
   useRestartMcpServerMutation,
@@ -17,6 +18,7 @@ import { EditorDeleteRow } from '@/components/settings/EditorDeleteRow'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { SaveBar } from '@/components/settings/SaveBar'
 import { McpServerForm } from '@/components/settings/McpServerForm'
+import { McpSignInWaiting } from '@/components/settings/McpSignInWaiting'
 import {
   draftEquals,
   draftFromServerBody,
@@ -56,6 +58,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
   const deleteMut = useDeleteMcpServerMutation()
   const restartMut = useRestartMcpServerMutation()
   const connectOAuthMut = useConnectMcpOAuthMutation()
+  const signOutMut = useSignOutMcpServerMutation()
 
   const seedDraft = useMemo<McpServerDraft | null>(() => {
     if (serverQ.data?.name !== name) return null
@@ -115,6 +118,15 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
     } catch (err) {
       const msg = errorMessage(err)
       push({ tone: 'error', title: `Couldn't restart "${name}"`, description: msg })
+    }
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await signOutMut.mutateAsync(name)
+      push({ tone: 'success', title: `Signed out of "${name}"` })
+    } catch (err) {
+      push({ tone: 'error', title: `Couldn't sign out of "${name}"`, description: errorMessage(err) })
     }
   }
 
@@ -192,6 +204,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
                     : plugin
                       ? 'Turn the plugin on in Plugins before you sign in.'
                       : 'Turn it on and save before you sign in.'}
+                  {connectOAuthMut.isPending && <McpSignInWaiting className="mt-2" onCancel={() => void cancelMcpSignIn(name)} />}
                 </Callout>
               )}
 
@@ -213,6 +226,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 enabled={server.enabled}
                 dirty={dirty}
                 plugin={plugin}
+                signOut={server.signed_in && signsInWithOAuth(server) ? { run: () => void handleSignOut(), pending: signOutMut.isPending } : null}
               />
               {!plugin && (
                 <EditorDeleteRow
@@ -336,8 +350,15 @@ function PluginServerConfig({ server, plugin }: { server: ServerStatus; plugin: 
 
 // ── Manage ───────────────────────────────────────────────────────────────────
 
+/** A web-address connector that signs in at its service (not one whose Authorization header carries its credentials). */
+function signsInWithOAuth(server: ServerStatus): boolean {
+  const c = server.config
+  if (!c || c.transport === 'stdio') return false
+  return !!c.oauth || !Object.keys(c.headers ?? {}).some((h) => h.toLowerCase() === 'authorization')
+}
+
 function RestartCard({
-  onRestart, pending, enabled, dirty, plugin,
+  onRestart, pending, enabled, dirty, plugin, signOut,
 }: {
   onRestart: () => void
   pending: boolean
@@ -345,6 +366,8 @@ function RestartCard({
   dirty: boolean
   /** The bundle that owns the server, if any. */
   plugin: string | null
+  /** Sign out of a connector that is signed in. */
+  signOut: { run: () => void; pending: boolean } | null
 }) {
   return (
     <PanelSection title="Manage" flush>
@@ -367,6 +390,13 @@ function RestartCard({
           {pending ? 'Restarting…' : 'Restart'}
         </Button>
       </PanelRow>
+      {signOut && (
+        <PanelRow label="Sign out" description="Forgets this sign-in. The connector stays; sign in again to use it.">
+          <Button variant="default" size="sm" onClick={signOut.run} disabled={signOut.pending}>
+            {signOut.pending ? 'Signing out…' : 'Sign out'}
+          </Button>
+        </PanelRow>
+      )}
     </PanelSection>
   )
 }

@@ -54,6 +54,7 @@ export {
   useDeleteMcpServerMutation,
   useRestartMcpServerMutation,
   useConnectMcpOAuthMutation,
+  useSignOutMcpServerMutation,
 } from './useMcpQuery'
 export {
   useDeniedPathsSettingsQuery,

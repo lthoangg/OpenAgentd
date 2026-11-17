@@ -25,6 +25,8 @@ export interface DeepLinkServer {
 
 export type DeepLinkParsed =
   | { kind: 'auth_callback'; provider: string; code: string }
+  /** A connector's sign-in code, sent on by the relay page (`openagentd://mcp-oauth?code=…&state=…`). */
+  | { kind: 'mcp_oauth'; search: string }
   | { kind: 'navigate'; path: string; server?: DeepLinkServer }
   /** A new-session draft (home-screen widget); in the last folder when ``workspace`` is null. */
   | { kind: 'new_session'; workspace: string | null }
@@ -91,6 +93,10 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
       const state = url.searchParams.get('state')
       const code = state && !rawCode.includes('#') ? `${rawCode}#${state}` : rawCode
       return { kind: 'auth_callback', provider, code }
+    }
+
+    if (host === 'mcp-oauth' && pathname === '') {
+      return { kind: 'mcp_oauth', search: url.search }
     }
 
     if (host === 'session') {
@@ -210,6 +216,13 @@ export function useDeepLinkRouter(): void {
           handledOAuthCallbacks.delete(callbackKey)
           useToastStore.getState().push({ tone: 'error', title: 'Authentication failed' })
         }
+      } else if (parsed.kind === 'mcp_oauth') {
+        if (handledOAuthCallbacks.has(parsed.search)) return
+        handledOAuthCallbacks.add(parsed.search)
+        const { finishSignInFromPage } = await import('@/oauth-done/finish')
+        const result = await finishSignInFromPage(parsed.search)
+        void queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+        useToastStore.getState().push({ tone: result.ok ? 'success' : 'error', title: result.title, description: result.ok ? undefined : result.detail })
       } else if (parsed.kind === 'navigate') {
         if (await openOnLinkServer(parsed.path, parsed.server).catch(() => false)) return
         void router.navigate({ href: parsed.path })

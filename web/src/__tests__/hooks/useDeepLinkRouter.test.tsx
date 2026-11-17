@@ -15,6 +15,12 @@ describe('parseDeepLinkUrl', () => {
     })
   })
 
+  it('reads a connector sign-in the relay page sent to the app', () => {
+    expect(parseDeepLinkUrl('openagentd://mcp-oauth?code=c1&state=s1.e30')).toEqual({ kind: 'mcp_oauth', search: '?code=c1&state=s1.e30' })
+    expect(parseDeepLinkUrl('openagentd-dev://mcp-oauth?code=c1&state=s1')).toEqual({ kind: 'mcp_oauth', search: '?code=c1&state=s1' })
+    expect(parseDeepLinkUrl('openagentd://mcp-oauth/extra?code=c1&state=s1')).toEqual({ kind: 'unknown' })
+  })
+
   it('preserves the callback state in the existing code#state callback format', () => {
     const res = parseDeepLinkUrl('openagentd://auth/callback?provider=copilot&code=code123&state=state456')
     expect(res).toEqual({

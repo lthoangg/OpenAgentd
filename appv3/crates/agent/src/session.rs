@@ -962,3 +962,18 @@ pub enum StopCause {
     User,
     Shutdown,
 }
+
+#[cfg(test)]
+mod question_status_tests {
+    use super::normalize_question_status;
+
+    /// Every status a question is resolved with, and `pending`, is one the database accepts.
+    #[test]
+    fn question_statuses_are_ones_the_database_accepts() {
+        let accepted = appv3_db::migrations::status_values("pending_questions");
+        for reason in ["answered", "superseded", "expired", "dismissed", "anything else", "pending"] {
+            let status = if reason == "pending" { "pending" } else { normalize_question_status(reason) };
+            assert!(accepted.contains(&status), "{status}");
+        }
+    }
+}

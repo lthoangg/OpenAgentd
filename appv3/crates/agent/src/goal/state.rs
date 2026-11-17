@@ -130,6 +130,12 @@ mod tests {
     }
 
     #[test]
+    fn the_states_are_the_ones_the_database_accepts() {
+        let ours: Vec<&str> = states().iter().map(GoalMachine::state_kind).collect();
+        assert_eq!(ours, appv3_db::migrations::status_values("session_goals"));
+    }
+
+    #[test]
     fn a_paused_goal_cannot_be_achieved() {
         assert_eq!(GoalMachine::step(&GoalState::Paused { reason: "stopped".into() }, &GoalEvent::Achieve), None);
     }

@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000033";
+pub const ALEMBIC_HEAD: &str = "00000034";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -85,7 +85,14 @@ pub const ALEMBIC_HEAD: &str = "00000033";
 /// - 00000033: the partial `ix_session_messages_reply_requests` (rows whose
 ///   `extra.sent_from.reply` is true), so a starting server reads who is
 ///   still owed a reply without walking every message.
-pub const MIGRATIONS: [(&str, &str); 33] = [
+/// - 00000034: status columns hold known values only. Unknown ones are
+///   first mapped to a safe value (a question dismissed, a side question
+///   stopped, a goal cleared, a task paused; logged by [`migrate_34`]), then
+///   `BEFORE INSERT` / `BEFORE UPDATE OF status` triggers refuse anything
+///   else. Triggers, not `CHECK`: SQLite adds a `CHECK` only by rebuilding
+///   the table. The lists are [`STATUS_VALUES`], which each machine's tests
+///   hold their states to.
+pub const MIGRATIONS: [(&str, &str); 34] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -119,7 +126,23 @@ pub const MIGRATIONS: [(&str, &str); 33] = [
     ("00000031", include_str!("../resources/migrations/00000031.sql")),
     ("00000032", include_str!("../resources/migrations/00000032.sql")),
     ("00000033", include_str!("../resources/migrations/00000033.sql")),
+    ("00000034", include_str!("../resources/migrations/00000034.sql")),
 ];
+
+/// The values each status column may hold (00000034). The machines that
+/// write them (`goal/state.rs`, `scheduler/state.rs`, the side-question and
+/// question code) test their states against these lists.
+pub const STATUS_VALUES: [(&str, &[&str]); 4] = [
+    ("pending_questions", &["pending", "answered", "dismissed", "superseded", "expired"]),
+    ("side_questions", &["streaming", "done", "error", "stopped"]),
+    ("session_goals", &["active", "paused", "achieved", "cleared"]),
+    ("scheduled_task", &["pending", "running", "paused", "completed", "failed"]),
+];
+
+/// The values `table`'s status column may hold.
+pub fn status_values(table: &str) -> &'static [&'static str] {
+    STATUS_VALUES.iter().find(|(t, _)| *t == table).map(|(_, v)| *v).unwrap_or_else(|| panic!("no status list for {table}"))
+}
 
 /// Split a captured revision file into statements.
 pub fn statements(sql: &str) -> Vec<&str> {
@@ -254,6 +277,24 @@ async fn migrate_19(conn: &mut SqliteConnection, stmts: &[&str]) -> Result<()> {
     exec(conn, find("UPDATE alembic_version ")).await
 }
 
+/// 00000034: log how many rows held a status nobody writes (they are
+/// mapped to a safe value), then run the revision.
+async fn migrate_34(conn: &mut SqliteConnection, stmts: &[&str]) -> Result<()> {
+    for (table, values) in STATUS_VALUES {
+        let list = values.iter().map(|v| format!("'{v}'")).collect::<Vec<_>>().join(", ");
+        // Both from STATUS_VALUES, constants of this file: no input reaches the SQL.
+        let sql = format!("SELECT status, COUNT(*) FROM {table} WHERE status NOT IN ({list}) GROUP BY status");
+        let unknown: Vec<(String, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql)).fetch_all(&mut *conn).await?;
+        for (status, rows) in unknown {
+            tracing::warn!("status_normalized table={} status={:?} rows={}", table, status, rows);
+        }
+    }
+    for s in stmts {
+        exec_guarded(conn, s).await?;
+    }
+    Ok(())
+}
+
 async fn apply(conn: &mut SqliteConnection, rev: &str, sql: &str) -> Result<()> {
     // A Windows checkout with `core.autocrlf` embeds the file with CRLF; the
     // separator and the DDL text stored in `sqlite_master` must read as LF.
@@ -263,6 +304,7 @@ async fn apply(conn: &mut SqliteConnection, rev: &str, sql: &str) -> Result<()> 
     match rev {
         "00000013" => migrate_13(&mut tx, &stmts).await?,
         "00000019" => migrate_19(&mut tx, &stmts).await?,
+        "00000034" => migrate_34(&mut tx, &stmts).await?,
         _ => {
             for s in &stmts {
                 exec_guarded(&mut tx, s).await?;
@@ -548,6 +590,14 @@ CREATE TABLE inflight_turns (
 	restart_resumes INTEGER DEFAULT 0 NOT NULL,
 	PRIMARY KEY (session_id)
 );
+CREATE TRIGGER ck_pending_questions_status_insert BEFORE INSERT ON pending_questions WHEN NEW.status NOT IN ('pending', 'answered', 'dismissed', 'superseded', 'expired') BEGIN SELECT RAISE(ABORT, 'pending_questions.status must be pending, answered, dismissed, superseded or expired'); END;
+CREATE TRIGGER ck_pending_questions_status_update BEFORE UPDATE OF status ON pending_questions WHEN NEW.status NOT IN ('pending', 'answered', 'dismissed', 'superseded', 'expired') BEGIN SELECT RAISE(ABORT, 'pending_questions.status must be pending, answered, dismissed, superseded or expired'); END;
+CREATE TRIGGER ck_side_questions_status_insert BEFORE INSERT ON side_questions WHEN NEW.status NOT IN ('streaming', 'done', 'error', 'stopped') BEGIN SELECT RAISE(ABORT, 'side_questions.status must be streaming, done, error or stopped'); END;
+CREATE TRIGGER ck_side_questions_status_update BEFORE UPDATE OF status ON side_questions WHEN NEW.status NOT IN ('streaming', 'done', 'error', 'stopped') BEGIN SELECT RAISE(ABORT, 'side_questions.status must be streaming, done, error or stopped'); END;
+CREATE TRIGGER ck_session_goals_status_insert BEFORE INSERT ON session_goals WHEN NEW.status NOT IN ('active', 'paused', 'achieved', 'cleared') BEGIN SELECT RAISE(ABORT, 'session_goals.status must be active, paused, achieved or cleared'); END;
+CREATE TRIGGER ck_session_goals_status_update BEFORE UPDATE OF status ON session_goals WHEN NEW.status NOT IN ('active', 'paused', 'achieved', 'cleared') BEGIN SELECT RAISE(ABORT, 'session_goals.status must be active, paused, achieved or cleared'); END;
+CREATE TRIGGER ck_scheduled_task_status_insert BEFORE INSERT ON scheduled_task WHEN NEW.status NOT IN ('pending', 'running', 'paused', 'completed', 'failed') BEGIN SELECT RAISE(ABORT, 'scheduled_task.status must be pending, running, paused, completed or failed'); END;
+CREATE TRIGGER ck_scheduled_task_status_update BEFORE UPDATE OF status ON scheduled_task WHEN NEW.status NOT IN ('pending', 'running', 'paused', 'completed', 'failed') BEGIN SELECT RAISE(ABORT, 'scheduled_task.status must be pending, running, paused, completed or failed'); END;
 "#;
 
     async fn master(conn: &mut SqliteConnection) -> Vec<(String, String, String, Option<String>)> {
@@ -697,5 +747,43 @@ CREATE TABLE inflight_turns (
         assert_eq!(link(&own).fetch_one(&mut conn).await.unwrap(), None);
         assert_eq!(link(&orphan).fetch_one(&mut conn).await.unwrap(), None);
         assert_eq!(link(&origin).fetch_one(&mut conn).await.unwrap(), None);
+    }
+
+    /// 00000034 maps a status nobody writes to a safe one, and from then on
+    /// the database refuses one.
+    #[tokio::test]
+    async fn status_columns_hold_known_values_only() {
+        let mut conn = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+        for (rev, sql) in MIGRATIONS.iter().take_while(|(r, _)| *r <= "00000033") {
+            apply(&mut conn, rev, sql).await.unwrap();
+        }
+        let now = "2026-01-01 00:00:00.000000";
+        exec(
+            &mut conn,
+            &format!("INSERT INTO side_questions (session_id, id, question, answer, status, created_at, updated_at) VALUES ('s', 'a', 'q', '', 'thinking', '{now}', '{now}')"),
+        )
+        .await
+        .unwrap();
+        exec(
+            &mut conn,
+            &format!("INSERT INTO session_goals (session_id, id, objective, status, max_turns, created_at, updated_at) VALUES ('s', 'g', 'o', 'won', 5, '{now}', '{now}')"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(upgrade(&mut conn).await.unwrap(), SchemaState::Upgraded("00000033".into()));
+
+        let side: String = sqlx::query_scalar("SELECT status FROM side_questions").fetch_one(&mut conn).await.unwrap();
+        let goal: (String, Option<String>) = sqlx::query_as("SELECT status, ended_at FROM session_goals").fetch_one(&mut conn).await.unwrap();
+        assert_eq!((side.as_str(), goal.0.as_str(), goal.1.is_some()), ("stopped", "cleared", true));
+
+        let err = format!("{:#}", exec(&mut conn, "UPDATE side_questions SET status = 'thinking'").await.unwrap_err());
+        assert!(err.contains("side_questions.status must be streaming, done, error or stopped"), "{err}");
+        let insert = format!("INSERT INTO session_goals (session_id, id, objective, status, max_turns, created_at, updated_at) VALUES ('t', 'h', 'o', 'won', 5, '{now}', '{now}')");
+        assert!(exec(&mut conn, &insert).await.is_err());
+        for (table, values) in STATUS_VALUES {
+            let sql = MIGRATIONS[33].1;
+            let list = values.iter().map(|v| format!("'{v}'")).collect::<Vec<_>>().join(", ");
+            assert!(sql.contains(&format!("ON {table} WHEN NEW.status NOT IN ({list})")), "{table}: the triggers and STATUS_VALUES disagree");
+        }
     }
 }

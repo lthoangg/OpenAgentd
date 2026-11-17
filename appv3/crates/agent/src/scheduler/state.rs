@@ -263,6 +263,13 @@ mod tests {
     }
 
     #[test]
+    fn the_states_are_the_ones_the_database_accepts() {
+        let mut ours: Vec<&str> = STATES.iter().map(TaskState::as_str).collect();
+        ours.dedup();
+        assert_eq!(ours, appv3_db::migrations::status_values("scheduled_task"));
+    }
+
+    #[test]
     fn the_columns_round_trip_every_state() {
         for s in STATES {
             let t = ScheduledTask { enabled: s.enabled(), status: s.as_str().into(), ..Default::default() };

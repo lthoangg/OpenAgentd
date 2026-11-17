@@ -159,6 +159,11 @@ mod tests {
     const SID: &str = "0190f2a8-7c1e-7d3a-9b2c-111111111111";
     const OTHER: &str = "0190f2a8-7c1e-7d3a-9b2c-222222222222";
 
+    #[test]
+    fn the_statuses_are_the_ones_the_database_accepts() {
+        assert_eq!([SIDE_STREAMING, SIDE_DONE, SIDE_ERROR, SIDE_STOPPED], crate::migrations::status_values("side_questions"));
+    }
+
     #[tokio::test]
     async fn a_side_question_finishes_once() {
         let (_d, pool) = pool().await;

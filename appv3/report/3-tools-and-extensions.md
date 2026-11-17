@@ -110,7 +110,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   denied cache dir, so `DeniedPaths::read_only_roots` lets `read`/`grep`/`glob`
   open them. Write tools and `shell` still refuse them, and the denied patterns
   still apply. v2 kept bundled skills in the source tree, where they were
-  readable. Tests: `agent/src/skills.rs`, `tools/src/denied.rs`,
+  readable. Tests: `agent/src/skills.rs`, `tools/src/denied/tests.rs`,
   `agent/tests/bundled_skill_references.rs`.
 - **MCP request deadlines (v3 only):** `mcp.json` server entries (stdio and
   http) accept an optional integer `timeout` in seconds, 1–270, written only

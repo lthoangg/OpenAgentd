@@ -161,7 +161,7 @@ them without running). The targets:
 
 ```bash
 make verify-changed # verify-quick, then the targets the changed paths select
-make verify-quick   # seconds: Tauri command ACL, secret scan, docs, versions, cargo fmt, web lint + types
+make verify-quick   # seconds: Tauri command ACL, secret scan, file sizes, portable tests, docs, versions, cargo fmt, web lint + types
 make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests (cargo nextest)
 make verify-scripts  # pytest for scripts, installers, and workflow contracts (local .venv)
 make verify-web      # oxlint, app/test TypeScript (tsc -b), Bun tests
@@ -172,7 +172,7 @@ make verify-mobile   # command ACL, locked mobile cargo check and clippy -D warn
 make verify-shell-core # shared native crate fmt/clippy/test
 make verify-cloud    # OpenAgentd Cloud protocol crate fmt/clippy/test
 make verify          # portable v3 + scripts + web + docs + version checks
-make verify-native   # shell-core + desktop + mobile; native system dependencies required
+make verify-native   # shell-core + cloud + desktop + mobile; native system dependencies required
 ```
 
 Use focused checks while iterating, then run the applicable target above.
@@ -189,7 +189,8 @@ the same commit. It is the only prompt text that describes the app: do not
 repeat any of it in another prompt or a tool description.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
 budget and chunk-cycle checks. `pre-commit install` sets up two hooks: at
-commit, file hygiene, the file size ceilings, the secret scan, and `oxlint`
+commit, file hygiene, the file size ceilings, the portable-test and secret
+scans, and `oxlint`
 and `tsc` for `web/src`; at push, `make verify-quick`.
 
 ## Rules and checks
@@ -215,6 +216,7 @@ the rule depends on you reading it, for the reason given.
 | `web/src/components/ui/` imports no class or component library | `bun run lint` (`no-restricted-imports`) |
 | Design and copy rules that can be read from source | `web/src/__tests__/design-lint.test.ts`, `copy-lint.test.ts`, `web/src/__tests__/styles/` |
 | A Tauri command is registered, allowed, and called | `scripts/check_tauri_commands.py` |
+| A backend test does not use POSIX-only shell where Windows runs it, and a signed file is `-text` | `scripts/check_portable_tests.py` (`make verify-quick`, commit hook) |
 | No secret-shaped value in a tracked file | `scripts/check_no_secrets.py` |
 | Release versions agree everywhere | `make verify-version` |
 | Build jobs hold no signing secret | `scripts/tests/test_release_signing_isolation.py` |

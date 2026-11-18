@@ -29,9 +29,9 @@ build-v3: ## Build optimized OpenAgentd v3 release binary
 
 verify-v3: ## Check and test all appv3 Rust crates
 	cargo fmt --all --check --manifest-path appv3/Cargo.toml
-	cargo clippy --manifest-path appv3/Cargo.toml --all-targets -- -D warnings
+	cargo clippy --manifest-path appv3/Cargo.toml --all-targets --locked -- -D warnings
 	@cargo nextest --version >/dev/null 2>&1 || { echo "error: cargo-nextest not found; install it with 'cargo install cargo-nextest --locked' or 'brew install cargo-nextest'"; exit 1; }
-	cargo nextest run --manifest-path appv3/Cargo.toml --all-targets
+	cargo nextest run --manifest-path appv3/Cargo.toml --all-targets --locked
 
 kill-dev-ports: ## Stop processes listening on this checkout's dev ports (PORT, WEB_PORT)
 	@command -v lsof >/dev/null 2>&1 || { echo "error: 'lsof' not found"; exit 1; }
@@ -58,10 +58,11 @@ verify: verify-v3 verify-scripts verify-web verify-docs verify-version ## Run th
 # Static checks only, so the pre-push hook can afford to run it every time.
 # The command ACL is here because a missing entry compiles, passes every
 # cargo check, and fails at runtime.
-verify-quick: verify-docs verify-version ## Fast static checks (seconds): command ACL, secrets, file sizes, docs, versions, cargo fmt, web lint + types; the pre-push hook runs it
+verify-quick: verify-docs verify-version ## Fast static checks (seconds): command ACL, secrets, file sizes, portable tests, docs, versions, cargo fmt, web lint + types; the pre-push hook runs it
 	python3 scripts/check_tauri_commands.py
 	python3 scripts/check_no_secrets.py
 	python3 scripts/check_file_size.py
+	python3 scripts/check_portable_tests.py
 	cargo fmt --all --check --manifest-path appv3/Cargo.toml
 	cd native/shell-core && cargo fmt --check
 	cd native/cloud && cargo fmt --check
@@ -96,7 +97,7 @@ verify-version: ## Verify release-facing versions and release docs stay synchron
 		grep -F "**Latest release:** v$${VERSION} ·" documents/docs/features.md; \
 		grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$$' documents/docs/features.md
 
-verify-native: verify-shell-core verify-desktop verify-mobile ## Run shared-crate, desktop, and mobile Rust checks (requires native build dependencies)
+verify-native: verify-shell-core verify-cloud verify-desktop verify-mobile ## Run shared-crate, cloud, desktop, and mobile Rust checks (requires native build dependencies)
 
 verify-cloud: ## Format-check, lint, and test the OpenAgentd Cloud protocol crate (vectors, flows, release host pin)
 	cd native/cloud && cargo fmt --check

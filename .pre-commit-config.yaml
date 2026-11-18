@@ -59,6 +59,12 @@ repos:
         entry: python3 scripts/check_file_size.py
         files: \.(ts|tsx|rs)$
         pass_filenames: false
+      - id: portable-tests
+        name: tests that also run on Windows
+        language: system
+        entry: python3 scripts/check_portable_tests.py
+        files: ^appv3/.*\.rs$|^\.gitattributes$
+        pass_filenames: false
       - id: no-secrets
         name: secret scan
         language: system

@@ -720,6 +720,7 @@ mod tests {
 
     #[test]
     fn child_env_never_inherits_openagentd_secrets() {
+        // posix-only: never spawned; the test reads the environment it would get.
         let mut cmd = tokio::process::Command::new("sh");
         shell_env::scrubbed_env(&mut cmd);
         let removed: Vec<String> = cmd.as_std().get_envs().filter(|(_, v)| v.is_none()).map(|(k, _)| k.to_string_lossy().into_owned()).collect();

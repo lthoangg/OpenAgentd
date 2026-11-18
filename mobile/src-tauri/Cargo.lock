@@ -2835,7 +2835,9 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "jni",
  "keyring",
+ "ndk-context",
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",
@@ -4557,6 +4559,7 @@ dependencies = [
  "serde",
  "tauri",
  "tauri-plugin",
+ "zeroize",
 ]
 
 [[package]]

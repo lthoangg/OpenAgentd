@@ -25,6 +25,7 @@ fn status_serializes_for_the_web_ui() {
     let s = serde_json::to_value(Status::Guest {
         notice: Some(Notice::SignedOut),
         supported: true,
+        unsupported: None,
         retry_after: None,
     })
     .unwrap();

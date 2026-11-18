@@ -39,6 +39,15 @@ class SecretArgs {
 }
 
 @InvokeArg
+class CloudKeyArgs {
+    /** 0 identity, 1 box, 2 sign (`CloudKeyStore`). */
+    var item: Int = -1
+    var value: String? = null
+    /** The line the system prompt shows when item 2 is read. */
+    var reason: String? = null
+}
+
+@InvokeArg
 class WidgetArgs {
     /** Snapshot JSON, validated by the shell's `widgets.rs`. */
     lateinit var snapshot: String
@@ -85,6 +94,7 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     private val secrets by lazy { KeystoreSecretStore(activity.applicationContext) }
+    private val cloudKeys by lazy { CloudKeyStore(activity.applicationContext) }
     private val themePrefs by lazy {
         activity.applicationContext.getSharedPreferences("openagentd_theme", Activity.MODE_PRIVATE)
     }
@@ -272,6 +282,75 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.resolve(result)
         } catch (ex: Exception) {
             invoke.reject(ex.message ?: "Credential store unavailable")
+        }
+    }
+
+    /** Whether this phone can hold account keys: `{ api, secureLock, hardware }`. */
+    @Command
+    fun cloudKeysAvailability(invoke: Invoke) {
+        try {
+            val a = cloudKeys.availability()
+            val result = JSObject()
+            result.put("api", a.api)
+            result.put("secureLock", a.secureLock)
+            result.put("hardware", a.hardware)
+            invoke.resolve(result)
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Keystore unavailable")
+        }
+    }
+
+    @Command
+    fun cloudKeySet(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(CloudKeyArgs::class.java)
+            val value = args.value ?: return invoke.reject("Missing key value")
+            cloudKeys.set(args.item, value)
+            invoke.resolve()
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Keystore unavailable")
+        }
+    }
+
+    /**
+     * `{ status, value?, message? }`. Reading item 2 shows the system prompt
+     * (fingerprint or screen lock) and answers once the person is done.
+     */
+    @Command
+    fun cloudKeyGet(invoke: Invoke) {
+        val args = try {
+            invoke.parseArgs(CloudKeyArgs::class.java)
+        } catch (ex: Exception) {
+            return invoke.reject(ex.message ?: "Invalid key item")
+        }
+        val answer = { read: CloudKeyStore.Read ->
+            val result = JSObject()
+            result.put("status", read.status)
+            read.value?.let { result.put("value", it) }
+            read.message?.let { result.put("message", it) }
+            invoke.resolve(result)
+        }
+        try {
+            if (args.item != CloudKeyStore.SIGN) return answer(cloudKeys.get(args.item))
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                return answer(CloudKeyStore.Read("error", message = "Accounts need Android 11 or later."))
+            }
+            cloudKeys.unlockSign(activity, args.reason ?: "", answer)
+        } catch (ex: Exception) {
+            answer(CloudKeyStore.Read("error", message = ex.message ?: ex.javaClass.simpleName))
+        }
+    }
+
+    /** Signing out: every account key item and both Keystore keys. `{ left }` */
+    @Command
+    fun cloudKeysClear(invoke: Invoke) {
+        try {
+            cloudKeys.clear()
+            val result = JSObject()
+            result.put("left", cloudKeys.hasAnyKey())
+            invoke.resolve(result)
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Keystore unavailable")
         }
     }
 

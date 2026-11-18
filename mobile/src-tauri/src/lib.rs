@@ -779,7 +779,14 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|_app| {
             if let Ok(dir) = _app.path().app_data_dir() {
+                #[cfg(not(target_os = "android"))]
                 cloud::init(dir);
+                // The account keys live in the shell plugin's Keystore store.
+                #[cfg(target_os = "android")]
+                {
+                    use tauri_plugin_openagentd_android::AndroidShellExt;
+                    cloud::init(dir, _app.android_shell().clone());
+                }
             }
             taps::install(_app.handle());
             #[cfg(target_os = "ios")]

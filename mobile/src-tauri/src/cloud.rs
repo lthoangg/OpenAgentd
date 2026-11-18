@@ -1,4 +1,4 @@
-// size-ceiling: 2514 — split the relay bridge (links, bridges, direct addresses) from the account flows
+// size-ceiling: 2563 — split the relay bridge (links, bridges, direct addresses) from the account flows
 //! The phone's optional account for Remote control: sign-in, the account's
 //! first roster (genesis) with its recovery code, approving computers with
 //! the 6-digit code behind Face ID, the device list, and the relay bridge
@@ -15,9 +15,11 @@
 //! `native/cloud`; the threat model is `appv3/contract/tunnel-threats.md`.
 //!
 //! Keys: on iOS the Keychain (`ios-widget/App/KeychainBridge.swift`), with
-//! the signing seed behind Face ID or the passcode. Elsewhere (desktop
-//! builds of this shell, used for development, and Android until its
-//! Keystore support lands) a file only the user can read.
+//! the signing seed behind Face ID or the passcode. On Android the Keystore
+//! (`android-plugin/.../CloudKeyStore.kt`, through `cloud_android.rs`), with
+//! the signing seed behind a strong biometric or the screen lock. Elsewhere
+//! (desktop builds of this shell, used for development) a file only the
+//! user can read.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -143,21 +145,30 @@ mod ios_keys {
     }
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(any(target_os = "android", test))]
+#[path = "cloud_android.rs"]
+mod android_keys;
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 struct FileKeys(openagentd_cloud::store::FileStore);
 
 /// The signing key is not in the Keychain. iOS deletes it when the
 /// passcode is turned off (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`),
 /// and it does not come back with a new passcode.
+#[cfg(not(target_os = "android"))]
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 const SIGN_KEY_GONE: &str = "This iPhone can't add devices any more: its key was removed when the passcode was turned off. Use another phone that can add devices.";
+/// Android permanently invalidates a key that needs the user when the
+/// screen lock is turned off; a new screen lock does not bring it back.
+#[cfg(target_os = "android")]
+const SIGN_KEY_GONE: &str = "This phone can't add devices any more: its key was removed when the screen lock was turned off. Use another phone that can add devices.";
 
 /// Tests: the next `unlock_sign` fails as if the person cancelled Face ID.
-#[cfg(all(test, not(target_os = "ios")))]
+#[cfg(all(test, not(any(target_os = "ios", target_os = "android"))))]
 pub(crate) static CANCEL_NEXT_UNLOCK: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 impl PhoneKeys for FileKeys {
     fn load(&self) -> Result<Option<Identity>, String> {
         openagentd_cloud::store::load(&self.0).map_err(|e| e.to_string())
@@ -230,10 +241,13 @@ pub enum Notice {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Status {
-    /// `supported`: false where this build cannot keep account keys.
+    /// `supported`: false where this build cannot keep account keys, and
+    /// then `unsupported` says why (Android: too old, or no secure hardware).
     Guest {
         notice: Option<Notice>,
         supported: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        unsupported: Option<&'static str>,
         /// Seconds to wait before trying again (`rate_limited`).
         #[serde(skip_serializing_if = "Option::is_none")]
         retry_after: Option<u64>,
@@ -397,18 +411,32 @@ struct RelayContext {
 
 static PHONE: OnceLock<Phone> = OnceLock::new();
 
-fn supported() -> bool {
-    // Android keeps keys in its Keystore, which is a later step.
-    !cfg!(target_os = "android")
+/// Why this build or phone can never hold an account's keys, if it
+/// cannot (Android: older than Android 11, or a Keystore without secure
+/// hardware in a release build). The account controls then show this line.
+fn unsupported_reason() -> Option<&'static str> {
+    #[cfg(target_os = "android")]
+    return android_keys::unsupported();
+    #[cfg(not(target_os = "android"))]
+    None
 }
 
-/// Why this device cannot hold an account's keys now, if it cannot: on
-/// iOS the signing key needs a passcode (Keychain `.userPresence`, only
-/// while a passcode is set), so a phone without one is told before it
-/// signs in rather than after the recovery code.
+fn supported() -> bool {
+    unsupported_reason().is_none()
+}
+
+/// Why this device cannot hold an account's keys now, if it cannot: the
+/// signing key needs a passcode or screen lock (iOS Keychain
+/// `.userPresence`, only while a passcode is set; an Android Keystore key
+/// that needs the user), so a phone without one is told before it signs in
+/// rather than after the recovery code.
 fn keys_unavailable() -> Option<String> {
-    if !supported() {
-        return Some("Accounts are not available on this device yet.".into());
+    if let Some(why) = unsupported_reason() {
+        return Some(why.into());
+    }
+    #[cfg(target_os = "android")]
+    if android_keys::no_screen_lock() {
+        return Some(NO_PASSCODE.into());
     }
     #[cfg(target_os = "ios")]
     {
@@ -423,14 +451,26 @@ fn keys_unavailable() -> Option<String> {
 }
 
 /// Shown when a phone without a passcode tries to sign in or join.
+#[cfg(not(target_os = "android"))]
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 const NO_PASSCODE: &str = "Set a passcode on this iPhone to use an OpenAgentd account. It protects the key that adds and removes devices.";
+/// Shown when a phone without a screen lock tries to sign in or join.
+#[cfg(target_os = "android")]
+const NO_PASSCODE: &str = "Set a screen lock on this phone to use an OpenAgentd account. It protects the key that adds and removes devices.";
 
-/// Called once at startup with the app's data directory.
-pub fn init(data_dir: std::path::PathBuf) {
+/// Called once at startup with the app's data directory. On Android the
+/// account keys go through the shell plugin's Keystore store.
+pub fn init(
+    data_dir: std::path::PathBuf,
+    #[cfg(target_os = "android")] shell: tauri_plugin_openagentd_android::AndroidShell<tauri::Wry>,
+) {
     #[cfg(target_os = "ios")]
     let keys: Box<dyn PhoneKeys> = Box::new(ios_keys::Keychain);
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(all(target_os = "android", debug_assertions))]
+    android_keys::load_dev_env(&data_dir);
+    #[cfg(target_os = "android")]
+    let keys: Box<dyn PhoneKeys> = android_keys::install(shell);
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let keys: Box<dyn PhoneKeys> = Box::new(FileKeys(openagentd_cloud::store::FileStore::new(
         data_dir.join("cloud").join("identity.json"),
     )));
@@ -489,6 +529,7 @@ fn status() -> Status {
         .unwrap_or(Status::Guest {
             notice: None,
             supported: false,
+            unsupported: None,
             retry_after: None,
         })
 }
@@ -497,6 +538,7 @@ fn guest(notice: Option<Notice>) -> Status {
     Status::Guest {
         notice,
         supported: supported(),
+        unsupported: unsupported_reason(),
         retry_after: None,
     }
 }
@@ -506,6 +548,7 @@ fn guest_after(e: &FlowError) -> Status {
     Status::Guest {
         notice: Some(notice_of(e)),
         supported: supported(),
+        unsupported: unsupported_reason(),
         retry_after: retry_after(e),
     }
 }
@@ -806,7 +849,10 @@ async fn flow_error(e: FlowError) -> String {
 /// The one expiry wording, everywhere a code ran out.
 pub const CODE_TIMED_OUT: &str = "This code timed out. Show a new one.";
 /// A phone without the key that adds devices.
+#[cfg(not(target_os = "android"))]
 pub const CANT_ADD: &str = "This iPhone can't add devices. Use the phone you set up first.";
+#[cfg(target_os = "android")]
+pub const CANT_ADD: &str = "This phone can't add devices. Use the phone you set up first.";
 /// The codes did not match: nothing was added. Calm on purpose; the person
 /// most likely mistyped or started over.
 pub const NOT_ADDED: &str = "Not added. Try again on the device you're adding.";
@@ -1168,6 +1214,9 @@ async fn finish(member: Member) -> Result<(), String> {
 
 #[tauri::command]
 pub fn cloud_status() -> Status {
+    // A screen lock set or removed while the app was away counts at once.
+    #[cfg(target_os = "android")]
+    android_keys::refresh();
     status()
 }
 

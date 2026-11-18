@@ -8,6 +8,10 @@
 //!   [`init`] registers a keyring credential builder backed by the Android
 //!   Keystore, so `openagentd-shell-core`'s access-key functions work
 //!   unchanged.
+//! * **Account keys.** The phone's OpenAgentd account keys for Remote
+//!   control (`CloudKeyStore.kt`): Keystore-wrapped, the signing seed behind
+//!   a strong biometric or the screen lock on every use
+//!   ([`AndroidShell::cloud_key_get`]), as the iOS Keychain bridge does.
 //! * **File sharing.** `tauri-plugin-opener` cannot open a local path on
 //!   Android (it fires `ACTION_VIEW` with a bare path); [`AndroidShell::share_file`]
 //!   shares a cached file through a `FileProvider` and the system chooser,
@@ -27,7 +31,7 @@ use tauri::{
 mod android;
 
 #[cfg(target_os = "android")]
-pub use android::{AndroidShell, AndroidShellExt};
+pub use android::{AndroidShell, AndroidShellExt, KeyRead, KeysAvailability};
 
 /// Build the plugin. On Android this registers the Kotlin `ShellPlugin`,
 /// manages an [`AndroidShell`] handle, and installs the Keystore-backed

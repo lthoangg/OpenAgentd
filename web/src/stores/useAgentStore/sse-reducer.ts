@@ -5,7 +5,7 @@
 import { applyQuestionResolution } from './question-state'
 import { onAgentNotConfigured, onAgentStatus, onError, onProviderStatus } from './sse-agent-status'
 import { onSummarizationContent, onSummarizationEnd, onSummarizationStart } from './sse-compaction'
-import { applySSEDeltaBatch, onToolCall, onToolEnd, onToolStart } from './sse-content'
+import { applySSEDeltaBatch, onNestedToolEnd, onToolCall, onToolEnd, onToolStart } from './sse-content'
 import { onQuestionAsked, onQuestionResolved } from './sse-questions'
 import { onDone, onQueuedTurnStart } from './sse-turn'
 import { onUsage } from './sse-usage'
@@ -65,6 +65,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'tool_end': {
         onToolEnd(set, get, d)
+        break
+      }
+
+      case 'nested_tool_end': {
+        onNestedToolEnd(set, get, d)
         break
       }
 

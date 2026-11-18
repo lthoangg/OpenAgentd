@@ -106,6 +106,8 @@ make build-web   # web/dist for native packaging
 
 Use the native subtree Makefiles for desktop/mobile packages
 (`make -C desktop sidecar` stages the v3 binary).
+`make clean-stale` deletes `appv3/target/` outputs untouched for two days
+(`DAYS=…`); cargo keeps every copy it ever built, so run it when the disk fills.
 
 ## Architecture boundaries
 
@@ -146,9 +148,11 @@ Use the native subtree Makefiles for desktop/mobile packages
   rerun the owning build.
 - Keep release versions synchronized through the repository release scripts;
   `make verify-version` checks the cross-project contract.
-- Before changing UI, read `DESIGN.md` (the tokens and a map), then the
-  chapter under `design/` that the map names for what you change, not every
-  chapter. Use its tokens and existing primitives, design mobile-first, and
+- Before changing UI, read `DESIGN.md` from its `# OpenAgentd Paper` heading
+  (the overview, the map, the do's and don'ts), then the chapter under
+  `design/` that the map names for what you change, not every chapter. Its
+  YAML frontmatter is the token table (most of the file): grep it
+  for the token you need instead of reading it. Use its tokens and existing primitives, design mobile-first, and
   preserve touch/pointer parity. Check a UI change on the running app at a
   phone width and a desktop width with `oad/drive`, and look at the
   screenshots it saves.
@@ -161,7 +165,7 @@ them without running). The targets:
 
 ```bash
 make verify-changed # verify-quick, then the targets the changed paths select
-make verify-quick   # seconds: Tauri command ACL, secret scan, docs, versions, cargo fmt, web lint + types
+make verify-quick   # seconds: Tauri command ACL, secret scan, file sizes, portable tests, docs, versions, cargo fmt, web lint + types
 make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests (cargo nextest)
 make verify-scripts  # pytest for scripts, installers, and workflow contracts (local .venv)
 make verify-web      # oxlint, app/test TypeScript (tsc -b), Bun tests
@@ -172,7 +176,7 @@ make verify-mobile   # command ACL, locked mobile cargo check and clippy -D warn
 make verify-shell-core # shared native crate fmt/clippy/test
 make verify-cloud    # OpenAgentd Cloud protocol crate fmt/clippy/test
 make verify          # portable v3 + scripts + web + docs + version checks
-make verify-native   # shell-core + desktop + mobile; native system dependencies required
+make verify-native   # shell-core + cloud + desktop + mobile; native system dependencies required
 ```
 
 Use focused checks while iterating, then run the applicable target above.
@@ -189,8 +193,9 @@ the same commit. It is the only prompt text that describes the app: do not
 repeat any of it in another prompt or a tool description.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
 budget and chunk-cycle checks. `pre-commit install` sets up two hooks: at
-commit, file hygiene plus `oxlint` and `tsc` for `web/src`; at push,
-`make verify-quick`.
+commit, file hygiene, the file size ceilings, the portable-test and secret
+scans, and `oxlint`
+and `tsc` for `web/src`; at push, `make verify-quick`.
 
 ## Rules and checks
 
@@ -205,7 +210,7 @@ the rule depends on you reading it, for the reason given.
 | `app_guide` is the only text that describes the app | `appv3/crates/agent/tests/runtime_protocol.rs`, `web/src/__tests__/api/app-guide-contract.test.tsx` |
 | A built-in tool is in the registry, in `appv3/crates/agent/data/tools.json`, and drawn by the web client | tests in `appv3/crates/agent/src/tool_registry.rs`, `web/src/__tests__/api/tools-contract.test.ts` |
 | A provider in the catalogue has a builder | `every_provider_in_the_catalogue_has_a_builder` in `appv3/crates/providers/src/factory.rs` |
-| A prompt key, a migration file, a bundled skill file and a server module are each listed where the code reads them | tests in `appv3/crates/agent/src/prompts.rs`, `appv3/crates/db/src/migrations.rs`, `appv3/crates/agent/src/skills.rs`, `appv3/crates/cli/tests/modules.rs` |
+| A prompt key, a migration file, a bundled skill file, a server module and an agent integration test file are each listed where the code reads them | tests in `appv3/crates/agent/src/prompts.rs`, `appv3/crates/db/src/migrations.rs`, `appv3/crates/agent/src/skills.rs`, `appv3/crates/cli/tests/modules.rs`, `appv3/crates/agent/tests/main.rs` |
 | A Settings section has a registry entry and a page | `tsc` (`web/src/components/settings/sections.ts`, `SettingsModal.tsx`) |
 | The network guard refuses foreign hosts and origins | tests in `appv3/crates/api/src/middleware.rs` |
 | Child processes do not inherit secrets | `appv3/crates/core/tests/child_env.rs` |
@@ -215,6 +220,7 @@ the rule depends on you reading it, for the reason given.
 | `web/src/components/ui/` imports no class or component library | `bun run lint` (`no-restricted-imports`) |
 | Design and copy rules that can be read from source | `web/src/__tests__/design-lint.test.ts`, `copy-lint.test.ts`, `web/src/__tests__/styles/` |
 | A Tauri command is registered, allowed, and called | `scripts/check_tauri_commands.py` |
+| A backend test does not use POSIX-only shell where Windows runs it, and a signed file is `-text` | `scripts/check_portable_tests.py` (`make verify-quick`, commit hook) |
 | No secret-shaped value in a tracked file | `scripts/check_no_secrets.py` |
 | Release versions agree everywhere | `make verify-version` |
 | Build jobs hold no signing secret | `scripts/tests/test_release_signing_isolation.py` |

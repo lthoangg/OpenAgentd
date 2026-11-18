@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from '@/App'
+import { setupServer } from '@/__tests__/msw'
 
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
 
@@ -181,6 +182,12 @@ afterEach(() => {
   delete window.__OAD_TOKEN__
   window.localStorage.clear()
 })
+
+// The booted app probes the backend; no backend runs here, so its requests
+// fail as network errors instead of opening sockets.
+const server = setupServer()
+beforeAll(() => server.listen())
+afterAll(() => server.close())
 
 describe('App backend bootstrap', () => {
   it('waits for an external backend credential before mounting the router', async () => {

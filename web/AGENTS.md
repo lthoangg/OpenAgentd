@@ -56,8 +56,9 @@ cycle.
 
 ## UI constraints
 
-- Read root `DESIGN.md` and the chapter under `design/` its map names for what
-  you change. Reuse tokens from `src/styles/tokens.css` (palette, motion) and
+- Read root `DESIGN.md` from its `# OpenAgentd Paper` heading (grep its
+  frontmatter for a token) and the chapter under `design/` its map names for
+  what you change. Reuse tokens from `src/styles/tokens.css` (palette, motion) and
   `src/index.css` (Tailwind theme, radius, spacing) and existing primitives
   before adding colors, spacing, type, radius, elevation, or motion.
 - Cite a design rule in a comment or a lint message by its heading, as

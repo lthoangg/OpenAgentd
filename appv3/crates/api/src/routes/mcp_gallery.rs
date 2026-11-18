@@ -51,6 +51,19 @@ fn url_of(sc: &ServerConfig) -> Option<&str> {
     }
 }
 
+/// The gallery entry a connector is, by its address (current or an earlier
+/// one): `{id, name, icon}` so the app shows the service's name and logo.
+/// Uses the last good list in memory and never calls out.
+pub fn gallery_of(cfg: Option<&ServerConfig>) -> Value {
+    let Some(url) = cfg.and_then(url_of) else { return Value::Null };
+    let known = gallery::known();
+    let hit = known.iter().find(|e| same_url(url, &e.url)).or_else(|| known.iter().find(|e| e.previous_urls.iter().any(|p| same_url(url, p))));
+    match hit {
+        Some(e) => json!({"id": e.id, "name": e.name, "icon": e.icon.as_ref().map(gallery::Icon::to_json)}),
+        None => Value::Null,
+    }
+}
+
 /// What the gallery shows next to an entry: the connector it is (by
 /// address), and one still on an old address of it.
 fn installed(entry: &Entry, statuses: &[(appv3_mcp::ServerStatus, Option<ServerConfig>)]) -> (Option<Value>, Option<String>) {

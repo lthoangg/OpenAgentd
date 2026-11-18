@@ -54,6 +54,8 @@ pub(super) fn status_json(st: &ServerStatus, cfg: Option<&ServerConfig>) -> Valu
         "config": config,
         // Holds a sign-in it can use (or refresh): what "Sign out" forgets.
         "signed_in": oauth::has_cached_oauth_tokens(&st.name),
+        // The gallery entry it is, by address: the app shows its name and logo.
+        "gallery": super::mcp_gallery::gallery_of(cfg),
     });
     if let Some(plugin) = &st.plugin {
         v["plugin"] = json!(plugin);

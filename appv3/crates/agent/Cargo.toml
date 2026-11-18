@@ -3,6 +3,8 @@ name = "appv3-agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# One integration test binary: see tests/main.rs.
+autotests = false
 
 [lints]
 workspace = true
@@ -39,3 +41,7 @@ httpdate = "1"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

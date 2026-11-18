@@ -11,16 +11,20 @@ export default async function connectorsRemote({ page, expect, step, open, api, 
     route.continue({ headers: { ...route.request().headers(), "x-forwarded-for": "192.0.2.10" } }),
   )
   const dialog = page.getByRole("dialog", { name: "Settings" })
-  const card = (name) => dialog.getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) })
+  const tile = (name) => dialog.getByRole("region", { name: "Add a connector" }).getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) })
+  const row = (name) => dialog.getByRole("region", { name: "Your connectors" }).getByRole("listitem", { name, exact: true })
   let signIn
   let authUrl
 
   await step("Connect on Linear from another device opens Linear with the public return page", async () => {
+    // Precondition: Linear is not added yet (the other width adds it).
+    const { servers } = await api("GET", "/mcp/servers")
+    if (servers.some((s) => s.name === "linear")) await api("DELETE", "/mcp/servers/linear")
     await open("/")
     await page.getByRole("button", { name: "Settings", exact: true }).click()
     await dialog.getByRole("button", { name: /^Connectors\b/ }).click()
     const popup = page.waitForEvent("popup")
-    await card("Linear").getByRole("button", { name: "Connect" }).click()
+    await tile("Linear").getByRole("button", { name: "Connect" }).click()
     signIn = await popup
     await expect.poll(() => signIn.url(), { timeout: 20_000 }).toMatch(/linear\.app\//)
     authUrl = new URL(signIn.url())
@@ -28,7 +32,7 @@ export default async function connectorsRemote({ page, expect, step, open, api, 
     const redirect = authUrl.searchParams.get("redirect_uri") ?? decodeURIComponent(signIn.url()).match(/redirect_uri=([^&]+)/)?.[1]
     // The relay page (…/oauth/callback), not the server's own listener (…:<port>/callback).
     expect(redirect).toMatch(/\/oauth\/callback$/)
-    await expect(card("Linear").getByText("Waiting for sign-in in your browser…")).toBeVisible()
+    await expect(row("Linear").getByText("Waiting for sign-in in your browser…")).toBeVisible()
   })
 
   await step("the callback page names the OpenAgentd it sends the code to and waits for a click", async () => {

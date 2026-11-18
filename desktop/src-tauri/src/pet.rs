@@ -1,4 +1,4 @@
-// size-ceiling: 2641 — holds settings, hit testing and window placement: give each its own module; move the inline tests out first
+// size-ceiling: 2643 — holds settings, hit testing and window placement: give each its own module; move the inline tests out first
 //! The desktop pet (macOS and Windows): a small pixel cat that stands
 //! wherever it was dragged on a display (the bottom edge, above the Dock or
 //! taskbar, by default), walks left and right at that height, and shows
@@ -556,6 +556,7 @@ pub fn leave_room_for_hidden_bar(work: Area, display_bottom: i32, bar_height: Op
 /// screen, from its preferences (`defaults read com.apple.dock …`); None
 /// when it stays up (the work area already leaves its room) or sits at a
 /// side.
+#[cfg(any(target_os = "macos", test))]
 pub fn hidden_dock_height(autohide: Option<&str>, orientation: Option<&str>, tilesize: Option<&str>) -> Option<f64> {
     /// Icon size when the user never changed it, and the Dock's padding
     /// around its icons.
@@ -573,6 +574,7 @@ pub fn hidden_dock_height(autohide: Option<&str>, orientation: Option<&str>, til
 /// [`hidden_dock_height`] from a reader of the Dock's preferences (`read`
 /// runs one `defaults` process a key), asking only as far as the answer
 /// needs: a Dock that stays up, as most do, is asked one thing.
+#[cfg(any(target_os = "macos", test))]
 pub fn read_hidden_dock_height(mut read: impl FnMut(&str) -> Option<String>) -> Option<f64> {
     let autohide = read("autohide");
     hidden_dock_height(autohide.as_deref(), None, None)?;

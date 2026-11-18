@@ -25,4 +25,19 @@ export default async function message({ page, expect, step, newSessionInDemo, se
     const asked = modelRequests().filter((r) => r.stream && r.answer[1] === `Stub reply (chat): ${text}`)
     expect(asked.map((r) => r.protocol)).toEqual(["chat"])
   })
+
+  await step("a phone keyboard's Return picks the open slash command", async () => {
+    const input = page.getByRole("textbox", { name: "Message input" })
+    const menu = page.getByRole("listbox", { name: "Slash commands" })
+    const session = page.url()
+    await input.click()
+    await input.pressSequentially("/new")
+    await expect(menu.getByRole("option", { name: /^\/new / })).toBeVisible()
+    // Android keyboards send Return as keyCode 229 with no Enter key event:
+    // only a line-break input arrives. No browser key press produces that.
+    await input.evaluate((el) => el.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertLineBreak", bubbles: true, cancelable: true })))
+    await expect(page).not.toHaveURL(session) // /new ran: a new session
+    await expect(menu).toBeHidden()
+    await expect(page.getByRole("textbox", { name: "Message input" })).toHaveValue("")
+  })
 }

@@ -69,11 +69,23 @@ fn only_a_plugins_server_carries_a_plugin_label() {
     assert!(user.get("plugin").is_none());
     assert_eq!(
         user.to_string(),
-        r#"{"name":"n","transport":"stdio","enabled":true,"state":"ready","error":null,"tool_names":["n_t"],"started_at":null,"config":{"transport":"stdio","command":"x","args":[],"env":{},"enabled":true},"signed_in":false}"#
+        r#"{"name":"n","transport":"stdio","enabled":true,"state":"ready","error":null,"tool_names":["n_t"],"started_at":null,"config":{"transport":"stdio","command":"x","args":[],"env":{},"enabled":true},"signed_in":false,"gallery":null}"#
     );
     let plugin = status_json(&status(Some("p")), Some(&cfg));
     assert_eq!(plugin["plugin"], "p");
     assert_eq!(plugin.to_string(), format!(r#"{},"plugin":"p"}}"#, user.to_string().strip_suffix('}').unwrap()), "the label is the only difference");
+}
+
+/// A connector at a gallery entry's address carries that entry's id, name
+/// and logo; one at any other address carries none.
+#[test]
+fn a_gallery_connector_carries_its_name_and_logo() {
+    let http = |url: &str| ServerConfig::Http { url: url.into(), kind: HttpKind::Auto, headers: IndexMap::new(), enabled: true, timeout: None, oauth: None };
+    let notion = status_json(&status(None), Some(&http("https://MCP.notion.com/mcp/")));
+    assert_eq!(notion["gallery"]["id"], "notion");
+    assert_eq!(notion["gallery"]["name"], "Notion");
+    assert!(notion["gallery"]["icon"]["path"].as_str().is_some_and(|p| p.starts_with('M')));
+    assert!(status_json(&status(None), Some(&http("https://example.com/mcp")))["gallery"].is_null());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

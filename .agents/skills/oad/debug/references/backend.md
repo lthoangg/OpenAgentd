@@ -40,7 +40,7 @@ appv3/REPORT.md                  index of every deliberate wire or on-disk diffe
 | Request parsing | multipart/form fields (CRLF line breaks), `api/src/routes/agent/helpers.rs` (mentions, `#L` line refs) |
 | Persistence | `db/` queries and migrations; rows in the dev DB |
 | Queueing / ordering | `agent/src/stream_store.rs`, `queue.rs`, SSE emission order |
-| Agent loop | `agent/src/agent.rs`, tool dispatch, `hooks/summarization.rs` |
+| Agent loop | `agent/src/agent.rs`, tool dispatch in `agent/src/agent/dispatch.rs`, `hooks/summarization.rs` |
 | SSE stream | `agent/src/events.rs`, `api/src/sse.rs`, `appv3/crates/agent/data/sse_events.json` |
 | Provider call | `providers/src/<provider>.rs`, env vars, retry and timeout (`agent/src/retry.rs`) |
 | Desktop auth | `core/src/auth.rs`, `api/src/middleware.rs` (`desktop_token`), sidecar handshake |

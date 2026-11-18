@@ -111,6 +111,7 @@ export function PlusMenu({ actions, workspace, disabled = false, canAskSideQuest
       touch={isMobile}
       workspace={workspace}
       scrollToMcp={section === 'mcp'}
+      connectorsHint={attention.summary}
       onAttach={run(() => actions.attach())}
       onAttachPhotos={run(() => actions.attach('photos'))}
       onAttachFiles={run(() => actions.attach('files'))}
@@ -145,6 +146,7 @@ function PlusMenuItems({
   touch,
   workspace,
   scrollToMcp,
+  connectorsHint,
   onAttach,
   onAttachPhotos,
   onAttachFiles,
@@ -155,6 +157,8 @@ function PlusMenuItems({
   touch: boolean
   workspace: string | null
   scrollToMcp: boolean
+  /** What needs the user among the connectors, for the phone's Connectors row. */
+  connectorsHint?: string | null
   onAttach: () => void
   /** Touch: the photo library and the document picker, each its own row. */
   onAttachPhotos?: () => void
@@ -242,7 +246,10 @@ function PlusMenuItems({
         <button type="button" className={row} onClick={() => setPage('tools')}>
           <Plug size={14} aria-hidden="true" />
           Connectors
-          <ChevronRight size={14} aria-hidden="true" className="ml-auto text-(--color-text-muted)" />
+          {connectorsHint && (
+            <span className="ml-auto min-w-0 truncate text-meta text-(--accent-orange-text)">{connectorsHint}</span>
+          )}
+          <ChevronRight size={14} aria-hidden="true" className={cn('shrink-0 text-(--color-text-muted)', !connectorsHint && 'ml-auto')} />
         </button>
       ) : (
         <div ref={mcpRef}>{mcp}</div>

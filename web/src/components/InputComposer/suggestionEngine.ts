@@ -254,6 +254,23 @@ export function useInputComposerSuggestionEngine({
     return false
   }, [menu, commitActive, dismiss])
 
+  // A touch keyboard's Return can arrive with no Enter keydown (Android sends
+  // keyCode 229), only as a line-break input. React's onBeforeInput never
+  // carries `inputType`, so the textarea is listened to natively. Where Enter
+  // does arrive, handleMenuKeyDown prevents it and no input follows.
+  const menuOpen = menu !== null && menu.selectable.length > 0
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el || !menuOpen) return
+    const onBeforeInput = (e: InputEvent) => {
+      if (e.inputType !== 'insertLineBreak' && e.inputType !== 'insertParagraph') return
+      e.preventDefault()
+      commitActive()
+    }
+    el.addEventListener('beforeinput', onBeforeInput)
+    return () => el.removeEventListener('beforeinput', onBeforeInput)
+  }, [textareaRef, menuOpen, commitActive])
+
   const suggestionsOpen = menu !== null
   useEffect(() => {
     onSuggestionsMenuChange?.(suggestionsOpen)

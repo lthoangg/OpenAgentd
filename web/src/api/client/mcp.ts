@@ -57,7 +57,12 @@ export type ServerStatus = {
   project?: { workspace: string; name: string } | null
   /** It holds a sign-in from its service (what Sign out forgets). */
   signed_in?: boolean
+  /** The gallery connector it is, by its address: the service's name and logo. */
+  gallery?: { id: string; name: string; icon: ConnectorIconData | null } | null
 }
+
+/** A connector's logo: one SVG path, drawn in the text colour. */
+export type ConnectorIconData = { path: string; view_box: string }
 
 export type McpServerList = {
   servers: ServerStatus[]
@@ -213,6 +218,8 @@ export interface GalleryEntry {
   category: string
   url: string
   auth: GalleryAuth
+  /** The service's logo; without one the app shows a monogram. */
+  icon?: ConnectorIconData | null
   /** The connector already added for this address, if any. */
   server: ServerStatus | null
   /** A connector still on an old address of this one: offer the update. */

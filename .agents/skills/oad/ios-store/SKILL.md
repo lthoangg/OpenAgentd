@@ -52,6 +52,10 @@ retry is faster. Apple's bundle rules only surface in `sign` at
 entitlements and `PrivacyInfo.xcprivacy` edits against them before pushing.
 Known rules:
 
+- From April 2027 an upload needs the iOS 27 SDK (ITMS-90725, a warning by
+  email before then). The build job runs on the `xcode-27` image and its
+  Package step fails on an archive from an older SDK; when Apple raises the
+  floor again, move both to the next `xcode-<N>` image.
 - `UISupportedInterfaceOrientations~ipad` must list all four orientations while
   the iPad app supports multitasking (error 90474).
 - Every bundle that calls a required-reason API needs its own privacy manifest

@@ -241,6 +241,7 @@ async fn d2_a_rejected_key_is_replaced_only_in_this_project() {
 async fn c4_a_secret_not_usable_here_is_refused_and_a8_a_decline_is_reported() {
     let (p, other) = (repo("refuse-p"), repo("refuse-other"));
     put("ONLY_ELSEWHERE_KEY", "elsewhere_value_123", &[&project(&other)]);
+    // posix-only: the call is refused before the command runs.
     let shell = json!({"command": "echo $ONLY_ELSEWHERE_KEY", "secrets": ["ONLY_ELSEWHERE_KEY"]}).to_string();
     let h = harness(
         "c4",

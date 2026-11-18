@@ -1,7 +1,8 @@
 /**
- * The connector gallery: free connectors turn on with a switch, account
- * connectors turn on and sign in, key connectors take a key, and added
- * ones show their state. Asserts on what renders and what is sent.
+ * The connector gallery: only connectors not added yet, as tiles whose
+ * action says what each takes. Free ones turn on with a switch, account
+ * ones add and sign in, key ones take a key. Asserts on what renders and
+ * what is sent.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,6 +14,7 @@ import { setupServer } from '@/__tests__/msw'
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { ConnectorGallery } from '@/components/settings/ConnectorGallery'
+import { ConnectorSignInsProvider } from '@/components/settings/connectorSignIns'
 import type { GalleryEntry, ServerStatus } from '@/api/client'
 
 const server = setupServer()
@@ -44,35 +46,55 @@ function status(over: Partial<ServerStatus> & { name: string }): ServerStatus {
   } as ServerStatus
 }
 
+const LOGO = { path: 'M24 0V24H0V0Z', view_box: '0 0 24 24' }
+
 const ENTRIES: GalleryEntry[] = [
   { type: 'connector', id: 'context7', name: 'Context7', category: 'docs', description: 'Library docs.', url: 'https://mcp.context7.com/mcp', auth: 'none', server: null, update_for: null },
   { type: 'connector', id: 'deepwiki', name: 'DeepWiki', category: 'docs', description: 'Repo Q&A.', url: 'https://mcp.deepwiki.com/mcp', auth: 'none', server: status({ name: 'deepwiki' }), update_for: null },
-  { type: 'connector', id: 'notion', name: 'Notion', category: 'work', description: 'Pages.', url: 'https://mcp.notion.com/mcp', auth: 'oauth', server: null, update_for: null },
+  { type: 'connector', id: 'notion', name: 'Notion', category: 'work', description: 'Pages.', url: 'https://mcp.notion.com/mcp', auth: 'oauth', icon: LOGO, server: null, update_for: null },
   { type: 'connector', id: 'github', name: 'GitHub', category: 'dev', description: 'Repos.', url: 'https://api.githubcopilot.com/mcp/', auth: { header: 'Authorization', template: 'Bearer {key}', key_url: 'https://github.com/settings/tokens', key_label: 'Personal access token' }, server: null, update_for: null },
+  { type: 'connector', id: 'linear', name: 'Linear', category: 'work', description: 'Issues.', url: 'https://mcp.linear.app/mcp', auth: 'oauth', server: null, update_for: 'linear-old' },
 ]
 
 function serveGallery(entries = ENTRIES) {
   server.use(http.get('http://localhost/api/mcp/gallery', () => HttpResponse.json({ source: 'cloud', entries })))
 }
 
-function renderGallery(onOpen: (name: string) => void = () => {}) {
+function renderGallery(query = '') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(<QueryClientProvider client={client}><ConnectorGallery onOpen={onOpen} /></QueryClientProvider>)
+  return render(
+    <QueryClientProvider client={client}>
+      <ConnectorSignInsProvider>
+        <ConnectorGallery query={query} />
+      </ConnectorSignInsProvider>
+    </QueryClientProvider>,
+  )
 }
 
-const card = (id: string) => document.querySelector(`[data-connector="${id}"]`) as HTMLElement
+const tile = (id: string) => document.querySelector(`[data-connector="${id}"]`) as HTMLElement
 
 describe('ConnectorGallery', () => {
-  it('groups connectors by how they connect, and says what each costs before the click', async () => {
+  it('lists only connectors not added yet, each with the action it takes', async () => {
     serveGallery()
     renderGallery()
     await screen.findByText('Context7')
-    expect(screen.getByRole('heading', { name: 'Free · just turn on' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Sign in with your account' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Paste a key' })).toBeTruthy()
-    expect(within(card('context7')).getByText('Free · no account')).toBeTruthy()
-    expect(within(card('deepwiki')).getByText('Ready · 2 tools')).toBeTruthy()
-    expect(within(card('notion')).getByRole('button', { name: 'Connect' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Add a connector' })).toBeTruthy()
+    expect(tile('deepwiki')).toBeNull()
+    expect(screen.queryByText('DeepWiki')).toBeNull()
+    expect(within(tile('context7')).getByRole('switch', { name: 'Turn on Context7' })).toBeTruthy()
+    expect(within(tile('notion')).getByRole('button', { name: 'Connect' })).toBeTruthy()
+    expect(within(tile('github')).getByRole('button', { name: 'Set up' })).toBeTruthy()
+    expect(within(tile('linear')).getByRole('button', { name: 'Update' })).toBeTruthy()
+    // No grouping by sign-in kind: the action says it.
+    expect(screen.queryByRole('heading', { name: 'Free · just turn on' })).toBeNull()
+  })
+
+  it('shows the logo when the entry has one, else the monogram', async () => {
+    serveGallery()
+    renderGallery()
+    await screen.findByText('Notion')
+    expect(tile('notion').querySelector('[data-connector-icon="logo"] path')?.getAttribute('d')).toBe(LOGO.path)
+    expect(tile('context7').querySelector('[data-connector-icon="monogram"]')?.textContent).toBe('CO')
   })
 
   it('turns a free connector on with its switch', async () => {
@@ -84,7 +106,7 @@ describe('ConnectorGallery', () => {
     }))
     renderGallery()
     await screen.findByText('Context7')
-    await userEvent.click(within(card('context7')).getByRole('switch', { name: 'Turn on Context7' }))
+    await userEvent.click(within(tile('context7')).getByRole('switch', { name: 'Turn on Context7' }))
     await waitFor(() => expect(enabled).toBe('context7'))
   })
 
@@ -100,10 +122,11 @@ describe('ConnectorGallery', () => {
         calls.push('start')
         return HttpResponse.json({ status: 'done', server: status({ name: 'notion' }) })
       }),
+      http.get('http://localhost/api/mcp/servers', () => HttpResponse.json({ servers: [] })),
     )
     renderGallery()
     await screen.findByText('Notion')
-    await userEvent.click(within(card('notion')).getByRole('button', { name: 'Connect' }))
+    await userEvent.click(within(tile('notion')).getByRole('button', { name: 'Connect' }))
     await waitFor(() => expect(calls).toEqual(['enable', 'start']))
   })
 
@@ -116,27 +139,33 @@ describe('ConnectorGallery', () => {
     }))
     renderGallery()
     await screen.findByText('GitHub')
-    await userEvent.click(within(card('github')).getByRole('button', { name: 'Set up' }))
-    expect(within(card('github')).getByRole('link', { name: 'Get a key' }).getAttribute('href')).toBe('https://github.com/settings/tokens')
-    await userEvent.type(within(card('github')).getByLabelText('Personal access token'), 'ghp_x')
-    await userEvent.click(within(card('github')).getByRole('button', { name: 'Turn on' }))
+    await userEvent.click(within(tile('github')).getByRole('button', { name: 'Set up' }))
+    expect(within(tile('github')).getByRole('link', { name: 'Get a key' }).getAttribute('href')).toBe('https://github.com/settings/tokens')
+    await userEvent.type(within(tile('github')).getByLabelText('Personal access token'), 'ghp_x')
+    await userEvent.click(within(tile('github')).getByRole('button', { name: 'Turn on' }))
     await waitFor(() => expect(sent).toEqual({ key: 'ghp_x' }))
   })
 
-  it('filters by name and category', async () => {
+  it('filters by the page\'s search', async () => {
+    serveGallery()
+    renderGallery('notio')
+    await screen.findByText('Notion')
+    expect(screen.queryByText('Context7')).toBeNull()
+  })
+
+  it('filters by category', async () => {
     serveGallery()
     renderGallery()
     await screen.findByText('Context7')
-    await userEvent.type(screen.getByLabelText('Search the gallery'), 'wiki')
+    await userEvent.click(within(screen.getByRole('group', { name: 'Category' })).getByRole('button', { name: 'Work' }))
     expect(screen.queryByText('Context7')).toBeNull()
-    expect(screen.getByText('DeepWiki')).toBeTruthy()
+    expect(screen.getByText('Notion')).toBeTruthy()
   })
 
-  it('opens an added connector by its name', async () => {
+  it('leaves the section out when the search matches none of it', async () => {
     serveGallery()
-    const opened: string[] = []
-    renderGallery((n) => opened.push(n))
-    await userEvent.click(await screen.findByRole('button', { name: 'DeepWiki' }))
-    expect(opened).toEqual(['deepwiki'])
+    renderGallery('zzz')
+    await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading the gallery' })).toBeNull())
+    expect(screen.queryByRole('heading', { name: 'Add a connector' })).toBeNull()
   })
 })

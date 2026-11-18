@@ -39,6 +39,7 @@ jobs:
   changes:
     name: Detect Tauri changes
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     outputs:
       desktop: ${{ steps.filter.outputs.desktop }}
       mobile: ${{ steps.filter.outputs.mobile }}
@@ -72,6 +73,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.shell_core == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: native/shell-core
@@ -104,6 +106,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: desktop/src-tauri
@@ -156,6 +159,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: windows-2025
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: desktop/src-tauri
@@ -186,13 +190,14 @@ jobs:
         run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo test --locked
 
       - name: Cargo clippy
-        run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo clippy --locked --all-targets
+        run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo clippy --locked --all-targets -- -D warnings
 
   mobile:
     name: Cargo check (mobile)
     needs: changes
     if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: mobile/src-tauri

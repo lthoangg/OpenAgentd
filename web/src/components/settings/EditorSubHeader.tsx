@@ -13,6 +13,7 @@
  * ``mode={undefined}``).
  */
 import { ArrowLeft } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
@@ -28,6 +29,8 @@ interface EditorSubHeaderProps {
   path?: string
   /** Used for the icon in the title block. */
   kind: 'agent' | 'skill' | 'mcp'
+  /** A mark before the name (a connector's logo). */
+  leading?: ReactNode
   /** Whether the editor's working copy differs from the persisted one. */
   dirty: boolean
   /** Whether the working copy has zod validation errors. */
@@ -49,6 +52,7 @@ export function EditorSubHeader({
   name,
   path,
   kind,
+  leading,
   dirty,
   invalid,
   saving,
@@ -84,6 +88,7 @@ export function EditorSubHeader({
         <TooltipContent>Back</TooltipContent>
       </Tooltip>
 
+      {leading}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold leading-tight text-(--color-text)">{name}</p>
         {path && (

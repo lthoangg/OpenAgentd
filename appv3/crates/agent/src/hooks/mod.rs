@@ -136,6 +136,10 @@ pub trait Hook: Send + Sync {
     fn wraps_nested_calls(&self) -> bool {
         true
     }
+    /// A call a `script` made has ended, whatever `wraps_nested_calls` says.
+    /// The stream publisher tells the live feed here, so the UI refreshes
+    /// what the call changed without drawing a card for it.
+    async fn after_nested_tool(&self, _ctx: &RunContext, _tc: &ToolCall) {}
     /// Post-execution half of `wrap_tool_call` (runs innermost-first).
     async fn after_tool(&self, _ctx: &RunContext, _meta: &SharedMeta, _tc: &ToolCall, _scope: &mut ToolCallScope, _result: &mut String) {}
     /// A call still running when the user stopped the turn was dropped;

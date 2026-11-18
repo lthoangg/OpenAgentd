@@ -145,7 +145,8 @@ Migrations run automatically when the server starts — no manual step needed. I
 ### General
 
 - **No unnecessary abstractions.** Thin routes, logic in services/hooks.
-- Hooks run file hygiene, `oxlint` and `tsc` at commit, and
+- Hooks run file hygiene, the file size ceilings, the secret scan, `oxlint`
+  and `tsc` at commit, and
   `make verify-quick` (seconds) at push, on what is committed or staged.
   Install them once per checkout or worktree:
 

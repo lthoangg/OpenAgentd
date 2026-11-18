@@ -241,17 +241,39 @@ export function onToolEnd(set: StoreSet, get: StoreGet, d: Record<string, unknow
       mcpApp ? { mcp_app: mcpApp } : undefined,
     )
   })
+  const stream = get().agentStreams[agent]
+  const matchesEndedTool = (b: ContentBlock) =>
+    b.type === 'tool' &&
+    (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName)
+  const block = FS_MUTATING_TOOLS.has(toolName)
+    ? stream?.currentBlocks.find(matchesEndedTool) ?? stream?.blocks.find(matchesEndedTool)
+    : undefined
+  queueToolEndInvalidations(set, get, toolName, block?.toolArgs, result)
+}
+
+/**
+ * A call a ``script`` made has ended. It has no card (the script's card
+ * stands for it); only the caches a direct call would make stale refresh.
+ */
+export function onNestedToolEnd(set: StoreSet, get: StoreGet, d: Record<string, unknown>) {
+  const toolName = d.name as string
+  if (!toolName) return
+  queueToolEndInvalidations(set, get, toolName, typeof d.arguments === 'string' ? d.arguments : undefined, undefined)
+}
+
+/** The caches a finished ``toolName`` call with ``toolArgs`` made stale. */
+function queueToolEndInvalidations(
+  set: StoreSet,
+  get: StoreGet,
+  toolName: string,
+  toolArgs: string | undefined,
+  result: string | undefined,
+) {
   const events: CacheInvalidation[] = []
   if (FS_MUTATING_TOOLS.has(toolName)) {
     const workspace = get()._workspace
     if (workspace) {
-      const stream = get().agentStreams[agent]
-      const matchesEndedTool = (b: (typeof stream.currentBlocks)[number]) =>
-        b.type === 'tool' &&
-        (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName)
-      const block =
-        stream?.currentBlocks.find(matchesEndedTool) ?? stream?.blocks.find(matchesEndedTool)
-      const paths = extractToolPaths(toolName, block?.toolArgs)
+      const paths = extractToolPaths(toolName, toolArgs)
       if (paths && paths.length > 0) {
         events.push({
           kind: 'coding_workspace_paths',

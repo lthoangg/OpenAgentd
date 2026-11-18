@@ -227,6 +227,12 @@ pub struct GlobalSubscription {
     queue: Sub,
 }
 
+/// Lib tests share the process-wide feed. One that attaches a client to it,
+/// or needs no client attached, holds this so a parallel test's window does
+/// not change what it sees.
+#[cfg(test)]
+pub(crate) static TEST_CLIENTS_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 impl GlobalSubscription {
     pub async fn next(&mut self) -> Option<Arc<WireEvent>> {
         self.queue.recv().await

@@ -19,15 +19,21 @@
  * approves them (Allow), so their row offers Allow or Revoke instead of a
  * switch; one replaces the agent's server of the same name here.
  */
-import type { ServerStatus } from '@/api/client'
+import { Plus } from 'lucide-react'
+import type { ReactNode } from 'react'
+
+import type { ConnectorIconData, ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
-import { Chip } from '@/components/ui/chip'
-import { McpStatusChip } from '@/components/McpStatusChip'
+import type { ChipTone } from '@/components/ui/chip'
+import { ConnectorIcon } from '@/components/ConnectorIcon'
+import { mcpServerStatus } from '@/components/McpStatusChip'
+import { MENU_ITEM_CLASS } from '@/components/ui/menu-styles'
 import { PanelSection } from '@/components/ui/panel-section'
-import { COMPACT_ROW, TEXT } from '@/components/ui/panel-tokens'
+import { TEXT } from '@/components/ui/panel-tokens'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import type { StatusView } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import {
   useApproveMcpServerMutation,
@@ -57,21 +63,100 @@ function hasOAuthBlock(server: ServerStatus): boolean {
 
 function rowAction(server: ServerStatus): string | null {
   if (!server.enabled || !isUrlServer(server)) return null
-  if (server.state === 'auth_required') return 'Sign in'
+  // The word Settings → Connectors uses for the same thing.
+  if (server.state === 'auth_required') return 'Connect'
   if (server.state === 'error' && hasOAuthBlock(server)) return 'Reconnect'
   return null
+}
+
+const STATUS_TEXT: Record<ChipTone, string> = {
+  success: 'text-(--color-text-subtle)',
+  neutral: 'text-(--color-text-subtle)',
+  info: 'text-(--color-text-subtle)',
+  warning: 'text-(--accent-orange-text)',
+  error: 'text-(--color-error)',
+}
+const STATUS_DOT: Record<ChipTone, string> = {
+  success: 'bg-(--accent-green-text)',
+  neutral: 'bg-(--color-border-strong)',
+  info: 'bg-(--color-border-strong)',
+  warning: 'bg-(--accent-orange-text)',
+  error: 'bg-(--color-error)',
+}
+
+/**
+ * One connector: its logo, its name, and one quiet status line under it;
+ * on the right the one control it needs. A failure is one line here, with
+ * the whole message on hover: Settings has room for the rest.
+ */
+function RowShell({
+  title,
+  mono,
+  icon,
+  status,
+  detail,
+  detailTitle,
+  busy,
+  menu,
+  children,
+}: {
+  title: string
+  mono: boolean
+  icon: ConnectorIconData | null | undefined
+  status: StatusView
+  /** After the status: the source, or why it failed. */
+  detail?: string | null
+  detailTitle?: string
+  busy?: boolean
+  menu: boolean
+  children?: ReactNode
+}) {
+  return (
+    <li
+      aria-label={title}
+      aria-busy={busy || undefined}
+      className={cn('flex items-center gap-2.5', menu ? 'min-h-11 rounded-xs px-2 py-1.5 phone:min-h-(--phone-control)' : 'min-h-12 px-4 py-2.5')}
+    >
+      <ConnectorIcon name={title} icon={icon} size="sm" />
+      <div className="min-w-0 flex-1">
+        <p className={cn(TEXT.label, 'truncate', mono && 'font-mono')}>{title}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-meta leading-snug">
+          <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', STATUS_DOT[status.tone])} />
+          <span className={cn('shrink-0', STATUS_TEXT[status.tone])}>{status.label}</span>
+          {detail && (
+            <>
+              <span aria-hidden="true" className="text-(--color-text-subtle)">·</span>
+              <span className={cn('min-w-0 truncate', status.tone === 'error' ? 'text-(--color-error)' : 'text-(--color-text-subtle)')} title={detailTitle ?? detail}>
+                {detail}
+              </span>
+            </>
+          )}
+        </p>
+      </div>
+      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+    </li>
+  )
+}
+
+/** The failure worth a line: its first line, without a long JSON body. */
+function shortError(server: ServerStatus): string | null {
+  if (!server.error || server.state === 'auth_required' || !server.enabled) return null
+  const first = server.error.split('\n')[0]
+  return first.length > 120 ? `${first.slice(0, 117)}…` : first
 }
 
 function ServerRow({
   name,
   server,
   busy,
+  menu,
   onToggle,
   onConnect,
 }: {
   name: string
   server: ServerStatus | undefined
   busy: boolean
+  menu: boolean
   onToggle: (server: ServerStatus) => void
   onConnect: (server: ServerStatus) => void
 }) {
@@ -80,32 +165,37 @@ function ServerRow({
   // visible reason.
   if (!server) {
     return (
-      <li
-        aria-label={name}
-        className={cn(COMPACT_ROW, 'min-h-12')}
-      >
-        <span className={cn('min-w-0 flex-1 truncate font-mono', TEXT.label)}>{name}</span>
-        <Chip tone="warning" title="The agent lists this connector, but mcp.json does not define it.">Not configured</Chip>
-      </li>
+      <RowShell
+        title={name}
+        mono
+        icon={null}
+        menu={menu}
+        status={{ label: 'Not configured', tone: 'warning' }}
+        detail="the agent lists it, mcp.json does not"
+        detailTitle="The agent lists this connector, but mcp.json does not define it."
+      />
     )
   }
 
   // A plugin's server is the plugin's to switch: its bundle owns the config.
   const toggleable = !!server.config && !busy && !server.plugin
   const action = rowAction(server)
+  const title = server.gallery?.name ?? name
+  const error = shortError(server)
 
   return (
-    <li
-      aria-label={name}
-      aria-busy={busy || undefined}
-      className={cn(COMPACT_ROW, 'min-h-12 flex-wrap')}
+    <RowShell
+      title={title}
+      mono={!server.gallery}
+      icon={server.gallery?.icon}
+      menu={menu}
+      busy={busy}
+      status={mcpServerStatus(server)}
+      detail={error ?? (server.plugin ? `from ${server.plugin}` : null)}
+      detailTitle={error ? (server.error ?? undefined) : undefined}
     >
-      <span className={cn('min-w-0 flex-1 truncate font-mono', TEXT.label)}>
-        {name}
-      </span>
-      <McpStatusChip server={server} />
       {action && (
-        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => onConnect(server)}>
+        <Button type="button" variant="default" size="xs" disabled={busy} onClick={() => onConnect(server)}>
           {action}
         </Button>
       )}
@@ -113,13 +203,10 @@ function ServerRow({
         checked={server.enabled}
         disabled={!toggleable}
         onCheckedChange={() => onToggle(server)}
-        aria-label={name}
+        aria-label={`${server.enabled ? 'Turn off' : 'Turn on'} ${title}`}
         title={server.plugin ? `From the plugin ${server.plugin}. Turn it on or off in Plugins.` : 'On or off for every session'}
       />
-      {server.error && server.state !== 'auth_required' && (
-        <p className="w-full text-meta leading-relaxed text-(--color-error)">{server.error}</p>
-      )}
-    </li>
+    </RowShell>
   )
 }
 
@@ -127,45 +214,51 @@ function ServerRow({
 function ProjectServerRow({
   server,
   busy,
+  menu,
   onApprove,
   onRevoke,
   onConnect,
 }: {
   server: ServerStatus
   busy: boolean
+  menu: boolean
   onApprove: (server: ServerStatus) => void
   onRevoke: (server: ServerStatus) => void
   onConnect: (server: ServerStatus) => void
 }) {
   const name = server.project?.name ?? server.name
+  const title = server.gallery?.name ?? name
   const waiting = server.state === 'needs_approval'
   const action = waiting ? null : rowAction(server)
+  const error = shortError(server)
   return (
-    <li aria-label={name} aria-busy={busy || undefined} className={cn(COMPACT_ROW, 'min-h-12 flex-wrap')}>
-      {/* Room for the name before the chips wrap to the next line. */}
-      <span className={cn('min-w-24 flex-1 truncate font-mono', TEXT.label)}>{name}</span>
-      <Chip title={`From this project's .agents/mcp.json. It runs in this workspace only, once you allow it.`}>from this project</Chip>
-      <McpStatusChip server={server} />
+    <RowShell
+      title={title}
+      mono={!server.gallery}
+      icon={server.gallery?.icon}
+      menu={menu}
+      busy={busy}
+      status={mcpServerStatus(server)}
+      detail={error ?? 'from this project'}
+      detailTitle={error ? (server.error ?? undefined) : `From this project's .agents/mcp.json. It runs in this workspace only, once you allow it.`}
+    >
       {action && (
-        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => onConnect(server)}>
+        <Button type="button" variant="default" size="xs" disabled={busy} onClick={() => onConnect(server)}>
           {action}
         </Button>
       )}
       {waiting ? (
-        <Button type="button" variant="default" size="sm" disabled={busy} onClick={() => onApprove(server)}
+        <Button type="button" variant="default" size="xs" disabled={busy} onClick={() => onApprove(server)}
           title="Let it run in this workspace, as its entry is now">
           Allow
         </Button>
       ) : (
-        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onRevoke(server)}
+        <Button type="button" variant="ghost" size="xs" disabled={busy} onClick={() => onRevoke(server)}
           title="Stop it; it asks again before it runs">
           Revoke
         </Button>
       )}
-      {server.error && server.state !== 'auth_required' && (
-        <p className="w-full text-meta leading-relaxed text-(--color-error)">{server.error}</p>
-      )}
-    </li>
+    </RowShell>
   )
 }
 
@@ -239,10 +332,12 @@ export function SessionMcpServers({ agentServers, workspace = null, onServersCha
   const projectError = data?.project_error ?? null
 
   const manage = (
-    <Button type="button" variant="ghost" size="sm" onClick={() => openSettings('connectors')}>
+    <Button type="button" variant="ghost" size={variant === 'menu' ? 'xs' : 'sm'} onClick={() => openSettings('connectors')}>
       Manage
     </Button>
   )
+  const menu = variant === 'menu'
+  const count = shown.length + projectServers.length
 
   const body = (
     <>
@@ -254,9 +349,8 @@ export function SessionMcpServers({ agentServers, workspace = null, onServersCha
         </div>
       )}
       {waitingForProject ? null : !hasServers ? (
-        <p className={cn(variant === 'menu' ? 'px-2 py-2' : 'px-4 py-4', TEXT.body)}>
-          No connectors for this agent. Add one under Manage, then list it in the
-          agent's config.
+        <p className={cn(menu ? 'px-2 py-1.5' : 'px-4 py-4', TEXT.body)}>
+          No connectors for this agent yet. Add one, then list it in the agent's config.
         </p>
       ) : isLoading ? (
         // Skeleton mirrors the real row geometry so the section doesn't resize
@@ -291,6 +385,7 @@ export function SessionMcpServers({ agentServers, workspace = null, onServersCha
               name={name}
               server={statuses.get(name)}
               busy={busyServer === name}
+              menu={menu}
               onToggle={toggle}
               onConnect={connect}
             />
@@ -300,6 +395,7 @@ export function SessionMcpServers({ agentServers, workspace = null, onServersCha
               key={server.name}
               server={server}
               busy={busyServer === server.name}
+              menu={menu}
               onApprove={approveServer}
               onRevoke={revokeServer}
               onConnect={connect}
@@ -310,14 +406,21 @@ export function SessionMcpServers({ agentServers, workspace = null, onServersCha
     </>
   )
 
-  if (variant === 'menu') {
+  if (menu) {
     return (
       <section aria-label="Connectors" data-mcp-servers="">
-        <div className="flex items-center justify-between gap-2 pl-2">
-          <h3 className="text-meta font-medium text-(--color-text-muted)">Connectors</h3>
+        <div className="flex items-center justify-between gap-2 py-0.5 pl-2">
+          <h3 className="text-meta font-medium text-(--color-text-muted)">
+            Connectors
+            {count > 0 && <span className="ml-1.5 font-normal text-(--color-text-subtle)">{count}</span>}
+          </h3>
           {manage}
         </div>
         {body}
+        <button type="button" className={cn(MENU_ITEM_CLASS, 'text-(--color-text-muted)')} onClick={() => openSettings('connectors')}>
+          <Plus size={14} aria-hidden="true" />
+          Add a connector
+        </button>
       </section>
     )
   }

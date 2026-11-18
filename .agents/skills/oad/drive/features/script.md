@@ -11,6 +11,10 @@ the script logged or returned.
   and size) and "result".
 - The call count beside the title ("2 calls"), once the result has loaded.
 - The same row after a reload, rebuilt from the stored result.
+- Panels a nested call changes refresh as a direct call's would
+  (`script-effects` journey): a nested `patch` lists its file in Git and a
+  nested `todo` puts its task on the board, with no reload and still one
+  script row. The live feed carries a `nested_tool_end` per nested call.
 
 ## How to get to it (user POV)
 
@@ -39,3 +43,11 @@ the script logged or returned.
   loads its result when it opens.
 - The live trace while a script runs is not driven: the stub's script ends in
   a few milliseconds.
+- Git also refreshes when a turn ends, so the journey's Git check passes even
+  without `nested_tool_end`; the task-board check is the one that fails
+  without it. Refreshing during a long script is covered by
+  `useAgentStore.nestedToolEnd.test.ts`, not by a journey.
+- Tasks are a Review panel view on desktop and a sheet from the header's
+  Tasks button on a phone (not in the phone's "Open in Review panel" sheet).
+  The demo repository keeps earlier runs' files, so check for this run's
+  file rather than a change count.

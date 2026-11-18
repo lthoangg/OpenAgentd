@@ -338,7 +338,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
   attempts and then resumes the turn at most 3 times before failing with
   `ProviderConnectionError`; that resume layer is gone. HTTP errors keep
   v2's exponential backoff.
-- **Cancelled tool calls** (`agent/src/agent.rs`): a call still running when
+- **Cancelled tool calls** (`agent/src/agent/dispatch.rs`): a call still running when
   the user stops the turn records the output it had streamed (its last
   16 KiB) followed by `Cancelled by user after N seconds.`, stores
   `duration_ms`, and ends with a `tool_end` frame carrying that text. v2

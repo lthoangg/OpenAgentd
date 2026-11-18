@@ -56,6 +56,7 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     if: github.event.inputs.confirm == 'release-desktop'
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -100,6 +101,7 @@ jobs:
     if: github.event.inputs.run_id == ''
     name: Build (${{ matrix.platform }} / ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
@@ -384,6 +386,7 @@ jobs:
     if: github.event.inputs.run_id == '' && needs.build.result == 'success' && github.event.inputs.platform != 'linux'
     name: Sign and notarize
     runs-on: macos-26
+    timeout-minutes: 120
     environment: release-macos
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -517,6 +520,7 @@ jobs:
     needs: [prepare, build, sign]
     name: Publish release
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     if: always() && needs.prepare.result == 'success' && (github.event.inputs.platform == 'all' || github.event.inputs.run_id != '') && (github.event.inputs.run_id != '' || (needs.build.result == 'success' && needs.sign.result == 'success'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

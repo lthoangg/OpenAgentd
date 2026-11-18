@@ -7,6 +7,7 @@ streams.
 
 - Opening a folder as a workspace, with the "Let agents work in …?" consent.
 - The composer: message input, Send, the model chip.
+- The slash menu: Return from a phone keyboard picks the highlighted command.
 - The transcript: the prompt bubble, the streamed reply, the turn footer.
 - The session takes a title from its first prompt.
 
@@ -34,3 +35,7 @@ streams.
   browser only appears on an instance where nothing has used `code/demo` yet.
   The helper handles both.
 - The session id is in the address only after the first message is sent.
+- An Android keyboard's Return reaches the page only as a `beforeinput`
+  line-break input (keyCode 229, no Enter keydown). No Playwright key press
+  produces that, so the journey dispatches the input event itself; a real
+  device check is still owed (backlog slash-menu-touch-return).

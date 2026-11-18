@@ -688,6 +688,8 @@ mod tests {
 
     #[tokio::test]
     async fn runs_page_actions_in_the_open_preview() {
+        // Needs no app window attached to the global feed.
+        let _clients = crate::broadcaster::TEST_CLIENTS_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("page.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
@@ -765,6 +767,7 @@ mod tests {
 
     #[tokio::test]
     async fn fails_with_guidance_when_no_page_connects_in_time() {
+        let _clients = crate::broadcaster::TEST_CLIENTS_LOCK.lock().await;
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("none.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
@@ -794,8 +797,8 @@ mod tests {
         let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
         let entry = global().list(Some(&ws)).pop().unwrap();
         assert_eq!(entry.agent_page(), Some(json!({"kind": "file", "path": "kept.html"})));
-        let event = announced.try_recv().expect("announced on the global feed");
-        assert_eq!(event["preview_id"], json!(entry.id));
+        // Previews other tests open at the same time are announced too.
+        let event = std::iter::from_fn(|| announced.try_recv().ok()).find(|e| e["preview_id"] == json!(entry.id)).expect("announced on the global feed");
         assert_eq!(event["workspace"], json!(ws));
         global().close(&entry.id);
     }

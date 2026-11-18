@@ -33,6 +33,9 @@ LIST = ROOT / "account-pages" / "connectors" / "v1.json"
 BUNDLED = ROOT / "appv3" / "crates" / "api" / "data" / "gallery.json"
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 HEADER_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+# A logo: one SVG path, drawn in the text colour. Path commands and numbers only.
+ICON_PATH_RE = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9 .,eE+-]{1,4096}$")
+VIEW_BOX_RE = re.compile(r"^-?[0-9.]+ -?[0-9.]+ [0-9.]+ [0-9.]+$")
 INIT = json.dumps(
     {
         "jsonrpc": "2.0",
@@ -93,6 +96,15 @@ def validate(doc: Any) -> list[str]:
                 problems.append(f"{where}: auth.key_url must be https")
         elif auth not in ("none", "oauth"):
             problems.append(f"{where}: auth must be none, oauth or a key object")
+        if "icon" in e:
+            icon = e["icon"]
+            if not isinstance(icon, dict):
+                problems.append(f'{where}: icon must be {{"path": …, "view_box": …}}')
+            else:
+                if not isinstance(icon.get("path"), str) or not ICON_PATH_RE.match(icon["path"]):
+                    problems.append(f"{where}: icon.path must be SVG path data, at most 4096 characters")
+                if not isinstance(icon.get("view_box"), str) or not VIEW_BOX_RE.match(icon["view_box"]):
+                    problems.append(f"{where}: icon.view_box must be four numbers")
     return problems
 
 

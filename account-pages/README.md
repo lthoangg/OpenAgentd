@@ -31,4 +31,5 @@ The signing key's public half is `DEFAULT_PUBLIC_KEY` in `appv3/crates/api/src/g
 - `url` must be `https`. An entry never runs a program.
 - `previous_urls`: addresses the connector used before. Installs still on one are offered "Update".
 - `min_app`: older apps hide the entry. Apps also hide entry types and auth kinds they don't know.
+- `icon` (optional): the service's logo as one SVG path, `{"path": "M…", "view_box": "0 0 24 24"}`. The app draws it in the text colour, so it follows light and dark mode. Only path commands and numbers are allowed, at most 4096 characters; a bad icon is dropped and the entry keeps its monogram. The current logos come from [Simple Icons](https://simpleicons.org) (CC0) and only name the service a connector reaches.
 - `{"type": "plugin", …}` entries are reserved for plugin bundles (`source`, `rev`, `sha256`). Current apps parse and hide them.

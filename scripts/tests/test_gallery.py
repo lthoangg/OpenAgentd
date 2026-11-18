@@ -50,11 +50,26 @@ def test_a_valid_entry_passes():
         ({"auth": "passkey"}, "auth must be"),
         ({"auth": {"header": "Authorization", "template": "Bearer"}}, "template must contain"),
         ({"name": ""}, "name is required"),
+        ({"icon": {"path": "M0 0h24v24H0z<script>", "view_box": "0 0 24 24"}}, "icon.path must be"),
+        ({"icon": {"path": "M0 0h24v24H0z", "view_box": "0 0 24"}}, "icon.view_box must be"),
+        ({"icon": {"path": "M0 " * 2000, "view_box": "0 0 24 24"}}, "icon.path must be"),
+        ({"icon": "notion.svg"}, "icon must be"),
     ],
 )
 def test_a_bad_entry_is_named(over, problem):
     problems = mod.validate(_doc(_entry(**over)))
     assert any(problem in p for p in problems), problems
+
+
+def test_an_entry_with_an_icon_passes():
+    assert mod.validate(_doc(_entry(icon={"path": "M24 0V24l-9.365-8.045V24H0V0Zm1.2e-3 2z", "view_box": "0 0 24 24"}))) == []
+
+
+def test_most_published_connectors_have_a_logo():
+    entries = json.loads(mod.LIST.read_text())["entries"]
+    with_icon = {e["id"] for e in entries if "icon" in e}
+    assert {"notion", "linear", "github", "stripe"} <= with_icon
+    assert len(with_icon) >= 16
 
 
 def test_ids_are_unique():

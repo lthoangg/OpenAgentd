@@ -16,7 +16,8 @@ use base64::Engine;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 pub const DEFAULT_URL: &str = "https://account.openagentd.dev/connectors/v1.json";
 /// The project's gallery signing key (public half).
@@ -27,6 +28,8 @@ pub const BUNDLED: &str = include_str!("../data/gallery.json");
 const FRESH_FOR: Duration = Duration::from_secs(15 * 60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_BYTES: usize = 512 * 1024;
+/// The longest logo path the gallery accepts.
+const MAX_ICON_PATH: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Auth {
@@ -36,6 +39,19 @@ pub enum Auth {
     OAuth,
     /// The user pastes a key; it goes in `header` as `template` with `{key}` replaced.
     Key { header: String, template: String, key_url: Option<String>, key_label: Option<String> },
+}
+
+/// A connector's logo: one SVG path the app draws in the text colour.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Icon {
+    pub path: String,
+    pub view_box: String,
+}
+
+impl Icon {
+    pub fn to_json(&self) -> Value {
+        json!({"path": self.path, "view_box": self.view_box})
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -48,6 +64,7 @@ pub struct Entry {
     pub auth: Auth,
     /// Addresses this connector had before: a server still on one is offered the update.
     pub previous_urls: Vec<String>,
+    pub icon: Option<Icon>,
 }
 
 impl Entry {
@@ -57,7 +74,7 @@ impl Entry {
             Auth::OAuth => json!("oauth"),
             Auth::Key { header, template, key_url, key_label } => json!({"header": header, "template": template, "key_url": key_url, "key_label": key_label}),
         };
-        json!({"type": "connector", "id": self.id, "name": self.name, "description": self.description, "category": self.category, "url": self.url, "auth": auth})
+        json!({"type": "connector", "id": self.id, "name": self.name, "description": self.description, "category": self.category, "url": self.url, "auth": auth, "icon": self.icon.as_ref().map(Icon::to_json)})
     }
 }
 
@@ -101,6 +118,19 @@ fn valid_id(id: &str) -> bool {
     !b.is_empty() && b.len() <= 40 && b[0].is_ascii_lowercase() && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
+/// A logo the app can draw safely: path commands and numbers only (never
+/// markup), within a size cap, on a four-number view box. Anything else is
+/// dropped and the entry keeps its monogram.
+fn parse_icon(v: Option<&Value>) -> Option<Icon> {
+    let o = v?.as_object()?;
+    let path = o.get("path")?.as_str()?;
+    let path_ok = !path.is_empty() && path.len() <= MAX_ICON_PATH && path.bytes().all(|c| b"MmLlHhVvCcSsQqTtAaZz0123456789 .,eE+-".contains(&c));
+    let view_box = o.get("view_box")?.as_str()?;
+    let nums: Vec<&str> = view_box.split(' ').collect();
+    let box_ok = nums.len() == 4 && nums.iter().all(|n| n.parse::<f64>().is_ok_and(f64::is_finite));
+    (path_ok && box_ok).then(|| Icon { path: path.to_string(), view_box: view_box.to_string() })
+}
+
 /// One connector entry, or `None` when this build should not show it:
 /// another type (a plugin), an auth kind it does not know, a newer
 /// `min_app`, or anything malformed.
@@ -136,6 +166,7 @@ fn parse_entry(v: &Value, app: &str) -> Option<Entry> {
         url: https_url(v.get("url"))?,
         auth,
         previous_urls,
+        icon: parse_icon(v.get("icon")),
     })
 }
 
@@ -242,6 +273,28 @@ fn bundled() -> Gallery {
     Gallery { entries: parse(BUNDLED, env!("CARGO_PKG_VERSION")).unwrap_or_default(), source: "bundled" }
 }
 
+/// The entries `known()` hands out, and when they were read.
+static KNOWN: Mutex<Option<(Instant, Arc<Vec<Entry>>)>> = Mutex::new(None);
+const KNOWN_FOR: Duration = Duration::from_secs(60);
+
+fn remember(entries: &[Entry]) {
+    *KNOWN.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), Arc::new(entries.to_vec())));
+}
+
+/// The last good list, from memory: re-read from disk (and its signature
+/// re-checked) at most once a minute. The connectors list polls every
+/// second and names each connector's gallery entry with this.
+pub fn known() -> Arc<Vec<Entry>> {
+    if let Some((at, entries)) = KNOWN.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        if at.elapsed() < KNOWN_FOR {
+            return entries.clone();
+        }
+    }
+    let entries = last_good().entries;
+    remember(&entries);
+    Arc::new(entries)
+}
+
 /// The last good list without calling out: the cache when its signature
 /// holds, else the shipped copy. For the agent's view of the gallery.
 pub fn last_good() -> Gallery {
@@ -278,6 +331,12 @@ pub fn install_agent_view() {
 /// fetch at most every 15 minutes, or now with `refresh`), else the last
 /// good one, else the shipped copy.
 pub async fn load(refresh: bool) -> Gallery {
+    let g = load_uncached(refresh).await;
+    remember(&g.entries);
+    g
+}
+
+async fn load_uncached(refresh: bool) -> Gallery {
     static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _g = LOCK.lock().await;
     let Some(url) = source_url() else { return bundled() };
@@ -366,5 +425,34 @@ mod tests {
         let other = ed25519_dalek::SigningKey::from_bytes(&[8u8; 32]).verifying_key();
         assert!(!verify(body, &sig, &other), "another key");
         assert!(decode_key(DEFAULT_PUBLIC_KEY).is_some());
+    }
+
+    #[test]
+    fn an_icon_is_kept_only_when_it_is_plain_path_data() {
+        let entry = |icon: Value| {
+            let doc = json!({"version": 1, "entries": [{"type": "connector", "id": "x", "name": "X", "description": "d", "url": "https://x.example/mcp", "auth": "none", "icon": icon}]});
+            parse(&doc.to_string(), "3.60.0").unwrap().remove(0)
+        };
+        let good = entry(json!({"path": "M24 0V24l-9.365-8.045V24H0V0Z", "view_box": "0 0 24 24"}));
+        assert_eq!(good.icon, Some(Icon { path: "M24 0V24l-9.365-8.045V24H0V0Z".into(), view_box: "0 0 24 24".into() }));
+        assert_eq!(good.to_json()["icon"]["view_box"], "0 0 24 24");
+        for bad in [
+            json!({"path": "M0 0\"/><script>", "view_box": "0 0 24 24"}),
+            json!({"path": "M0 0", "view_box": "0 0 24"}),
+            json!({"path": "M0 0", "view_box": "0 0 NaN 24"}),
+            json!({"path": "M0 ".repeat(2000), "view_box": "0 0 24 24"}),
+            json!("notion.svg"),
+        ] {
+            let e = entry(bad.clone());
+            assert_eq!(e.icon, None, "{bad}");
+            assert_eq!(e.id, "x", "the entry stays");
+        }
+    }
+
+    #[test]
+    fn the_shipped_list_has_logos() {
+        let entries = parse(BUNDLED, env!("CARGO_PKG_VERSION")).unwrap();
+        assert!(entries.iter().filter(|e| e.icon.is_some()).count() >= 16);
+        assert!(entries.iter().any(|e| e.id == "context7" && e.icon.is_none()), "no logo: the app shows a monogram");
     }
 }

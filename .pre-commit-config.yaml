@@ -47,6 +47,26 @@ repos:
         pass_filenames: false
 
   # ---------------------------------------------------------------------------
+  # Commit – checks of the whole tree cheap enough for every commit. They read
+  # the index, so a file staged for the first time is checked too. Pushes are
+  # rare here, so a check left to the push hook lets main stay broken for days.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: file-size
+        name: file size ceilings
+        language: system
+        entry: python3 scripts/check_file_size.py
+        files: \.(ts|tsx|rs)$
+        pass_filenames: false
+      - id: no-secrets
+        name: secret scan
+        language: system
+        entry: python3 scripts/check_no_secrets.py
+        always_run: true
+        pass_filenames: false
+
+  # ---------------------------------------------------------------------------
   # Push – the static checks CI would otherwise be the first to run
   # ---------------------------------------------------------------------------
   - repo: local

@@ -189,8 +189,8 @@ the same commit. It is the only prompt text that describes the app: do not
 repeat any of it in another prompt or a tool description.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
 budget and chunk-cycle checks. `pre-commit install` sets up two hooks: at
-commit, file hygiene plus `oxlint` and `tsc` for `web/src`; at push,
-`make verify-quick`.
+commit, file hygiene, the file size ceilings, the secret scan, and `oxlint`
+and `tsc` for `web/src`; at push, `make verify-quick`.
 
 ## Rules and checks
 

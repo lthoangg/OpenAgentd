@@ -122,7 +122,7 @@ def test_the_usage_text_lists_a_machine_only_when_the_desktop_app_installs_on_it
     [
         ("Darwin", "x86_64", ["--cli"]),
         ("Darwin", "x86_64", []),
-        ("Linux", "aarch64", ["--cli"]),
+        ("Linux", "riscv64", ["--cli"]),
         ("Linux", "aarch64", []),
     ],
 )
@@ -143,21 +143,22 @@ def test_linux_without_apt_is_pointed_to_the_cli(tmp_path: Path):
 @pytest.mark.parametrize(
     "libc, found",
     [
-        ("ldd (Ubuntu GLIBC 2.35-0ubuntu3.8) 2.35", None),
+        ("ldd (GNU libc) 2.28", None),
+        ("ldd (Debian GLIBC 2.31-13+deb11u11) 2.31", None),
         ("ldd (GNU libc) 2.41", None),
-        ("ldd (Debian GLIBC 2.31-13+deb11u11) 2.31", "2.31"),
+        ("ldd (Ubuntu GLIBC 2.27-3ubuntu1.6) 2.27", "2.27"),
         ("ldd (GNU libc) 2.9", "2.9"),
     ],
 )
 def test_the_cli_names_a_glibc_older_than_the_one_it_is_built_for(
     tmp_path: Path, libc: str, found: str | None
 ):
-    """The Linux binary is built on Ubuntu 22.04 (glibc 2.35) and does not
-    start on an older one; the installer says so before it downloads."""
+    """The Linux binary is built for glibc 2.28 and does not start on an
+    older one; the installer says so before it downloads."""
     proc = _run(tmp_path, "Linux", "x86_64", "--cli", libc=libc)
     assert _accepted(proc) == (found is None), proc.stderr
     if found:
-        assert f"glibc {found}" in proc.stderr and "2.35" in proc.stderr
+        assert f"glibc {found}" in proc.stderr and "2.28" in proc.stderr
         assert "CONTRIBUTING.md" in proc.stderr
 
 

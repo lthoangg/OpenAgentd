@@ -9,7 +9,7 @@
 # Default: installs the macOS Apple Silicon app into /Applications or the
 # Linux x86_64 .deb package through apt.
 # --cli: installs the `agentd` command-line binary (macOS arm64, Linux
-# x86_64) into ~/.local/bin, verified against its .sha256, and
+# x86_64 and arm64) into ~/.local/bin, verified against its .sha256, and
 # removes an OpenAgentd v2 (Python) install made with uv or pipx. Releases
 # also ship `openagentd`, the binary's former name, as an alias.
 #
@@ -43,7 +43,7 @@ Options:
 
 Supported platforms:
     Desktop app: macOS 11+ on Apple Silicon, Debian/Ubuntu Linux on x86_64
-    CLI:         macOS on Apple Silicon, Linux (glibc 2.35+) on x86_64
+    CLI:         macOS on Apple Silicon, Linux (glibc 2.28+) on x86_64 and arm64
 EOF
 }
 
@@ -192,8 +192,9 @@ cli_target() {
             if ldd --version 2>&1 | grep -qi musl; then
                 fail "musl-based Linux (e.g. Alpine) is not supported yet; the CLI needs glibc. $SOURCE_HINT"
             fi
-            # The binary is built on Ubuntu 22.04 and does not start on an
-            # older glibc. The version is the last word of ldd's first line.
+            # The binary is built for glibc 2.28 (release.yml checks it) and
+            # does not start on an older one. The version is the last word of
+            # ldd's first line.
             glibc="$(ldd --version 2>/dev/null || true)"
             glibc="${glibc%%
 *}"
@@ -204,14 +205,15 @@ cli_target() {
             case "$glibc_major.$glibc_minor" in
                 *[!0-9.]*|.*|*.) ;;
                 *)
-                    if [ "$glibc_major" -lt 2 ] || { [ "$glibc_major" -eq 2 ] && [ "$glibc_minor" -lt 35 ]; }; then
-                        fail "this system has glibc $glibc; the prebuilt CLI needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12). $SOURCE_HINT"
+                    if [ "$glibc_major" -lt 2 ] || { [ "$glibc_major" -eq 2 ] && [ "$glibc_minor" -lt 28 ]; }; then
+                        fail "this system has glibc $glibc; the prebuilt CLI needs glibc 2.28 or newer (Debian 10, Ubuntu 20.04, RHEL 8). $SOURCE_HINT"
                     fi
                     ;;
             esac
             case "$arch" in
                 x86_64|amd64) TARGET="x86_64-unknown-linux-gnu" ;;
-                *) fail "unsupported Linux architecture: $arch (prebuilt CLI releases are x86_64 only). $SOURCE_HINT" ;;
+                aarch64|arm64) TARGET="aarch64-unknown-linux-gnu" ;;
+                *) fail "unsupported Linux architecture: $arch (prebuilt CLI releases are x86_64 and arm64). $SOURCE_HINT" ;;
             esac
             ;;
         *) fail "unsupported platform: $os. On Windows, use install.ps1" ;;

@@ -50,6 +50,7 @@ jobs:
       matrix:
         os: [macos-26, ubuntu-22.04, windows-2025]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: appv3

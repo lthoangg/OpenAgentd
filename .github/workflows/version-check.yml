@@ -13,6 +13,8 @@ on:
       - "mobile/src-tauri/tauri.conf.json"
       - "appv3/Cargo.toml"
       - "appv3/Cargo.lock"
+      - "documents/docs/features.md"
+      - ".github/workflows/version-check.yml"
 
 permissions:
   contents: read
@@ -29,6 +31,7 @@ jobs:
   check:
     name: Verify version consistency
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

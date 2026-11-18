@@ -28,15 +28,22 @@ implementation, fix the root cause, then run the surface's full suite.
 | Scripts, installers, workflows | `.venv/bin/python -m pytest scripts/tests/<file> -q` | `make verify-scripts` |
 
 Crates are named `appv3-<dir>` (`appv3-api`, `appv3-agent`, `appv3-tools`, …);
-integration files run with `--test <file_stem>`. `make verify` runs the portable
-set (v3, scripts, web, docs, version); `make verify-native` runs the three native targets.
+integration files run with `--test <file_stem>`, except in `appv3-agent`, whose
+files build as one binary (`tests/main.rs` lists them; add a new file there):
+`cargo nextest run -p appv3-agent <file_stem>::`. `make verify` runs the portable
+set (v3, scripts, web, docs, version); `make verify-native` runs the four native targets.
+On macOS the first run of each newly linked test binary can wait for a malware
+scan. Adding the terminal or app that runs cargo under
+System Settings → Privacy & Security → Developer Tools turns the scan off;
+only the person at the machine can change that setting.
 API or SSE changes need both backend and web checks, and event types must match
 `appv3/crates/agent/data/sse_events.json`.
 
 ## 3. Placement
 
 - **Rust**: unit tests in `#[cfg(test)] mod tests` beside the code; behavior that
-  crosses modules in `appv3/crates/<crate>/tests/<topic>.rs` (e.g. `api/tests/http_api.rs`).
+  crosses modules in `appv3/crates/<crate>/tests/<topic>.rs` (e.g. `api/tests/http_api.rs`;
+  in `agent/tests/`, also add `mod <topic>;` to `main.rs`).
 - **Web**: mirror the source path under `web/src/__tests__/`
   (`src/components/Foo.tsx` → `src/__tests__/components/Foo.test.tsx`); split a
   large component by concern (`AgentView.scroll.test.tsx`).

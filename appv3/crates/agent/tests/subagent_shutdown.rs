@@ -6,7 +6,7 @@
 //! save failed ("attempted to acquire a connection on a closed pool"). The
 //! registry is process-wide, so this file is its own test binary.
 
-mod common;
+use crate::common;
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::UserMessage;

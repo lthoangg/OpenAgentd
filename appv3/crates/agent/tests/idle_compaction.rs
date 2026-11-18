@@ -3,7 +3,7 @@
 //! share of the compaction trigger. Subagents still working for the lead do
 //! not hold it back; an open question does.
 
-mod common;
+use crate::common;
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::{AgentSession, UserMessage};

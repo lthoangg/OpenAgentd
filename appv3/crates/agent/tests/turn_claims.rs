@@ -2,7 +2,7 @@
 //! session is free and claims it in one step. Checking first and claiming
 //! after an await let two commands sent together both start a turn.
 
-mod common;
+use crate::common;
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::session::AgentSession;

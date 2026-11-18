@@ -3,7 +3,7 @@
 //! process-wide, so this file is its own test binary and runs the whole
 //! life of one session in order.
 
-mod common;
+use crate::common;
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::restart_resume::{self, CONTINUE_NOTE, NOTE_KEY};

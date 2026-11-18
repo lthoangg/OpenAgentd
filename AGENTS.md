@@ -208,7 +208,7 @@ the rule depends on you reading it, for the reason given.
 | `app_guide` is the only text that describes the app | `appv3/crates/agent/tests/runtime_protocol.rs`, `web/src/__tests__/api/app-guide-contract.test.tsx` |
 | A built-in tool is in the registry, in `appv3/crates/agent/data/tools.json`, and drawn by the web client | tests in `appv3/crates/agent/src/tool_registry.rs`, `web/src/__tests__/api/tools-contract.test.ts` |
 | A provider in the catalogue has a builder | `every_provider_in_the_catalogue_has_a_builder` in `appv3/crates/providers/src/factory.rs` |
-| A prompt key, a migration file, a bundled skill file and a server module are each listed where the code reads them | tests in `appv3/crates/agent/src/prompts.rs`, `appv3/crates/db/src/migrations.rs`, `appv3/crates/agent/src/skills.rs`, `appv3/crates/cli/tests/modules.rs` |
+| A prompt key, a migration file, a bundled skill file, a server module and an agent integration test file are each listed where the code reads them | tests in `appv3/crates/agent/src/prompts.rs`, `appv3/crates/db/src/migrations.rs`, `appv3/crates/agent/src/skills.rs`, `appv3/crates/cli/tests/modules.rs`, `appv3/crates/agent/tests/main.rs` |
 | A Settings section has a registry entry and a page | `tsc` (`web/src/components/settings/sections.ts`, `SettingsModal.tsx`) |
 | The network guard refuses foreign hosts and origins | tests in `appv3/crates/api/src/middleware.rs` |
 | Child processes do not inherit secrets | `appv3/crates/core/tests/child_env.rs` |

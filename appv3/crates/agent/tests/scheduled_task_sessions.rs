@@ -5,7 +5,7 @@
 //! so the next server start ran it again. The manager and scheduler are
 //! process-wide, so this file is its own test binary.
 
-mod common;
+use crate::common;
 
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::manager;

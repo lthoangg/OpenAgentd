@@ -178,7 +178,9 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// them), `shell`'s `secrets` argument, and the runtime protocol's line that
 /// sends the agent to them instead of asking for a key in chat or reading
 /// `.env`: without it, agents asked users to paste keys into the chat.
-const LEAD_ALWAYS_ON_CHARS: usize = 46_173;
+/// Lowered by 255 when sentences that repeated a parameter's own description
+/// or its schema `default` were dropped from glob, grep, read and todo.
+const LEAD_ALWAYS_ON_CHARS: usize = 45_918;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

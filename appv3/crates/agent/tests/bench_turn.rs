@@ -4,13 +4,14 @@
 //! Ignored by default. Drives public behaviour only, so the same file runs on
 //! any revision:
 //!
-//!   cargo test --release -p appv3-agent --test bench_turn -- --ignored --nocapture
+//!   cargo test --release -p appv3-agent --test integration bench_turn:: -- --ignored --nocapture
 //!
 //!   # compare with an older revision
 //!   git worktree add --detach /tmp/before <ref>
 //!   cp crates/agent/tests/bench_turn.rs /tmp/before/appv3/crates/agent/tests/
-//!   (cd /tmp/before/appv3 && BENCH_JSON=/tmp/turn-before.json cargo test --release -p appv3-agent --test bench_turn -- --ignored --nocapture)
-//!   BENCH_BASELINE=/tmp/turn-before.json cargo test --release -p appv3-agent --test bench_turn -- --ignored --nocapture
+//!   (cd /tmp/before/appv3 && BENCH_JSON=/tmp/turn-before.json cargo test --release -p appv3-agent --test integration bench_turn:: -- --ignored --nocapture)
+//!   # (a ref before 18 Nov 2026 builds each test file alone: `--test bench_turn`)
+//!   BENCH_BASELINE=/tmp/turn-before.json cargo test --release -p appv3-agent --test integration bench_turn:: -- --ignored --nocapture
 //!
 //! The session holds BENCH_EXCHANGES (default 300) exchanges of a prompt,
 //! three ~8 kB tool results (every tenth with a ~200 kB image part) and an

@@ -35,7 +35,7 @@
         "type": "function",
         "function": {
           "name": "todo",
-          "description": "Manage the todo task list for tracking multi-step progress. Actions execute in order.\nUse proactively for complex tasks (3+ steps). Maintain real-time state: keep at most\nONE task 'in_progress' at any time, and mark tasks 'completed' immediately upon\nverification. Actions can be batched.",
+          "description": "Manage the todo task list for tracking multi-step progress.\nUse proactively for complex tasks (3+ steps). Maintain real-time state: keep at most\nONE task 'in_progress' at any time, and mark tasks 'completed' immediately upon\nverification. Actions can be batched.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -225,12 +225,12 @@
         "type": "function",
         "function": {
           "name": "glob",
-          "description": "Find files and directories by glob pattern across the workspace. Does not search file contents (use grep for contents). Use match='path' for full paths or match='name' for filenames only. Skips dependency and cache directories (node_modules, .venv, …); gitignored files are included, ranked after the rest, except large gitignored build directories (name one in the pattern or directory to search it).",
+          "description": "Find files and directories by glob pattern across the workspace. Does not search file contents (use grep for contents). Skips dependency and cache directories (node_modules, .venv, …); gitignored files are included, ranked after the rest, except large gitignored build directories (name one in the pattern or directory to search it).",
           "parameters": {
             "type": "object",
             "properties": {
               "pattern": {
-                "description": "Glob pattern to match file paths. Use '**/*.py' or 'src/**/*.{ts,tsx}' to match recursively across directories, or '*.py' with match='name' to match filename only. Brace alternation works: 'src/**/*.{ts,tsx}'. Does not accept regex.",
+                "description": "Glob pattern to match file paths. Use '**/*.py' or 'src/**/*.{ts,tsx}' to match recursively across directories, or '*.py' with match='name' to match filename only. Does not accept regex.",
                 "type": "string"
               },
               "directory": {
@@ -240,7 +240,7 @@
               },
               "match": {
                 "default": "path",
-                "description": "Match full relative paths ('path') or filenames only ('name'). Defaults to 'path'.",
+                "description": "Match full relative paths ('path') or filenames only ('name').",
                 "enum": [
                   "path",
                   "name"
@@ -249,7 +249,7 @@
               },
               "max_results": {
                 "default": 200,
-                "description": "Maximum number of matching file paths to return (defaults to 200).",
+                "description": "Maximum number of matching file paths to return.",
                 "minimum": 1,
                 "type": "integer"
               }
@@ -279,12 +279,12 @@
               },
               "include": {
                 "default": "*",
-                "description": "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Restricting this significantly speeds up searches. Defaults to '*'.",
+                "description": "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Restricting this significantly speeds up searches.",
                 "type": "string"
               },
               "max_results": {
                 "default": 100,
-                "description": "Maximum matching lines to return across all scanned files (defaults to 100).",
+                "description": "Maximum matching lines to return across all scanned files.",
                 "minimum": 1,
                 "type": "integer"
               }
@@ -318,7 +318,7 @@
         "type": "function",
         "function": {
           "name": "read",
-          "description": "Read a file, or list a directory's immediate children. Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Directories list immediate children only (use glob for recursive searches). Content is byte-exact, so a line can be copied straight into a patch hunk. Output stops at 50,000 characters; use offset and limit for more. Call this in parallel when you already know several files you need whole; to take a few lines from many files, read them in a script.",
+          "description": "Read a file, or list a directory's immediate children (use glob for recursive searches). Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Content is byte-exact, so a line can be copied straight into a patch hunk. Output stops at 50,000 characters; use offset and limit for more. Call this in parallel when you already know several files you need whole; to take a few lines from many files, read them in a script.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1046,7 +1046,7 @@
         "type": "function",
         "function": {
           "name": "read",
-          "description": "Read a file, or list a directory's immediate children. Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Directories list immediate children only (use glob for recursive searches). Content is byte-exact, so a line can be copied straight into a patch hunk. Output stops at 50,000 characters; use offset and limit for more. Call this in parallel when you already know several files you need whole; to take a few lines from many files, read them in a script.",
+          "description": "Read a file, or list a directory's immediate children (use glob for recursive searches). Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Content is byte-exact, so a line can be copied straight into a patch hunk. Output stops at 50,000 characters; use offset and limit for more. Call this in parallel when you already know several files you need whole; to take a few lines from many files, read them in a script.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1092,12 +1092,12 @@
               },
               "include": {
                 "default": "*",
-                "description": "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Restricting this significantly speeds up searches. Defaults to '*'.",
+                "description": "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Restricting this significantly speeds up searches.",
                 "type": "string"
               },
               "max_results": {
                 "default": 100,
-                "description": "Maximum matching lines to return across all scanned files (defaults to 100).",
+                "description": "Maximum matching lines to return across all scanned files.",
                 "minimum": 1,
                 "type": "integer"
               }
@@ -1112,12 +1112,12 @@
         "type": "function",
         "function": {
           "name": "glob",
-          "description": "Find files and directories by glob pattern across the workspace. Does not search file contents (use grep for contents). Use match='path' for full paths or match='name' for filenames only. Skips dependency and cache directories (node_modules, .venv, …); gitignored files are included, ranked after the rest, except large gitignored build directories (name one in the pattern or directory to search it).",
+          "description": "Find files and directories by glob pattern across the workspace. Does not search file contents (use grep for contents). Skips dependency and cache directories (node_modules, .venv, …); gitignored files are included, ranked after the rest, except large gitignored build directories (name one in the pattern or directory to search it).",
           "parameters": {
             "type": "object",
             "properties": {
               "pattern": {
-                "description": "Glob pattern to match file paths. Use '**/*.py' or 'src/**/*.{ts,tsx}' to match recursively across directories, or '*.py' with match='name' to match filename only. Brace alternation works: 'src/**/*.{ts,tsx}'. Does not accept regex.",
+                "description": "Glob pattern to match file paths. Use '**/*.py' or 'src/**/*.{ts,tsx}' to match recursively across directories, or '*.py' with match='name' to match filename only. Does not accept regex.",
                 "type": "string"
               },
               "directory": {
@@ -1127,7 +1127,7 @@
               },
               "match": {
                 "default": "path",
-                "description": "Match full relative paths ('path') or filenames only ('name'). Defaults to 'path'.",
+                "description": "Match full relative paths ('path') or filenames only ('name').",
                 "enum": [
                   "path",
                   "name"
@@ -1136,7 +1136,7 @@
               },
               "max_results": {
                 "default": 200,
-                "description": "Maximum number of matching file paths to return (defaults to 200).",
+                "description": "Maximum number of matching file paths to return.",
                 "minimum": 1,
                 "type": "integer"
               }
@@ -1341,7 +1341,7 @@
         "type": "function",
         "function": {
           "name": "todo",
-          "description": "Manage the todo task list for tracking multi-step progress. Actions execute in order.\nUse proactively for complex tasks (3+ steps). Maintain real-time state: keep at most\nONE task 'in_progress' at any time, and mark tasks 'completed' immediately upon\nverification. Actions can be batched.",
+          "description": "Manage the todo task list for tracking multi-step progress.\nUse proactively for complex tasks (3+ steps). Maintain real-time state: keep at most\nONE task 'in_progress' at any time, and mark tasks 'completed' immediately upon\nverification. Actions can be batched.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1531,7 +1531,7 @@
         "type": "function",
         "function": {
           "name": "read",
-          "description": "Read a file, or list a directory's immediate children. Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Directories list immediate children only (use glob for recursive searches). Content is byte-exact, so a line can be copied straight into a patch hunk. Output stops at 50,000 characters; use offset and limit for more. Call this in parallel when you already know several files you need whole; to take a few lines from many files, read them in a script.",
+          "description": "Read a file, or list a directory's immediate children (use glob for recursive searches). Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Content is byte-exact, so a line can be copied straight into a patch hunk. Output stops at 50,000 characters; use offset and limit for more. Call this in parallel when you already know several files you need whole; to take a few lines from many files, read them in a script.",
           "parameters": {
             "type": "object",
             "properties": {

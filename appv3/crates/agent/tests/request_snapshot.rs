@@ -6,7 +6,7 @@
 //! them for a user who installed nothing. Machine-specific text (the temp
 //! root, ids, the shell's environment line) is normalised first. After a
 //! deliberate prompt or tool change, rewrite the snapshot with
-//! `UPDATE_REQUEST_SNAPSHOT=1 cargo test -p appv3-agent --test request_snapshot`.
+//! `UPDATE_REQUEST_SNAPSHOT=1 cargo test -p appv3-agent --test integration request_snapshot::`.
 
 use appv3_agent::loader::{self, ProviderFactory};
 use appv3_agent::session::{AgentSession, UserMessage};

@@ -106,6 +106,8 @@ make build-web   # web/dist for native packaging
 
 Use the native subtree Makefiles for desktop/mobile packages
 (`make -C desktop sidecar` stages the v3 binary).
+`make clean-stale` deletes `appv3/target` outputs untouched for two days
+(`DAYS=…`); cargo keeps every copy it ever built, so run it when the disk fills.
 
 ## Architecture boundaries
 

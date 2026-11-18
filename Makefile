@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports verify verify-quick verify-changed verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
+.PHONY: all run dev kill-dev-ports verify verify-quick verify-changed verify-scripts verify-web verify-docs verify-version verify-native verify-cloud verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean clean-stale help
 .PHONY: build-v3 verify-v3
 
 # Default target
@@ -140,6 +140,17 @@ clean: ## Remove build and cache artifacts
 	rm -rf .pytest_cache
 	rm -rf web/dist
 	find . -type d -name "__pycache__" -exec rm -rf {} +
+
+# Cargo never deletes an output it stopped using: each version bump, feature
+# set and command (check, clippy, test) leaves its own copies, so appv3/target
+# keeps growing. Anything still needed is rebuilt.
+DAYS = 2
+clean-stale: ## Delete appv3 build outputs untouched for DAYS days (default 2); cargo rebuilds what is still needed
+	@du -sh appv3/target 2>/dev/null || true
+	@for dir in appv3/target/*/deps appv3/target/*/incremental appv3/target/*/build appv3/target/*/.fingerprint; do \
+		[ -d "$$dir" ] && find "$$dir" -mindepth 1 -maxdepth 1 -mtime +$(DAYS) -exec rm -rf {} +; \
+	done; true
+	@du -sh appv3/target 2>/dev/null || true
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'

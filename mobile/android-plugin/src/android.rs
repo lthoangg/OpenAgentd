@@ -27,6 +27,76 @@ pub(crate) fn setup<R: Runtime>(
 /// Managed handle to the Kotlin `ShellPlugin`.
 pub struct AndroidShell<R: Runtime>(PluginHandle<R>);
 
+impl<R: Runtime> Clone for AndroidShell<R> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+/// Whether this phone can hold the account keys (`CloudKeyStore.kt`).
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeysAvailability {
+    /// `Build.VERSION.SDK_INT`.
+    pub api: u32,
+    /// A PIN, pattern or password is set (`KeyguardManager.isDeviceSecure`).
+    pub secure_lock: bool,
+    /// The Keystore keys are in secure hardware (TEE or StrongBox).
+    pub hardware: bool,
+}
+
+/// One account key item read from the Keystore. `value` is wiped on drop.
+#[derive(Deserialize)]
+pub struct KeyRead {
+    /// ok, not_found, cancelled, invalidated or error.
+    pub status: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+impl Drop for KeyRead {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        if let Some(v) = self.value.as_mut() {
+            v.zeroize();
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct KeyItem<'a> {
+    item: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct PushContext<'a> {
+    json: Option<&'a str>,
+}
+
+/// What `pushState` answers.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PushState {
+    /// This build has Firebase settings (`OPENAGENTD_GOOGLE_SERVICES_JSON`).
+    pub configured: bool,
+    /// Notifications are allowed for the app.
+    pub enabled: bool,
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct KeysCleared {
+    left: bool,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SharePayload<'a> {
@@ -40,10 +110,15 @@ struct WidgetPayload<'a> {
     snapshot: &'a str,
 }
 
+/// What `takeLaunchNotification` answers.
 #[derive(Deserialize)]
-struct LaunchNotification {
+pub struct LaunchTaps {
+    /// The app's own notification whose tap started the app.
     #[serde(default)]
-    id: Option<i64>,
+    pub id: Option<i64>,
+    /// Account push taps since the last call, as a JSON array (`taps.rs`).
+    #[serde(default)]
+    pub taps: Option<String>,
 }
 
 impl<R: Runtime> AndroidShell<R> {
@@ -76,12 +151,12 @@ impl<R: Runtime> AndroidShell<R> {
     }
 
     /// The id of the app's notification whose tap started the app, once
-    /// (the notification plugin reports that tap before the page listens).
-    /// Blocks on the JNI call; call it off the async runtime.
-    pub fn take_launch_notification(&self) -> Result<Option<i64>, String> {
+    /// (the notification plugin reports that tap before the page listens),
+    /// and the account push taps queued since the last call. Blocks on the
+    /// JNI call; call it off the async runtime.
+    pub fn take_launch_notification(&self) -> Result<LaunchTaps, String> {
         self.0
-            .run_mobile_plugin::<LaunchNotification>("takeLaunchNotification", ())
-            .map(|n| n.id)
+            .run_mobile_plugin::<LaunchTaps>("takeLaunchNotification", ())
             .map_err(|e| format!("Launch notification: {e}"))
     }
 
@@ -93,6 +168,64 @@ impl<R: Runtime> AndroidShell<R> {
             .run_mobile_plugin::<serde::de::IgnoredAny>("setAppTheme", ThemePayload { preference })
             .map(|_| ())
             .map_err(|e| format!("Set app theme: {e}"))
+    }
+
+    /// Whether this phone can hold the account keys. Blocks on the JNI call.
+    pub fn cloud_keys_availability(&self) -> Result<KeysAvailability, String> {
+        self.0
+            .run_mobile_plugin("cloudKeysAvailability", ())
+            .map_err(|e| format!("Keystore: {e}"))
+    }
+
+    /// Store account key item `item` (0 identity, 1 box, 2 sign). Blocks on
+    /// the JNI call; call it off the async runtime.
+    pub fn cloud_key_set(&self, item: i32, value: &str) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>(
+                "cloudKeySet",
+                KeyItem { item, value: Some(value), reason: None },
+            )
+            .map(|_| ())
+            .map_err(|e| format!("{e}"))
+    }
+
+    /// Read account key item `item`. Item 2 shows the system prompt with
+    /// `reason` and waits for the person; call it off the async runtime and
+    /// never on the main thread.
+    pub fn cloud_key_get(&self, item: i32, reason: &str) -> Result<KeyRead, String> {
+        self.0
+            .run_mobile_plugin(
+                "cloudKeyGet",
+                KeyItem { item, value: None, reason: Some(reason) },
+            )
+            .map_err(|e| format!("{e}"))
+    }
+
+    /// Erase every account key item and both Keystore keys. `Ok(true)` if
+    /// something was left behind.
+    pub fn cloud_keys_clear(&self) -> Result<bool, String> {
+        self.0
+            .run_mobile_plugin::<KeysCleared>("cloudKeysClear", ())
+            .map(|c| c.left)
+            .map_err(|e| format!("{e}"))
+    }
+
+    /// Keep (or, given `None`, forget) what the push service needs to open
+    /// letters: the account id, this phone's device id and its computers'
+    /// box keys, as JSON. Not secret. Blocks on the JNI call.
+    pub fn set_push_context(&self, json: Option<&str>) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("setPushContext", PushContext { json })
+            .map(|_| ())
+            .map_err(|e| format!("{e}"))
+    }
+
+    /// Notification permission and this phone's FCM registration token.
+    /// Waits for Firebase (network); call it off the async runtime.
+    pub fn push_state(&self) -> Result<PushState, String> {
+        self.0
+            .run_mobile_plugin("pushState", ())
+            .map_err(|e| format!("{e}"))
     }
 
     /// Hand a downloaded APK (inside the app cache directory) to the system

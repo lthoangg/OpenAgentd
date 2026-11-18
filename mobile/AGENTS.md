@@ -39,6 +39,20 @@ defaults to the newest under `$ANDROID_HOME/ndk`). Android-only native code
 lives in the `android-plugin/` Tauri plugin. Its Kotlin library manifest is
 merged into the generated app, so don't patch `src-tauri/gen/android/`.
 
+Remote control on Android: the account keys live in the plugin's
+`CloudKeyStore.kt` (Keystore-wrapped, the signing seed behind the system
+prompt on every use), reached from `src-tauri/src/cloud_android.rs`. Pushes
+arrive in `OpenAgentdMessagingService.kt`, which opens letters with the
+shell's own Rust code through `src-tauri/src/push_android.rs` (JNI). Push
+needs Firebase settings at build time: set `OPENAGENTD_GOOGLE_SERVICES_JSON`
+to a `google-services.json` kept outside the repository (an Android app for
+`com.openagentd.mobile`); without it the build works and reports push as not
+set up. The cloud needs the same Firebase project's service account
+(`FCM_SERVICE_ACCOUNT` in agentd-cloud). A debug build reads
+`OPENAGENTD_CLOUD_API` and `OPENAGENTD_CLOUD_ACCOUNT` from `dev.env` in the
+app's data folder (`adb shell run-as com.openagentd.mobile`), since an
+Android app gets no environment; release builds ignore it.
+
 Home-screen widgets: the web UI sends a snapshot through
 `widget_update_snapshot` (`src-tauri/src/widgets.rs`, which refuses unknown
 fields so nothing else reaches widget storage). Android draws it with the
@@ -59,7 +73,8 @@ from any branch: `gh workflow run release-ios.yml --ref <branch> -f channel=inte
   sidecar flow.
 - Treat remote-origin validation, access-key storage, Tauri capabilities/CSP,
   deep links, iOS plist/privacy changes, and the Android plugin's manifest,
-  network security config, and Keystore code as security-sensitive.
+  network security config, Keystore code (`KeystoreSecretStore.kt`,
+  `CloudKeyStore.kt`) and push service as security-sensitive.
 - `src-tauri/gen/`, `src-tauri/target/`, and generated icon variants are
   local/generated state. Regenerate them with Make targets instead of editing
   or committing them.

@@ -276,6 +276,16 @@ describe('desktop notification worker', () => {
       expect(mockNotify).not.toHaveBeenCalled()
     })
 
+    it('hands Done and Needs you to the FCM push while the Android app is hidden', async () => {
+      os = 'android'
+      pushRegistration = { provider: 'fcm', token: 'f' }
+      await withAccountPush()
+      setVisibility('hidden', true)
+
+      expect((await sendDesktopNotification(payload)).status).toBe('disabled')
+      expect(mockNotify).not.toHaveBeenCalled()
+    })
+
     it('skips events handled just after the app comes back, which the push already showed', async () => {
       os = 'ios'
       await withAccountPush()

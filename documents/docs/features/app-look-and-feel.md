@@ -387,7 +387,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     - the context ring appeared once the context was 70% full; from
       `[v3.57.0]` it shows from the first message with a bare
       percentage, as in Full;
-    - the status bar shows no estimated spend, and does not fetch it;
+    - the status bar showed no estimated spend, and did not fetch it; from
+      `[v3.61.0]` it shows the last 24 hours' spend, as in Full;
     - a retry reads as a sentence: "The model is busy. Trying again in 8
       seconds (2 of 5)." or, for a dropped connection, "The connection
       dropped. Trying again in 8 seconds.";

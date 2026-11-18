@@ -155,6 +155,13 @@ describe('Account section', () => {
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
   })
 
+  it('says why where the shell gives a reason accounts are not supported', async () => {
+    shell({ state: 'guest', notice: null, supported: false, unsupported: 'Accounts need Android 11 or later.' })
+    render(<ServersScreen active onOpenSessions={() => {}} />)
+    expect(await screen.findByText('Accounts need Android 11 or later.')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+  })
+
   it('shows the sign-in code under Sign in with Google', async () => {
     const signingIn: PhoneCloudStatus = { state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600, add_link: 'agentd://add?c=WXYZ1234&d=test-device&k=test-only' }
     shell(GUEST, { cloud_sign_in: () => { status = signingIn; return signingIn } })
@@ -456,7 +463,8 @@ describe('one QR scanner for all three kinds of code', () => {
 
   it.each<{ initial: PhoneCloudStatus; message: string }>([
     { initial: { ...CONNECTED, signer: false }, message: "This iPhone can't add devices. Use the phone you set up first." },
-    { initial: { ...GUEST, supported: false }, message: 'Adding devices needs the iPhone app for now.' },
+    { initial: { ...GUEST, supported: false }, message: 'Adding devices is not available on this phone.' },
+    { initial: { ...GUEST, supported: false, unsupported: 'Accounts need Android 11 or later.' }, message: 'Accounts need Android 11 or later.' },
   ])('explains why this phone cannot add a computer (%o)', async ({ initial, message }) => {
     scanned = 'agentd://add?c=BCDFGHJK&d=test-device-000000000&k=test-only'
     shell(initial)

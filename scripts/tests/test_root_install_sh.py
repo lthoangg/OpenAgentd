@@ -34,13 +34,14 @@ def _run(
     apt: bool = True,
     shell: str = "/bin/zsh",
     path_has_install_dir: bool = False,
+    libc: str = "ldd (GNU libc) 2.39",
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     _fake(bin_dir, "uname", f'case "$1" in -m) echo {machine} ;; *) echo {system} ;; esac')
     # Not an Apple Silicon Mac running the shell under Rosetta.
     _fake(bin_dir, "sysctl", "echo 0")
-    _fake(bin_dir, "ldd", "echo 'ldd (GNU libc) 2.39'")
+    _fake(bin_dir, "ldd", f"echo '{libc}'\necho 'Copyright (C) Free Software Foundation, Inc.'")
     _fake(bin_dir, "brew", "exit 1")
     _fake(bin_dir, "curl", "exit 22")
     path = f"{bin_dir}:/usr/bin:/bin"
@@ -121,7 +122,7 @@ def test_the_usage_text_lists_a_machine_only_when_the_desktop_app_installs_on_it
     [
         ("Darwin", "x86_64", ["--cli"]),
         ("Darwin", "x86_64", []),
-        ("Linux", "aarch64", ["--cli"]),
+        ("Linux", "riscv64", ["--cli"]),
         ("Linux", "aarch64", []),
     ],
 )
@@ -137,6 +138,28 @@ def test_linux_without_apt_is_pointed_to_the_cli(tmp_path: Path):
     proc = _run(tmp_path, "Linux", "x86_64", apt=False)
     assert not _accepted(proc)
     assert "--cli" in proc.stderr
+
+
+@pytest.mark.parametrize(
+    "libc, found",
+    [
+        ("ldd (GNU libc) 2.28", None),
+        ("ldd (Debian GLIBC 2.31-13+deb11u11) 2.31", None),
+        ("ldd (GNU libc) 2.41", None),
+        ("ldd (Ubuntu GLIBC 2.27-3ubuntu1.6) 2.27", "2.27"),
+        ("ldd (GNU libc) 2.9", "2.9"),
+    ],
+)
+def test_the_cli_names_a_glibc_older_than_the_one_it_is_built_for(
+    tmp_path: Path, libc: str, found: str | None
+):
+    """The Linux binary is built for glibc 2.28 and does not start on an
+    older one; the installer says so before it downloads."""
+    proc = _run(tmp_path, "Linux", "x86_64", "--cli", libc=libc)
+    assert _accepted(proc) == (found is None), proc.stderr
+    if found:
+        assert f"glibc {found}" in proc.stderr and "2.28" in proc.stderr
+        assert "CONTRIBUTING.md" in proc.stderr
 
 
 def test_the_header_comment_agrees_with_the_usage_text():

@@ -39,6 +39,21 @@ class SecretArgs {
 }
 
 @InvokeArg
+class CloudKeyArgs {
+    /** 0 identity, 1 box, 2 sign (`CloudKeyStore`). */
+    var item: Int = -1
+    var value: String? = null
+    /** The line the system prompt shows when item 2 is read. */
+    var reason: String? = null
+}
+
+@InvokeArg
+class PushContextArgs {
+    /** JSON, or null to forget it (signed out). */
+    var json: String? = null
+}
+
+@InvokeArg
 class WidgetArgs {
     /** Snapshot JSON, validated by the shell's `widgets.rs`. */
     lateinit var snapshot: String
@@ -82,9 +97,15 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         @Volatile
         var webViewLoaded = false
             private set
+
+        /** The app is on screen (the push service skips some banners then). */
+        @Volatile
+        var inForeground = false
+            private set
     }
 
     private val secrets by lazy { KeystoreSecretStore(activity.applicationContext) }
+    private val cloudKeys by lazy { CloudKeyStore(activity.applicationContext) }
     private val themePrefs by lazy {
         activity.applicationContext.getSharedPreferences("openagentd_theme", Activity.MODE_PRIVATE)
     }
@@ -96,6 +117,22 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
      * the shell reads it once with [takeLaunchNotification].
      */
     private var launchNotification: Int? = null
+
+    /** Account push taps (`AccountNotifications`) the page has not read yet. */
+    private val accountTaps = mutableListOf<String>()
+
+    /** Queues the account tap `intent` carries, if this app posted it. */
+    private fun queueAccountTap(intent: Intent?): Boolean {
+        val tap = intent?.getStringExtra(AccountNotifications.TAP_EXTRA) ?: return false
+        val key = intent.getStringExtra(AccountNotifications.TAP_KEY_EXTRA)
+        intent.removeExtra(AccountNotifications.TAP_EXTRA)
+        intent.removeExtra(AccountNotifications.TAP_KEY_EXTRA)
+        // Another app can start this activity with any extras; only a
+        // notification posted here knows the key.
+        if (key == null || key != AccountNotifications.tapKey(activity.applicationContext)) return false
+        synchronized(accountTaps) { accountTaps.add(tap) }
+        return true
+    }
 
     /** The boot page's paper tone (web/index.html) for an appearance. */
     private fun paper(dark: Boolean): Int =
@@ -120,6 +157,7 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
             ?.takeIf { it.action == Intent.ACTION_MAIN }
             ?.getIntExtra(NOTIFICATION_ID_EXTRA, Int.MIN_VALUE)
             ?.takeIf { it != Int.MIN_VALUE }
+        queueAccountTap(activity.intent)
         applyFontScale(activity.resources.configuration.fontScale)
         fitAboveKeyboard(webView)
         // Tauri applies the config's single (light) backgroundColor right
@@ -181,6 +219,29 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         // of the page load Tauri posts after `load`, so the first paint is
         // already zoomed.
         view.post { view.settings.textZoom = percent }
+    }
+
+    /**
+     * A tapped account notification while the app runs. The page reads taps
+     * when it becomes visible; the app may already be in front, so it is
+     * told as it would be on resume.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (!queueAccountTap(intent)) return
+        webView?.post {
+            webView?.evaluateJavascript("document.dispatchEvent(new Event('visibilitychange'))", null)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        inForeground = true
+    }
+
+    override fun onPause() {
+        inForeground = false
+        super.onPause()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -275,6 +336,75 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    /** Whether this phone can hold account keys: `{ api, secureLock, hardware }`. */
+    @Command
+    fun cloudKeysAvailability(invoke: Invoke) {
+        try {
+            val a = cloudKeys.availability()
+            val result = JSObject()
+            result.put("api", a.api)
+            result.put("secureLock", a.secureLock)
+            result.put("hardware", a.hardware)
+            invoke.resolve(result)
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Keystore unavailable")
+        }
+    }
+
+    @Command
+    fun cloudKeySet(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(CloudKeyArgs::class.java)
+            val value = args.value ?: return invoke.reject("Missing key value")
+            cloudKeys.set(args.item, value)
+            invoke.resolve()
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Keystore unavailable")
+        }
+    }
+
+    /**
+     * `{ status, value?, message? }`. Reading item 2 shows the system prompt
+     * (fingerprint or screen lock) and answers once the person is done.
+     */
+    @Command
+    fun cloudKeyGet(invoke: Invoke) {
+        val args = try {
+            invoke.parseArgs(CloudKeyArgs::class.java)
+        } catch (ex: Exception) {
+            return invoke.reject(ex.message ?: "Invalid key item")
+        }
+        val answer = { read: CloudKeyStore.Read ->
+            val result = JSObject()
+            result.put("status", read.status)
+            read.value?.let { result.put("value", it) }
+            read.message?.let { result.put("message", it) }
+            invoke.resolve(result)
+        }
+        try {
+            if (args.item != CloudKeyStore.SIGN) return answer(cloudKeys.get(args.item))
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                return answer(CloudKeyStore.Read("error", message = "Accounts need Android 11 or later."))
+            }
+            cloudKeys.unlockSign(activity, args.reason ?: "", answer)
+        } catch (ex: Exception) {
+            answer(CloudKeyStore.Read("error", message = ex.message ?: ex.javaClass.simpleName))
+        }
+    }
+
+    /** Signing out: every account key item and both Keystore keys. `{ left }` */
+    @Command
+    fun cloudKeysClear(invoke: Invoke) {
+        try {
+            cloudKeys.clear()
+            val result = JSObject()
+            result.put("left", cloudKeys.hasAnyKey())
+            invoke.resolve(result)
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Keystore unavailable")
+        }
+    }
+
     /** Save the home-screen widget snapshot and redraw the placed widgets. */
     @Command
     fun updateWidgets(invoke: Invoke) {
@@ -302,13 +432,45 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    /** The notification tap that started the app, once: `{ id }`, or `{}`. */
+    /**
+     * The notification tap that started the app, once, and the account push
+     * taps since the last call: `{ id?, taps? }` (`taps` a JSON array).
+     */
     @Command
     fun takeLaunchNotification(invoke: Invoke) {
         val result = JSObject()
         launchNotification?.let { result.put("id", it) }
         launchNotification = null
+        val taps = synchronized(accountTaps) { accountTaps.toList().also { accountTaps.clear() } }
+        if (taps.isNotEmpty()) result.put("taps", taps.joinToString(",", "[", "]"))
         invoke.resolve(result)
+    }
+
+    /** What the push service needs to open letters (`Push.setContext`). */
+    @Command
+    fun setPushContext(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(PushContextArgs::class.java)
+            Push.setContext(activity.applicationContext, args.json)
+            invoke.resolve()
+        } catch (ex: Exception) {
+            invoke.reject(ex.message ?: "Could not keep the push context")
+        }
+    }
+
+    /** `{ configured, enabled, token?, error? }`: waits for Firebase's token. */
+    @Command
+    fun pushState(invoke: Invoke) {
+        val context = activity.applicationContext
+        val result = JSObject()
+        result.put("configured", Push.configured())
+        result.put("enabled", Push.notificationsEnabled(context))
+        if (!Push.configured()) return invoke.resolve(result)
+        Push.token(context) { token, error ->
+            token?.let { result.put("token", it) }
+            error?.let { result.put("error", it) }
+            invoke.resolve(result)
+        }
     }
 
     /**

@@ -62,7 +62,11 @@ Desktop is primary. CLI / server is the developer path.
   (`uv tool`, `pipx`, `pip`) were used through v2 and are sunset in v2.27.0.
   Prebuilt CLI archives cover Apple Silicon macOS, x86_64 Linux and x86_64 Windows;
   releases after v3.6.0 no longer ship Intel macOS or ARM Linux archives, and
-  `install.sh` says so on those machines.
+  `install.sh` says so on those machines. Since `[v3.61.0]` ARM Linux
+  archives are back (`install.sh --cli`, `agentd upgrade` and the Homebrew
+  formula use them), and the Linux binaries start on glibc 2.28 and newer
+  (Debian 10, Ubuntu 20.04, RHEL 8) instead of 2.35; on an older glibc
+  `install.sh` names the version it found and stops before downloading.
 - **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
@@ -105,6 +109,13 @@ Desktop is primary. CLI / server is the developer path.
   Since `[v3.1.0]`, `-C/--cd DIR` picks another workspace, `-c/--continue`
   continues the workspace's latest session, `--session ID` continues a given
   session, and `--json` prints every stream event as one JSON line.
+  Since `[v3.61.0]` a question no longer stops the run: the agent is told
+  that nobody can answer in a one-shot run, decides on its own and says what
+  it chose (a plan is saved without a review; a request for a secret still
+  stops the run). When the provider's usage limit resets more than 15 minutes
+  later, the run ends with an error that names the wait instead of sleeping
+  until the reset. `--model` works on an install that has only used the CLI:
+  the provider's model list is fetched when none is saved yet.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `agentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when

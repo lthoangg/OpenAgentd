@@ -29,6 +29,8 @@ pub const HELD_SUBMITS_META: &str = "plan_submits_held";
 /// Why a `plan` call in a turn nobody watches saves without a review.
 pub const UNATTENDED_SUBMIT: &str =
     "Not submitted for review: a scheduled task started this turn, so nobody is there to review it. Decide on your own and explain your choices in your final reply.";
+const ONE_SHOT_RUN_SUBMIT: &str =
+    "Not submitted for review: this is a one-shot run, so nobody is there to review it. Decide on your own and explain your choices in your final reply.";
 const MAX_EDITS: usize = 20;
 const MAX_SUMMARY_CHARS: usize = 600;
 
@@ -73,16 +75,18 @@ fn take_held_submit(ctx: &ToolContext) -> Option<String> {
 }
 
 /// Why a submission in a turn nobody watches saves without a review, if this
-/// turn is one: a scheduled task's, or a goal turn's own wording.
+/// turn is one: a scheduled task's, a one-shot run's, or a goal turn's own
+/// wording.
 fn unattended_submit(ctx: &ToolContext) -> Option<String> {
     let meta = ctx.metadata.lock().unwrap();
     if !meta.get(crate::agent::UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false) {
         return None;
     }
-    if meta.get(crate::agent::UNATTENDED_REASON_META).and_then(Value::as_str) == Some(crate::agent::UNATTENDED_GOAL) {
-        return Some(crate::prompts::s("goal_unattended_submit").to_string());
-    }
-    Some(UNATTENDED_SUBMIT.to_string())
+    Some(match meta.get(crate::agent::UNATTENDED_REASON_META).and_then(Value::as_str) {
+        Some(crate::agent::UNATTENDED_GOAL) => crate::prompts::s("goal_unattended_submit").to_string(),
+        Some(crate::agent::UNATTENDED_RUN) => ONE_SHOT_RUN_SUBMIT.to_string(),
+        _ => UNATTENDED_SUBMIT.to_string(),
+    })
 }
 
 /// A JSON value models sometimes send as a string holding JSON.

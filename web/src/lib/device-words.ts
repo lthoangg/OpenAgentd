@@ -18,13 +18,25 @@ export function thisDeviceName(): 'iPhone' | 'iPad' | 'phone' {
   return 'phone'
 }
 
+/** Whether this is an Android device (the Android app, or a browser on one). */
+export function isAndroidDevice(): boolean {
+  return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '')
+}
+
 /**
  * The phone the person adds this device with, as this device names it: an
  * iPhone adds a new iPad ("your iPhone"); a new iPhone is added by "your
- * other iPhone".
+ * other iPhone"; a new Android phone by "your other phone" (an iPhone or
+ * an Android phone may add it).
  */
-export function otherPhoneName(self: ReturnType<typeof thisDeviceName> = thisDeviceName()): string {
+export function otherPhoneName(self: ReturnType<typeof thisDeviceName> = thisDeviceName(), android = isAndroidDevice()): string {
+  if (android) return 'your other phone'
   return self === 'iPhone' ? 'your other iPhone' : 'your iPhone'
+}
+
+/** The phone in "No … nearby? Sign in with Google". */
+export function nearbyPhoneName(android = isAndroidDevice()): string {
+  return android ? 'other phone' : 'iPhone'
 }
 
 /** Kinds that are phones or tablets (they use computers, they do not serve). */

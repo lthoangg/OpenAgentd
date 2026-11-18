@@ -21,6 +21,8 @@ mod keyboard_bar;
 #[cfg(test)]
 mod preview_account_tests;
 mod push;
+#[cfg(target_os = "android")]
+mod push_android;
 mod taps;
 mod theme;
 mod updater;
@@ -278,25 +280,6 @@ fn save_last_account_device(app: &AppHandle, device_id: Option<&str>) {
         Some(id) => std::fs::write(path, id),
         None => std::fs::remove_file(path),
     };
-}
-
-/// Registers this phone's APNs token with the account, so its computers
-/// can send it end-to-end encrypted notifications. Asks for permission only
-/// if `prompt`.
-#[tauri::command]
-async fn cloud_push_register(prompt: Option<bool>) -> Result<push::PushState, String> {
-    let state = if prompt.unwrap_or(false) {
-        push::push_register().await
-    } else {
-        push::push_status().await
-    };
-    if let Some(registration) = state.registration.as_ref() {
-        if cloud::signed_in() {
-            let body = serde_json::to_value(registration).map_err(|e| e.to_string())?;
-            cloud::register_push(body).await?;
-        }
-    }
-    Ok(state)
 }
 
 /// Save what the home-screen widgets show (see `widgets.rs`).
@@ -798,7 +781,20 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|_app| {
             if let Ok(dir) = _app.path().app_data_dir() {
+                #[cfg(not(target_os = "android"))]
                 cloud::init(dir);
+                // The account keys live in the shell plugin's Keystore store.
+                #[cfg(target_os = "android")]
+                {
+                    use tauri_plugin_openagentd_android::AndroidShellExt;
+                    cloud::init(dir, _app.android_shell().clone());
+                }
+            }
+            #[cfg(target_os = "android")]
+            {
+                use tauri_plugin_openagentd_android::AndroidShellExt;
+                push::install(_app.android_shell().clone());
+                push_android::install(_app.handle());
             }
             taps::install(_app.handle());
             #[cfg(target_os = "ios")]
@@ -854,7 +850,7 @@ pub fn run() {
             taps::notification_take_taps,
             cloud_open_computer,
             cloud_rename_computer,
-            cloud_push_register,
+            push::cloud_push_register,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,

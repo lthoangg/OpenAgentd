@@ -1,4 +1,4 @@
-// size-ceiling: 2796 — move the test module, which is most of the file, to a sibling file
+// size-ceiling: 2566 — split the relay bridge (links, bridges, direct addresses) from the account flows
 //! The phone's optional account for Remote control: sign-in, the account's
 //! first roster (genesis) with its recovery code, approving computers with
 //! the 6-digit code behind Face ID, the device list, and the relay bridge
@@ -15,9 +15,11 @@
 //! `native/cloud`; the threat model is `appv3/contract/tunnel-threats.md`.
 //!
 //! Keys: on iOS the Keychain (`ios-widget/App/KeychainBridge.swift`), with
-//! the signing seed behind Face ID or the passcode. Elsewhere (desktop
-//! builds of this shell, used for development, and Android until its
-//! Keystore support lands) a file only the user can read.
+//! the signing seed behind Face ID or the passcode. On Android the Keystore
+//! (`android-plugin/.../CloudKeyStore.kt`, through `cloud_android.rs`), with
+//! the signing seed behind a strong biometric or the screen lock. Elsewhere
+//! (desktop builds of this shell, used for development) a file only the
+//! user can read.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -143,21 +145,30 @@ mod ios_keys {
     }
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(any(target_os = "android", test))]
+#[path = "cloud_android.rs"]
+mod android_keys;
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 struct FileKeys(openagentd_cloud::store::FileStore);
 
 /// The signing key is not in the Keychain. iOS deletes it when the
 /// passcode is turned off (`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`),
 /// and it does not come back with a new passcode.
+#[cfg(not(target_os = "android"))]
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 const SIGN_KEY_GONE: &str = "This iPhone can't add devices any more: its key was removed when the passcode was turned off. Use another phone that can add devices.";
+/// Android permanently invalidates a key that needs the user when the
+/// screen lock is turned off; a new screen lock does not bring it back.
+#[cfg(target_os = "android")]
+const SIGN_KEY_GONE: &str = "This phone can't add devices any more: its key was removed when the screen lock was turned off. Use another phone that can add devices.";
 
 /// Tests: the next `unlock_sign` fails as if the person cancelled Face ID.
-#[cfg(all(test, not(target_os = "ios")))]
+#[cfg(all(test, not(any(target_os = "ios", target_os = "android"))))]
 pub(crate) static CANCEL_NEXT_UNLOCK: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 impl PhoneKeys for FileKeys {
     fn load(&self) -> Result<Option<Identity>, String> {
         openagentd_cloud::store::load(&self.0).map_err(|e| e.to_string())
@@ -230,10 +241,13 @@ pub enum Notice {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Status {
-    /// `supported`: false where this build cannot keep account keys.
+    /// `supported`: false where this build cannot keep account keys, and
+    /// then `unsupported` says why (Android: too old, or no secure hardware).
     Guest {
         notice: Option<Notice>,
         supported: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        unsupported: Option<&'static str>,
         /// Seconds to wait before trying again (`rate_limited`).
         #[serde(skip_serializing_if = "Option::is_none")]
         retry_after: Option<u64>,
@@ -397,18 +411,32 @@ struct RelayContext {
 
 static PHONE: OnceLock<Phone> = OnceLock::new();
 
-fn supported() -> bool {
-    // Android keeps keys in its Keystore, which is a later step.
-    !cfg!(target_os = "android")
+/// Why this build or phone can never hold an account's keys, if it
+/// cannot (Android: older than Android 11, or a Keystore without secure
+/// hardware in a release build). The account controls then show this line.
+fn unsupported_reason() -> Option<&'static str> {
+    #[cfg(target_os = "android")]
+    return android_keys::unsupported();
+    #[cfg(not(target_os = "android"))]
+    None
 }
 
-/// Why this device cannot hold an account's keys now, if it cannot: on
-/// iOS the signing key needs a passcode (Keychain `.userPresence`, only
-/// while a passcode is set), so a phone without one is told before it
-/// signs in rather than after the recovery code.
+fn supported() -> bool {
+    unsupported_reason().is_none()
+}
+
+/// Why this device cannot hold an account's keys now, if it cannot: the
+/// signing key needs a passcode or screen lock (iOS Keychain
+/// `.userPresence`, only while a passcode is set; an Android Keystore key
+/// that needs the user), so a phone without one is told before it signs in
+/// rather than after the recovery code.
 fn keys_unavailable() -> Option<String> {
-    if !supported() {
-        return Some("Accounts are not available on this device yet.".into());
+    if let Some(why) = unsupported_reason() {
+        return Some(why.into());
+    }
+    #[cfg(target_os = "android")]
+    if android_keys::no_screen_lock() {
+        return Some(NO_PASSCODE.into());
     }
     #[cfg(target_os = "ios")]
     {
@@ -423,14 +451,26 @@ fn keys_unavailable() -> Option<String> {
 }
 
 /// Shown when a phone without a passcode tries to sign in or join.
+#[cfg(not(target_os = "android"))]
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 const NO_PASSCODE: &str = "Set a passcode on this iPhone to use an OpenAgentd account. It protects the key that adds and removes devices.";
+/// Shown when a phone without a screen lock tries to sign in or join.
+#[cfg(target_os = "android")]
+const NO_PASSCODE: &str = "Set a screen lock on this phone to use an OpenAgentd account. It protects the key that adds and removes devices.";
 
-/// Called once at startup with the app's data directory.
-pub fn init(data_dir: std::path::PathBuf) {
+/// Called once at startup with the app's data directory. On Android the
+/// account keys go through the shell plugin's Keystore store.
+pub fn init(
+    data_dir: std::path::PathBuf,
+    #[cfg(target_os = "android")] shell: tauri_plugin_openagentd_android::AndroidShell<tauri::Wry>,
+) {
     #[cfg(target_os = "ios")]
     let keys: Box<dyn PhoneKeys> = Box::new(ios_keys::Keychain);
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(all(target_os = "android", debug_assertions))]
+    android_keys::load_dev_env(&data_dir);
+    #[cfg(target_os = "android")]
+    let keys: Box<dyn PhoneKeys> = android_keys::install(shell);
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let keys: Box<dyn PhoneKeys> = Box::new(FileKeys(openagentd_cloud::store::FileStore::new(
         data_dir.join("cloud").join("identity.json"),
     )));
@@ -489,6 +529,7 @@ fn status() -> Status {
         .unwrap_or(Status::Guest {
             notice: None,
             supported: false,
+            unsupported: None,
             retry_after: None,
         })
 }
@@ -497,6 +538,7 @@ fn guest(notice: Option<Notice>) -> Status {
     Status::Guest {
         notice,
         supported: supported(),
+        unsupported: unsupported_reason(),
         retry_after: None,
     }
 }
@@ -506,6 +548,7 @@ fn guest_after(e: &FlowError) -> Status {
     Status::Guest {
         notice: Some(notice_of(e)),
         supported: supported(),
+        unsupported: unsupported_reason(),
         retry_after: retry_after(e),
     }
 }
@@ -653,7 +696,10 @@ fn publish_push_context(member: Option<&Member>) {
             openagentd_cloud_push_context(text.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()))
         };
     }
-    #[cfg(not(target_os = "ios"))]
+    // The push service opens letters with it (`push_android.rs`).
+    #[cfg(target_os = "android")]
+    android_keys::set_push_context(member.and_then(push_context));
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let _ = member.map(push_context);
 }
 
@@ -806,7 +852,10 @@ async fn flow_error(e: FlowError) -> String {
 /// The one expiry wording, everywhere a code ran out.
 pub const CODE_TIMED_OUT: &str = "This code timed out. Show a new one.";
 /// A phone without the key that adds devices.
+#[cfg(not(target_os = "android"))]
 pub const CANT_ADD: &str = "This iPhone can't add devices. Use the phone you set up first.";
+#[cfg(target_os = "android")]
+pub const CANT_ADD: &str = "This phone can't add devices. Use the phone you set up first.";
 /// The codes did not match: nothing was added. Calm on purpose; the person
 /// most likely mistyped or started over.
 pub const NOT_ADDED: &str = "Not added. Try again on the device you're adding.";
@@ -1168,6 +1217,9 @@ async fn finish(member: Member) -> Result<(), String> {
 
 #[tauri::command]
 pub fn cloud_status() -> Status {
+    // A screen lock set or removed while the app was away counts at once.
+    #[cfg(target_os = "android")]
+    android_keys::refresh();
     status()
 }
 
@@ -2510,287 +2562,5 @@ pub async fn open_bridge(device_id: &str) -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_passcode_and_missing_key_say_what_to_do() {
-        assert!(NO_PASSCODE.starts_with("Set a passcode on this iPhone"));
-        assert!(SIGN_KEY_GONE.contains("passcode was turned off"));
-        assert!(SIGN_KEY_GONE.contains("another phone that can add devices"));
-        // A build that keeps keys in a file needs no passcode.
-        assert_eq!(keys_unavailable(), None);
-    }
-
-    #[test]
-    fn a_rename_answers_the_name_or_why_not() {
-        let ok = rename_answer(200, r#"{"name":"Work","default":"mini","custom":true}"#).unwrap();
-        assert_eq!(ok["name"], "Work");
-        assert_eq!(rename_answer(404, "").unwrap_err(), NAME_NEEDS_UPDATE);
-        assert_eq!(rename_answer(422, r#"{"detail":"name must be a string"}"#).unwrap_err(), "name must be a string");
-        assert_eq!(rename_answer(502, "x").unwrap_err(), "That computer answered 502.");
-    }
-
-    #[test]
-    fn status_serializes_for_the_web_ui() {
-        let s = serde_json::to_value(Status::Guest {
-            notice: Some(Notice::SignedOut),
-            supported: true,
-            retry_after: None,
-        })
-        .unwrap();
-        assert_eq!(
-            s,
-            serde_json::json!({"state": "guest", "notice": "signed_out", "supported": true})
-        );
-        let s = serde_json::to_value(Status::Recovery {
-            code: "X".into(),
-            check: [2, 9],
-        })
-        .unwrap();
-        assert_eq!(
-            s,
-            serde_json::json!({"state": "recovery", "code": "X", "check": [2, 9]})
-        );
-        // `recovering` and `recovered` only appear when true.
-        let signing_in = |recovering| Status::SigningIn {
-            user_code: "ABCD".into(),
-            url: "u".into(),
-            fingerprint: "f".into(),
-            expires_in: 600,
-            recovering,
-            add_link: None,
-        };
-        let s = serde_json::to_value(signing_in(false)).unwrap();
-        assert!(s.get("recovering").is_none(), "{s}");
-        let s = serde_json::to_value(signing_in(true)).unwrap();
-        assert_eq!(s["recovering"], true);
-        let connected = |recovered| Status::Connected {
-            fingerprint: "f".into(),
-            signer: true,
-            recovered,
-        };
-        let s = serde_json::to_value(connected(false)).unwrap();
-        assert_eq!(
-            s,
-            serde_json::json!({"state": "connected", "fingerprint": "f", "signer": true})
-        );
-        let s = serde_json::to_value(connected(true)).unwrap();
-        assert_eq!(s["recovered"], true);
-    }
-
-    #[test]
-    fn each_refusal_gets_its_own_notice_and_the_wait() {
-        let refused = |status: u16, code: &str, retry_after: Option<u64>| {
-            FlowError::Api(openagentd_cloud::api::ApiError {
-                status,
-                code: code.into(),
-                body: None,
-                retry_after,
-            })
-        };
-        let cases = [
-            (refused(429, "rate_limited", Some(60)), Notice::RateLimited),
-            (
-                refused(409, "too_many_pending", None),
-                Notice::TooManyPending,
-            ),
-            (refused(403, "device_limit", None), Notice::DeviceLimit),
-            (refused(409, "device_exists", None), Notice::DeviceExists),
-            (refused(0, "network", None), Notice::Unreachable),
-            (
-                FlowError::Problem(AccountProblem::Closing { deletes_at: None }),
-                Notice::AccountClosing,
-            ),
-            (
-                FlowError::Problem(AccountProblem::Unavailable),
-                Notice::AccountUnavailable,
-            ),
-            (refused(400, "invalid_request", None), Notice::Failed),
-            (FlowError::WrongRecoveryCode, Notice::WrongRecoveryCode),
-        ];
-        for (e, n) in cases {
-            assert_eq!(notice_of(&e), n, "{e:?}");
-        }
-        let s = serde_json::to_value(guest_after(&refused(429, "rate_limited", Some(60)))).unwrap();
-        assert_eq!(s["notice"], "rate_limited");
-        assert_eq!(s["retry_after"], 60);
-        let s = serde_json::to_value(guest_after(&refused(409, "too_many_pending", None))).unwrap();
-        assert_eq!(s["notice"], "too_many_pending");
-        assert!(s.get("retry_after").is_none());
-        let text = refusal_message(&openagentd_cloud::api::ApiError {
-            status: 403,
-            code: "device_limit".into(),
-            body: None,
-            retry_after: None,
-        })
-        .unwrap();
-        assert_eq!(text, "Your account has 10 devices; remove one first.");
-    }
-
-    #[test]
-    fn an_approver_gives_the_asked_roles_or_fewer() {
-        // Defaults: what it asked for; a signer when it opens sessions.
-        let g = grant_of(Roles::BOTH, None, None, None).unwrap();
-        assert_eq!((g.signer, g.roles), (true, Roles::BOTH));
-        let g = grant_of(Roles::SERVER, None, None, None).unwrap();
-        assert_eq!((g.signer, g.roles), (false, Roles::SERVER));
-        // Turning one off is fine; turning one on, or both off, is not.
-        assert_eq!(
-            grant_of(Roles::BOTH, Some(false), Some(true), Some(false))
-                .unwrap()
-                .roles,
-            Roles::SERVER
-        );
-        assert!(grant_of(Roles::CLIENT, None, Some(true), None).is_err());
-        assert!(grant_of(Roles::BOTH, None, Some(false), Some(false)).is_err());
-    }
-
-    fn three_devices() -> (Vec<roster::Device>, [String; 3]) {
-        let phone = DeviceKeys::generate();
-        let mac = DeviceKeys::generate();
-        let linux = DeviceKeys::generate();
-        let devices = vec![
-            roster::Device::of(&phone, true, Roles::CLIENT),
-            roster::Device::of(&mac, false, Roles::SERVER),
-            roster::Device::of(&linux, false, Roles::BOTH),
-        ];
-        (devices, [phone.id(), mac.id(), linux.id()])
-    }
-
-    fn info(id: &str, kind: Option<&str>, name: Option<&str>, departed: bool) -> DeviceInfo {
-        DeviceInfo {
-            device_id: id.into(),
-            signer: false,
-            added_at: Some(0),
-            revoked_at: departed.then_some(1),
-            kind: kind.map(String::from),
-            name: name.map(String::from),
-        }
-    }
-
-    #[test]
-    fn a_refused_rename_says_why_in_plain_words() {
-        let refused = |status: u16, code: &str| openagentd_cloud::api::ApiError {
-            status,
-            code: code.into(),
-            body: None,
-            retry_after: None,
-        };
-        assert_eq!(
-            rename_refusal(&refused(403, "not_signer")),
-            Some("Only a phone that can add devices can rename this device.")
-        );
-        assert_eq!(
-            rename_refusal(&refused(409, "unknown_device")),
-            Some("That device is no longer in your account.")
-        );
-        assert_eq!(
-            rename_refusal(&refused(429, "rate_limited")),
-            Some("Too many renames. Try again in a few minutes.")
-        );
-        assert_eq!(
-            rename_refusal(&refused(400, "invalid_request")),
-            Some("Use 1 to 40 characters, on one line.")
-        );
-        assert_eq!(rename_refusal(&refused(500, "boom")), None);
-    }
-
-    #[test]
-    fn servers_get_the_clouds_online_flag_and_unlisted_ones_are_offline() {
-        let (devices, [phone, mac, linux]) = three_devices();
-        let infos = [info(&mac, Some("macos"), Some("Studio"), false)];
-        let online = HashMap::from([(mac.clone(), true)]);
-        let rows = device_rows(&devices, &phone, &infos, Some(&online));
-        let of = |id: &str| rows.iter().find(|r| r.device_id == id).unwrap().clone();
-        assert_eq!(of(&phone).online, None, "a client has no presence");
-        assert!(of(&phone).me);
-        assert_eq!(of(&mac).online, Some(true));
-        assert_eq!(of(&mac).kind.as_deref(), Some("macos"));
-        assert_eq!(of(&mac).name.as_deref(), Some("Studio"));
-        assert_eq!(of(&linux).name, None, "unnamed");
-        assert_eq!(of(&linux).online, Some(false), "never opened presence");
-    }
-
-    #[test]
-    fn departed_devices_are_not_listed_but_unlisted_ones_stay() {
-        let (devices, [phone, mac, linux]) = three_devices();
-        // The cloud lists the mac as departed and says nothing of the linux box.
-        let infos = [info(&mac, Some("macos"), None, true)];
-        let rows = device_rows(&devices, &phone, &infos, None);
-        let ids: Vec<&str> = rows.iter().map(|r| r.device_id.as_str()).collect();
-        assert_eq!(ids, [phone.as_str(), linux.as_str()]);
-        // This phone stays whatever the cloud says of it.
-        let infos = [info(&phone, None, None, true)];
-        assert!(device_rows(&devices, &phone, &infos, None)
-            .iter()
-            .any(|r| r.me));
-    }
-
-    #[test]
-    fn a_failed_or_silent_usage_call_leaves_online_unknown() {
-        let (devices, [phone, mac, linux]) = three_devices();
-        let rows = device_rows(&devices, &phone, &[], None);
-        assert_eq!(rows.len(), 3, "the list itself still comes back");
-        assert!(rows.iter().all(|r| r.online.is_none()), "{rows:?}");
-        assert!(rows.iter().any(|r| r.device_id == mac) && rows.iter().any(|r| r.device_id == linux));
-        // The web UI reads `online: null` as "no dot".
-        let json = serde_json::to_value(&rows[1]).unwrap();
-        assert_eq!(json["online"], serde_json::Value::Null);
-    }
-
-    #[test]
-    fn a_bridge_origin_names_its_computer() {
-        let (_, [_, mac, _]) = three_devices();
-        let bridges = HashMap::from([(
-            "http://127.0.0.1:5999".to_string(),
-            BridgeEntry {
-                key: "k".into(),
-                device_id: mac.clone(),
-            },
-        )]);
-        let kinds = HashMap::from([(mac.clone(), Some("macos".to_string()))]);
-        let device = account_device_in(&bridges, &kinds, "http://127.0.0.1:5999/").unwrap();
-        assert_eq!(device.device_id, mac);
-        assert_eq!(device.fingerprint, keys::fingerprint(&mac).unwrap());
-        assert_eq!(device.kind.as_deref(), Some("macos"));
-        // Kind not known yet: still named by its fingerprint.
-        let device = account_device_in(&bridges, &HashMap::new(), "http://127.0.0.1:5999").unwrap();
-        assert_eq!(device.kind, None);
-        // Any other server is not an account computer.
-        assert_eq!(account_device_in(&bridges, &kinds, "http://192.168.1.20:4082"), None);
-    }
-
-    #[test]
-    fn file_keys_keep_the_signing_seed_on_update() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = FileKeys(openagentd_cloud::store::FileStore::new(
-            dir.path().join("identity.json"),
-        ));
-        let keys = DeviceKeys::generate();
-        let id = Identity::new(&keys);
-        store.save(&id).unwrap();
-        let mut without = id.clone();
-        let _ = without.split_sign();
-        without.account_id = Some("acct".into());
-        store.update(&without).unwrap();
-        let back = store.load().unwrap().unwrap();
-        assert_eq!(back.account_id.as_deref(), Some("acct"));
-        assert_eq!(back.keys().unwrap().sign.public(), keys.sign.public());
-        // A member restored with a stand-in signing key writes its roster
-        // back: the real seed must survive.
-        let stand_in = Identity::new(&back.keys_without_sign().unwrap());
-        let mut restored = Identity::new(&DeviceKeys::from_seeds(
-            Seed::from_b64(&back.auth).unwrap(),
-            Seed::from_b64(&back.r#box).unwrap(),
-            Seed::from_b64(&stand_in.sign).unwrap(),
-        ));
-        restored.roster = Some("next".into());
-        store.update(&restored).unwrap();
-        let back = store.load().unwrap().unwrap();
-        assert_eq!(back.roster.as_deref(), Some("next"));
-        assert_eq!(back.keys().unwrap().sign.public(), keys.sign.public());
-        store.clear().unwrap();
-        assert!(store.load().unwrap().is_none());
-    }
-}
+#[path = "tests/cloud.rs"]
+mod tests;

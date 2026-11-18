@@ -409,6 +409,21 @@ pub fn ui(cfg: &rs::RuntimeSettings, id: &str) -> ProviderUiSettings {
     cfg.providers.get(id).cloned().unwrap_or_default()
 }
 
+/// Fetches and saves `provider`'s model list when it is connected and has
+/// none. Only the app's model routes list models, so an install that has
+/// used nothing but the CLI knows no model until this runs.
+pub async fn list_models_if_none(provider: &str) {
+    let Some(entry) = find(provider) else { return };
+    let pui = ui(&rs::load_runtime_settings().unwrap_or_default(), provider);
+    if pui.is_disconnected || !pui.cached_models.is_empty() || !provider_is_configured(&entry) {
+        return;
+    }
+    let found = discover_provider_models(&entry, &saved_overrides(&entry)).await;
+    if !found.is_empty() {
+        let _ = rs::set_provider_cached_models(provider, &found);
+    }
+}
+
 /// `is_registered_model_id(model_id)`.
 pub fn is_registered_model_id(model_id: &str) -> bool {
     let Some((provider, model)) = model_id.split_once(':') else { return false };

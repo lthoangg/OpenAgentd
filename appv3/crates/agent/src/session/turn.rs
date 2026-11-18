@@ -396,6 +396,9 @@ impl AgentSession {
         }
         if opts.unattended {
             meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));
+        } else if crate::agent::is_one_shot_run() {
+            meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));
+            meta.insert(crate::agent::UNATTENDED_REASON_META.into(), json!(crate::agent::UNATTENDED_RUN));
         } else if goal.is_some() && !appv3_core::runtime_settings::goal_settings().allow_questions {
             // Nobody watches a goal by default: questions and plan reviews refuse.
             meta.insert(crate::agent::UNATTENDED_META.into(), json!(true));

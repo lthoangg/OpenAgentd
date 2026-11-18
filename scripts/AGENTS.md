@@ -47,6 +47,13 @@ generation, updater helpers, and code-health analysis.
   light and dark shots into `documents/assets/readme/` (`capture.mjs`), and
   `banner.mjs` renders `documents/assets/brand/banner/banner.html`. Never point
   it at a real data directory: screenshots must not show user sessions or paths.
+- `bench/`: the harness benchmark. `harbor_agent.py` is a Harbor adapter that
+  runs a released `agentd` on Terminal-Bench tasks in Docker, `release.py`
+  gets the Linux binary it uploads, and `run_log.py` totals a run's tokens
+  and cost; `bench/README.md` has the commands. Harbor is not a test
+  dependency, so only `release.py` and `run_log.py` are tested.
+  Runs write to `.openagentd/bench/`, and a run needs its own
+  `credentials.yaml`, never the installed app's.
 - `tests/`: pytest checks for these scripts and for installer, native-shell
   config, and release-workflow contracts; run them with `make verify-scripts`.
 

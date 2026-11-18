@@ -218,6 +218,14 @@ describe('Account page', () => {
     expect(screen.queryByText('Sign in to use your computers from anywhere.')).toBeNull()
   })
 
+  it('says why accounts are not supported, with no account controls', async () => {
+    shell({ state: 'guest', notice: null, supported: false, unsupported: "This phone can't keep account keys safely: its key store has no secure hardware." })
+    render(<PhoneAccountContent />)
+
+    expect(await screen.findByText("This phone can't keep account keys safely: its key store has no secure hardware.")).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
   it('shows the recovery sign-in code, opens the page only for https, and cancels', async () => {
     shell({ state: 'signing_in', user_code: 'WXYZ-1234', url: 'https://account.openagentd.dev/device', fingerprint: 'AA11 BB22', expires_in: 600, recovering: true }, {
       cloud_cancel: () => { status = { state: 'guest', notice: null, supported: true }; return status },

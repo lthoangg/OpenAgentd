@@ -233,3 +233,6 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   encrypted with an Android Keystore key, downloads open the system share
   sheet, and `http://` LAN servers are allowed (the server has no built-in
   TLS). See [Install the Android app](../../../mobile/INSTALL-ANDROID.md).
+  `[v3.61.0]` The Android app has Remote control, as the iPhone does (see
+  Remote control in [Remote access](app-remote-access.md)): Android 11 or
+  later with a screen lock.

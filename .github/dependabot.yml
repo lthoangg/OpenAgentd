@@ -14,10 +14,18 @@ updates:
     commit-message:
       prefix: "deps"
     groups:
+      # The oxc crates release together and only build at one version.
+      oxc:
+        patterns:
+          - "oxc_*"
       appv3-rust-minor-patch:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # Must match the one htmd uses, and htmd is pinned (see
+      # appv3/crates/tools/Cargo.toml).
+      - dependency-name: "markup5ever_rcdom"
 
   - package-ecosystem: "bun"
     directory: "/web"

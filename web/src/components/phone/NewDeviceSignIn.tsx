@@ -26,7 +26,7 @@ import { RecoverWithCode } from '@/components/account/RecoverWithCode'
 import { Body, displayUrl, noticeCopy, type NoticeCopy } from '@/components/settings/pages/remote-copy'
 import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
-import { otherPhoneName, thisDeviceName } from '@/lib/device-words'
+import { nearbyPhoneName, otherPhoneName, thisDeviceName } from '@/lib/device-words'
 import { openExternalUrl } from '@/lib/open-external'
 import { usePhoneCancel, usePhonePickNumber, usePhoneRecover, usePhoneSignIn } from '@/queries/phone-cloud'
 
@@ -211,7 +211,7 @@ export function NewDeviceSignIn({ status, initialView = 'scan' }: {
       {failure && <Callout tone="error" role="alert" className="w-full text-left">{failure.message}</Callout>}
       <div className="flex flex-col items-center gap-1 pt-2">
         <Button variant="link" size="sm" disabled={!signingIn && !guest} onClick={() => setView('google')}>
-          No iPhone nearby? Sign in with Google
+          No {nearbyPhoneName()} nearby? Sign in with Google
         </Button>
         <Button variant="link" size="sm" onClick={() => setView('recovery')}>
           Lost your phone? Use your recovery code

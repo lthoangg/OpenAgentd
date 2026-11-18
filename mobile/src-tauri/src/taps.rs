@@ -6,7 +6,10 @@
 //!   told with a `notification-tapped` event.
 //! * Android: the notification plugin reports a tap that started the app
 //!   before the page listens, so the launch intent's notification id is
-//!   read here; later taps reach the page through the plugin.
+//!   read here; later taps reach the page through the plugin. Account
+//!   pushes are posted by `OpenAgentdMessagingService`; the shell plugin
+//!   queues their taps (approval, session) and tells the page as the app
+//!   comes to the front.
 
 use serde::{Deserialize, Serialize};
 #[cfg(target_os = "ios")]
@@ -56,7 +59,7 @@ impl Tap {
 }
 
 /// The platform's JSON array of taps; anything malformed is left out.
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 pub fn parse(json: &str) -> Vec<Tap> {
     let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(json) else {
         return Vec::new();
@@ -134,12 +137,22 @@ fn take_platform(_app: &AppHandle) -> Vec<Tap> {
 #[cfg(target_os = "android")]
 fn take_platform(app: &AppHandle) -> Vec<Tap> {
     use tauri_plugin_openagentd_android::AndroidShellExt;
-    app.android_shell()
-        .take_launch_notification()
-        .ok()
-        .flatten()
-        .map(|id| vec![Tap::Local { id }])
-        .unwrap_or_default()
+    let Ok(launch) = app.android_shell().take_launch_notification() else {
+        return Vec::new();
+    };
+    let mut taps: Vec<Tap> = launch.id.map(|id| Tap::Local { id }).into_iter().collect();
+    // Only what parses as an account tap: a forged intent extra cannot
+    // reshape a route (`Tap::valid`).
+    taps.extend(
+        launch
+            .taps
+            .as_deref()
+            .map(parse)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| !matches!(t, Tap::Local { .. })),
+    );
+    taps
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]

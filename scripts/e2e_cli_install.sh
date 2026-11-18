@@ -28,6 +28,7 @@ else
   case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) TARGET=aarch64-apple-darwin ;;
     Linux-x86_64) TARGET=x86_64-unknown-linux-gnu ;;
+    Linux-aarch64) TARGET=aarch64-unknown-linux-gnu ;;
     *) echo "unsupported host" >&2; exit 2 ;;
   esac
 fi

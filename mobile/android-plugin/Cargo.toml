@@ -20,6 +20,8 @@ base64 = "0.23"
 # Same major as `openagentd-shell-core`; Cargo unifies them, so the store
 # registered here is the one shell-core's `keyring::Entry::new` resolves.
 keyring = { version = "3.6.3", default-features = false }
+# The account keys read from the Keystore are wiped from memory when dropped.
+zeroize = "1.8"
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }

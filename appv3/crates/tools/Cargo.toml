@@ -37,11 +37,13 @@ fancy-regex = "0.19"
 memchr = "2"
 globset = "0.4"
 os_pipe = "1"
-# HTML → Markdown for web_fetch. htmd is on html5ever 0.38 (and rcdom 0.38,
-# the latest htmd 0.5.6 still uses), `trafilatura` is on 0.39 and our direct
-# `scraper` is on 0.40, so the binary carries several parsers until htmd and
-# trafilatura move. markup5ever_rcdom must match htmd's (its `Element.node`);
-# html5ever must match scraper's (`HtmlTreeSink`).
+# HTML → Markdown for web_fetch. htmd is pinned to 0.5.6: 0.6.0 escapes `&`
+# as `\&` (inside link URLs too) and pads link text with spaces, which the
+# model then copies (compared on real pages, 2026-11-18). 0.5.6 is on
+# html5ever and rcdom 0.38, `trafilatura` is on 0.39 and our direct `scraper`
+# is on 0.40, so the binary carries several parsers. markup5ever_rcdom must
+# match htmd's (its `Element.node`); html5ever must match scraper's
+# (`HtmlTreeSink`).
 htmd = "=0.5.6"
 markup5ever_rcdom = "0.38"
 html5ever = "0.40"

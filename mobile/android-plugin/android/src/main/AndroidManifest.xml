@@ -18,12 +18,21 @@
   snapshot the app saved and open the app's own deep links, through
   WidgetLinkActivity (see there for why a link needs it).
 
+  The messaging service receives the account's pushes (Firebase Cloud
+  Messaging data messages) and posts them (OpenAgentdMessagingService.kt).
+  Not exported: only Firebase's own receiver starts it.
+
+  USE_BIOMETRIC: the system prompt (fingerprint, face or screen lock) that
+  unlocks the account's signing key before it adds or removes a device
+  (CloudKeyStore.kt). A normal permission: granted at install.
+
   REQUEST_INSTALL_PACKAGES: the in-app updater (ShellPlugin.installApk)
   hands a downloaded, checksum-verified update APK to the system installer.
   Android still asks the user to allow it and to confirm every install.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <application android:networkSecurityConfig="@xml/openagentd_network_security_config">
         <provider
             android:name="app.openagentd.shell.ShellFileProvider"
@@ -42,6 +51,14 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <service
+            android:name="app.openagentd.shell.OpenAgentdMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name="app.openagentd.shell.QuickStartWidget"

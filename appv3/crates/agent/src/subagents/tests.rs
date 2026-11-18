@@ -426,6 +426,7 @@ async fn a_subagent_asking_its_lead_reports_that_it_waits() {
     reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
     assert!(subagents_waiting_on_lead().contains(&child_sid));
 
+    let _clients = broadcaster::TEST_CLIENTS_LOCK.lock().await;
     let mut feed = broadcaster::broadcaster().attach();
     on_subagent_question_asked(lead, &child_sid, &json!({"question": "Which branch?"}), &pool).await;
     let status = loop {

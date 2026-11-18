@@ -43,7 +43,7 @@ Options:
 
 Supported platforms:
     Desktop app: macOS 11+ on Apple Silicon, Debian/Ubuntu Linux on x86_64
-    CLI:         macOS on Apple Silicon, Linux (glibc) on x86_64
+    CLI:         macOS on Apple Silicon, Linux (glibc 2.35+) on x86_64
 EOF
 }
 
@@ -192,6 +192,23 @@ cli_target() {
             if ldd --version 2>&1 | grep -qi musl; then
                 fail "musl-based Linux (e.g. Alpine) is not supported yet; the CLI needs glibc. $SOURCE_HINT"
             fi
+            # The binary is built on Ubuntu 22.04 and does not start on an
+            # older glibc. The version is the last word of ldd's first line.
+            glibc="$(ldd --version 2>/dev/null || true)"
+            glibc="${glibc%%
+*}"
+            glibc="${glibc##* }"
+            glibc_major="${glibc%%.*}"
+            glibc_minor="${glibc#*.}"
+            glibc_minor="${glibc_minor%%.*}"
+            case "$glibc_major.$glibc_minor" in
+                *[!0-9.]*|.*|*.) ;;
+                *)
+                    if [ "$glibc_major" -lt 2 ] || { [ "$glibc_major" -eq 2 ] && [ "$glibc_minor" -lt 35 ]; }; then
+                        fail "this system has glibc $glibc; the prebuilt CLI needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12). $SOURCE_HINT"
+                    fi
+                    ;;
+            esac
             case "$arch" in
                 x86_64|amd64) TARGET="x86_64-unknown-linux-gnu" ;;
                 *) fail "unsupported Linux architecture: $arch (prebuilt CLI releases are x86_64 only). $SOURCE_HINT" ;;

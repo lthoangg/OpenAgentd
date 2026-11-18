@@ -62,7 +62,9 @@ Desktop is primary. CLI / server is the developer path.
   (`uv tool`, `pipx`, `pip`) were used through v2 and are sunset in v2.27.0.
   Prebuilt CLI archives cover Apple Silicon macOS, x86_64 Linux and x86_64 Windows;
   releases after v3.6.0 no longer ship Intel macOS or ARM Linux archives, and
-  `install.sh` says so on those machines.
+  `install.sh` says so on those machines. The Linux binary needs glibc 2.35
+  (Ubuntu 22.04, Debian 12); on an older glibc `install.sh` names the version
+  it found and stops before downloading.
 - **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.

@@ -64,7 +64,15 @@ once, and `-x terminal-bench/<task>` leaves a task out.
 Harbor runs attempt 1 of every task before attempt 2. A trial where `agentd`
 exits with an error is recorded as `NonZeroAgentExitCodeError`;
 `harbor job resume -p <job folder> -f NonZeroAgentExitCodeError` runs those
-trials again, for example after a usage limit resets.
+trials again.
+
+When a subscription's usage limit runs out, `agentd` does not exit: it waits
+for the reset inside the container, and the trial ends as `AgentTimeoutError`
+with whatever was done before the wait. Such a trial has a `provider_status`
+event with status `waiting_quota` in its log, and is not a result. Stop the
+run (`pkill -TERM -f "bin/harbor"`), delete the folders of the trials that
+have that event, and after the reset run
+`harbor job resume -p <job folder> -f CancelledError`.
 
 `harbor view .openagentd/bench/jobs` opens the results. Each trial folder
 holds `result.json` (reward, tokens, timing) and `agent/openagentd.jsonl`

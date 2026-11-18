@@ -6,13 +6,33 @@
 
 use crate::cli::RunArgs;
 use anyhow::{anyhow, bail, Context, Result};
-use appv3_agent::{events, manager, service, stream_store};
+use appv3_agent::{events, manager, retry::format_duration, service, stream_store};
 use serde_json::Value;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
+/// The longest a run waits for a provider's usage limit to reset. Nobody
+/// watches a one-shot run, and a script around it cannot tell a longer wait
+/// from a hang.
+const QUOTA_WAIT_LIMIT_SECONDS: f64 = 900.0;
+
 fn normalized(v: Option<&str>) -> Option<String> {
     v.map(str::trim).filter(|s| !s.is_empty()).map(String::from)
+}
+
+/// The error that ends the run when `status` (a `provider_status` event)
+/// announces a wait for a usage limit longer than [`QUOTA_WAIT_LIMIT_SECONDS`].
+fn quota_wait_error(status: &serde_json::Map<String, Value>) -> Option<String> {
+    if status.get("status").and_then(Value::as_str) != Some("waiting_quota") {
+        return None;
+    }
+    let wait = status.get("delay_seconds").and_then(Value::as_f64).filter(|w| *w > QUOTA_WAIT_LIMIT_SECONDS)?;
+    let model = status.get("model").and_then(Value::as_str).unwrap_or("the model");
+    Some(format!(
+        "{model} is at its provider's usage limit, which resets in {}; a run waits at most {} for a reset",
+        format_duration(wait),
+        format_duration(QUOTA_WAIT_LIMIT_SECONDS)
+    ))
 }
 
 /// One NDJSON line; `data` is embedded as JSON (a string if it is not).
@@ -48,7 +68,10 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
     let thinking = normalized(args.thinking.as_deref());
     if let Some(m) = &model {
         if !appv3_api::providers::is_registered_model_id(m) {
-            bail!("unknown model {m:?}; choose a model from the registry");
+            appv3_api::providers::list_models_if_none(m.split(':').next().unwrap_or_default()).await;
+            if !appv3_api::providers::is_registered_model_id(m) {
+                bail!("unknown model {m:?}; choose a model from the registry");
+            }
         }
     }
     appv3_api::startup::ensure_workspace_initialized()?;
@@ -109,6 +132,15 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
                     not_configured = true;
                     terminal_error = Some(s("message").unwrap_or_else(|| "the agent is not configured".into()));
                 }
+                "provider_status" => {
+                    if let Some(e) = quota_wait_error(&data) {
+                        service::interrupt_agent(&session, Some(&session_id)).await;
+                        terminal_error = Some(e);
+                        break;
+                    }
+                }
+                // Unattended turns refuse questions; this is what is left
+                // (a request for a secret, for one).
                 "question_asked" => {
                     service::interrupt_agent(&session, Some(&session_id)).await;
                     terminal_error = Some("the agent asked a question, which a non-interactive run cannot answer".into());
@@ -151,6 +183,7 @@ pub fn run(args: &RunArgs) -> Result<()> {
     crate::dotenv::migrate();
     // The agent's commands inherit this: see `AGENT_MARKER_ENV`.
     appv3_core::auth::mark_agent_process();
+    appv3_agent::agent::mark_one_shot_run();
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let res = rt.block_on(run_turn(args));
     rt.shutdown_background();
@@ -159,7 +192,17 @@ pub fn run(args: &RunArgs) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{footer, json_line};
+    use super::{footer, json_line, quota_wait_error};
+    use serde_json::json;
+
+    #[test]
+    fn only_a_long_wait_for_a_usage_limit_ends_the_run() {
+        let status = |status: &str, delay: f64| json!({"status": status, "model": "acme:big", "delay_seconds": delay}).as_object().unwrap().clone();
+        assert_eq!(quota_wait_error(&status("retrying", 4000.0)), None);
+        assert_eq!(quota_wait_error(&status("waiting_quota", 122.0)), None, "a reset two minutes away is waited out");
+        let error = quota_wait_error(&status("waiting_quota", 11_879.0)).unwrap();
+        assert_eq!(error, "acme:big is at its provider's usage limit, which resets in 3h 17m; a run waits at most 15m for a reset");
+    }
 
     #[test]
     fn the_footer_says_how_to_continue() {

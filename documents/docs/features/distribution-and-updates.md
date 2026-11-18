@@ -105,6 +105,13 @@ Desktop is primary. CLI / server is the developer path.
   Since `[v3.1.0]`, `-C/--cd DIR` picks another workspace, `-c/--continue`
   continues the workspace's latest session, `--session ID` continues a given
   session, and `--json` prints every stream event as one JSON line.
+  Since `[v3.61.0]` a question no longer stops the run: the agent is told
+  that nobody can answer in a one-shot run, decides on its own and says what
+  it chose (a plan is saved without a review; a request for a secret still
+  stops the run). When the provider's usage limit resets more than 15 minutes
+  later, the run ends with an error that names the wait instead of sleeping
+  until the reset. `--model` works on an install that has only used the CLI:
+  the provider's model list is fetched when none is saved yet.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `agentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when

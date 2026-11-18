@@ -32,9 +32,23 @@ pub const SUBMIT_MERGED: &str = "Merged into your later plan submission in this 
 /// and `plan` saves without opening a review.
 pub const UNATTENDED_META: &str = "unattended";
 /// Turn metadata key beside [`UNATTENDED_META`]: why nobody is there.
-/// `"goal"` is a goal turn; absent is a scheduled task.
+/// `"goal"` is a goal turn, `"run"` a one-shot `agentd run`; absent is a
+/// scheduled task.
 pub const UNATTENDED_REASON_META: &str = "unattended_reason";
 pub const UNATTENDED_GOAL: &str = "goal";
+pub const UNATTENDED_RUN: &str = "run";
+
+static ONE_SHOT_RUN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `agentd run` calls this: the process runs one turn for a caller that
+/// cannot answer, so every turn in it is unattended.
+pub fn mark_one_shot_run() {
+    ONE_SHOT_RUN.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn is_one_shot_run() -> bool {
+    ONE_SHOT_RUN.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// A `plan` call that also submits the plan for review.
 fn submits_plan(call: &ToolCall) -> bool {
@@ -54,9 +68,8 @@ fn unattended_refusal(tool: &str, reason: Option<&str>) -> String {
     if reason == Some(UNATTENDED_GOAL) {
         return crate::prompts::s("goal_unattended_refusal").replace("{tool}", tool);
     }
-    format!(
-        "Error: Tool '{tool}' is unavailable: a scheduled task started this turn, so nobody is there to answer. Decide on your own and explain your choices in your final reply."
-    )
+    let why = if reason == Some(UNATTENDED_RUN) { "this is a one-shot run" } else { "a scheduled task started this turn" };
+    format!("Error: Tool '{tool}' is unavailable: {why}, so nobody is there to answer. Decide on your own and explain your choices in your final reply.")
 }
 /// Hidden notes after a reply hit `max_tokens`, with and without a tool call.
 pub const TRUNCATED_TOOL_CALL_NOTICE: &str = "Error: Your tool call was truncated and could not be executed because you exceeded the maximum output token limit (max_tokens). Retry in smaller steps, for example several smaller `patch` calls instead of one large one.";

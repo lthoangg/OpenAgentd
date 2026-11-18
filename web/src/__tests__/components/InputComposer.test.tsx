@@ -325,6 +325,36 @@ describe("InputComposer — slash commands", () => {
     expect(slashCommand).toBe("new")
   })
 
+  // Android keyboards send Return as keyCode 229 with no Enter keydown: only
+  // a line-break input reaches the textarea.
+  it("picks the command when a touch keyboard's Return arrives only as a line-break input", async () => {
+    const user = userEvent.setup()
+    let slashCommand = ""
+    render(
+      <InputComposer
+        onSubmit={() => {}}
+        onSlashCommand={(id) => { slashCommand = id }}
+        slashCommands={[{ id: "new", label: "New", description: "Create new session" }]}
+      />,
+    )
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "/ne")
+    const ret = new InputEvent("beforeinput", { inputType: "insertLineBreak", bubbles: true, cancelable: true })
+    act(() => { textarea.dispatchEvent(ret) })
+    expect(ret.defaultPrevented).toBe(true)
+    expect(slashCommand).toBe("new")
+  })
+
+  it("leaves a line-break input alone when no menu is open", async () => {
+    const user = userEvent.setup()
+    render(<InputComposer onSubmit={() => {}} slashCommands={[{ id: "new", label: "New", description: "" }]} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "hello")
+    const ret = new InputEvent("beforeinput", { inputType: "insertLineBreak", bubbles: true, cancelable: true })
+    act(() => { textarea.dispatchEvent(ret) })
+    expect(ret.defaultPrevented).toBe(false)
+  })
+
   it("wires ARIA attributes on textarea to the listbox", async () => {
     const user = userEvent.setup()
     render(

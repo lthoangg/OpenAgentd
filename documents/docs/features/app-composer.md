@@ -135,6 +135,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
+  - **Return on a phone keyboard picks the command** `[v3.60.0]` — with the
+    slash, snippet or @-mention menu open, an Android keyboard's Return picks
+    the highlighted row instead of adding a new line.
   - **Undo messages** `[v3.57.0]` — `/undo-messages` (and **Undo messages to
     here** in a prompt's long-press sheet on a phone) takes the turn back out
     of the chat but leaves the workspace files as they are; `/undo` still

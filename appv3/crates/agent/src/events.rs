@@ -195,6 +195,15 @@ pub fn tool_output_delta(agent: &str, tool_call_id: Option<&str>, name: &str, te
     }))
 }
 
+/// A call a `script` made has ended. Live only, with no card: clients
+/// refresh what a direct call of `name` with `arguments` would have changed.
+pub fn nested_tool_end(agent: &str, tool_call_id: &str, name: &str, arguments: &str) -> Envelope {
+    Envelope::typed(json!({
+        "type": "nested_tool_end", "agent": agent, "tool_call_id": tool_call_id, "name": name,
+        "arguments": arguments, "metadata": {}
+    }))
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct UsageFrame {
     pub prompt_tokens: i64,

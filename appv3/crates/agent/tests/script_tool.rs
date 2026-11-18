@@ -6,6 +6,7 @@
 use appv3_agent::loader::ProviderFactory;
 use appv3_agent::plugins::{PluginCtx, ToolHooks, ToolPlugin};
 use appv3_agent::session::{AgentSession, UserMessage};
+use appv3_agent::stream_store::store;
 use appv3_agent::Agent;
 use appv3_providers::mock::{MockProvider, MockTurn};
 use appv3_providers::{ChatMessage, LlmProvider};
@@ -92,6 +93,8 @@ struct Run {
     provider: Arc<MockProvider>,
     pool: appv3_db::DbPool,
     sid: String,
+    /// The live feed of the turn: (event name, data).
+    events: Vec<(String, Value)>,
 }
 
 impl Run {
@@ -130,8 +133,17 @@ async fn turn(name: &str, ws: &Path, mode: &str, calls: &[(&str, &str, &str)]) -
     appv3_db::create_session(&pool, new).await.unwrap();
     let sid = id.to_string();
     session.handle_user_message(UserMessage { content: "go".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
+    let mut events = vec![];
+    if let Some(mut sub) = store().attach(&sid) {
+        let _ = tokio::time::timeout(Duration::from_secs(30), async {
+            while let Some(e) = sub.next().await {
+                events.push((e.event.clone(), serde_json::from_str(&e.data).unwrap_or(Value::Null)));
+            }
+        })
+        .await;
+    }
     tokio::time::timeout(Duration::from_secs(30), session.wait_turn_finished()).await.expect("turn settles");
-    Run { provider, pool, sid }
+    Run { provider, pool, sid, events }
 }
 
 fn workspace(name: &str) -> PathBuf {
@@ -170,6 +182,28 @@ return counts;
     let rows = appv3_db::llm_window_rows(&run.pool, &run.sid, false).await.unwrap();
     assert_eq!(rows.iter().filter(|r| r.tool_call_id.is_some() && r.role == "tool").count(), 1);
     assert_eq!(run.stored("s1").await, text);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn each_nested_call_tells_the_live_feed_it_ended_without_a_card_of_its_own() {
+    let ws = workspace("nested-events");
+    let code = r#"
+await tools.todo({ actions: [{ action: "create", content: "from a script" }] });
+await tools.read({ path: "src/b.txt" });
+"#;
+    let run = turn("nested-events", &ws, "code", &[("s1", "script", &script(code))]).await;
+    assert!(!run.result("s1").contains("error:"), "{}", run.result("s1"));
+    let nested: Vec<&Value> = run.events.iter().filter(|(e, _)| e == "nested_tool_end").map(|(_, d)| d).collect();
+    assert_eq!(nested.len(), 2, "{:?}", run.events);
+    assert_eq!(nested[0]["name"], "todo");
+    assert_eq!(nested[0]["tool_call_id"], "s1.1");
+    assert_eq!(nested[0]["agent"], "code");
+    assert!(nested[0]["arguments"].as_str().unwrap_or_default().contains("from a script"), "{}", nested[0]);
+    assert_eq!(nested[1]["name"], "read");
+    assert_eq!(nested[1]["tool_call_id"], "s1.2");
+    // The script keeps the only card: no tool_start or tool_end for the nested calls.
+    let carded: Vec<&str> = run.events.iter().filter(|(e, _)| e == "tool_start" || e == "tool_end").map(|(_, d)| d["name"].as_str().unwrap_or_default()).collect();
+    assert_eq!(carded, ["script", "script"], "{:?}", run.events);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

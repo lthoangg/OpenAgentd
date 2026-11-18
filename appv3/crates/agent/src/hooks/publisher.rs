@@ -261,6 +261,10 @@ impl Hook for StreamPublisherHook {
         self.push(events::tool_end(&self.agent, Some(&end_id), &tc.function.name, Some(result), metadata));
     }
 
+    async fn after_nested_tool(&self, _ctx: &RunContext, tc: &ToolCall) {
+        self.push(events::nested_tool_end(&self.agent, &tc.id, &tc.function.name, &tc.function.arguments));
+    }
+
     async fn on_rate_limit(&self, _ctx: &RunContext, retry_after: i64, attempt: i64, max_attempts: i64) {
         self.push(events::rate_limit(retry_after, attempt, max_attempts));
     }

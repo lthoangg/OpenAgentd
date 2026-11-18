@@ -478,6 +478,7 @@ export const SSE_EVENT_TYPES = [
   'tool_start',
   'tool_output_delta',
   'tool_end',
+  'nested_tool_end',
   'usage',
   'done',
   'error',

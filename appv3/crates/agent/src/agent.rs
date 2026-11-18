@@ -418,6 +418,8 @@ impl Agent {
             ctx: RunContext,
             meta: SharedMeta,
             hooks: Vec<HookRef>,
+            /// Every hook, told when each nested call ends.
+            all_hooks: Vec<HookRef>,
             tools: ToolSet,
             base: ToolContext,
             sem: tokio::sync::Semaphore,
@@ -431,6 +433,7 @@ impl Agent {
             ctx: ctx.clone(),
             meta: meta.clone(),
             hooks: hooks.iter().filter(|h| h.wraps_nested_calls()).cloned().collect(),
+            all_hooks: hooks.to_vec(),
             tools: tools.clone(),
             base,
             sem: tokio::sync::Semaphore::new(crate::tools::script::MAX_CONCURRENT_NESTED),
@@ -442,7 +445,13 @@ impl Agent {
             Box::pin(async move {
                 let n = env.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 let tc = ToolCall::new(format!("{}.{n}", env.parent), name, args.to_string());
-                match env.agent.run_tool(&env.ctx, &env.meta, &env.hooks, &env.tools, &env.base, &tc, &env.sem, None).await {
+                let r = env.agent.run_tool(&env.ctx, &env.meta, &env.hooks, &env.tools, &env.base, &tc, &env.sem, None).await;
+                if r.is_ok() {
+                    for h in &env.all_hooks {
+                        h.after_nested_tool(&env.ctx, &tc).await;
+                    }
+                }
+                match r {
                     Ok(r) if crate::hooks::lsp::is_failed_result(&r.text) => Err(r.text.trim_start().strip_prefix("Error:").unwrap_or(&r.text).trim().to_string()),
                     Ok(r) => Ok(r.text),
                     Err(_) => Err("the call paused for an answer, which a script cannot give".to_string()),

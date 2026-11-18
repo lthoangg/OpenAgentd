@@ -62,6 +62,10 @@ MCP.
   import helpers from its own folder. The tool row shows the code, a live
   list of the nested calls (time and size, errors in red), and the result,
   and looks the same after a reload.
+  Since `[v3.60.0]` a nested call refreshes the panels a direct call would,
+  as it finishes: a `patch` or `shell` updates the file tree, Git and an open
+  file, a `todo` the task board, and a `schedule` the scheduled tasks, with
+  the script still shown as one row.
 - **`preview` — show a page, read its console, and use it** `[v3.3.0]` — the agent
   opens a running local dev server or a workspace HTML file in your Preview
   tab (it comes forward on desktop, and the tool card has **Open preview**).

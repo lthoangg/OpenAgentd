@@ -1,9 +1,15 @@
-//! APNs device registration (iOS only; nothing else supports push yet).
+//! Push registration: APNs on iOS, Firebase Cloud Messaging on Android.
 //!
 //! Produces the registration agentd-cloud's `POST /v1/push/register` takes,
-//! field for field: `{ provider: "apns", token, environment }`. Nothing here
-//! sends it anywhere: `cloud_push_register` (lib.rs) sends it, signed by
-//! this phone, only when the person has an account.
+//! field for field: `{ provider: "apns", token, environment }` or
+//! `{ provider: "fcm", token }`. Nothing here sends it anywhere:
+//! `cloud_push_register` (lib.rs) sends it, signed by this phone, only when
+//! the person has an account.
+//!
+//! Android: the token and the notification permission come from the shell
+//! plugin (`Push.kt`); the push itself is opened by `OpenAgentdMessagingService`
+//! with [`open_letter`] (through `push_android.rs`). A build without Firebase
+//! settings reports `unsupported`.
 //!
 //! The environment comes from the app's own signature, never a guess: a
 //! token sent to the wrong APNs host is answered `BadDeviceToken` and the
@@ -13,15 +19,16 @@
 //! `mobile/ios-widget/App/PushBridge.swift`, which also explains how the
 //! token callbacks are attached to Tauri's app delegate.
 
-// Off iOS only the `unsupported` path runs; the rest is still compiled
-// (and unit-tested) on the host.
-#![cfg_attr(not(target_os = "ios"), allow(dead_code))]
+// Off the phones only the `unsupported` path runs; the rest is still
+// compiled (and unit-tested) on the host.
+#![cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
 
 use serde::Serialize;
 
 /// `UNAuthorizationStatus`, as far as push is concerned. Provisional and
-/// ephemeral authorization count as `Authorized`. `Unsupported`: a platform
-/// without APNs (everything but iOS).
+/// ephemeral authorization count as `Authorized`. On Android, whether the
+/// app's notifications are on. `Unsupported`: a platform without push (the
+/// desktop builds of this shell, or an Android build without Firebase).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PushAuthorization {
@@ -42,10 +49,13 @@ pub enum ApnsEnvironment {
 /// The body of agentd-cloud's `POST /v1/push/register`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PushRegistration {
+    /// "apns" or "fcm".
     pub provider: &'static str,
-    /// The APNs device token, lowercase hex.
+    /// The APNs device token (lowercase hex), or the FCM registration token.
     pub token: String,
-    pub environment: ApnsEnvironment,
+    /// APNs only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<ApnsEnvironment>,
 }
 
 /// What both calls resolve to. `registration` is set only when the app
@@ -62,11 +72,11 @@ pub struct PushState {
 
 impl PushState {
     #[cfg_attr(target_os = "ios", allow(dead_code))]
-    fn unsupported() -> Self {
+    fn unsupported(why: &str) -> Self {
         Self {
             status: PushAuthorization::Unsupported,
             registration: None,
-            error: Some("Push notifications are only available on iOS.".to_string()),
+            error: Some(why.to_string()),
         }
     }
 }
@@ -124,7 +134,7 @@ pub async fn push_register() -> PushState {
     run_blocking(|| platform::state(true)).await
 }
 
-/// Registers this phone's APNs token with the account, so its computers
+/// Registers this phone's APNs or FCM token with the account, so its computers
 /// can send it end-to-end encrypted notifications. Asks for permission only
 /// if `prompt`.
 #[tauri::command]
@@ -313,7 +323,7 @@ mod platform {
                 registration: Some(PushRegistration {
                     provider: "apns",
                     token,
-                    environment,
+                    environment: Some(environment),
                 }),
                 error: None,
             },
@@ -322,13 +332,128 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(target_os = "android")]
+mod platform {
+    use super::{PushAuthorization, PushRegistration, PushState};
+    use std::sync::OnceLock;
+    use tauri_plugin_openagentd_android::AndroidShell;
+
+    static SHELL: OnceLock<AndroidShell<tauri::Wry>> = OnceLock::new();
+
+    pub fn install(shell: AndroidShell<tauri::Wry>) {
+        let _ = SHELL.set(shell);
+    }
+
+    /// Android asks for the notification permission through the
+    /// notification plugin (the app's own notifications use it too), so
+    /// `prompt` changes nothing here.
+    pub fn state(_prompt: bool) -> PushState {
+        let Some(shell) = SHELL.get() else {
+            return PushState::unsupported("Push is not ready yet.");
+        };
+        match shell.push_state() {
+            Ok(p) => from_android(p.configured, p.enabled, p.token, p.error),
+            Err(e) => PushState {
+                status: PushAuthorization::NotDetermined,
+                registration: None,
+                error: Some(e),
+            },
+        }
+    }
+
+    fn from_android(configured: bool, enabled: bool, token: Option<String>, error: Option<String>) -> PushState {
+        if !configured {
+            return PushState::unsupported(super::NOT_SET_UP);
+        }
+        if !enabled {
+            return PushState { status: PushAuthorization::Denied, registration: None, error: None };
+        }
+        match token.filter(|t| !t.is_empty()) {
+            Some(token) => PushState {
+                status: PushAuthorization::Authorized,
+                registration: Some(PushRegistration { provider: "fcm", token, environment: None }),
+                error: None,
+            },
+            None => PushState {
+                status: PushAuthorization::Authorized,
+                registration: None,
+                error: Some(error.unwrap_or_else(|| "Firebase gave no token.".to_string())),
+            },
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+pub use platform::install;
+
+/// An Android build made without `OPENAGENTD_GOOGLE_SERVICES_JSON`.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+const NOT_SET_UP: &str = "Push notifications are not set up in this build.";
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod platform {
     use super::PushState;
 
     pub fn state(_prompt: bool) -> PushState {
-        PushState::unsupported()
+        PushState::unsupported("Push notifications are only available in the phone apps.")
     }
+}
+
+// ---- Opening a push on Android -------------------------------------------
+
+/// What an opened letter shows, for `OpenAgentdMessagingService`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OpenedLetter {
+    pub title: String,
+    pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The computer that sealed it.
+    pub sender: String,
+    /// done, needs_you or failed.
+    pub kind: &'static str,
+}
+
+/// The push context the shell keeps for the push service (`push_context` in
+/// cloud.rs): the account, this phone's device id, and each computer's box
+/// key (base64url) by device id.
+#[derive(serde::Deserialize)]
+struct LetterContext {
+    account_id: String,
+    me: String,
+    senders: std::collections::BTreeMap<String, String>,
+}
+
+/// Opens the sealed letter `l` of an FCM push (base64url) with this phone's
+/// box seed. A push carries only the letter, so each computer of the
+/// verified roster and each kind is tried: the AES-GCM tag fails for every
+/// wrong guess, and only a device of the account can make one that opens
+/// (`appv3/contract/tunnel.md`, section 6). `None` when nothing opens.
+pub fn open_letter(sealed: &str, box_seed: &str, context: &str) -> Option<OpenedLetter> {
+    use openagentd_cloud::encoding::{from_b64, from_b64_array};
+    use openagentd_cloud::keys::{Seed, X25519};
+    use openagentd_cloud::letter::{self, Context, Kind};
+
+    let ctx: LetterContext = serde_json::from_str(context).ok()?;
+    let sealed = from_b64(sealed).ok()?;
+    let me = X25519::from_seed(Seed::from_b64(box_seed).ok()?);
+    for (sender, key) in ctx.senders.iter().filter(|(id, _)| **id != ctx.me) {
+        let Ok(key) = from_b64_array::<32>(key) else { continue };
+        for kind in [Kind::Done, Kind::NeedsYou, Kind::Failed] {
+            let c = Context { account_id: &ctx.account_id, sender_id: sender, recipient_id: &ctx.me, kind };
+            if let Ok(text) = letter::open(&me, &key, &c, &sealed) {
+                let cut = |s: &str, n: usize| s.chars().take(n).collect::<String>();
+                return Some(OpenedLetter {
+                    title: cut(&text.title, 120),
+                    body: cut(&text.body, 600),
+                    session: text.session,
+                    sender: sender.clone(),
+                    kind: kind.as_str(),
+                });
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -409,7 +534,7 @@ mod tests {
             registration: Some(PushRegistration {
                 provider: "apns",
                 token: "a1b2".into(),
-                environment: ApnsEnvironment::Sandbox,
+                environment: Some(ApnsEnvironment::Sandbox),
             }),
             error: None,
         };
@@ -431,9 +556,65 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_os = "ios"))]
+    #[test]
+    fn an_fcm_registration_has_no_environment() {
+        let fcm = PushRegistration { provider: "fcm", token: "fcm-token".into(), environment: None };
+        assert_eq!(serde_json::to_value(&fcm).unwrap(), json!({ "provider": "fcm", "token": "fcm-token" }));
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     #[test]
     fn other_platforms_report_unsupported() {
         assert_eq!(platform::state(true).status, PushAuthorization::Unsupported);
+    }
+
+    mod letters {
+        use super::super::*;
+        use openagentd_cloud::encoding::b64;
+        use openagentd_cloud::keys::{Seed, X25519};
+        use openagentd_cloud::letter::{self, Context, Kind, Text};
+
+        fn seed() -> (Seed, String) {
+            let bytes: [u8; 32] = openagentd_cloud::keys::random_bytes();
+            (Seed::from_b64(&b64(&bytes)).unwrap(), b64(&bytes))
+        }
+
+        /// A computer seals a Needs you letter to the phone; the push service opens it.
+        #[test]
+        fn opens_a_letter_from_a_computer_of_the_roster() {
+            let (phone_seed, phone_b64) = seed();
+            let phone = X25519::from_seed(phone_seed);
+            let (computer_seed, _) = seed();
+            let computer = X25519::from_seed(computer_seed);
+            let (other_seed, _) = seed();
+            let other = X25519::from_seed(other_seed);
+            let ctx = Context { account_id: "acct", sender_id: "mac", recipient_id: "phone", kind: Kind::NeedsYou };
+            let text = Text { v: 1, title: "Build box".into(), body: "Needs your answer".into(), session: Some("s-1".into()), at: 1 };
+            let sealed = b64(&letter::seal(&computer, &phone.public(), &ctx, &text).unwrap());
+            let context = serde_json::json!({
+                "account_id": "acct",
+                "me": "phone",
+                "senders": { "linux": b64(&other.public()), "mac": b64(&computer.public()) },
+            })
+            .to_string();
+            let opened = open_letter(&sealed, &phone_b64, &context).expect("it opens");
+            assert_eq!(
+                opened,
+                OpenedLetter {
+                    title: "Build box".into(),
+                    body: "Needs your answer".into(),
+                    session: Some("s-1".into()),
+                    sender: "mac".into(),
+                    kind: "needs_you",
+                }
+            );
+            // A computer not in the roster, a wrong key, or junk: nothing opens.
+            let without = serde_json::json!({ "account_id": "acct", "me": "phone", "senders": { "linux": b64(&other.public()) } }).to_string();
+            assert_eq!(open_letter(&sealed, &phone_b64, &without), None);
+            let (_, wrong_b64) = seed();
+            assert_eq!(open_letter(&sealed, &wrong_b64, &context), None);
+            assert_eq!(open_letter("not base64!", &phone_b64, &context), None);
+            assert_eq!(open_letter(&sealed, &phone_b64, "{}"), None);
+        }
     }
 }

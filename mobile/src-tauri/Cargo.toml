@@ -66,8 +66,8 @@ dispatch2 = "0.3"
 # tauri-build adds its Kotlin library to the generated Gradle project.
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-openagentd-android = { path = "../android-plugin" }
-# The screen-lock check runs on whatever thread asks (`cloud_android.rs`):
-# plain JNI.
+# The screen-lock check runs on whatever thread asks (`cloud_android.rs`),
+# and the push service opens letters through `push_android.rs`: plain JNI.
 jni = "0.21"
 ndk-context = "0.1"
 

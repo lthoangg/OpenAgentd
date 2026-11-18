@@ -83,6 +83,10 @@ describe('desktop notification library integration', () => {
     await runWorker('leaves Done and Needs you to the push')
   })
 
+  it('leaves Done and Needs you to the account push while the Android app is hidden', async () => {
+    await runWorker('hands Done and Needs you to the FCM push while the Android app is hidden')
+  })
+
   it('skips events handled just after the iPhone app comes back when the push showed them', async () => {
     await runWorker('skips events handled just after the app comes back')
   })

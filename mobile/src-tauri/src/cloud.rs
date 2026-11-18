@@ -1,4 +1,4 @@
-// size-ceiling: 2563 — split the relay bridge (links, bridges, direct addresses) from the account flows
+// size-ceiling: 2566 — split the relay bridge (links, bridges, direct addresses) from the account flows
 //! The phone's optional account for Remote control: sign-in, the account's
 //! first roster (genesis) with its recovery code, approving computers with
 //! the 6-digit code behind Face ID, the device list, and the relay bridge
@@ -696,7 +696,10 @@ fn publish_push_context(member: Option<&Member>) {
             openagentd_cloud_push_context(text.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()))
         };
     }
-    #[cfg(not(target_os = "ios"))]
+    // The push service opens letters with it (`push_android.rs`).
+    #[cfg(target_os = "android")]
+    android_keys::set_push_context(member.and_then(push_context));
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let _ = member.map(push_context);
 }
 

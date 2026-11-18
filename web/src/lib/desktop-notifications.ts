@@ -38,10 +38,11 @@ export interface DesktopNotificationResult {
 let permissionRequested = false
 
 /**
- * Kinds a computer also sends to its account's phones as an APNs push
- * (``appv3/crates/api/src/cloud/letters.rs``). On such an iPhone the push
- * covers the app in the background and iOS hides it while the app is open,
- * so the app shows these itself only while it is open.
+ * Kinds a computer also sends to its account's phones as a push (APNs or
+ * FCM, ``appv3/crates/api/src/cloud/letters.rs``). On such a phone the push
+ * covers the app in the background, and while the app is open the push for
+ * the computer it is on is not shown (iOS hides it; the Android push service
+ * skips it), so the app shows these itself only while it is open.
  */
 const PUSHED_KINDS: ReadonlySet<DesktopNotificationKind> = new Set(['assistant_done', 'input_needed'])
 /**
@@ -117,7 +118,7 @@ async function shouldNotify(
   }
   // Before ``force``: a question would otherwise arrive twice, once from here
   // and once as the push.
-  if (getPlatform().os === 'ios' && PUSHED_KINDS.has(kind) && (options.replayed || !appOpenOnScreen()) && (await phoneReceivesPush())) {
+  if (isMobileApp() && PUSHED_KINDS.has(kind) && (options.replayed || !appOpenOnScreen()) && (await phoneReceivesPush())) {
     return { status: 'disabled', message: 'The account push shows this while the app is in the background.' }
   }
   if (options.force) return null

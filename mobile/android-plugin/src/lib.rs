@@ -31,7 +31,7 @@ use tauri::{
 mod android;
 
 #[cfg(target_os = "android")]
-pub use android::{AndroidShell, AndroidShellExt, KeyRead, KeysAvailability};
+pub use android::{AndroidShell, AndroidShellExt, KeyRead, KeysAvailability, LaunchTaps, PushState};
 
 /// Build the plugin. On Android this registers the Kotlin `ShellPlugin`,
 /// manages an [`AndroidShell`] handle, and installs the Keystore-backed

@@ -140,6 +140,36 @@ fn device_secure() -> Option<bool> {
     result
 }
 
+/// What the push service needs to open letters (account id, this phone's
+/// device id, its computers' box keys; not secret), or `None` to forget it.
+/// Written in the background: the roster changes on async workers.
+#[cfg(target_os = "android")]
+pub fn set_push_context(context: Option<serde_json::Value>) {
+    let Some(shell) = SHELL.get().cloned() else { return };
+    let text = context.map(|c| c.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = shell.set_push_context(text.as_deref());
+    });
+}
+
+/// Debug Android builds: an Android app gets no environment of its own, so
+/// the variables a developer sets elsewhere to use a development cloud
+/// (`OPENAGENTD_CLOUD_API`, `OPENAGENTD_CLOUD_ACCOUNT`, read only by debug
+/// builds, `native/cloud/src/endpoints.rs`) come from `<app data>/dev.env`,
+/// one `NAME=value` per line, written with `adb shell run-as`. Other names
+/// are ignored.
+#[cfg(all(target_os = "android", debug_assertions))]
+pub fn load_dev_env(dir: &std::path::Path) {
+    let Ok(text) = std::fs::read_to_string(dir.join("dev.env")) else { return };
+    for line in text.lines() {
+        if let Some((name, value)) = line.trim().split_once('=') {
+            if matches!(name, "OPENAGENTD_CLOUD_API" | "OPENAGENTD_CLOUD_ACCOUNT") {
+                std::env::set_var(name, value);
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "android")]
 fn shell() -> Result<&'static AndroidShell<tauri::Wry>, String> {
     SHELL.get().ok_or_else(|| "The key store is not ready.".to_string())

@@ -18,6 +18,10 @@
   snapshot the app saved and open the app's own deep links, through
   WidgetLinkActivity (see there for why a link needs it).
 
+  The messaging service receives the account's pushes (Firebase Cloud
+  Messaging data messages) and posts them (OpenAgentdMessagingService.kt).
+  Not exported: only Firebase's own receiver starts it.
+
   USE_BIOMETRIC: the system prompt (fingerprint, face or screen lock) that
   unlocks the account's signing key before it adds or removes a device
   (CloudKeyStore.kt). A normal permission: granted at install.
@@ -47,6 +51,14 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <service
+            android:name="app.openagentd.shell.OpenAgentdMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name="app.openagentd.shell.QuickStartWidget"

@@ -74,6 +74,24 @@ struct KeyItem<'a> {
     reason: Option<&'a str>,
 }
 
+#[derive(Serialize)]
+struct PushContext<'a> {
+    json: Option<&'a str>,
+}
+
+/// What `pushState` answers.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PushState {
+    /// This build has Firebase settings (`OPENAGENTD_GOOGLE_SERVICES_JSON`).
+    pub configured: bool,
+    /// Notifications are allowed for the app.
+    pub enabled: bool,
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct KeysCleared {
     left: bool,
@@ -92,10 +110,15 @@ struct WidgetPayload<'a> {
     snapshot: &'a str,
 }
 
+/// What `takeLaunchNotification` answers.
 #[derive(Deserialize)]
-struct LaunchNotification {
+pub struct LaunchTaps {
+    /// The app's own notification whose tap started the app.
     #[serde(default)]
-    id: Option<i64>,
+    pub id: Option<i64>,
+    /// Account push taps since the last call, as a JSON array (`taps.rs`).
+    #[serde(default)]
+    pub taps: Option<String>,
 }
 
 impl<R: Runtime> AndroidShell<R> {
@@ -128,12 +151,12 @@ impl<R: Runtime> AndroidShell<R> {
     }
 
     /// The id of the app's notification whose tap started the app, once
-    /// (the notification plugin reports that tap before the page listens).
-    /// Blocks on the JNI call; call it off the async runtime.
-    pub fn take_launch_notification(&self) -> Result<Option<i64>, String> {
+    /// (the notification plugin reports that tap before the page listens),
+    /// and the account push taps queued since the last call. Blocks on the
+    /// JNI call; call it off the async runtime.
+    pub fn take_launch_notification(&self) -> Result<LaunchTaps, String> {
         self.0
-            .run_mobile_plugin::<LaunchNotification>("takeLaunchNotification", ())
-            .map(|n| n.id)
+            .run_mobile_plugin::<LaunchTaps>("takeLaunchNotification", ())
             .map_err(|e| format!("Launch notification: {e}"))
     }
 
@@ -184,6 +207,24 @@ impl<R: Runtime> AndroidShell<R> {
         self.0
             .run_mobile_plugin::<KeysCleared>("cloudKeysClear", ())
             .map(|c| c.left)
+            .map_err(|e| format!("{e}"))
+    }
+
+    /// Keep (or, given `None`, forget) what the push service needs to open
+    /// letters: the account id, this phone's device id and its computers'
+    /// box keys, as JSON. Not secret. Blocks on the JNI call.
+    pub fn set_push_context(&self, json: Option<&str>) -> Result<(), String> {
+        self.0
+            .run_mobile_plugin::<serde::de::IgnoredAny>("setPushContext", PushContext { json })
+            .map(|_| ())
+            .map_err(|e| format!("{e}"))
+    }
+
+    /// Notification permission and this phone's FCM registration token.
+    /// Waits for Firebase (network); call it off the async runtime.
+    pub fn push_state(&self) -> Result<PushState, String> {
+        self.0
+            .run_mobile_plugin("pushState", ())
             .map_err(|e| format!("{e}"))
     }
 

@@ -21,6 +21,8 @@ mod keyboard_bar;
 #[cfg(test)]
 mod preview_account_tests;
 mod push;
+#[cfg(target_os = "android")]
+mod push_android;
 mod taps;
 mod theme;
 mod updater;
@@ -787,6 +789,12 @@ pub fn run() {
                     use tauri_plugin_openagentd_android::AndroidShellExt;
                     cloud::init(dir, _app.android_shell().clone());
                 }
+            }
+            #[cfg(target_os = "android")]
+            {
+                use tauri_plugin_openagentd_android::AndroidShellExt;
+                push::install(_app.android_shell().clone());
+                push_android::install(_app.handle());
             }
             taps::install(_app.handle());
             #[cfg(target_os = "ios")]

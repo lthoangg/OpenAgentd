@@ -430,7 +430,8 @@ mod tests {
     #[test]
     fn an_icon_is_kept_only_when_it_is_plain_path_data() {
         let entry = |icon: Value| {
-            let doc = json!({"version": 1, "entries": [{"type": "connector", "id": "x", "name": "X", "description": "d", "url": "https://x.example/mcp", "auth": "none", "icon": icon}]});
+            let doc =
+                json!({"version": 1, "entries": [{"type": "connector", "id": "x", "name": "X", "description": "d", "url": "https://x.example/mcp", "auth": "none", "icon": icon}]});
             parse(&doc.to_string(), "3.60.0").unwrap().remove(0)
         };
         let good = entry(json!({"path": "M24 0V24l-9.365-8.045V24H0V0Z", "view_box": "0 0 24 24"}));

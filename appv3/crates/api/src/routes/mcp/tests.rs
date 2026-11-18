@@ -80,14 +80,7 @@ fn only_a_plugins_server_carries_a_plugin_label() {
 /// and logo; one at any other address carries none.
 #[test]
 fn a_gallery_connector_carries_its_name_and_logo() {
-    let http = |url: &str| ServerConfig::Http {
-        url: url.into(),
-        kind: HttpKind::Auto,
-        headers: IndexMap::new(),
-        enabled: true,
-        timeout: None,
-        oauth: None,
-    };
+    let http = |url: &str| ServerConfig::Http { url: url.into(), kind: HttpKind::Auto, headers: IndexMap::new(), enabled: true, timeout: None, oauth: None };
     let notion = status_json(&status(None), Some(&http("https://MCP.notion.com/mcp/")));
     assert_eq!(notion["gallery"]["id"], "notion");
     assert_eq!(notion["gallery"]["name"], "Notion");

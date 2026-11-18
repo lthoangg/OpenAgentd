@@ -18,6 +18,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorDeleteRow } from '@/components/settings/EditorDeleteRow'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
+import { ConnectorIcon } from '@/components/ConnectorIcon'
 import { SaveBar } from '@/components/settings/SaveBar'
 import { McpServerForm } from '@/components/settings/McpServerForm'
 import { McpSignInWaiting } from '@/components/settings/McpSignInWaiting'
@@ -173,6 +174,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
       <EditorSubHeader
         kind="mcp"
         name={label}
+        leading={server?.gallery ? <ConnectorIcon name={server.gallery.name} icon={server.gallery.icon} /> : undefined}
         path={owned ? undefined : '.openagentd/config/mcp.json'}
         dirty={dirty}
         invalid={invalid}

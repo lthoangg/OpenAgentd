@@ -196,7 +196,7 @@ describe('SessionMcpServers', () => {
 
     const linear = await waitFor(() => row('linear'))
     expect(within(linear).getByText('Needs sign-in')).toBeTruthy()
-    expect(within(linear).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(linear).getByRole('button', { name: 'Connect' })).toBeTruthy()
     expect(within(row('notion')).getByRole('button', { name: 'Reconnect' })).toBeTruthy()
     // A working server needs nothing.
     expect(within(row('asana')).queryByRole('button')).toBeNull()
@@ -217,7 +217,7 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['plain'] })
 
     const plain = await waitFor(() => row('plain'))
-    expect(within(plain).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(plain).getByRole('button', { name: 'Connect' })).toBeTruthy()
   })
 
   it('offers Sign in to an sse server that needs it', async () => {
@@ -233,7 +233,7 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['legacy'] })
 
     const legacy = await waitFor(() => row('legacy'))
-    expect(within(legacy).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(legacy).getByRole('button', { name: 'Connect' })).toBeTruthy()
   })
 
   it('offers Sign in to a plugin server that needs it, whatever its config says', async () => {
@@ -250,7 +250,7 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['changelog-tools/remote'] })
 
     const remote = await waitFor(() => screen.getByRole('listitem', { name: 'changelog-tools/remote' }))
-    expect(within(remote).getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(within(remote).getByRole('button', { name: 'Connect' })).toBeTruthy()
   })
 
   it('does not offer Reconnect to a failed http server without an oauth block', async () => {
@@ -308,7 +308,7 @@ describe('SessionMcpServers', () => {
     renderSection({ agentServers: ['linear'] })
 
     const linear = await waitFor(() => row('linear'))
-    await userEvent.click(within(linear).getByRole('button', { name: 'Sign in' }))
+    await userEvent.click(within(linear).getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(connectCalled).toBe(true))
   })
@@ -331,7 +331,7 @@ describe('SessionMcpServers', () => {
 
     renderSection({ agentServers: [] })
 
-    expect(await screen.findByText(/^No connectors for this agent\./)).toBeTruthy()
+    expect(await screen.findByText(/^No connectors for this agent yet\./)).toBeTruthy()
   })
 
   it('reports a failure to load the server list', async () => {
@@ -378,6 +378,24 @@ describe('SessionMcpServers', () => {
 
     const figma = await waitFor(() => row('figma'))
     expect(within(figma).getByText(/spawn figma-mcp ENOENT/)).toBeTruthy()
+  })
+
+  it('keeps a long failure to one line, with the whole message on hover', async () => {
+    const error = 'OAuthTokenError: Token exchange failed (400): {"error":"invalid_grant"}\nmore detail'
+    mockServerList([makeServer({ name: 'figma', state: 'error', error })])
+    renderSection({ agentServers: ['figma'] })
+    const line = await waitFor(() => within(row('figma')).getByText(/^OAuthTokenError/))
+    expect(line.textContent).not.toContain('more detail')
+    expect(line.getAttribute('title')).toBe(error)
+  })
+
+  it('names a gallery connector by its service, with its logo', async () => {
+    mockServerList([makeServer({ name: 'notion', gallery: { id: 'notion', name: 'Notion', icon: { path: 'M0 0h24v24H0z', view_box: '0 0 24 24' } } })])
+    renderSection({ agentServers: ['notion'] })
+    const notion = await waitFor(() => screen.getByRole('listitem', { name: 'Notion' }))
+    expect(within(notion).getByText('Notion')).toBeTruthy()
+    expect(notion.querySelector('[data-connector-icon="logo"]')).toBeTruthy()
+    expect(within(notion).getByRole('switch', { name: 'Turn off Notion' })).toBeTruthy()
   })
 
   it('cannot toggle a server whose config went missing', async () => {

@@ -57,6 +57,17 @@ Four orthogonal ways to add capability.
     on writes an ordinary `mcp.json` entry. A connector already added by hand
     shows as on, and one on an old address of a connector is offered **Update**.
     The agent's `mcp` `servers` action lists the gallery's connectors too.
+  - **Connector logos and a cleaner Connectors page** `[v3.60.0]` — gallery
+    connectors show their service's logo (one colour, following light and dark
+    mode) in Settings → Connectors, the composer's "+" menu and a connector's
+    page; others keep a two-letter mark. The logo is part of the signed list and
+    is drawn in the app, never loaded from the service. Settings → Connectors
+    lists your connectors first, each with its status, switch and **Connect**
+    when it needs sign-in, then only the gallery connectors not added yet as
+    compact tiles; one search box filters both. The "+" menu shows each
+    connector's name and a one-line status (a failure is one line, in full on
+    hover), says **Connect** instead of **Sign in**, and ends with **Add a
+    connector**. tldraw joins the gallery as a free connector.
   - **Sign in from any device** `[v3.58.0]` — connector sign-in opens on the device
     in hand: a browser on another computer, the phone app, or through a proxy or
     the relay. The code comes back through

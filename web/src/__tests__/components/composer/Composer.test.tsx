@@ -4,7 +4,7 @@
  * tooltip), and the "+" menu.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
@@ -233,7 +233,8 @@ describe('PlusMenu', () => {
     wrap(<PlusMenu actions={actions} workspace="/repo" />)
     act(() => useUIStore.getState().openPlusMenu('mcp'))
     const section = await screen.findByRole('region', { name: 'Connectors' })
-    expect(section.textContent).toContain('No connectors for this agent.')
+    expect(section.textContent).toContain('No connectors for this agent yet.')
+    expect(within(section).getByRole('button', { name: 'Add a connector' })).toBeTruthy()
   })
 })
 

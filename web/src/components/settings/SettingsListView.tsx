@@ -80,10 +80,6 @@ export interface SettingsListViewProps {
   emptyBody: string
   /** Glyph for the empty state. */
   emptyIcon?: LucideIcon
-  /** Content above the list (Connectors' gallery). */
-  lead?: ReactNode
-  /** Heading over the list when `lead` is set. */
-  listTitle?: string
 }
 
 // ─── View ──────────────────────────────────────────────────────────────────
@@ -104,8 +100,6 @@ export function SettingsListView({
   emptyTitle,
   emptyBody,
   emptyIcon = FolderOpen,
-  lead,
-  listTitle,
 }: SettingsListViewProps) {
   const [query, setQuery] = useState('')
   const isPhone = useIsPhone()
@@ -131,8 +125,6 @@ export function SettingsListView({
 
   return (
     <SettingsPage title={title} description={description} actions={newAction ?? newButton}>
-      {lead && <div className="mb-8">{lead}</div>}
-      {listTitle && <h2 className={cn(TEXT.title, 'mb-3')}>{listTitle}</h2>}
       <div className="space-y-4">
         {/* A phone pins the filter while the list scrolls, as Providers does. */}
         <div

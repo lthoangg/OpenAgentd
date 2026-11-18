@@ -47,12 +47,17 @@ jobs:
     if: >-
       inputs.channel == 'internal' ||
       (inputs.confirm == 'release-ios' && startsWith(github.ref, 'refs/tags/v'))
-    runs-on: macos-26
+    # App Store Connect requires the iOS 27 SDK from April 2027 (ITMS-90725);
+    # macos-26 only has Xcode 26. The Package step checks the SDK used.
+    runs-on: xcode-27
     timeout-minutes: 120
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show the Xcode in use
+        run: xcodebuild -version && xcrun --sdk iphoneos --show-sdk-version
 
       - name: Check the ref for this channel
         env:
@@ -79,7 +84,7 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: mobile/src-tauri
-          key: ios-aarch64
+          key: ios-aarch64-xcode27
           # Save even when a later step fails, so a fix-and-retry run is not cold.
           cache-on-failure: true
 
@@ -134,6 +139,13 @@ jobs:
           if ! plutil -extract NSFaceIDUsageDescription raw "$app/Info.plist" >/dev/null; then
             echo "::error::the archived app has no NSFaceIDUsageDescription"; exit 1
           fi
+          # App Store Connect refuses uploads from an older SDK (ITMS-90725).
+          MIN_IOS_SDK=27
+          sdk=$(plutil -extract DTPlatformVersion raw "$app/Info.plist")
+          if [ "${sdk%%.*}" -lt "$MIN_IOS_SDK" ]; then
+            echo "::error::the archive was built with the iOS $sdk SDK; App Store Connect needs iOS $MIN_IOS_SDK or later"; exit 1
+          fi
+          echo "Built with the iOS $sdk SDK"
           mkdir -p _out
           COPYFILE_DISABLE=1 tar --no-mac-metadata -czf _out/unsigned-ios-app.tar.gz \
             -C "$(dirname "$app")" OpenAgentd.app

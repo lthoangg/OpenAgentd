@@ -74,6 +74,11 @@ run (`pkill -TERM -f "bin/harbor"`), delete the folders of the trials that
 have that event, and after the reset run
 `harbor job resume -p <job folder> -f CancelledError`.
 
+Leave the machine idle while a job runs. Tasks and their tests have fixed
+time limits, and a build on the host made one task's tests time out
+(`VerifierTimeoutError`). Delete the folder of a trial that such load
+affected, resume the job, and say so with the result.
+
 `harbor view .openagentd/bench/jobs` opens the results. Each trial folder
 holds `result.json` (reward, tokens, timing) and `agent/openagentd.jsonl`
 (every event of the run).

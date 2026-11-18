@@ -124,6 +124,25 @@ pub async fn push_register() -> PushState {
     run_blocking(|| platform::state(true)).await
 }
 
+/// Registers this phone's APNs token with the account, so its computers
+/// can send it end-to-end encrypted notifications. Asks for permission only
+/// if `prompt`.
+#[tauri::command]
+pub async fn cloud_push_register(prompt: Option<bool>) -> Result<PushState, String> {
+    let state = if prompt.unwrap_or(false) {
+        push_register().await
+    } else {
+        push_status().await
+    };
+    if let Some(registration) = state.registration.as_ref() {
+        if crate::cloud::signed_in() {
+            let body = serde_json::to_value(registration).map_err(|e| e.to_string())?;
+            crate::cloud::register_push(body).await?;
+        }
+    }
+    Ok(state)
+}
+
 /// The platform calls wait on iOS callbacks; keep them off the async workers.
 async fn run_blocking(call: impl FnOnce() -> PushState + Send + 'static) -> PushState {
     tauri::async_runtime::spawn_blocking(call)

@@ -280,25 +280,6 @@ fn save_last_account_device(app: &AppHandle, device_id: Option<&str>) {
     };
 }
 
-/// Registers this phone's APNs token with the account, so its computers
-/// can send it end-to-end encrypted notifications. Asks for permission only
-/// if `prompt`.
-#[tauri::command]
-async fn cloud_push_register(prompt: Option<bool>) -> Result<push::PushState, String> {
-    let state = if prompt.unwrap_or(false) {
-        push::push_register().await
-    } else {
-        push::push_status().await
-    };
-    if let Some(registration) = state.registration.as_ref() {
-        if cloud::signed_in() {
-            let body = serde_json::to_value(registration).map_err(|e| e.to_string())?;
-            cloud::register_push(body).await?;
-        }
-    }
-    Ok(state)
-}
-
 /// Save what the home-screen widgets show (see `widgets.rs`).
 #[tauri::command]
 async fn widget_update_snapshot(
@@ -854,7 +835,7 @@ pub fn run() {
             taps::notification_take_taps,
             cloud_open_computer,
             cloud_rename_computer,
-            cloud_push_register,
+            push::cloud_push_register,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,

@@ -2,8 +2,9 @@
 
 Runs OpenAgentd on [Terminal-Bench 2.1](https://www.tbench.ai/news/terminal-bench-2-1)
 with [Harbor](https://harborframework.com), the benchmark's runner. Harbor
-starts one container per task, installs a released `agentd` in it, runs one
-unattended turn with the task's instruction, then runs the task's own tests.
+starts one container per task. The adapter puts a released `agentd` (3.61.0
+or later) in it and runs one turn with the task's instruction, unchanged;
+Harbor then runs the task's own tests.
 
 2.1 is the revision of 2.0 that fixes 28 of its 89 tasks; use it, not
 `terminal-bench-2`. The current leaderboard is Terminal-Bench 4.1
@@ -11,6 +12,9 @@ unattended turn with the task's instruction, then runs the task's own tests.
 Known limits.
 
 - `harbor_agent.py`: the Harbor adapter (install, credentials, run).
+- `release.py`: gets the Linux binary for a container: a release archive
+  downloaded once on the host and checked against its `.sha256`, or a local
+  build. The adapter uploads it, so a task image needs no `curl`.
 - `run_log.py`: totals the tokens and estimated cost of a run from its
   `agentd run --json` log.
 
@@ -57,8 +61,11 @@ PYTHONPATH=. harbor run -d terminal-bench/terminal-bench-2-1 -k 5 \
   -o .openagentd/bench/jobs -n 1 -y
 ```
 
-Other agent options: `--ak version=3.60.0` pins the release to install, and
-`--ak thinking=high` sets the thinking level. `-n` is how many tasks run at
+Other agent options: `--ak version=3.61.0` pins the release to install, and
+`--ak thinking=high` sets the thinking level. `--ak dist_dir=<folder>` runs
+local builds instead of a release: `<folder>/<target>/agentd` for
+`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`, built as
+`.github/workflows/release.yml` builds them. `-n` is how many tasks run at
 once, and `-x terminal-bench/<task>` leaves a task out.
 
 Harbor runs attempt 1 of every task before attempt 2. A trial where `agentd`
@@ -66,13 +73,13 @@ exits with an error is recorded as `NonZeroAgentExitCodeError`;
 `harbor job resume -p <job folder> -f NonZeroAgentExitCodeError` runs those
 trials again.
 
-When a subscription's usage limit runs out, `agentd` does not exit: it waits
-for the reset inside the container, and the trial ends as `AgentTimeoutError`
-with whatever was done before the wait. Such a trial has a `provider_status`
-event with status `waiting_quota` in its log, and is not a result. Stop the
-run (`pkill -TERM -f "bin/harbor"`), delete the folders of the trials that
-have that event, and after the reset run
-`harbor job resume -p <job folder> -f CancelledError`.
+When a usage limit runs out and resets more than 15 minutes later, `agentd
+run` ends with an error that names the wait (in `agent/openagentd.stderr`),
+so every trial from then on fails within seconds as
+`NonZeroAgentExitCodeError`. Those trials are not results. Stop the run
+(`pkill -TERM -f "bin/harbor"`), and after the reset run the resume command
+above with `-f CancelledError` added; it also reruns trials that failed for
+another reason, such as a provider's refusal.
 
 Leave the machine idle while a job runs. Tasks and their tests have fixed
 time limits, and a build on the host made one task's tests time out
@@ -92,15 +99,12 @@ at the provider's list prices; a subscription sign-in is not billed per token.
 
 ## Known limits
 
-- The task images are x86_64. On Apple Silicon, Docker runs them under
+- Most task images are x86_64. On Apple Silicon, Docker runs them under
   emulation, so the agent and the tasks' own commands are slower than on an
-  x86_64 host while the task time limits stay the same.
-- The released Linux binary needs glibc 2.35. Two tasks (`qemu-alpine-ssh`,
-  `qemu-startup`) use Debian 11 (glibc 2.31), where it does not start.
-- The adapter prepends a short note to each instruction telling the agent not
-  to ask questions: `agentd run` ends the turn with an error when it does.
+  x86_64 host while the task time limits stay the same. A few tasks build
+  their image for the host instead and run as arm64.
 - The agent runs with its default tools, which include web search and fetch.
-- A provider may refuse a security task outright (on 2.0:
+- A provider may refuse a security task outright (on 2.0 and 2.1:
   `break-filter-js-from-html`, `vulnerable-secret`), answering that the
   request was flagged. The trial ends with a provider error on the first
   request. Leave such tasks out of further attempts and list them.

@@ -7,40 +7,42 @@ See ``README.md`` beside this file for the commands.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import shlex
+import tempfile
 from pathlib import Path
 
 from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
+from .release import latest_version, local_binary, release_binary
 from .run_log import summarize
 
 _ROOT = "/installed-agent/openagentd"
 _BIN = f"{_ROOT}/bin/agentd"
 _CONFIG = f"{_ROOT}/config"
-_INSTALLER = "https://openagentd.dev/install.sh"
 _MODEL = re.compile(r"^([a-z0-9_-]+)/([A-Za-z0-9._:-]+)$")
-
-# `agentd run` ends the turn with an error when the agent asks a question.
-_UNATTENDED = (
-    "You are running unattended: nobody will read a question or reply to one. "
-    "Do not ask the user anything. Make reasonable assumptions, complete the "
-    "whole task, and verify it before you stop.\n\n"
-)
+# Release binaries, kept between trials and jobs.
+_CACHE = Path(tempfile.gettempdir()) / "openagentd-bench"
+# Trials start several at a time; the first one downloads.
+_DOWNLOAD = asyncio.Lock()
 
 
 class OpenAgentd(BaseInstalledAgent):
-    """Installs a released ``agentd`` in the task container and runs one turn.
+    """Puts ``agentd`` (3.61.0 or later) in the task container and runs one
+    turn with the task's instruction, unchanged.
 
     Agent kwargs (``--ak``):
       ``config_dir``  host folder holding the ``credentials.yaml`` to use (required)
       ``thinking``    thinking level passed to ``agentd run --thinking``
       ``version``     release to install (default: the latest)
+      ``dist_dir``    use local builds instead of a release:
+                      ``<dist_dir>/<target>/agentd``
     """
 
-    def __init__(self, *args, config_dir: str | None = None, thinking: str | None = None, **kwargs):
+    def __init__(self, *args, config_dir: str | None = None, thinking: str | None = None, dist_dir: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         match = _MODEL.match(self.model_name or "")
         if not match:
@@ -52,6 +54,7 @@ class OpenAgentd(BaseInstalledAgent):
         if thinking is not None and not re.fullmatch(r"[a-z]+", str(thinking)):
             raise ValueError(f"thinking level {thinking!r} is not a word")
         self._thinking = thinking
+        self._dist_dir = Path(dist_dir).expanduser() if dist_dir else None
 
     @staticmethod
     def name() -> str:
@@ -64,14 +67,25 @@ class OpenAgentd(BaseInstalledAgent):
         return stdout.strip().removeprefix("agentd").strip().removeprefix("v")
 
     async def install(self, environment: BaseEnvironment) -> None:
-        await self.ensure_system_dependencies(environment, ("curl",))
-        version = f" --version {shlex.quote(self._version)}" if self._version else ""
-        await self.exec_as_root(environment, command=f"curl -fsSL {_INSTALLER} | sh -s -- --cli --dir {_ROOT}/bin{version}")
+        # The binary comes from the host: a task image needs no curl, and
+        # some cannot install it.
+        machine = (await self.exec_as_root(environment, command="uname -m")).stdout or ""
+        async with _DOWNLOAD:
+            binary = await asyncio.to_thread(self._binary, machine)
+        await self.exec_as_root(environment, command=f"mkdir -p {_ROOT}/bin")
+        await environment.upload_file(binary, _BIN)
+        await self.exec_as_root(environment, command=f"chmod 755 {_BIN}")
+
+    def _binary(self, machine: str) -> Path:
+        if self._dist_dir:
+            return local_binary(self._dist_dir, machine)
+        if not self._version:
+            self._version = latest_version()
+        return release_binary(self._version, machine, _CACHE)
 
     async def configure(self, environment: BaseEnvironment) -> None:
-        # The agent can only use a model the provider has listed; a new
-        # install has listed none, so name the one this run uses.
-        settings = f"title_generation:\n  enabled: false\nproviders:\n  {self._provider}:\n    cached_models:\n    - {self._model}\n"
+        # A session title is one more model call per task.
+        settings = "title_generation:\n  enabled: false\n"
         await self.exec_as_root(environment, command=f"mkdir -p {_CONFIG}")
         await self._upload_config_text(environment, content=settings, remote_path=f"{_CONFIG}/settings.yaml", filename="settings.yaml")
         await environment.upload_file(self._credentials, f"{_CONFIG}/credentials.yaml")
@@ -86,7 +100,7 @@ class OpenAgentd(BaseInstalledAgent):
             environment,
             command=(
                 f"{_BIN} run --json --model {self._provider}:{self._model}{thinking} "
-                f"--prompt {shlex.quote(_UNATTENDED + instruction)} "
+                f"--prompt {shlex.quote(instruction)} "
                 f"> {logs}/openagentd.jsonl 2> {logs}/openagentd.stderr"
             ),
             env={"OPENAGENTD_CONFIG_DIR": _CONFIG},

@@ -256,14 +256,11 @@ describe('AppFooter', () => {
     expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
   })
 
-  it('shows no spend figure with the Detail setting on Simple', () => {
+  it('shows the spend figure with the Detail setting on Simple too', () => {
     useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
     try {
       renderWithQueryClient(<AppFooter />, 1.234)
-      expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
-      expect(screen.queryByText(/24h/)).toBeNull()
-      // The rest of the bar is as in Full.
-      expect(screen.getByLabelText('Settings')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Spend in the last 24 hours: $1.23' })).toBeTruthy()
     } finally {
       useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
     }
@@ -460,15 +457,14 @@ describe('AppFooter spend refresh', () => {
     await waitFor(() => expect(spendRequests()).toBe(1))
   })
 
-  it('fetches no spend with the Detail setting on Simple, where none is shown', async () => {
+  it('refreshes spend with the Detail setting on Simple too', async () => {
     useDisplayPrefsStore.setState({ transcriptStyle: 'reader' })
     try {
-      const { client } = mount([{ running: true }], { seedSpend: false })
-      expect(spendRequests()).toBe(0)
-      // Nor when the last running turn ends, which refreshes it in Full.
+      const { client, interval } = mount([{ running: true }])
+      expect(interval()).toBe(60_000)
+      // The last running turn ending refreshes it, as in Full.
       act(() => { client.setQueryData(queryKeys.session.sessions.active(), activePage([{ running: false }])) })
-      await act(async () => { await Promise.resolve() })
-      expect(spendRequests()).toBe(0)
+      await waitFor(() => expect(spendRequests()).toBe(1))
     } finally {
       useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
     }

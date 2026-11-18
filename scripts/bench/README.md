@@ -1,9 +1,14 @@
 # Harness benchmark
 
-Runs OpenAgentd on [Terminal-Bench 2.0](https://www.tbench.ai) with
-[Harbor](https://harborframework.com), the benchmark's runner. Harbor starts
-one container per task, installs a released `agentd` in it, runs one
+Runs OpenAgentd on [Terminal-Bench 2.1](https://www.tbench.ai/news/terminal-bench-2-1)
+with [Harbor](https://harborframework.com), the benchmark's runner. Harbor
+starts one container per task, installs a released `agentd` in it, runs one
 unattended turn with the task's instruction, then runs the task's own tests.
+
+2.1 is the revision of 2.0 that fixes 28 of its 89 tasks; use it, not
+`terminal-bench-2`. The current leaderboard is Terminal-Bench 4.1
+(`terminal-bench/terminal-bench@4.1.0`), which this setup cannot run yet: see
+Known limits.
 
 - `harbor_agent.py`: the Harbor adapter (install, credentials, run).
 - `run_log.py`: totals the tokens and estimated cost of a run from its
@@ -13,8 +18,8 @@ Everything a run writes goes under the git-ignored `.openagentd/bench/`.
 
 ## Prerequisites
 
-- Docker, running. Most tasks need 1 CPU and 2 GB of memory; 16 need 4 GB and
-  2 need 8 GB.
+- Docker, running. Most tasks need 1 CPU and 2 GB of memory; 13 need 4 GB and
+  8 need 8 GB, and 6 need 2 or 4 CPUs.
 - Harbor: `uv tool install harbor` (written against 0.26.0).
 
 ## Sign in once
@@ -39,14 +44,14 @@ From the repository root, with the provider and model as `-m <provider>/<model>`
 
 ```bash
 # one task
-PYTHONPATH=. harbor run -d terminal-bench/terminal-bench-2 \
+PYTHONPATH=. harbor run -d terminal-bench/terminal-bench-2-1 \
   --include-task-name terminal-bench/fix-git \
   -a scripts.bench.harbor_agent:OpenAgentd -m codex/gpt-5.5 \
   --ak config_dir="$PWD/.openagentd/bench/config" \
   -o .openagentd/bench/jobs -n 1 -y
 
 # the whole benchmark, 5 attempts per task
-PYTHONPATH=. harbor run -d terminal-bench/terminal-bench-2 -k 5 \
+PYTHONPATH=. harbor run -d terminal-bench/terminal-bench-2-1 -k 5 \
   -a scripts.bench.harbor_agent:OpenAgentd -m codex/gpt-5.5 \
   --ak config_dir="$PWD/.openagentd/bench/config" \
   -o .openagentd/bench/jobs -n 1 -y
@@ -54,7 +59,12 @@ PYTHONPATH=. harbor run -d terminal-bench/terminal-bench-2 -k 5 \
 
 Other agent options: `--ak version=3.60.0` pins the release to install, and
 `--ak thinking=high` sets the thinking level. `-n` is how many tasks run at
-once.
+once, and `-x terminal-bench/<task>` leaves a task out.
+
+Harbor runs attempt 1 of every task before attempt 2. A trial where `agentd`
+exits with an error is recorded as `NonZeroAgentExitCodeError`;
+`harbor job resume -p <job folder> -f NonZeroAgentExitCodeError` runs those
+trials again, for example after a usage limit resets.
 
 `harbor view .openagentd/bench/jobs` opens the results. Each trial folder
 holds `result.json` (reward, tokens, timing) and `agent/openagentd.jsonl`
@@ -63,9 +73,9 @@ holds `result.json` (reward, tokens, timing) and `agent/openagentd.jsonl`
 ## What a published number must state
 
 The OpenAgentd version, the model and thinking level, the date, the dataset
-version, attempts per task, and the machine. Report every attempt of the
-chosen configuration. Cost is an estimate at the provider's list prices; a
-subscription sign-in is not billed per token.
+version, attempts per task, the machine, and every task left out with the
+reason. Report every attempt of the chosen configuration. Cost is an estimate
+at the provider's list prices; a subscription sign-in is not billed per token.
 
 ## Known limits
 
@@ -77,3 +87,12 @@ subscription sign-in is not billed per token.
 - The adapter prepends a short note to each instruction telling the agent not
   to ask questions: `agentd run` ends the turn with an error when it does.
 - The agent runs with its default tools, which include web search and fetch.
+- A provider may refuse a security task outright (on 2.0:
+  `break-filter-js-from-html`, `vulnerable-secret`), answering that the
+  request was flagged. The trial ends with a provider error on the first
+  request. Leave such tasks out of further attempts and list them.
+- Terminal-Bench 4.1 (66 tasks) needs more than this setup has: 3 tasks need
+  an H100 GPU, tasks ask for up to 16 CPUs, 32 GB of memory and an 8-hour
+  limit, and 14 tasks declare MCP servers and 1 a skills folder that the
+  adapter does not pass to `agentd`. Leaderboard entries used 1 to 19 billion
+  tokens per run.

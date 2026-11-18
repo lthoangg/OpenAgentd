@@ -38,12 +38,12 @@ has (spec §3.1, `server` and `client`).
 |---|---|---|
 | `auth` private key (Ed25519, signs cloud requests) | OS store or user-only file (see Storage) | never |
 | `box` private key (X25519, Noise static key, 6-digit code, letters) | same | never |
-| `sign` private key (Ed25519, signs rosters) | same; on iOS behind Face ID / Touch ID / passcode | never |
+| `sign` private key (Ed25519, signs rosters) | same; on a phone behind Face ID / Touch ID / fingerprint / passcode or screen lock | never |
 | Recovery seed | shown once at genesis, then zeroized | only as the code the person writes down |
 | Enrollment session (`e1.`), relay token (`t1.`), nonces (`n1.`) | memory only | sent to the cloud only |
 | Invitation secret | memory only, in the QR code | never to the cloud |
 | Verified roster `K`, account id, account state | app data; not secret, but integrity matters | the account id goes to the cloud |
-| APNs token | memory, then the cloud | to the cloud |
+| APNs or FCM token | memory, then the cloud | to the cloud |
 | Everything a host can do (shell, files, agents) | the host | reachable through relay sessions |
 | A host's private addresses and direct port | the host; each controller stores them per device id and network | only inside an established session, to devices of the account |
 | Departed set and last contact time | `cloud/identity.json`, next to `K` | never |
@@ -52,10 +52,10 @@ The account id identifies a person, so logs carry only a short hash of it.
 
 ## Storage
 
-| Secret | iOS | Android (later) | macOS desktop and CLI | Linux desktop and CLI | Windows desktop |
+| Secret | iOS | Android | macOS desktop and CLI | Linux desktop and CLI | Windows desktop |
 |---|---|---|---|---|---|
-| `auth`, `box` | Keychain, this device only, after first unlock; `box` also as its own item in the App Group's access group, for the notification extension | Keystore-wrapped | `cloud/identity.json`, mode 600 | the same file (Secret Service is a later step) | the same file, with no ACL of its own: it inherits the ACL of the user's profile folder (the user, SYSTEM and Administrators) |
-| `sign` | Keychain, user presence required (Face ID, Touch ID or the passcode; only while a passcode is set, so a phone without one cannot hold an account and is told before it signs in) | Keystore, user authentication required | the same file; used only after a click in the app plus Touch ID or the login password where available | same, after a click | same, after a click |
+| `auth`, `box` | Keychain, this device only, after first unlock; `box` also as its own item in the App Group's access group, for the notification extension | AES-256-GCM under a Keystore key (TEE or StrongBox; release builds refuse a software-only Keystore), this device only, usable after first unlock; `box` also as its own item, for the push service | `cloud/identity.json`, mode 600 | the same file (Secret Service is a later step) | the same file, with no ACL of its own: it inherits the ACL of the user's profile folder (the user, SYSTEM and Administrators) |
+| `sign` | Keychain, user presence required (Face ID, Touch ID or the passcode; only while a passcode is set, so a phone without one cannot hold an account and is told before it signs in) | encrypted to a Keystore RSA key whose private half needs the user on every use (a strong biometric or the screen lock, Android 11+; not invalidated by a new fingerprint, invalidated for good when the screen lock is removed, so a phone without one cannot hold an account and is told before it signs in) | the same file; used only after a click in the app plus Touch ID or the login password where available | same, after a click | same, after a click |
 | Tokens, nonces, invite secret | memory only | memory only | memory only | memory only | memory only |
 
 Why the user-only file on macOS computers? The desktop app is ad hoc

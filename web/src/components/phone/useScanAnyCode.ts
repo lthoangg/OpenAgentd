@@ -24,7 +24,8 @@ export const NOT_A_CODE =
   "That QR code is not an OpenAgentd code. Scan the code on the new iPhone, iPad or computer, or a computer's connect code."
 export const CAMERA_OFF = 'Camera access is off. Turn it on for OpenAgentd in Settings to scan a code.'
 export const ALREADY_IN = 'This phone is already in your account. To add another iPhone, iPad or computer, scan the code it shows.'
-export const ADD_NEEDS_IPHONE = 'Adding devices needs the iPhone app for now.'
+/** This phone cannot hold an account (the shell says why in `unsupported`). */
+export const ADD_NOT_HERE = 'Adding devices is not available on this phone.'
 export const SIGN_IN_TO_ADD = 'Sign in on this phone before adding a device. If this is your first device, sign in on the computer instead.'
 
 /** A sign-in on its way: the phone can finish it, then add the computer. */
@@ -57,7 +58,7 @@ export function useScanAnyCode({ onConnect, onJoining, onAddComputer, onAddAfter
     const text = outcome.text.trim()
     if (text.startsWith('agentd://add?')) {
       if (status?.state === 'guest' && !status.supported) {
-        setError(ADD_NEEDS_IPHONE)
+        setError(status.unsupported ?? ADD_NOT_HERE)
       } else if (status && (status.state === 'guest' || SIGNING_IN.has(status.state))) {
         onAddAfterSignIn(text)
       } else if (status?.state !== 'connected') {

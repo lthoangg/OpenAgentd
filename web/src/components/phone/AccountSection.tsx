@@ -9,8 +9,9 @@
  * - A signed-in phone has an "Account" row, and an approver sees each
  *   device that asks to join, with Review.
  *
- * Nothing at all where this build cannot hold an account (`supported:
- * false`). Every row opens the Account sheet (`onOpen`).
+ * Where this phone cannot hold an account (`supported: false`), only the
+ * shell's reason (Android: too old, or no secure key store), or nothing
+ * when it gives none. Every row opens the Account sheet (`onOpen`).
  */
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
@@ -113,7 +114,16 @@ export function AccountSection({
   const [reviewing, setReviewing] = useState<PendingRow | null>(null)
 
   if (!status) return null
-  if (status.state === 'guest' && !status.supported) return null
+  if (status.state === 'guest' && !status.supported) {
+    if (!status.unsupported) return null
+    return (
+      <div data-account-section="">
+        <PanelSection title={FEATURE_NAME}>
+          <p className={TEXT.body}>{status.unsupported}</p>
+        </PanelSection>
+      </div>
+    )
+  }
 
   const unfinished = unfinishedLine(status)
   const guest = status.state === 'guest'

@@ -31,8 +31,12 @@ export type PhoneNotice =
   | 'failed'
 
 export type PhoneCloudStatus =
-  /** `supported: false` (Android for now): hide every account control. */
-  | { state: 'guest'; notice: PhoneNotice | null; supported: boolean; retry_after?: number }
+  /**
+   * `supported: false`: this phone cannot hold an account (Android older
+   * than 11, or a key store without secure hardware); `unsupported` says
+   * why, in place of the account controls. Absent from a desktop dev build.
+   */
+  | { state: 'guest'; notice: PhoneNotice | null; supported: boolean; unsupported?: string; retry_after?: number }
   /** `recovering`: signing in to recover the account with its recovery code. */
   /**
    * `add_link`: the scan-to-add QR code (spec 4.3.1) for the same sign-in,

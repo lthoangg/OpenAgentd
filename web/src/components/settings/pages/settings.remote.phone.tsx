@@ -150,10 +150,19 @@ export function PhoneAccountContent() {
   }
   switch (status?.state) {
     case 'guest':
+      // A phone that cannot hold an account says why (Android: too old,
+      // or no secure key store); with no reason, no account UI at all.
+      if (!status.supported && status.unsupported) {
+        content = (
+          <PanelSection title={FEATURE_NAME}>
+            <Body><p>{status.unsupported}</p></Body>
+          </PanelSection>
+        )
+      }
+      break
     case 'scanned':
     case 'confirming':
-      // Drawn above, one element for all its steps (see `newDevice`); no
-      // keys on this build (Android for now): no account UI at all.
+      // Drawn above, one element for all its steps (see `newDevice`).
       break
     case 'invited':
       content = (

@@ -7,6 +7,7 @@
 import type { ReactNode } from 'react'
 
 import type { CloudNotice } from '@/api/cloud'
+import { isAndroidDevice } from '@/lib/device-words'
 
 export const GUEST_DESCRIPTION = 'Optional. Everything works without an account.'
 
@@ -17,7 +18,7 @@ export const CODE_TIMED_OUT = 'This code timed out. Show a new one.'
 /** The one wording of the signer role, wherever a person reads it. */
 export const CAN_ADD_DEVICES = 'Can add devices'
 /** A phone that cannot add devices tried to. */
-export const CANT_ADD_DEVICES = "This iPhone can't add devices. Use the phone you set up first."
+export const CANT_ADD_DEVICES = `This ${isAndroidDevice() ? 'phone' : 'iPhone'} can't add devices. Use the phone you set up first.`
 
 
 export interface NoticeCopy {

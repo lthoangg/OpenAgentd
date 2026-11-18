@@ -13,16 +13,19 @@ import shlex
 import tempfile
 from pathlib import Path
 
+import certifi
 from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
+from .command import HAS_CA_COMMAND, run_command
 from .release import latest_version, local_binary, release_binary
 from .run_log import summarize
 
 _ROOT = "/installed-agent/openagentd"
 _BIN = f"{_ROOT}/bin/agentd"
 _CONFIG = f"{_ROOT}/config"
+_CA = f"{_ROOT}/ca-certificates.pem"
 _MODEL = re.compile(r"^([a-z0-9_-]+)/([A-Za-z0-9._:-]+)$")
 # Release binaries, kept between trials and jobs.
 _CACHE = Path(tempfile.gettempdir()) / "openagentd-bench"
@@ -75,6 +78,12 @@ class OpenAgentd(BaseInstalledAgent):
         await self.exec_as_root(environment, command=f"mkdir -p {_ROOT}/bin")
         await environment.upload_file(binary, _BIN)
         await self.exec_as_root(environment, command=f"chmod 755 {_BIN}")
+        # A bare image (`ubuntu:24.04`) has no CA certificates, and agentd
+        # reads the system's. The bundle goes beside the binary, not into
+        # the system, so the task's own tests see the image as it was.
+        if "yes" not in ((await self.exec_as_root(environment, command=HAS_CA_COMMAND)).stdout or ""):
+            await environment.upload_file(Path(certifi.where()), _CA)
+            await self.exec_as_root(environment, command=f"chmod 644 {_CA}")
 
     def _binary(self, machine: str) -> Path:
         if self._dist_dir:
@@ -94,14 +103,15 @@ class OpenAgentd(BaseInstalledAgent):
 
     @with_prompt_template
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
-        logs = self.environment_logs_dir.as_posix()
-        thinking = f" --thinking {self._thinking}" if self._thinking else ""
         await self.exec_as_agent(
             environment,
-            command=(
-                f"{_BIN} run --json --model {self._provider}:{self._model}{thinking} "
-                f"--prompt {shlex.quote(instruction)} "
-                f"> {logs}/openagentd.jsonl 2> {logs}/openagentd.stderr"
+            command=run_command(
+                binary=_BIN,
+                model=f"{self._provider}:{self._model}",
+                thinking=self._thinking,
+                instruction=instruction,
+                logs=self.environment_logs_dir.as_posix(),
+                ca_file=_CA,
             ),
             env={"OPENAGENTD_CONFIG_DIR": _CONFIG},
         )

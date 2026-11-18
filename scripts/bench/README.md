@@ -15,6 +15,7 @@ Known limits.
 - `release.py`: gets the Linux binary for a container: a release archive
   downloaded once on the host and checked against its `.sha256`, or a local
   build. The adapter uploads it, so a task image needs no `curl`.
+- `command.py`: the `agentd run` line a container runs.
 - `run_log.py`: totals the tokens and estimated cost of a run from its
   `agentd run --json` log.
 
@@ -104,6 +105,11 @@ at the provider's list prices; a subscription sign-in is not billed per token.
   x86_64 host while the task time limits stay the same. A few tasks build
   their image for the host instead and run as arm64.
 - The agent runs with its default tools, which include web search and fetch.
+- Some task images (`ubuntu:24.04`) have no CA certificates, and `agentd`
+  needs the system's to reach a provider. The adapter uploads Mozilla's
+  bundle (from `certifi`) beside the binary in such a container and points
+  `agentd` at it with `SSL_CERT_FILE`. Commands the agent runs inherit that
+  variable; the task's tests do not.
 - A provider may refuse a security task outright (on 2.0 and 2.1:
   `break-filter-js-from-html`, `vulnerable-secret`), answering that the
   request was flagged. The trial ends with a provider error on the first

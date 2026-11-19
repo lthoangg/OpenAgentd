@@ -22,10 +22,10 @@ export function FindBarButtons({ onPrevious, onNext, onClose, stepDisabled }: {
 }) {
   return (
     <>
-      <FindBarButton onClick={onPrevious} disabled={stepDisabled} aria-label="Previous match (Shift+Enter)">
+      <FindBarButton onClick={onPrevious} disabled={stepDisabled} aria-label="Previous match" aria-keyshortcuts="Shift+Enter">
         <ChevronUp size={14} aria-hidden="true" />
       </FindBarButton>
-      <FindBarButton onClick={onNext} disabled={stepDisabled} aria-label="Next match (Enter)">
+      <FindBarButton onClick={onNext} disabled={stepDisabled} aria-label="Next match" aria-keyshortcuts="Enter">
         <ChevronDown size={14} aria-hidden="true" />
       </FindBarButton>
       <CloseButton size="icon-dense" label="Close find" onClick={onClose} />

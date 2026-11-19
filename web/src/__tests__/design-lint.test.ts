@@ -352,6 +352,12 @@ const RULES: Rule[] = [
       'components/SettingsModal.tsx': 1,
     },
   },
+  {
+    name: 'spelled-key-in-copy',
+    why: 'a key named after a control ("Earlier (Shift+←)") is spelled for the platform with formatChord or shortcutLabel, so a Mac reads ⇧← (DESIGN.md → Shortcuts in menus and tooltips)',
+    pattern: /\((?:Shift|Ctrl|Alt|Cmd|Option)\+[^)]*\)/g,
+    allow: {},
+  },
 ]
 
 /** Comment lines describe classes without applying them. */

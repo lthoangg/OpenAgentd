@@ -21,6 +21,8 @@ import { ChevronLeft, ChevronRight, Copy, MessageCircleQuestion, Square, Trash2 
 import { Button } from '@/components/ui/button'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { useIsPhone } from '@/hooks/use-is-phone'
+import { usePlatform } from '@/hooks/use-platform'
+import { formatChord } from '@/lib/keyboard/chord'
 import { cn } from '@/lib/utils'
 import { CloseButton } from '@/components/ui/close-button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -70,6 +72,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
   const open = btw.open && !chipOnly
   // A phone asks aside in a half-height sheet (mockup J5), not a card over the composer.
   const isPhone = useIsPhone()
+  const { os } = usePlatform()
 
   if (!sessionId) return null
   const store = useBtwStore.getState()
@@ -169,13 +172,13 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
         <span className="flex-1" />
         {count > 1 && (
           <>
-            <HeaderAction label="Earlier side question" tooltip="Earlier (Shift+←)" disabled={index <= 0} onClick={() => step(-1)}>
+            <HeaderAction label="Earlier side question" tooltip={`Earlier (${formatChord({ key: 'ArrowLeft', shift: true }, os)})`} disabled={index <= 0} onClick={() => step(-1)}>
               <ChevronLeft />
             </HeaderAction>
             <span className="px-0.5 tabular-nums text-(--color-text-muted)" aria-live="polite">
               {index + 1}/{count}
             </span>
-            <HeaderAction label="Later side question" tooltip="Later (Shift+→)" disabled={index >= count - 1} onClick={() => step(1)}>
+            <HeaderAction label="Later side question" tooltip={`Later (${formatChord({ key: 'ArrowRight', shift: true }, os)})`} disabled={index >= count - 1} onClick={() => step(1)}>
               <ChevronRight />
             </HeaderAction>
           </>

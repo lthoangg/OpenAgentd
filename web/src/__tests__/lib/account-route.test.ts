@@ -37,6 +37,8 @@ const { openSessionOnServer } = await import('@/lib/open-on-server')
 const { takePendingSessionOpen } = await import('@/lib/pending-session-open')
 const { resetPageUnloading } = await import('@/lib/page-unload')
 const { reloadForBackendSwitch } = await import('@/lib/backend-switch')
+const { noteBackendStatus } = await import('@/lib/app-backend')
+const { lastRouteStorageKey } = await import('@/lib/route-restore')
 const { queryClient } = await import('@/lib/query-client')
 const { queryKeys } = await import('@/queries/keys')
 const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
@@ -347,6 +349,28 @@ describe('telling the shell', () => {
     stop = startAccountRouteWatch()
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the place when the same computer only moved to another port', async () => {
+    // The page started on this computer's bridge and is in one of its sessions.
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    noteBackendStatus(onBridge)
+    window.localStorage.setItem(lastRouteStorageKey(), '/s-mac')
+    shell({ app_backend_status: () => ({ ...onBridge, base_url: 'http://127.0.0.1:6001' }) })
+    stop = startAccountRouteWatch()
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    // The sessions are the same ones: the reload returns to where the person was.
+    expect(window.localStorage.getItem(lastRouteStorageKey())).toBe('/s-mac')
+  })
+
+  it('forgets the place when the shell is on another computer by then', async () => {
+    window.__OAD_API_BASE_URL__ = BRIDGE
+    noteBackendStatus(onBridge)
+    window.localStorage.setItem(lastRouteStorageKey(), '/s-mac')
+    shell({ app_backend_status: () => onLinuxBridge })
+    stop = startAccountRouteWatch()
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    expect(window.localStorage.getItem(lastRouteStorageKey())).toBeNull()
   })
 
   it('on an account computer, a failed health check pokes user_retry once and checks again', async () => {

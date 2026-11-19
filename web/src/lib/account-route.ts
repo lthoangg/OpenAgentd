@@ -38,9 +38,9 @@ import {
   isServer,
   phoneAccountConnected,
 } from '@/api/phone-cloud'
-import { accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
+import { accountBridgeDeviceId, accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
-import { connectAccountComputer, normalizeServerBaseUrl, reloadForBackendSwitch } from '@/lib/backend-switch'
+import { connectAccountComputer, normalizeServerBaseUrl, reloadForBackendSwitch, reloadOntoMovedBridge } from '@/lib/backend-switch'
 import { sessionOpensSettled, sessionServerOpenInFlight } from '@/lib/open-on-server'
 import { markPageUnloading, pageUnloading, resetPageUnloading } from '@/lib/page-unload'
 import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
@@ -112,14 +112,18 @@ function pageOrigin(): string | null {
 
 /**
  * After the shell answered a `resumed` poke: follow a bridge the shell had
- * to move to another port, else check health now instead of waiting for the
- * next failure to be noticed.
+ * to move to another port (the same computer: the reload keeps the place),
+ * else check health now instead of waiting for the next failure to be
+ * noticed.
  */
 async function followShell(): Promise<void> {
-  const status = await getAppBackendStatus().catch(() => null)
   const here = pageOrigin()
+  // Read before the status below names the bridge's new address.
+  const computerHere = here ? accountBridgeDeviceId(here) : null
+  const status = await getAppBackendStatus().catch(() => null)
   if (status?.base_url && status.external && here && normalizeServerBaseUrl(status.base_url) !== here) {
-    reloadForBackendSwitch()
+    if (computerHere && status.account_device?.device_id === computerHere) reloadOntoMovedBridge()
+    else reloadForBackendSwitch()
     return
   }
   void queryClient.invalidateQueries({ queryKey: queryKeys.health() })

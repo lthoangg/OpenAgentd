@@ -82,6 +82,16 @@ export function reloadForBackendSwitch(): void {
   window.location.reload()
 }
 
+/**
+ * Reload the window onto the same computer at a new address (the phone
+ * shell moved its bridge to another port): its sessions are the same ones,
+ * so the route stays and the person is back where they were.
+ */
+export function reloadOntoMovedBridge(): void {
+  markPageUnloading()
+  window.location.reload()
+}
+
 /** What the switching screen calls the builtin sidecar. */
 export const BUILTIN_SWITCH_TARGET: BackendSwitchTarget = {
   name: 'this computer',

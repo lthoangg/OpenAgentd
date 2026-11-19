@@ -55,8 +55,8 @@ export interface AppBackendStatus {
 /** Remembered computer names, by `computerNameKey`. */
 export type ComputerNames = Record<string, string>
 
-/** Origins (`http://127.0.0.1:<port>`) known to be account bridges. */
-const accountBridgeOrigins = new Set<string>()
+/** Origins (`http://127.0.0.1:<port>`) known to be account bridges, with the computer each reaches. */
+const accountBridgeOrigins = new Map<string, string>()
 
 function originOfBaseUrl(value: string): string | null {
   try {
@@ -75,7 +75,7 @@ function originOfBaseUrl(value: string): string | null {
 export function noteBackendStatus<T extends Pick<AppBackendStatus, 'base_url' | 'account_device'> | null>(status: T): T {
   const origin = status?.base_url ? originOfBaseUrl(status.base_url) : null
   if (!origin) return status
-  if (status?.account_device) accountBridgeOrigins.add(origin)
+  if (status?.account_device) accountBridgeOrigins.set(origin, status.account_device.device_id)
   else accountBridgeOrigins.delete(origin)
   return status
 }
@@ -84,6 +84,12 @@ export function noteBackendStatus<T extends Pick<AppBackendStatus, 'base_url' | 
 export function isAccountBridgeUrl(baseUrl: string): boolean {
   const origin = originOfBaseUrl(baseUrl)
   return origin !== null && accountBridgeOrigins.has(origin)
+}
+
+/** The account computer the bridge at `baseUrl` reaches (its device id), or null when it is not a known bridge. */
+export function accountBridgeDeviceId(baseUrl: string): string | null {
+  const origin = originOfBaseUrl(baseUrl)
+  return (origin !== null && accountBridgeOrigins.get(origin)) || null
 }
 
 /** The key the desktop's built-in server's name is remembered under. */

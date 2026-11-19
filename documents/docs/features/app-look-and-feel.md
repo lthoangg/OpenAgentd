@@ -20,7 +20,10 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     … · 1 failed, 11 passed` with `exit 1  2.4 s` aligned right). Each answer
     ends with one muted line (`20:13 · claude-sonnet-4-6 · 12.0 s · $0.02`)
     whose tooltip lists tokens, cache, TTFT and tok/s and links to the trace.
-    Goals use one card; retries say which attempt and when.
+    Goals use one card; retries say which attempt and when. Since
+    `[v3.62.0]` a prompt names its model the same way while the turn runs
+    and after (`provider:model`); while it ran it showed the bare name the
+    provider reported.
   - **Asks before destroying.** Stop, Regenerate, Disconnect, clearing a
     plan, deleting a task and shortening retention all confirm first. Memory
     refuses to save over a page that failed to load, and every list has a

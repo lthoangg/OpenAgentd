@@ -48,6 +48,14 @@ impl ToolIdResolver {
     }
 }
 
+/// The model a live event names: the one the stored row will carry
+/// (`provider:model`), so the transcript's label does not change when the
+/// turn ends. The bare name the provider's stream reports (`reported`) is
+/// only for a run that has no model id of its own.
+fn shown_model(state: &AgentState, reported: Option<String>) -> Option<String> {
+    state.meta_str("effective_model").filter(|m| !m.is_empty()).or(reported)
+}
+
 #[derive(Default)]
 struct Totals {
     prompt: i64,
@@ -113,7 +121,7 @@ impl StreamPublisherHook {
                 t.tool_use = Some(t.tool_use.unwrap_or(0) + c);
             }
             t.count += 1;
-            t.current_model.clone().or_else(|| state.meta_str("effective_model"))
+            shown_model(state, t.current_model.clone())
         };
         let mut metadata = json!({"agent": self.agent});
         if let Some(m) = display_model.filter(|m| !m.is_empty()) {
@@ -171,12 +179,11 @@ impl Hook for StreamPublisherHook {
     async fn on_model_delta(&self, _ctx: &RunContext, state: &AgentState, chunk: &ChatCompletionChunk) {
         let display_model = {
             let mut t = self.totals.lock().unwrap();
-            let dm = if !chunk.model.is_empty() { Some(chunk.model.clone()) } else { t.current_model.clone().or_else(|| state.meta_str("effective_model")) };
             if !chunk.model.is_empty() {
                 t.current_model = Some(chunk.model.clone());
                 t.models.insert(chunk.model.clone());
             }
-            dm
+            shown_model(state, t.current_model.clone())
         };
         let Some(choice) = chunk.choices.first() else {
             return;

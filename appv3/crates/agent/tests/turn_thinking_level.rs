@@ -90,4 +90,14 @@ async fn turns_record_the_thinking_level_they_ran_with() {
     assert!(delta_level(&default_deltas).iter().all(|l| l.as_deref() == Some("high")), "{default_deltas:?}");
     assert!(delta_level(&override_deltas).iter().all(|l| l.as_deref() == Some("low")), "{override_deltas:?}");
     assert!(delta_level(&model_deltas).iter().all(Option::is_none), "{model_deltas:?}");
+
+    // A live delta names the model as the stored row will ("mock:mock"), not
+    // by the bare name the provider's stream reports ("mock"): the transcript
+    // shows whichever it has, and the name must not change when the turn ends.
+    let stored: Vec<Option<String>> = rows.iter().filter(|r| r.role == "assistant").map(|r| str_of(r, "model")).collect();
+    assert_eq!(stored, vec![Some("mock:mock".into()), Some("mock:mock".into()), Some("mock:other".into())]);
+    let delta_model = |metas: &[Value]| -> Vec<Option<String>> { metas.iter().map(|m| m.get("model").and_then(|v| v.as_str()).map(String::from)).collect() };
+    assert!(delta_model(&default_deltas).iter().all(|m| *m == stored[0]), "{default_deltas:?}");
+    assert!(delta_model(&override_deltas).iter().all(|m| *m == stored[1]), "{override_deltas:?}");
+    assert!(delta_model(&model_deltas).iter().all(|m| *m == stored[2]), "{model_deltas:?}");
 }

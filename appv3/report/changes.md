@@ -2,6 +2,16 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## Live events name the model as the stored row does (v3.62.0)
+
+`metadata.model` on the live `message` and `thinking` deltas and on `usage`
+is now the run's own model id (`provider:model`, e.g. `openai:gpt-5`), the
+value the assistant row stores in `extra.model`. It used to be the bare name
+the provider's stream reported (`gpt-5-2025-08-07`), so a client that showed
+it named the model one way while the turn ran and another once it was
+stored. The reported name is still used for a run with no model id, and
+`done.metadata.models` still lists the reported names.
+
 ## A script call says what its closed row shows (v3.62.0)
 
 A `script` call's output stays on the server like most tools' (`result`

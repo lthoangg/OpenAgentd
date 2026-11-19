@@ -32,6 +32,8 @@ mod caption;
 mod autostart;
 mod window_session;
 mod notifications;
+#[cfg(target_os = "macos")]
+mod notification_center;
 
 use anyhow::{Context, Result};
 use serde::Serialize;

@@ -64,7 +64,14 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/notifications.rs`: `show_desktop_notification`: the OS notification
   for a finished turn or a question (one request per notification id, the
   pet's bubble instead while it is on screen, a question's options as
-  buttons, a click routed through `island::open_session`).
+  buttons, a click routed through `island::open_session`). A session has
+  one notification at a time (`Board`): the earlier one is taken down
+  before a newer one shows, and `island::mark_session_read` takes it down
+  through `session_read`. Taking one down is per platform: on macOS
+  `notification_center.rs` removes it from `NSUserNotificationCenter` by
+  title and body (the library keeps its identifier to itself), on Linux
+  the shared handle closes it, on Windows nothing can. The waiting thread
+  then ends by itself, which frees its slot.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
 - `src/lifecycle.rs`: `SidecarSlot`, the single owner of the bundled sidecar.
   Every start, reload, stop and watchdog restart takes a decision from it;

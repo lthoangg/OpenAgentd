@@ -87,6 +87,12 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   with it still gets you every unseen result. While the iPhone app is open
   on one computer, a push from another computer of the account now shows as
   a banner instead of only after switching to that computer.
+  One notification per session, gone once you have looked `[v3.62.0]`: on
+  macOS and Linux a session's newer notification replaces its earlier one
+  (Needs you followed by Done leaves one entry, not two), and a session you
+  read in the app (in a focused window, or opened or dismissed from the
+  notch or the pet) loses its notification, so Notification Center lists
+  only what you have not looked at. Windows toasts stay as they were.
   A notification says which computer it came from `[v3.55.0]`: the title
   ends with the computer's name (`Done · web · studio-mini`), always for a
   computer of your OpenAgentd Cloud account (the app's own notification and

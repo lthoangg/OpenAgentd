@@ -137,6 +137,13 @@ that already shows it. Opening or dismissing a notification on a companion
 (Later included) counts as seeing it, as looking at the session in a
 focused window does: the phone is not told a minute later.
 
+An OS notification is about a session's state now, not a log of it. A
+session has one at a time: a newer one takes the place of the earlier
+(Needs you, then Done, leaves Done). Once the session is read anywhere in
+the app (a focused window shows it, the notch or the pet opens or dismisses
+it), its notification leaves Notification Center too: what is listed there
+is what has not been looked at. macOS and Linux; see Windows below.
+
 #### A notification says which computer
 
 **A notification says which computer.** Its title is the status, the
@@ -256,6 +263,12 @@ Left out on purpose, each a feature of its own and not a gap to patch:
   mark is kept by the running app, so it starts from what it sees.
 - **Updating a Linux desktop app from another device.** The `.deb` has no
   updater: the row says to update on the computer.
+- **Withdrawing a notification on Windows.** macOS and Linux keep one
+  notification per session and take it down once the session is read. The
+  toast library used on Windows gives no tag or handle to find a toast by,
+  so there a session's toasts stay in the notification list until
+  dismissed; doing it means posting toasts through the Windows API
+  directly.
 
 | | macOS | Windows | Linux | iOS / iPadOS | Android |
 |---|---|---|---|---|---|

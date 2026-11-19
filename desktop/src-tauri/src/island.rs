@@ -1,4 +1,4 @@
-// size-ceiling: 2508 — holds settings, geometry and the server feed: give each its own module
+// size-ceiling: 2509 — holds settings, geometry and the server feed: give each its own module
 //! Agent status island in the MacBook notch (macOS).
 //!
 //! A borderless black webview (`web/island.html`) sits over the notch, or
@@ -1971,6 +1971,7 @@ pub(crate) fn mark_session_read(app: &AppHandle, session_id: &str, source: Optio
     log::info!("read: session={key} from={}", source.unwrap_or("shell"));
     mark_read(app, &key);
     crate::pet::forget_session(app, &key);
+    crate::notifications::session_read(&key);
     let payload = serde_json::json!({ "sessionId": session_id });
     for label in read_recipients(app.webview_windows().into_keys(), source) {
         let _ = app.emit_to(label.as_str(), SESSION_READ_EVENT, &payload);

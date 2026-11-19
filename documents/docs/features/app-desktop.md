@@ -10,6 +10,14 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
 - **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
   bundled backend sidecar (Python until v2, native since v3.0.0), embedded Web UI,
   one process, no terminal required.
+- **Open at login** `[v3.62.0]` — Settings → Desktop → Startup has one
+  switch, off by default. On, OpenAgentd starts in the background when you
+  sign in to the computer, with no window: scheduled tasks run and your
+  other devices can reach the computer without you opening the app. Open
+  it from the Dock or the menu bar (the taskbar or the tray on Windows, the
+  launcher or the tray on Linux). The switch shows what the system has: an
+  entry removed in the system's own login items reads as off. Linux gets
+  the Desktop page for the first time, with Startup alone.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns in
   the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a

@@ -57,6 +57,8 @@ fn main() {
                 "updater_download",
                 "updater_install",
                 "updater_release_notes",
+                "autostart_enabled",
+                "autostart_set",
                 "secure_get_access_key",
                 "secure_set_access_key",
                 "secure_delete_access_key",

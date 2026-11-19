@@ -75,6 +75,8 @@
     "allow-updater-check",
     "allow-updater-download",
     "allow-updater-install",
-    "allow-updater-release-notes"
+    "allow-updater-release-notes",
+    "allow-autostart-enabled",
+    "allow-autostart-set"
   ]
 }

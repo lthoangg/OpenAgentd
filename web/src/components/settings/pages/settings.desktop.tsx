@@ -1,17 +1,19 @@
 /**
- * Settings → Desktop (desktop app only): the agent status in the notch
- * (macOS) and the desktop pet (macOS and Windows). Each switch saves at
- * once.
+ * Settings → Desktop (desktop app only): opening at login (every system),
+ * the agent status in the notch (macOS) and the desktop pet (macOS and
+ * Windows). Each switch saves at once.
  */
 import { useEffect, useState } from 'react'
 
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { PetSettingsSection } from '@/components/settings/PetSettingsSection'
+import { StartupSection } from '@/components/settings/StartupSection'
 import { Callout } from '@/components/ui/callout'
 import { PanelRow } from '@/components/ui/panel-row'
 import { PanelSection } from '@/components/ui/panel-section'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { isDesktopShell } from '@/lib/desktop-shell'
 import { type IslandSettings, listenIslandSettings, readIslandSettings, supportsIsland, updateIslandSettings } from '@/lib/island-setting'
 import { supportsPet } from '@/lib/pet-setting'
 
@@ -112,14 +114,15 @@ function NotchStatusSection() {
   )
 }
 
-/** Whether this build has anything to show on the Desktop page. */
+/** Whether this build has anything to show on the Desktop page: every desktop app opens at login. */
 export function hasDesktopSettings(): boolean {
-  return supportsIsland() || supportsPet()
+  return isDesktopShell()
 }
 
 export function DesktopSettingsPage() {
   return (
-    <SettingsPage title="Desktop" description="How OpenAgentd shows itself outside its window. Changes save at once.">
+    <SettingsPage title="Desktop" description="How OpenAgentd starts and shows itself outside its window. Changes save at once.">
+      <StartupSection />
       {supportsIsland() && <NotchStatusSection />}
       {supportsPet() && <PetSettingsSection />}
     </SettingsPage>

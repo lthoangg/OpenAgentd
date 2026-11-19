@@ -46,6 +46,9 @@ log = "0.4"
 anyhow = "1"
 once_cell = "1"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# "Open at login" (src/autostart.rs): writes the login entry. Used directly,
+# not through tauri-plugin-autostart, so the program path can be quoted.
+auto-launch = "0.6"
 url = "2"
 base64 = "0.23"
 getrandom = "0.4"

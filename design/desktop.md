@@ -104,6 +104,15 @@ Menus):
   bars"); the app's thin bars are for the other platforms.
 - **Global shortcuts** (Show OpenAgentd, Next session that needs you) are
   off until "Global Shortcuts" is ticked in the OpenAgentd menu.
+- **Open at login** is one switch (Settings → Desktop → Startup), off until
+  turned on. The app then starts in the background when you sign in to the
+  computer: the backend, the tray, the notch and the pet, and no window.
+  Scheduled tasks run and the account's other devices can reach the
+  computer; the window opens when you ask for the app (the Dock, the tray,
+  a second launch). There is no second switch for "with a window": one
+  press opens it. The system holds the state (a login item), so the switch
+  shows what the system has, and a development build never registers
+  itself.
 
 #### Companions
 

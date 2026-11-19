@@ -1,5 +1,6 @@
 /**
- * Settings → Desktop: the macOS notch status settings (moved off General).
+ * Settings → Desktop: Startup on every system, then the macOS notch status
+ * settings (moved off General).
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -13,6 +14,10 @@ let failWrite = false
 /** What the shell's settings event calls, while the page listens. */
 let onExternalChange: ((settings: IslandSettings) => void) | undefined
 
+mock.module('@/lib/autostart-setting', () => ({
+  readAutostart: async () => false,
+  setAutostart: async (want: boolean) => want,
+}))
 mock.module('@/lib/island-setting', () => ({
   ISLAND_SETTINGS_EVENT: 'island-settings-changed',
   supportsIsland: () => supported,
@@ -89,6 +94,18 @@ describe('DesktopSettingsPage notch status', () => {
     render(<DesktopSettingsPage />)
     await screen.findByText('Desktop')
     expect(screen.queryByText('Agent status in the notch')).toBeNull()
+  })
+
+  it('offers Open at login with or without a notch, above it', async () => {
+    render(<DesktopSettingsPage />)
+    const login = await toggle('Open at login')
+    const notch = await toggle('Agent status in the notch')
+    expect(login.compareDocumentPosition(notch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    cleanup()
+
+    supported = false
+    render(<DesktopSettingsPage />)
+    expect(await toggle('Open at login')).toHaveAttribute('aria-checked', 'false')
   })
 
   it('keeps General to theme and transcript', async () => {

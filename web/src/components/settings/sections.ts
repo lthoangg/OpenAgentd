@@ -87,7 +87,7 @@ const SECTION_DEFS = {
   general: { label: 'General', description: 'Theme, text size and how chats show', keywords: ['appearance', 'look'], icon: SlidersHorizontal, group: 'basics' },
   models: { label: 'Models', description: 'The accounts and API keys your models come from', keywords: ['providers', 'provider'], icon: KeyRound, group: 'basics' },
   media: { label: 'Image and video', description: 'Image and video models and defaults', keywords: ['media'], icon: Image, group: 'basics' },
-  desktop: { label: 'Desktop', description: 'Agent status in the notch and the desktop pet', icon: Monitor, group: 'basics', desktopOnly: true },
+  desktop: { label: 'Desktop', description: 'Opening at login, the notch and the desktop pet', keywords: ['startup', 'autostart'], icon: Monitor, group: 'basics', desktopOnly: true },
   // Agent
   agents: { label: 'Agents', description: 'The main agent and its subagents', icon: Wrench, group: 'agent' },
   skills: { label: 'Skills', description: 'Reusable instruction packs', icon: Sparkles, group: 'agent' },

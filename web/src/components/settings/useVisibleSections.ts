@@ -23,7 +23,7 @@ export function useVisibleSettingsSections(): readonly SettingsSectionDef[] {
       ? !accountUnsupported
       : !s.capability || (capabilities?.includes(s.capability) ?? false))
     && (!s.desktopOnly || desktop)
-    // Desktop lists the notch and the pet; a shell with neither has no page.
+    // Desktop is the desktop app's own page (startup, the notch, the pet).
     && (s.id !== 'desktop' || hasDesktopSettings()),
   )
 }

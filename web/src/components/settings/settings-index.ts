@@ -32,6 +32,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'general', label: 'Detail', keywords: ['simple', 'full', 'reader', 'detailed', 'transcript', 'style', 'thinking', 'tool calls', 'chat layout', 'chat'] },
   { section: 'general', label: 'Open previews', keywords: ['previews', 'review panel', 'web page', 'browser', 'auto open', 'automatically', 'manually', 'on click', 'when i choose', 'chat'] },
   // Desktop
+  { section: 'desktop', label: 'Open at login', keywords: ['startup', 'autostart', 'launch', 'boot', 'background', 'sign in', 'login items'] },
   { section: 'desktop', label: 'Agent status in the notch', keywords: ['notch', 'island', 'menu bar', 'macos', 'status'] },
   { section: 'desktop', label: 'Show while OpenAgentd is in front', keywords: ['notch', 'frontmost', 'island'] },
   { section: 'desktop', label: 'Keep finished sessions until opened', keywords: ['notch', 'done', 'failed', 'island'] },

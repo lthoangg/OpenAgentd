@@ -31,6 +31,11 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/global_shortcuts.rs`: opt-in system-wide shortcuts. The plugin is only
   started once the user ticks "Global Shortcuts"; nothing is registered by
   default.
+- `src/autostart.rs`: "Open at login". The OS holds the state (a Launch
+  Agent, the user's `Run` key, an XDG autostart entry, written by
+  `auto-launch` with the program quoted the way each needs); the entry starts
+  the app with `--at-login`, and that launch builds no window
+  (`start_backend_and_window`). A debug build refuses to register itself.
 - `src/servers.rs`: which server each window is on (`ServerId`: builtin or
   one external URL). The notch, the tray's "Auto" usage, new windows and
   notification routing all ask it. A saved server is never chosen as a

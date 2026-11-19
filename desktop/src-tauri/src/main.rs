@@ -29,6 +29,7 @@ mod presence;
 mod haptics;
 mod global_shortcuts;
 mod caption;
+mod autostart;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -485,6 +486,7 @@ enum StartedBackend {
 }
 
 /// Build the main window while `backend` starts, then publish the backend.
+/// A launch at login passes `with_window` false and builds none.
 ///
 /// `backend` must be spawned outside the runtime (from `setup`). Building a
 /// window blocks this task's worker until the main thread has built it, and a
@@ -493,8 +495,9 @@ enum StartedBackend {
 async fn start_backend_and_window(
     app: AppHandle,
     backend: tauri::async_runtime::JoinHandle<Result<StartedBackend>>,
+    with_window: bool,
 ) -> Result<()> {
-    let window = if app.get_webview_window(MAIN_WINDOW).is_none() {
+    let window = if with_window && app.get_webview_window(MAIN_WINDOW).is_none() {
         build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script())
             .await
             .map(|_| ())
@@ -722,7 +725,9 @@ fn main() {
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
-            updater::updater_release_notes
+            updater::updater_release_notes,
+            autostart::autostart_enabled,
+            autostart::autostart_set
         ])
         .setup(|app| {
             log::info!("startup: setup at_ms={}", launch_ms());
@@ -753,8 +758,15 @@ fn main() {
             // task starts, or the main window often had none.
             install_desktop_menus(app)?;
             log::info!("startup: menus built at_ms={}", launch_ms());
+            // Started by "Open at login": everything runs, with no window
+            // until the person opens the app (Dock, tray, a second launch).
+            let at_login = autostart::launched_at_login(std::env::args());
+            if at_login {
+                log::info!("startup: launched at login, staying in the background");
+            }
+            autostart::refresh(app.handle());
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = start_backend_and_window(handle.clone(), backend).await {
+                if let Err(e) = start_backend_and_window(handle.clone(), backend, !at_login).await {
                     log::error!("failed to start backend: {e:#}");
                     update_tray_status(&handle, crate::menu::TRAY_STATUS_FAILED);
                     handle

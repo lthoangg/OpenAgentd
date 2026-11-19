@@ -21,7 +21,7 @@ const PAGE_SOURCES: Record<TopLevelSection, readonly string[]> = {
   general: [`${P}/settings.general.tsx`],
   models: [`${P}/settings.models.tsx`],
   media: [`${P}/settings.media.tsx`],
-  desktop: [`${P}/settings.desktop.tsx`, 'components/settings/PetSettingsSection.tsx'],
+  desktop: [`${P}/settings.desktop.tsx`, 'components/settings/PetSettingsSection.tsx', 'components/settings/StartupSection.tsx'],
   agents: ['components/settings/SettingsListView.tsx', `${P}/settings.agents.tsx`],
   skills: [`${P}/settings.skills.tsx`],
   connectors: [`${P}/settings.connectors.tsx`],

@@ -8,7 +8,7 @@
 //! (Face ID itself needs a device; here the key store is the file store.)
 
 #[path = "../../../native/cloud/tests/fake_cloud/mod.rs"]
-mod fake_cloud;
+pub(crate) mod fake_cloud;
 
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -38,11 +38,11 @@ const FAST: Pace = Pace {
 
 /// The phone's state is one per process (`cloud::init`): the tests that
 /// use it take turns, on one data directory.
-static SERIAL: Mutex<()> = Mutex::new(());
+pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 static DATA_DIR: OnceLock<tempfile::TempDir> = OnceLock::new();
 
 /// Starts the phone once per process; whether this call started it.
-fn init_phone() -> (&'static std::path::Path, bool) {
+pub(crate) fn init_phone() -> (&'static std::path::Path, bool) {
     let mut fresh = false;
     let dir = DATA_DIR.get_or_init(|| {
         fresh = true;
@@ -97,13 +97,13 @@ impl HostHandler for Computer {
 
 async fn wait(what: &str, ok: impl Fn(&Status) -> bool) -> Status {
     for _ in 0..400 {
-        let s = cloud::cloud_status();
+        let s = cloud::cloud_status().await;
         if ok(&s) {
             return s;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!("timed out waiting for {what}: {:?}", cloud::cloud_status());
+    panic!("timed out waiting for {what}: {:?}", cloud::cloud_status().await);
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn phone_account_end_to_end() {
         let (dir, fresh) = init_phone();
         assert!(
             matches!(
-                cloud::cloud_status(),
+                cloud::cloud_status().await,
                 Status::Guest {
                     notice,
                     supported: true,
@@ -313,11 +313,11 @@ fn phone_account_end_to_end() {
         assert!(said.contains("cannot be reached"), "{said}");
         assert!(
             matches!(
-                cloud::cloud_status(),
+                cloud::cloud_status().await,
                 Status::Connected { signer: true, .. }
             ),
             "{:?}",
-            cloud::cloud_status()
+            cloud::cloud_status().await
         );
         assert!(dir.join("cloud").join("identity.json").exists());
         assert!(cloud::bridge_key(&origin).is_none(), "its links are closed");
@@ -438,7 +438,7 @@ fn phone_account_end_to_end() {
 
 /// Signs the phone in to a new account of `fake` and adds a computer to
 /// it; the computer's member.
-async fn signed_in_with_a_computer(fake: &fake_cloud::Fake, base: &str) -> Member {
+pub(crate) async fn signed_in_with_a_computer(fake: &fake_cloud::Fake, base: &str) -> Member {
     let account = fake.new_account();
     cloud::cloud_sign_in().unwrap();
     let Status::SigningIn { user_code, .. } =
@@ -736,11 +736,11 @@ fn a_device_that_left_is_no_longer_listed() {
         assert!(rows[0].me);
         assert!(
             matches!(
-                cloud::cloud_status(),
+                cloud::cloud_status().await,
                 Status::Connected { signer: true, .. }
             ),
             "listing never asks Face ID or changes the account: {:?}",
-            cloud::cloud_status()
+            cloud::cloud_status().await
         );
 
         cloud::cloud_sign_out().await.unwrap();
@@ -834,7 +834,7 @@ fn the_recovery_code_takes_the_account_over_on_the_phone() {
             bad.unwrap_err(),
             "That is not a recovery code. Check it and type it again."
         );
-        assert!(matches!(cloud::cloud_status(), Status::Guest { .. }));
+        assert!(matches!(cloud::cloud_status().await, Status::Guest { .. }));
 
         cloud::cloud_recover(code).unwrap();
         let Status::SigningIn {
@@ -884,7 +884,7 @@ fn the_recovery_code_takes_the_account_over_on_the_phone() {
             "{s:?}"
         );
         assert!(matches!(
-            cloud::cloud_status(),
+            cloud::cloud_status().await,
             Status::Connected {
                 recovered: false,
                 ..

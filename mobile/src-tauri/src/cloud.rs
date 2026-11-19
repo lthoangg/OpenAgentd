@@ -149,6 +149,9 @@ mod ios_keys {
 #[path = "cloud_android.rs"]
 mod android_keys;
 
+#[path = "cloud_restore.rs"]
+mod restore;
+
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 struct FileKeys(openagentd_cloud::store::FileStore);
 
@@ -335,6 +338,9 @@ struct Phone {
     /// This phone recovered the account in this app run and the page has
     /// not acknowledged it yet (`Status::Connected.recovered`).
     recovered: std::sync::atomic::AtomicBool,
+    /// Whether the account stored on this phone has been read since the
+    /// app started (`cloud_restore.rs`).
+    restored: tokio::sync::watch::Sender<bool>,
     /// Relay links and their bridges, by computer device id.
     links: tokio::sync::Mutex<HashMap<String, AccountLink>>,
     /// Where each computer may be reached directly (spec 5.5), by device
@@ -485,6 +491,7 @@ pub fn init(
         invite: tokio::sync::Mutex::new(None),
         invite_generation: std::sync::atomic::AtomicU64::new(0),
         recovered: std::sync::atomic::AtomicBool::new(false),
+        restored: tokio::sync::watch::Sender::new(false),
         links: tokio::sync::Mutex::new(HashMap::new()),
         addresses: Mutex::new(read_json(&data_dir.join("cloud").join("direct.json"))),
         bridge_ports: Mutex::new(read_json(&data_dir.join("cloud").join("bridges.json"))),
@@ -500,7 +507,7 @@ pub fn init(
     if PHONE.set(phone).is_err() {
         return;
     }
-    tauri::async_runtime::spawn(restore());
+    tauri::async_runtime::spawn(restore::run());
 }
 
 fn phone() -> Result<&'static Phone, String> {
@@ -701,37 +708,6 @@ fn publish_push_context(member: Option<&Member>) {
     android_keys::set_push_context(member.and_then(push_context));
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let _ = member.map(push_context);
-}
-
-/// Loads a stored account at launch and brings its roster up to date.
-async fn restore() {
-    let Ok(p) = phone() else { return };
-    let loaded = tauri::async_runtime::spawn_blocking(|| phone().and_then(|p| p.keys.load()))
-        .await
-        .unwrap_or(Err("load failed".into()));
-    let id = match loaded {
-        Ok(Some(id)) if id.account_id.is_some() && id.roster.is_some() => id,
-        Ok(_) => return,
-        Err(e) => {
-            eprintln!("cloud: stored account unreadable: {e}");
-            set_status(guest(Some(Notice::Failed)));
-            return;
-        }
-    };
-    let Ok(keys) = id.keys_without_sign() else {
-        return;
-    };
-    let Some(Ok(known)) = id.roster.as_deref().map(roster::parse) else {
-        return;
-    };
-    let member = Member::new(
-        Cloud::new(http(), Endpoints::current(), keys, id.account_id.clone()),
-        Some(known),
-    );
-    set_status(connected_status(&member));
-    publish_push_context(Some(&member));
-    *p.member.lock().await = Some(member);
-    let _ = refresh().await;
 }
 
 /// Applies an account problem. `Err` carries the message to show.
@@ -1216,7 +1192,8 @@ async fn finish(member: Member) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn cloud_status() -> Status {
+pub async fn cloud_status() -> Status {
+    restore::finished(restore::WAIT).await;
     // A screen lock set or removed while the app was away counts at once.
     #[cfg(target_os = "android")]
     android_keys::refresh();

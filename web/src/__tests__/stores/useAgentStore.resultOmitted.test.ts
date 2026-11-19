@@ -51,3 +51,40 @@ describe("a tool result left on the server", () => {
     expect([card.toolDone, card.toolResult, card.toolResultBytes]).toEqual([true, undefined, 1234])
   })
 })
+
+/** A script's output stays on the server too; what its closed row says comes with the call (`script_run`). */
+describe("a script result left on the server", () => {
+  const scriptCall = row({ id: "a2", tool_calls: [{ id: "s1", type: "function", function: { name: "script", arguments: "{\"description\":\"Count\"}" } }] })
+  const scriptRow = row({ id: "t2", role: "tool", tool_call_id: "s1", name: "script", content: null, result_omitted: true, result_bytes: 900, script_run: { calls: 2, saved: "count" }, created_at: "2026-11-05T00:00:01Z" })
+
+  beforeEach(() => {
+    useAgentStore.setState({ agentStreams: {}, agentNames: [], leadName: "lead", sessionId: "s1", cacheInvalidations: [] })
+  })
+
+  it("gives the live card its summary", () => {
+    const emit = useAgentStore.getState()._handleSSEEvent
+    emit("tool_call", { agent: "lead", name: "script", tool_call_id: "s1" })
+    emit("tool_start", { agent: "lead", name: "script", tool_call_id: "s1", arguments: "{}" })
+    emit("tool_end", { agent: "lead", name: "script", tool_call_id: "s1", result: null, metadata: { result_omitted: true, result_bytes: 900, script_run: { calls: 2, stopped: true } } })
+    const card = useAgentStore.getState().agentStreams.lead.currentBlocks.find((b) => b.toolCallId === "s1")!
+    expect([card.toolResultBytes, card.toolScriptRun]).toEqual([900, { calls: 2, stopped: true }])
+  })
+
+  it("gives a history card the same summary", () => {
+    const card = parseAgentBlocks([scriptCall, scriptRow]).find((b) => b.type === "tool")!
+    expect([card.toolResultBytes, card.toolScriptRun]).toEqual([900, { calls: 2, saved: "count" }])
+  })
+
+  it("gives it to a confirmed card finished from an orphan row", () => {
+    const orphans: Record<string, OrphanToolResult> = {}
+    parseAgentBlocks([scriptRow], orphans)
+    const [card] = applyOrphanToolResults([{ id: "b", type: "tool", content: "", toolName: "script", toolCallId: "s1", toolDone: false }], orphans)
+    expect(card.toolScriptRun).toEqual({ calls: 2, saved: "count" })
+  })
+
+  it("reads nothing from a summary that is not one", () => {
+    // As it would come off the wire from something that is not this server.
+    const odd = row({ ...scriptRow, script_run: JSON.parse('{"calls":"2"}') })
+    expect(parseAgentBlocks([scriptCall, odd]).find((b) => b.type === "tool")!.toolScriptRun).toBeUndefined()
+  })
+})

@@ -38,7 +38,8 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
-import { parseScriptResult } from './scriptTrace'
+import { parseScriptResult, scriptRunSummary } from './scriptTrace'
+import type { ScriptRunSummary } from '@/api/types'
 import { ImageViewChip } from './ImageViewChip'
 import { parseImageRead } from './imageRead'
 import { TOOL_CHIP_CLASS } from './chipStyles'
@@ -82,6 +83,8 @@ interface ToolCallProps {
   result?: string // tool response content
   /** Bytes of output that stayed on the server; fetched when the row opens. */
   resultBytes?: number
+  /** A finished ``script`` call whose result stayed on the server: what its closed row says. */
+  scriptRun?: ScriptRunSummary
   /**
    * Set when ``args`` is the short form history sends (a shell call without
    * its command, a patch's files, a plan without its Markdown): the full
@@ -180,7 +183,7 @@ const ShellCommand = memo(function ShellCommand({ command }: { command: string }
   return <code>{highlighted}</code>
 })
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, argsBytes, durationMs, startedAt, toolCallId }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result: inlineResult, resultBytes, scriptRun: sentScriptRun, argsBytes, durationMs, startedAt, toolCallId }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   // Closed until the user opens it; nothing opens the row on its own.
   const [expanded, setManualExpanded] = useState(false)
@@ -243,8 +246,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const usesDiffView = name === 'patch'
   const usesReadView = name === 'read'
   const usesScriptView = name === SCRIPT_TOOL
-  // A finished script's call count and save note, once its result is here.
-  const scriptRun = useMemo(() => (usesScriptView && done ? parseScriptResult(result) : null), [usesScriptView, done, result])
+  // A finished script's call count and save note: from its result once that
+  // is here, until then from what the server sent with the call.
+  const scriptRun = useMemo(() => {
+    if (!usesScriptView || !done) return null
+    const run = parseScriptResult(result)
+    return run ? scriptRunSummary(run) : sentScriptRun ?? null
+  }, [usesScriptView, done, result, sentScriptRun])
   const diffStats = useMemo(
     () => usesDiffView && args && !isFailedResult(result) ? getDiffStats(name, args, result) : null,
     [usesDiffView, name, args, result],
@@ -436,9 +444,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           )}
           {scriptRun && (
             <span className="shrink-0 font-mono text-(--color-text-muted)" data-script-summary="">
-              {scriptRun.total} {scriptRun.total === 1 ? 'call' : 'calls'}
-              {scriptRun.saved?.startsWith('saved as ') ? ` · ${scriptRun.saved.replace(/ \(.*\)$/, '')}` : ''}
-              {scriptRun.timedOut ? ' · stopped' : ''}
+              {scriptRun.calls} {scriptRun.calls === 1 ? 'call' : 'calls'}
+              {scriptRun.saved ? ` · saved as ${scriptRun.saved}` : ''}
+              {scriptRun.stopped ? ' · stopped' : ''}
             </span>
           )}
           {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (

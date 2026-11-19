@@ -171,13 +171,17 @@ pub fn tool_start(agent: &str, tool_call_id: Option<&str>, name: &str, arguments
 /// The end of a tool call. Most tools' output stays on the server
 /// (`appv3_db::api::result_rides_inline`): `result` is null and the
 /// metadata says `result_omitted` with `result_bytes`; clients fetch it when
-/// the user opens the call. The live feed, its replay and history agree.
+/// the user opens the call. A script's metadata also says what its closed
+/// row shows (`script_run`). The live feed, its replay and history agree.
 pub fn tool_end(agent: &str, tool_call_id: Option<&str>, name: &str, result: Option<&str>, metadata: Option<Value>) -> Envelope {
     let mut metadata = meta(metadata);
     let result = match result {
         Some(text) if !appv3_db::api::result_rides_inline(name, text) => {
             metadata["result_omitted"] = Value::Bool(true);
             metadata["result_bytes"] = Value::from(text.len());
+            if let Some(run) = appv3_db::api::script_run(name, text) {
+                metadata["script_run"] = run;
+            }
             None
         }
         other => other,
@@ -436,6 +440,12 @@ mod tests {
         let kept = tool_end("a", Some("c1"), "patch", Some("Error: Could not find scope"), None);
         assert_eq!(kept.data["result"], json!("Error: Could not find scope"));
         assert_eq!(kept.data["metadata"], json!({}));
+        // A script's output stays behind too, but its closed row says how
+        // many calls it made.
+        let script = "calls (2, 0.4 s):\n→ glob *.rs · 3 ms · 9 lines\n→ read a.rs · 1 ms · 40 lines\noutput:\n2";
+        let ran = tool_end("a", Some("c1"), "script", Some(script), None);
+        assert_eq!(ran.data["result"], Value::Null);
+        assert_eq!(ran.data["metadata"], json!({"result_omitted": true, "result_bytes": script.len(), "script_run": {"calls": 2}}));
         let empty = tool_end("a", Some("c1"), "read", None, None);
         assert_eq!(empty.data["metadata"], json!({}), "nothing to leave out");
     }

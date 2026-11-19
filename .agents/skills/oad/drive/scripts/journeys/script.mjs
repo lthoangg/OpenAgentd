@@ -1,5 +1,5 @@
-// A `script` tool call: the row's title and call count, the open row's code,
-// nested calls and result, and the same row after a reload.
+// A `script` tool call: the closed row's title and call count, the open
+// row's code, nested calls and result, and the same row after a reload.
 // Feature notes: ../../features/script.md
 export default async function script({ page, expect, step, newSessionInDemo, send, run, api, history, sessionId, modelRequests }) {
   const marker = `script-${run}`
@@ -29,11 +29,12 @@ export default async function script({ page, expect, step, newSessionInDemo, sen
     await newSessionInDemo()
   })
 
-  await step("the model calls script and the row takes the script's description", async () => {
+  await step("the model calls script and the closed row shows its description and call count", async () => {
     await send(`drive:script ${code}`)
     await expect(page.getByText("Stub (chat): the tool finished.")).toBeVisible()
     await unfold()
     await expect(row("Expand")).toContainText("Drive script")
+    await expect(row("Expand")).toContainText("2 calls")
   })
 
   await step("the open row shows the code, the nested calls, the result and the call count", async () => {
@@ -44,7 +45,9 @@ export default async function script({ page, expect, step, newSessionInDemo, sen
     const lead = await history(sessionId())
     const call = lead.messages.find((m) => m.role === "tool")
     expect(call.name).toBe("script")
-    // History leaves a tool's result out; the row loads it when it opens.
+    // History leaves a tool's result out, with what the closed row says; the row loads the rest when it opens.
+    expect(call.result_omitted).toBe(true)
+    expect(call.script_run).toEqual({ calls: 2 })
     const result = await api("GET", `/agent/${sessionId()}/tool-results/${call.tool_call_id}`)
     expect(result.content).toMatch(/^calls \(2, /)
     expect(result.content).toContain(`output:\n${marker}\ntrue`)
@@ -52,10 +55,14 @@ export default async function script({ page, expect, step, newSessionInDemo, sen
     expect(asked.map((r) => r.protocol)).toEqual(["chat"])
   })
 
-  await step("the row is the same after a reload", async () => {
+  await step("after a reload the closed row still shows the call count", async () => {
     await page.reload({ waitUntil: "load" })
     await unfold()
     await expect(row("Expand")).toContainText("Drive script")
+    await expect(row("Expand")).toContainText("2 calls")
+  })
+
+  await step("the open row is the same after the reload", async () => {
     await openRowShowsTheRun()
   })
 }

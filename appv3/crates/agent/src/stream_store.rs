@@ -302,18 +302,20 @@ fn match_tool_start(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &
     tcs.push(m);
 }
 
-/// `_tool_state.match_tool_end`. `omitted_bytes`: the result stayed on the
-/// server, so the replay says so too.
-fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &str, result: Value, omitted_bytes: Option<Value>, agent: &str) {
+/// What a `tool_end` says about a result that stayed on the server; the
+/// replay says the same.
+const OMITTED_RESULT_KEYS: [&str; 2] = ["result_bytes", "script_run"];
+
+/// `_tool_state.match_tool_end`. `omitted`: the [`OMITTED_RESULT_KEYS`] of a
+/// result that stayed on the server.
+fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &str, result: Value, omitted: Vec<(&'static str, Value)>, agent: &str) {
     let by_id = id.filter(|s| !s.is_empty()).and_then(|i| tcs.iter().rposition(|tc| tc_str(tc, "tool_call_id") == Some(i)));
     let hit = by_id.or_else(|| tcs.iter().rposition(|tc| tc_str(tc, "name") == Some(name) && !tc_bool(tc, "done")));
     if let Some(i) = hit {
         let tc = &mut tcs[i];
         tc.insert("done".into(), Value::Bool(true));
         tc.insert("result".into(), result);
-        if let Some(bytes) = omitted_bytes {
-            tc.insert("result_bytes".into(), bytes);
-        }
+        tc.extend(omitted.into_iter().map(|(key, value)| (key.to_string(), value)));
         if !agent.is_empty() && tc_str(tc, "agent").map(|a| a.is_empty()).unwrap_or(true) {
             tc.insert("agent".into(), Value::String(agent.into()));
         }
@@ -324,9 +326,7 @@ fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &st
     m.insert("name".into(), Value::String(name.into()));
     m.insert("arguments".into(), Value::Null);
     m.insert("result".into(), result);
-    if let Some(bytes) = omitted_bytes {
-        m.insert("result_bytes".into(), bytes);
-    }
+    m.extend(omitted.into_iter().map(|(key, value)| (key.to_string(), value)));
     m.insert("agent".into(), Value::String(agent.into()));
     m.insert("started".into(), Value::Bool(true));
     m.insert("done".into(), Value::Bool(true));
@@ -420,8 +420,8 @@ impl StreamStore {
                 match_tool_start(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("arguments").cloned().unwrap_or(Value::Null), agent)
             }
             "tool_end" => {
-                let meta = data.get("metadata");
-                let omitted = meta.filter(|m| m.get("result_omitted") == Some(&Value::Bool(true))).and_then(|m| m.get("result_bytes")).cloned();
+                let meta = data.get("metadata").filter(|m| m.get("result_omitted") == Some(&Value::Bool(true)));
+                let omitted = OMITTED_RESULT_KEYS.iter().filter_map(|key| Some((*key, meta?.get(*key)?.clone()))).collect();
                 match_tool_end(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("result").cloned().unwrap_or(Value::Null), omitted, agent)
             }
             "usage" => state.usage = Some(data.clone()),
@@ -724,7 +724,15 @@ impl StreamStore {
                 replay.push(e);
             }
             if tc_bool(tc, "done") {
-                let metadata = tc.get("result_bytes").map(|bytes| json!({"result_omitted": true, "result_bytes": bytes}));
+                let metadata = tc.contains_key("result_bytes").then(|| {
+                    let mut m = json!({"result_omitted": true});
+                    for key in OMITTED_RESULT_KEYS {
+                        if let Some(value) = tc.get(key) {
+                            m[key] = value.clone();
+                        }
+                    }
+                    m
+                });
                 let mut e = events::tool_end(agent, id, name, None, metadata);
                 e.data.insert("result".into(), tc.get("result").cloned().unwrap_or(Value::Null));
                 replay.push(e);

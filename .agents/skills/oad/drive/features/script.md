@@ -6,10 +6,12 @@ the script logged or returned.
 
 ## Sub-features
 
-- The closed row: the script's description as its title.
+- The closed row: the script's description as its title, and the call count
+  beside it ("2 calls") as soon as the script ends and after a reload. The
+  server sends it with the call (`script_run`); the result itself is not
+  loaded for it.
 - The open row: "code", "calls · N" (one line per nested call, with its time
   and size) and "result".
-- The call count beside the title ("2 calls"), once the result has loaded.
 - The same row after a reload, rebuilt from the stored result.
 - Panels a nested call changes refresh as a direct call's would
   (`script-effects` journey): a nested `patch` lists its file in Git and a
@@ -32,15 +34,14 @@ the script logged or returned.
 - The prompt bubble holds the code and the marker too. Check the code through
   role `code` and the output by its exact text, not by a substring of the page.
 - Cross-check: history leaves a tool's result out (`result_omitted`); read it
-  from `/agent/<session>/tool-results/<tool_call_id>`.
+  from `/agent/<session>/tool-results/<tool_call_id>`. The history row's
+  `script_run` is what the closed row shows.
 
 ## Gotchas
 
 - An instance with no sessions starts in Simple detail, and one with sessions
   in Full, so the first journey of a fresh sandbox sees the folded line and
   later ones do not. The journey opens the fold when it is there.
-- The call count is not on a closed row that has never been opened: the row
-  loads its result when it opens.
 - The live trace while a script runs is not driven: the stub's script ends in
   a few milliseconds.
 - Git also refreshes when a turn ends, so the journey's Git check passes even

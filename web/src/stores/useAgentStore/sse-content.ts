@@ -12,6 +12,7 @@ import {
   readBlocks,
 } from '@/utils/blocks'
 import type { ToolResultArrival } from '@/utils/blocks'
+import { scriptRunOf } from '@/utils/script-run'
 import {
   FS_MUTATING_TOOLS,
   PLAN_MUTATING_TOOLS,
@@ -199,7 +200,7 @@ export function onToolEnd(set: StoreSet, get: StoreGet, d: Record<string, unknow
   const result = typeof d.result === 'string' ? d.result : undefined
   // Most tools' output stays on the server; the card fetches it on open.
   const arrival: ToolResultArrival = metadata?.result_omitted === true
-    ? { omittedBytes: typeof metadata.result_bytes === 'number' ? metadata.result_bytes : 0 }
+    ? { omittedBytes: typeof metadata.result_bytes === 'number' ? metadata.result_bytes : 0, scriptRun: scriptRunOf(metadata.script_run) }
     : result
   const serverDurationMs = typeof d.duration_ms === 'number'
     ? d.duration_ms

@@ -120,4 +120,20 @@ describe("the script row", () => {
     expect(document.querySelector('[data-call-status="cancelled"]')).toBeTruthy()
     expect(document.querySelector("[data-script-summary]")?.textContent).toBe("1 call · stopped")
   })
+
+  it("says how many calls it made while still closed, from what came with the call", async () => {
+    stored = RESULT
+    useAgentStore.setState({ sessionId: "sess" })
+    render(<ToolCall name="script" args={ARGS} done toolCallId="s4" resultBytes={RESULT.length} scriptRun={{ calls: 3, saved: "count-todos" }} durationMs={1800} />)
+    expect(document.querySelector("[data-script-summary]")?.textContent).toBe("3 calls · saved as count-todos")
+    // Opened, the result itself says the same.
+    open()
+    await waitFor(() => expect(screen.getByText("calls · 3")).toBeTruthy())
+    expect(document.querySelector("[data-script-summary]")?.textContent).toBe("3 calls · saved as count-todos")
+  })
+
+  it("says nothing of calls while the script still runs", () => {
+    render(<ToolCall name="script" args={ARGS} done={false} startedAt={Date.now()} toolCallId="s5" scriptRun={{ calls: 3 }} />)
+    expect(document.querySelector("[data-script-summary]")).toBeNull()
+  })
 })

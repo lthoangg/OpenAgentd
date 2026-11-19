@@ -7,6 +7,7 @@ import { isRestartNoteExtra } from '@/lib/restart-note'
 import { readBlocks } from '@/utils/blocks'
 import { userMessageSender } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
+import { scriptRunOf } from '@/utils/script-run'
 import { sentFrom } from '@/utils/workspace-messages'
 import type { AgentStore } from './types'
 import type { MessageResponse, SessionHistoryResponse } from '@/api/types'
@@ -134,7 +135,10 @@ export function toolResultsOf(rows: MessageResponse[]): Record<string, OrphanToo
     if (row.role !== 'tool' || !row.tool_call_id) continue
     const extra = row.extra as { duration_ms?: number; mcp_app?: Record<string, unknown> } | null
     const result: OrphanToolResult = { content: row.content || '' }
-    if (row.result_omitted) result.omittedBytes = row.result_bytes ?? 0
+    if (row.result_omitted) {
+      result.omittedBytes = row.result_bytes ?? 0
+      result.scriptRun = scriptRunOf(row.script_run)
+    }
     if (typeof extra?.duration_ms === 'number') result.serverDurationMs = extra.duration_ms
     if (extra?.mcp_app) result.mcpApp = extra.mcp_app
     results[row.tool_call_id] = result

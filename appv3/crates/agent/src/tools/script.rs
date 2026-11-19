@@ -493,9 +493,12 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("shell background=true"), "{text}");
+        // The closed row's summary is read back from this text.
+        assert_eq!(appv3_db::api::script_run("script", &text), Some(serde_json::json!({"calls": 3, "stopped": true})));
         let many: Vec<CallRecord> = (0..35).map(|i| CallRecord { name: "read".into(), target: i.to_string(), end: Some(CallEnd::Ok { ms: 1, size: "1 chars".into() }) }).collect();
         let text = render(&ScriptOutcome::default(), &many, Duration::ZERO, Some("saved as x (.agents/scripts/x.ts)"));
         assert!(text.contains("\n… 5 more\noutput:\n(nothing logged or returned)\nsaved as x"), "{text}");
+        assert_eq!(appv3_db::api::script_run("script", &text), Some(serde_json::json!({"calls": 35, "saved": "x"})));
     }
 
     #[test]

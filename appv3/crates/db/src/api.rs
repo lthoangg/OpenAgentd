@@ -141,6 +141,47 @@ fn names_subagent(first: &str) -> bool {
     let lower = first.to_ascii_lowercase();
     !lower.starts_with("error") && !lower.starts_with('{') && !lower.starts_with('[') && lower.contains("subagent '")
 }
+
+/// What a closed `script` row says while its result stays on the server:
+/// `calls` (every call it made), `saved` (the name it was saved under) and
+/// `stopped` (the time limit ended it). Read from the result's own text
+/// (`agent::tools::script::render`), as the web's `parseScriptResult` reads
+/// the result once the row is open; the two must agree. `None` for another
+/// tool, or a call that never ran (an argument error).
+pub fn script_run(tool: &str, content: &str) -> Option<Value> {
+    if tool != "script" {
+        return None;
+    }
+    let (count, rest) = content.strip_prefix("calls (")?.split_once(", ")?;
+    let (seconds, rest) = rest.split_once(" s):")?;
+    let digits = |text: &str, dot: bool| !text.is_empty() && text.chars().all(|c| c.is_ascii_digit() || (dot && c == '.'));
+    if !digits(count, false) || !digits(seconds, true) {
+        return None;
+    }
+    let rest = rest.strip_prefix('\n').unwrap_or(rest);
+    let body = match rest.strip_prefix("output:") {
+        Some(body) => body,
+        None => rest.split_once("\noutput:")?.1,
+    };
+    let mut body = body.strip_prefix('\n').unwrap_or(body);
+    let mut run = Map::new();
+    run.insert("calls".into(), Value::from(count.parse::<u64>().ok()?));
+    // The last line says whether it was saved; before it, the script's own error.
+    let last = body.rsplit('\n').next().unwrap_or(body);
+    if last.starts_with("saved as ") || last.starts_with("not saved: ") {
+        if let Some(name) = last.strip_prefix("saved as ") {
+            let name = name.find(" (").filter(|_| name.ends_with(')')).map_or(name, |at| &name[..at]);
+            run.insert("saved".into(), Value::String(name.into()));
+        }
+        body = body.strip_suffix(last).map_or("", |b| b.strip_suffix('\n').unwrap_or(b));
+    }
+    let error = body.strip_prefix("error: ").or_else(|| body.rfind("\nerror: ").map(|at| &body[at + "\nerror: ".len()..]));
+    if error.is_some_and(|e| e.starts_with("stopped after ")) {
+        run.insert("stopped".into(), Value::Bool(true));
+    }
+    Some(Value::Object(run))
+}
+
 /// `extra` keys no client reads: a tool result's image `parts`, the
 /// provider replay state (Anthropic raw blocks and thinking signatures,
 /// OpenAI reasoning items), which the agent reads from the database, and
@@ -343,6 +384,9 @@ impl Serialize for MessageView<'_> {
             if r.role == "tool" && !r.name.as_deref().is_some_and(|n| result_rides_inline(n, v)) {
                 m.serialize_entry("result_omitted", &true)?;
                 m.serialize_entry("result_bytes", &v.len())?;
+                if let Some(run) = r.name.as_deref().and_then(|n| script_run(n, v)) {
+                    m.serialize_entry("script_run", &run)?;
+                }
             } else {
                 m.serialize_entry("content", v)?;
             }
@@ -569,9 +613,33 @@ mod tests {
         }
         r.name = None;
         assert!(!message_response(&r).contains_key("content"), "an unnamed tool row is output too");
+        // A script's row says how many calls it made without its output.
+        r.name = Some("script".into());
+        r.content = Some("calls (2, 0.4 s):\n→ glob *.rs · 3 ms · 9 lines\n→ read a.rs · 1 ms · 40 lines\noutput:\n2".into());
+        let m = message_response(&r);
+        assert!(!m.contains_key("content"));
+        assert_eq!(m.get("script_run"), Some(&json!({"calls": 2})));
         let mut user = row("user");
         user.content = Some("hi".into());
         assert_eq!(message_response(&user)["content"], json!("hi"));
+    }
+
+    #[test]
+    fn a_script_result_gives_what_its_closed_row_says() {
+        let run = |text: &str| script_run("script", text);
+        assert_eq!(run("calls (3, 1.8 s):\n→ glob *.toml · 8 ms · 14 lines\noutput:\nhi\n42"), Some(json!({"calls": 3})));
+        assert_eq!(run("calls (0, 0.0 s):\noutput:\n(nothing logged or returned)"), Some(json!({"calls": 0})));
+        let saved = "calls (35, 0.0 s):\n→ read 0 · 1 ms · 1 chars\n… 5 more\noutput:\n(nothing logged or returned)\nsaved as x (.agents/scripts/x.ts)";
+        assert_eq!(run(saved), Some(json!({"calls": 35, "saved": "x"})));
+        let stopped = "calls (1, 270.0 s):\n→ shell sleep 999 · cancelled\noutput:\nhi\nerror: stopped after 270 s, the time limit of a script. Split the work.\nnot saved: the script failed";
+        assert_eq!(run(stopped), Some(json!({"calls": 1, "stopped": true})));
+        // Its own error, or a logged line that only looks like one, is not the time limit.
+        assert_eq!(run("calls (1, 0.1 s):\n→ read x · error: File not found: x\noutput:\nerror: x is not defined"), Some(json!({"calls": 1})));
+        // Not a run: an argument error, a listing, another tool.
+        assert_eq!(run("Give exactly one of code, path, name or list."), None);
+        assert_eq!(run("calls (two, 1.0 s):\noutput:\n"), None);
+        assert_eq!(run("calls (2, 1.0 s):\n→ read a · 1 ms · 1 chars"), None, "no output section");
+        assert_eq!(script_run("read", "calls (3, 1.8 s):\noutput:\nhi"), None);
     }
 
     /// Some cards read one kind of answer only (an opened preview, the

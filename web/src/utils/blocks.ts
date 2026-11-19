@@ -1,5 +1,5 @@
 import { current, isDraft } from 'immer'
-import type { ContentBlock } from '@/api/types'
+import type { ContentBlock, ScriptRunSummary } from '@/api/types'
 
 export function generateBlockId(): string {
   return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -370,6 +370,7 @@ function completedTool(
     toolDone: true,
     toolResult: omitted ? undefined : toolResult,
     ...(omitted ? { toolResultBytes: toolResult.omittedBytes } : {}),
+    ...(omitted && toolResult.scriptRun ? { toolScriptRun: toolResult.scriptRun } : {}),
     durationMs: clientElapsedMs ?? block.durationMs,
     serverDurationMs: serverDurationMs ?? block.serverDurationMs,
     extra: extra ? { ...(block.extra ?? {}), ...extra } : block.extra,
@@ -378,9 +379,10 @@ function completedTool(
 
 /**
  * What a finished call brought: its result text, or how many bytes of it
- * stayed on the server (``result_omitted``) for the card to fetch.
+ * stayed on the server (``result_omitted``) for the card to fetch, with
+ * what a script's closed row says meanwhile.
  */
-export type ToolResultArrival = string | { omittedBytes: number } | undefined
+export type ToolResultArrival = string | { omittedBytes: number; scriptRun?: ScriptRunSummary } | undefined
 
 /** tool_end event — the call finished. See ``initToolInto``. */
 export function completeToolInto(

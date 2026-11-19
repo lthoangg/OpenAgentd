@@ -390,3 +390,18 @@ async fn an_attach_replays_a_left_out_result_as_left_out() {
     assert_eq!(data["result"], Value::Null);
     assert_eq!(data["metadata"], json!({"result_omitted": true, "result_bytes": 5}));
 }
+
+#[tokio::test]
+async fn an_attach_replays_what_a_closed_script_row_says() {
+    let s = leak();
+    s.init_turn("sc", false);
+    let result = "calls (2, 0.4 s):\n→ glob *.rs · 3 ms · 9 lines\n→ read a.rs · 1 ms · 40 lines\noutput:\n2\nsaved as count (.agents/scripts/count.ts)";
+    s.push_event("sc", &events::tool_call("a", Some("t1"), "script", None), false);
+    s.push_event("sc", &events::tool_start("a", Some("t1"), "script", Some("{}")), false);
+    s.push_event("sc", &events::tool_end("a", Some("t1"), "script", Some(result), None), false);
+    let sub = s.attach("sc").unwrap();
+    let end = sub.replay.iter().find(|e| e.event == "tool_end").unwrap();
+    let data: Value = serde_json::from_str(&end.data).unwrap();
+    assert_eq!(data["result"], Value::Null);
+    assert_eq!(data["metadata"], json!({"result_omitted": true, "result_bytes": result.len(), "script_run": {"calls": 2, "saved": "count"}}));
+}

@@ -2,6 +2,19 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## A script call says what its closed row shows (v3.62.0)
+
+A `script` call's output stays on the server like most tools' (`result`
+null, `result_omitted`, `result_bytes`). Where those are sent, a finished
+run now also carries `script_run: {"calls": <int>, "saved"?: <name>,
+"stopped"?: true}`: every call the script made, the name it was saved
+under, and whether the time limit ended it. It is in the `metadata` of the
+`tool_end` event (live and replayed on attach) and on the tool row of
+session history, beside `result_bytes`. It is read from the result's own
+text (`appv3_db::api::script_run`); a call that never ran (an argument
+error, `list`) has none. Older clients ignore the field; a client that
+meets an older server shows the count once the row is opened, as before.
+
 ## The worktree list follows git and the disk (v3.58.0)
 
 `GET /api/agent/workspace/tree` now reconciles each repository before it

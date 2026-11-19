@@ -178,6 +178,7 @@ export const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, s
             liveOutput={block.toolOutput}
             result={block.toolResult}
             resultBytes={block.toolResultBytes}
+            scriptRun={block.toolScriptRun}
             argsBytes={block.toolArgsBytes}
             durationMs={block.durationMs}
             startedAt={block.startedAt}

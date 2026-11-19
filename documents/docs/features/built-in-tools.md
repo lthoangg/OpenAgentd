@@ -66,6 +66,10 @@ MCP.
   as it finishes: a `patch` or `shell` updates the file tree, Git and an open
   file, a `todo` the task board, and a `schedule` the scheduled tasks, with
   the script still shown as one row.
+  Since `[v3.62.0]` the closed row says how many calls the script made
+  ("3 calls"), the name it was saved under and whether the time limit
+  stopped it, as soon as it finishes and after a reload; before, that
+  showed only once the row had been opened.
 - **`preview` — show a page, read its console, and use it** `[v3.3.0]` — the agent
   opens a running local dev server or a workspace HTML file in your Preview
   tab (it comes forward on desktop, and the tool card has **Open preview**).

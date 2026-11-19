@@ -41,6 +41,18 @@ export interface MessageResponse {
   result_omitted?: boolean
   /** Its size in bytes, when ``result_omitted``. */
   result_bytes?: number
+  /** What a ``script`` call's closed row says, when ``result_omitted``. */
+  script_run?: ScriptRunSummary
+}
+
+/** A finished ``script`` call in short: what its row shows before its result is fetched. */
+export interface ScriptRunSummary {
+  /** Every call the script made. */
+  calls: number
+  /** The name it was saved under. */
+  saved?: string
+  /** The time limit ended it. */
+  stopped?: boolean
 }
 
 export interface ToolCall {
@@ -208,6 +220,8 @@ export interface ContentBlock {
    * (``useToolResult``). Absent when the result rode with the call.
    */
   toolResultBytes?: number
+  /** With ``toolResultBytes``, on a ``script`` call: what its closed row says. */
+  toolScriptRun?: ScriptRunSummary
   durationMs?: number         // client-side elapsed since first chunk (what the live timer shows, frozen on completion)
   serverDurationMs?: number   // server-measured execution time from tool_end duration_ms
   startedAt?: number          // client timestamp when block was first created (for live elapsed display)

@@ -1,3 +1,5 @@
+import type { ScriptRunSummary } from '@/api/types'
+
 /**
  * The `script` tool's two text formats (see `appv3/crates/agent/src/tools/script.rs`):
  *
@@ -96,6 +98,12 @@ export function parseScriptResult(text: string | undefined): ScriptRun | null {
     timedOut: error !== null && error.startsWith('stopped after '),
     saved,
   }
+}
+
+/** What the closed row says of a finished run: the same the server sends before the result is fetched. */
+export function scriptRunSummary(run: ScriptRun): ScriptRunSummary {
+  const saved = run.saved?.startsWith('saved as ') ? run.saved.slice('saved as '.length).replace(/ \(.*\)$/, '') : ''
+  return { calls: run.total, ...(saved ? { saved } : {}), ...(run.timedOut ? { stopped: true } : {}) }
 }
 
 /** The calls so far, from the live output of a running script. */

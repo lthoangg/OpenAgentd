@@ -109,6 +109,20 @@ jobs:
           curl -fsS "http://127.0.0.1:$port/api/health/ready"; echo
           kill "$pid" || true
 
+      # appv3/crates/cli/build.rs embeds it; Windows code signing checks it.
+      - name: Check the Windows version resource
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($bin in 'agentd', 'openagentd') {
+            $exe = "target/debug/$bin.exe"
+            $expected = ((& $exe --version) -replace '^agentd v', '').Trim()
+            $info = (Get-Item $exe).VersionInfo
+            if ($info.ProductName -ne 'OpenAgentd' -or $info.ProductVersion -ne $expected) {
+              throw "$bin.exe version resource: '$($info.ProductName)' '$($info.ProductVersion)', expected 'OpenAgentd' '$expected'"
+            }
+          }
+
       # install.sh --cli / install.ps1 -Cli and `agentd upgrade` against a
       # local fake release server (checksum, tamper refusal, self-update).
       - name: Installer + self-update e2e

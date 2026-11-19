@@ -63,3 +63,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 
 [lints]
 workspace = true
+
+[build-dependencies]
+# build.rs: the Windows version resource (product name and version) of both binaries.
+winresource = "0.1.34"

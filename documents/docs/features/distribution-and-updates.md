@@ -67,6 +67,9 @@ Desktop is primary. CLI / server is the developer path.
   formula use them), and the Linux binaries start on glibc 2.28 and newer
   (Debian 10, Ubuntu 20.04, RHEL 8) instead of 2.35; on an older glibc
   `install.sh` names the version it found and stops before downloading.
+  Since `[v3.62.0]` the Windows `agentd.exe` and `openagentd.exe` carry
+  version information (product "OpenAgentd" and the release version), shown
+  in the file's Properties → Details in Explorer.
 - **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.

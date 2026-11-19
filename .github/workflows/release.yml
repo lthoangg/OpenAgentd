@@ -159,6 +159,22 @@ jobs:
           cat "_release/$archive.sha256"
           ls -la _release
 
+      # appv3/crates/cli/build.rs embeds it; SignPath checks agentd.exe's
+      # product name and version when it signs the desktop MSI.
+      - name: Check the Windows version resource
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          foreach ($bin in 'agentd', 'openagentd') {
+            $info = (Get-Item "appv3/target/$env:TARGET/dist/$bin.exe").VersionInfo
+            if ($info.ProductName -ne 'OpenAgentd' -or $info.ProductVersion -ne $env:VERSION) {
+              throw "$bin.exe version resource: '$($info.ProductName)' '$($info.ProductVersion)', expected 'OpenAgentd' '$env:VERSION'"
+            }
+          }
+
       - name: Smoke test (handshake + health)
         env:
           OPENAGENTD_MODEL_REGISTRY_REFRESH: "false"

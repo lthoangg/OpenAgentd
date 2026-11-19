@@ -195,13 +195,17 @@ fn a_model_list_that_cannot_be_fetched_is_not_an_unknown_model() {
 }
 
 /// A bare container image (`ubuntu:24.04`) has no CA certificates, so every
-/// HTTPS request fails: the run says what to install.
+/// HTTPS request fails: the run says what to install. Both variables are set,
+/// since certificates load from `SSL_CERT_DIR` too, and a CI runner may set it.
 #[test]
 fn a_system_without_ca_certificates_is_told_to_install_them() {
     let root = tempfile::tempdir().unwrap();
     let no_certificates = root.path().join("empty.pem");
     std::fs::write(&no_certificates, "").unwrap();
-    let ran = agentd_run_with(root.path(), &nobody_home(), false, &["--model", "ollama:mock-1", "hi"], &[("SSL_CERT_FILE", &no_certificates)]);
+    let no_certificate_dir = root.path().join("no-certs");
+    std::fs::create_dir_all(&no_certificate_dir).unwrap();
+    let env = [("SSL_CERT_FILE", no_certificates.as_path()), ("SSL_CERT_DIR", no_certificate_dir.as_path())];
+    let ran = agentd_run_with(root.path(), &nobody_home(), false, &["--model", "ollama:mock-1", "hi"], &env);
     assert_eq!(ran.code, 1);
     assert!(ran.stderr.contains("could not get ollama's models"), "{}", ran.stderr);
     assert!(ran.stderr.contains("ca-certificates") && ran.stderr.contains("SSL_CERT_FILE"), "{}", ran.stderr);

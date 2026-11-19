@@ -10,6 +10,7 @@ import {
 import { queryClient } from '@/lib/query-client'
 import { clearProviderUsage } from '@/queries/providerUsageCache'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
+import { backendSwitchActive } from '@/stores/useBackendSwitchStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const DESKTOP_BOOTSTRAP_POLL_MS = 300
@@ -154,6 +155,15 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
           return
         }
         if (isBootstrapReady(status, isTauri)) {
+          // A switch still under way ends in a reload onto its server (or is
+          // called off, and the next poll starts the app). Starting on this
+          // page meanwhile would mount the router only for the reload to
+          // throw it away, with whatever it had taken: the session a tapped
+          // notification left for the reloaded page, a link marked handled.
+          if (isTauri && backendSwitchActive()) {
+            schedulePoll()
+            return
+          }
           if (status?.base_url) {
             if (status.external) {
               window.localStorage.setItem(ACTIVE_BACKEND_URL_STORAGE, status.base_url)

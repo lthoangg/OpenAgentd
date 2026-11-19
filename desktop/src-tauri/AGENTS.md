@@ -201,6 +201,59 @@ Secrets in `release-macos` (set with `gh secret set <NAME> --env release-macos`)
 - Keep the `.p12`, `.p8` and their passwords in a password manager, never in
   the repository or a repo-level secret.
 
+## Windows release signing (runbook)
+
+The `sign-windows` job of `release-desktop.yml` sends the MSI from the build
+to SignPath Foundation, which signs `OpenAgentd.exe`, the sidecar's
+`agentd.exe` and the MSI, and uploads the signed MSI as
+`openagentd-desktop-windows-x86_64`. The `sign` job then makes the updater
+`.sig` from that MSI (signing changes its bytes). `sign-windows` reads only
+the two `SIGNPATH_*` secrets and has no GitHub environment: the token submits
+requests, and SignPath asks for approval itself. Only `sign` and
+`sign-windows` may read signing secrets
+(`scripts/tests/test_release_signing_isolation.py`).
+
+Repository settings (`gh variable set <NAME>`, `gh secret set <NAME>`):
+
+| Name | Kind | Value |
+|---|---|---|
+| `SIGNPATH_API_TOKEN` | secret | API token of the SignPath CI user (submitter only) |
+| `SIGNPATH_ORGANIZATION_ID` | secret | SignPath organization ID (a secret so logs mask it) |
+| `SIGNPATH_PROJECT_SLUG` | variable | SignPath project slug |
+| `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` | variable | artifact configuration for the MSI |
+| `SIGNPATH_SIGNING_POLICY_SLUG` | variable | the mode, below |
+
+`SIGNPATH_SIGNING_POLICY_SLUG` selects the mode; the workflow never changes:
+
+- unset or `off`: no request; the unsigned MSI is published as before.
+- `test-signing`: only a `platform: windows` run sends a request. That run
+  skips `sign` and `publish`, so the test certificate never reaches a
+  release or `latest.json`; full releases ship unsigned. A test request may
+  complete without an approval click.
+- `release-signing`: every run that builds the MSI sends a request, and
+  SignPath waits for your approval. The job verifies that the MSI and both
+  programs carry a signature Windows trusts.
+
+The request passes the release version as the parameter `version`, so the
+artifact configuration must declare it; the uploaded file is
+`OpenAgentd_<version>_x64_en-US.msi` with the same version.
+
+- Approval: a `release-signing` request waits up to 60 minutes. Before you
+  approve it, check the origin SignPath shows: this repository, branch
+  `main`, and the commit of the release.
+- Rejected or not approved in time: `sign-windows` fails, `sign` and
+  `publish` do not run, and nothing is published (macOS included). "Re-run
+  failed jobs" sends a new request; SignPath allows at most three re-runs of
+  one workflow run.
+- Test a change: set `test-signing` and dispatch with `platform: windows`;
+  the "Verify the signatures" step lists each file's signer.
+- Leak: revoke the API token in SignPath and replace the secret. The token
+  cannot get a `release-signing` request signed without your approval.
+- When `release-signing` first ships, add to the Windows desktop entry of
+  `documents/docs/features/distribution-and-updates.md`: the MSI, the app
+  and its backend are signed by SignPath Foundation, tagged with that
+  release.
+
 ## Checks
 
 From the repository root, prefer:

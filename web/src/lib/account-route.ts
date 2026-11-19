@@ -16,8 +16,8 @@
  *   A switch that starts meanwhile wins: a notification from another
  *   computer launched the app and its tap opens that one
  *   (`open-on-server.ts`), or the person picked one on the Servers screen.
- *   So does a tap still on its way to its computer: the page is not
- *   reloaded under it.
+ *   So does a tap still on its way to its computer: the reload waits for
+ *   it, and is left to the tap when it switches to a computer of its own.
  * - On resume and on a network change: `cloud_poke`, so each link checks its
  *   session and tries the direct route again. On resume the shell first
  *   makes its bridges listen again (iOS may take a suspended app's
@@ -41,7 +41,7 @@ import {
 import { accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
 import { connectAccountComputer, normalizeServerBaseUrl, reloadForBackendSwitch } from '@/lib/backend-switch'
-import { sessionServerOpenInFlight } from '@/lib/open-on-server'
+import { sessionOpensSettled, sessionServerOpenInFlight } from '@/lib/open-on-server'
 import { markPageUnloading, pageUnloading, resetPageUnloading } from '@/lib/page-unload'
 import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { queryClient } from '@/lib/query-client'
@@ -83,8 +83,12 @@ async function runLaunch(): Promise<RouteOutcome> {
     openServersScreen()
     return 'failed'
   }
-  // A tap that came meanwhile has not switched yet: it goes on from here.
-  if (sessionServerOpenInFlight()) return 'skipped'
+  // A tap that came meanwhile has not switched yet. It goes first: it may
+  // reload onto its own computer, and a reload now would end it.
+  if (sessionServerOpenInFlight()) {
+    await sessionOpensSettled()
+    if (pageUnloading()) return 'skipped'
+  }
   if (result.reload) reloadForBackendSwitch()
   return result.reload ? 'switched' : 'skipped'
 }

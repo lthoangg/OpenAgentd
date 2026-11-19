@@ -104,12 +104,17 @@ let choosingServer = 0
 
 /**
  * Whether a tap or link is on its way to a server it names. The launch check
- * (`account-route.ts`) then leaves the choice of server to it, and does not
- * reload the page under it: the tap was already read from the shell's queue
- * and would be lost.
+ * (`account-route.ts`) then leaves the choice of server to it, and waits for
+ * it before reloading the page: the tap was already read from the shell's
+ * queue and a reload under it would lose it.
  */
 export function sessionServerOpenInFlight(): boolean {
   return choosingServer > 0
+}
+
+/** Resolves once no open is under way: each has opened, started its reload, or failed. */
+export async function sessionOpensSettled(): Promise<void> {
+  while (opening) await opening.catch(() => undefined)
 }
 
 /**

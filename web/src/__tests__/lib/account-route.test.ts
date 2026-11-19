@@ -222,14 +222,41 @@ describe('at launch', () => {
     const tap = openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })
     await waitFor(() => expect(ran('cloud_devices')).toHaveLength(2))
     opened()
-    // A reload now would end the page with the tap already read from the shell's queue.
-    expect(await launch).toBe('skipped')
+    // The last computer is open. A reload now would end the page with the
+    // tap already read from the shell's queue: the launch waits for the tap.
+    await waitFor(() => expect(ran('secure_get_access_key').length).toBeGreaterThan(0))
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(reload).not.toHaveBeenCalled()
     listDevices()
     expect(await tap).toBe('switching')
+    expect(await launch).toBe('skipped')
     expect(ran('cloud_open_computer').map((call) => call.args?.deviceId)).toEqual(['dev-mac', 'dev-linux'])
     expect(reload).toHaveBeenCalledTimes(1)
     expect(sessionForReloadedPage()).toBe('s-linux')
+  })
+
+  it('reloads onto the last computer once a tap for that same computer has asked for its session', async () => {
+    let opened: () => void = () => {}
+    const lastOpened = new Promise<unknown>((resolve) => { opened = () => resolve({ status: onBridge, via: 'account' }) })
+    // The shell's status: on no server, then (asked by the tap) on the last computer.
+    let status: unknown = noServerYet()
+    shell({ app_backend_status: () => status, cloud_open_computer: () => lastOpened })
+    const launch = checkRouteAtLaunch()
+    await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
+    let answerTap: () => void = () => {}
+    status = new Promise((resolve) => { answerTap = () => resolve({ ...onBridge, last_account_device: 'dev-mac' }) })
+    opened()
+    const tap = openSessionOnServer({ sessionId: 's-mac', deviceId: 'dev-mac' })
+    await waitFor(() => expect(ran('secure_get_access_key').length).toBeGreaterThan(0))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reload).not.toHaveBeenCalled()
+    answerTap()
+    // Already on its computer: the tap switches nothing, so the launch's reload still has to happen.
+    expect(await tap).toBe('opened')
+    expect(await launch).toBe('switched')
+    expect(ran('cloud_open_computer')).toHaveLength(1)
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(sessionForReloadedPage()).toBe('s-mac')
   })
 })
 

@@ -32,6 +32,10 @@ message:
   request offers ``read``)
 - ``drive:shell`` followed by a JSON object passes it as the ``shell`` call's
   arguments, e.g. ``{"command": "echo $K", "secrets": ["K"]}``
+- a user message holding ``drive:limit <seconds>``: HTTP 429 with that
+  ``Retry-After`` for a request sent with the API key ``drive-limited``, the
+  usual answer for any other key, so a provider with several keys moves on
+  to the next one and cools the first
 - any other user message: ``Stub reply (<protocol>): <the message>``, streamed
   word by word
 - a request without ``stream``: the title request's own ``<message>`` text,
@@ -57,6 +61,8 @@ from typing import Any
 MODEL = "stub"
 # A directive names the tool to call; the rest of its line is the tool's input.
 DIRECTIVE = re.compile(r"drive:(shell|script|preview|secret|plan|read)\s+(.+)")
+LIMIT = re.compile(r"drive:limit\s+(\d+)")
+LIMITED_KEY = "drive-limited"
 TITLE_MESSAGE = re.compile(r"<message>\s*(.*?)\s*</message>", re.S)
 # Each tool call gets its own id, so a session with several calls can read
 # each result back by id (`/agent/<session>/tool-results/<id>`).
@@ -240,10 +246,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": {"message": f"the stub does not speak {path}"}}, 404)
             return
         protocol, events_for = match
-        kind, value = plan(protocol, body)
+        limit = LIMIT.search(read_request(protocol, body)[1])
+        key = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip() or (self.headers.get("x-api-key") or "")
+        limited = bool(limit) and key == LIMITED_KEY
+        kind, value = ("limit", limit.group(1)) if limited and limit else plan(protocol, body)
         if self.log_path:
             with self.log_path.open("a", encoding="utf-8") as log:
                 log.write(json.dumps({"ts": time.time(), "protocol": protocol, "stream": bool(body.get("stream")), "answer": [kind, value], "request": body}) + "\n")
+        if kind == "limit":
+            data = json.dumps({"error": {"type": "rate_limit_error", "message": "Drive stub: this key is rate-limited."}}).encode()
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After", value)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if not body.get("stream"):
             self._json(whole_reply(protocol, body))
             return

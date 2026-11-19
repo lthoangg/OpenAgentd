@@ -184,7 +184,7 @@ cmd_run() {
   local run_dir
   run_dir="$EVIDENCE_ROOT/$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$run_dir"
-  DRIVE_DIR="$DRIVE_DIR" WEB_URL="$WEB" API="$API" OUT_DIR="$run_dir" ROOT="$ROOT" bun "$HERE/journeys.mjs" "$@"
+  DRIVE_DIR="$DRIVE_DIR" WEB_URL="$WEB" API="$API" MODEL_URL="http://127.0.0.1:$MODEL_PORT/v1" OUT_DIR="$run_dir" ROOT="$ROOT" bun "$HERE/journeys.mjs" "$@"
 }
 
 case "${1:-}" in

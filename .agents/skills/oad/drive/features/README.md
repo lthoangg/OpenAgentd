@@ -10,6 +10,7 @@ view; find code paths in the source when you need them.
 | [Send a message](message.md) | `message` | A new session in a folder opened through the UI; the reply streams in; the server stored the turn |
 | [Model protocols](protocols.md) | `protocols` | Text and a tool call over Anthropic Messages and OpenAI Responses, picked the way a user picks a model |
 | [Run picker](run-picker.md) | `run-picker` | A model, then its thinking level on its own page, picked with the keys on a desktop and taps on a phone; `/think` opens on the levels; the turn runs with the level |
+| [Key and account cooldowns](cooldown.md) | `cooldown` | A rate-limited key hands the turn to the next one; the picker and Settings show it cooling, then ready again when the cooldown ends, with no reload |
 | [Session sidebar](sidebar.md) | `sidebar` | Sessions are listed under their workspace, open on a click, and are found by search |
 | [Worktree list](worktrees.md) | `worktrees` | A worktree removed outside the app drops off while its session stays; a plain-git one is listed as external |
 | [Review panel](review.md) | `review` | A file the agent changed shows in Git with its diff, and matches `git diff` on disk |

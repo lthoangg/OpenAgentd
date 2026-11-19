@@ -20,6 +20,18 @@ fn normalized(v: Option<&str>) -> Option<String> {
     v.map(str::trim).filter(|s| !s.is_empty()).map(String::from)
 }
 
+/// The error for a model whose provider could not be asked for its models
+/// (`why`). On a system that trusts no certificate authority (a bare
+/// container image such as `ubuntu:24.04`) every HTTPS request fails,
+/// whatever the provider: the hint says what to install.
+fn models_unavailable(provider: &str, model: &str, why: &str) -> anyhow::Error {
+    let message = format!("could not get {provider}'s models ({why}), so {model:?} could not be checked");
+    if rustls_native_certs::load_native_certs().certs.is_empty() {
+        return crate::ui::hinted(message, "this system has no CA certificates, so HTTPS requests fail: install the ca-certificates package, or set SSL_CERT_FILE to a CA bundle");
+    }
+    anyhow!(message)
+}
+
 /// The error that ends the run when `status` (a `provider_status` event)
 /// announces a wait for a usage limit longer than [`QUOTA_WAIT_LIMIT_SECONDS`].
 fn quota_wait_error(status: &serde_json::Map<String, Value>) -> Option<String> {
@@ -68,8 +80,12 @@ async fn run_turn(args: &RunArgs) -> Result<()> {
     let thinking = normalized(args.thinking.as_deref());
     if let Some(m) = &model {
         if !appv3_api::providers::is_registered_model_id(m) {
-            appv3_api::providers::list_models_if_none(m.split(':').next().unwrap_or_default()).await;
+            let provider = m.split(':').next().unwrap_or_default();
+            let listed = appv3_api::providers::list_models_if_none(provider).await;
             if !appv3_api::providers::is_registered_model_id(m) {
+                if let Err(why) = listed {
+                    return Err(models_unavailable(provider, m, &why));
+                }
                 bail!("unknown model {m:?}; choose a model from the registry");
             }
         }

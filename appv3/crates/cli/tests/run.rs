@@ -87,6 +87,11 @@ struct Ran {
 /// provider at `base`. `listed` is whether the install already lists
 /// `mock-1`, as it does once the app has shown the provider's models.
 fn agentd_run(root: &Path, base: &str, listed: bool, args: &[&str]) -> Ran {
+    agentd_run_with(root, base, listed, args, &[])
+}
+
+/// [`agentd_run`] with more of the environment set.
+fn agentd_run_with(root: &Path, base: &str, listed: bool, args: &[&str], env: &[(&str, &Path)]) -> Ran {
     let models = if listed { "providers:\n  ollama:\n    cached_models:\n    - mock-1\n" } else { "" };
     std::fs::create_dir_all(root.join("config")).unwrap();
     std::fs::write(root.join("config/settings.yaml"), format!("title_generation:\n  enabled: false\n{models}")).unwrap();
@@ -98,6 +103,7 @@ fn agentd_run(root: &Path, base: &str, listed: bool, args: &[&str]) -> Ran {
     cmd.stdout(std::fs::File::create(&out).unwrap()).stderr(std::fs::File::create(&err).unwrap());
     common::sandbox(&mut cmd, root);
     cmd.env("OLLAMA_BASE_URL", base);
+    cmd.envs(env.iter().copied());
     let mut child = cmd.spawn().expect("spawn agentd");
     let started = Instant::now();
     let status = loop {
@@ -168,4 +174,35 @@ fn a_model_the_install_has_not_listed_yet_is_looked_up() {
     let ran = agentd_run(root.path(), &base, false, &["--model", "ollama:no-such-model", "hi"]);
     assert_eq!(ran.code, 1);
     assert!(ran.stderr.contains("unknown model"), "{}", ran.stderr);
+}
+
+/// A base URL nothing listens on.
+fn nobody_home() -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    format!("http://127.0.0.1:{}/v1", listener.local_addr().unwrap().port())
+}
+
+/// The provider could not be asked for its models: that is what the run
+/// says, not that the model does not exist.
+#[test]
+fn a_model_list_that_cannot_be_fetched_is_not_an_unknown_model() {
+    let root = tempfile::tempdir().unwrap();
+    let ran = agentd_run(root.path(), &nobody_home(), false, &["--model", "ollama:mock-1", "hi"]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stderr.contains("could not get ollama's models"), "{}", ran.stderr);
+    assert!(!ran.stderr.contains("unknown model"), "{}", ran.stderr);
+    assert!(!ran.stderr.contains("ca-certificates"), "this system has certificates\n{}", ran.stderr);
+}
+
+/// A bare container image (`ubuntu:24.04`) has no CA certificates, so every
+/// HTTPS request fails: the run says what to install.
+#[test]
+fn a_system_without_ca_certificates_is_told_to_install_them() {
+    let root = tempfile::tempdir().unwrap();
+    let no_certificates = root.path().join("empty.pem");
+    std::fs::write(&no_certificates, "").unwrap();
+    let ran = agentd_run_with(root.path(), &nobody_home(), false, &["--model", "ollama:mock-1", "hi"], &[("SSL_CERT_FILE", &no_certificates)]);
+    assert_eq!(ran.code, 1);
+    assert!(ran.stderr.contains("could not get ollama's models"), "{}", ran.stderr);
+    assert!(ran.stderr.contains("ca-certificates") && ran.stderr.contains("SSL_CERT_FILE"), "{}", ran.stderr);
 }

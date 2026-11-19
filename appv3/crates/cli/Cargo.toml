@@ -44,6 +44,8 @@ tar = "0.4"
 flate2 = "1"
 libc = "0.2"
 reqwest.workspace = true
+# `agentd run`: tells a system with no CA certificates from a model that does not exist.
+rustls-native-certs = "0.8"
 sha2.workspace = true
 qrcode = { version = "0.14", default-features = false }
 # `agentd plugin`: staging folders next to the plugins, and scratch data for the sandboxed code check.

@@ -116,6 +116,11 @@ Desktop is primary. CLI / server is the developer path.
   later, the run ends with an error that names the wait instead of sleeping
   until the reset. `--model` works on an install that has only used the CLI:
   the provider's model list is fetched when none is saved yet.
+  Since `[v3.62.0]`, when that list cannot be fetched the run says so and
+  why, instead of "unknown model"; on a system with no CA certificates (a
+  bare container image) it adds a hint to install `ca-certificates` or set
+  `SSL_CERT_FILE`. A `--prompt` value may start with a dash (a Markdown
+  list).
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `agentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when

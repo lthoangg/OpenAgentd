@@ -268,13 +268,24 @@ pub async fn discover_provider_models(entry: &Value, overrides: &HashMap<String,
 /// `credential_id` is given: that row's values plus `overrides` (values
 /// being tried), never the credential in use. `[]` when the row is gone.
 pub async fn discover_provider_models_for(entry: &Value, overrides: &HashMap<String, String>, credential_id: Option<&str>) -> Vec<String> {
+    match try_discover_provider_models(entry, overrides, credential_id).await {
+        Ok(models) => models,
+        Err(e) => {
+            tracing::info!("provider_models_unavailable provider={} error={}", s(entry, "id"), e);
+            vec![]
+        }
+    }
+}
+
+/// [`discover_provider_models_for`], or why the provider could not be asked.
+async fn try_discover_provider_models(entry: &Value, overrides: &HashMap<String, String>, credential_id: Option<&str>) -> anyhow::Result<Vec<String>> {
     let id = s(entry, "id");
     let pinned = credential_id.is_some();
     let merged;
     let typed = overrides;
     let overrides = match credential_id {
         Some(cid) => {
-            let Some(mut row) = stored_credential_values(id, cid) else { return vec![] };
+            let Some(mut row) = stored_credential_values(id, cid) else { return Ok(vec![]) };
             row.extend(overrides.iter().map(|(k, v)| (k.clone(), v.clone())));
             merged = row;
             &merged
@@ -349,13 +360,7 @@ pub async fn discover_provider_models_for(entry: &Value, overrides: &HashMap<Str
         }
     }
     .await;
-    match res {
-        Ok(m) => filter_agent_model_ids(m),
-        Err(e) => {
-            tracing::info!("provider_models_unavailable provider={} error={}", id, e);
-            vec![]
-        }
-    }
+    res.map(filter_agent_model_ids)
 }
 
 pub fn daemon_base_url(id: &str) -> String {
@@ -412,16 +417,25 @@ pub fn ui(cfg: &rs::RuntimeSettings, id: &str) -> ProviderUiSettings {
 /// Fetches and saves `provider`'s model list when it is connected and has
 /// none. Only the app's model routes list models, so an install that has
 /// used nothing but the CLI knows no model until this runs.
-pub async fn list_models_if_none(provider: &str) {
-    let Some(entry) = find(provider) else { return };
+///
+/// `Err` says why a list that was asked for is still missing (the request
+/// failed, or the provider named no model): a model of that provider is
+/// then unchecked, not unknown.
+pub async fn list_models_if_none(provider: &str) -> Result<(), String> {
+    let Some(entry) = find(provider) else { return Ok(()) };
     let pui = ui(&rs::load_runtime_settings().unwrap_or_default(), provider);
     if pui.is_disconnected || !pui.cached_models.is_empty() || !provider_is_configured(&entry) {
-        return;
+        return Ok(());
     }
-    let found = discover_provider_models(&entry, &saved_overrides(&entry)).await;
-    if !found.is_empty() {
-        let _ = rs::set_provider_cached_models(provider, &found);
+    let found = try_discover_provider_models(&entry, &saved_overrides(&entry), None).await.map_err(|e| {
+        tracing::info!("provider_models_unavailable provider={} error={}", provider, e);
+        format!("{e:#}")
+    })?;
+    if found.is_empty() {
+        return Err("it named no model".into());
     }
+    let _ = rs::set_provider_cached_models(provider, &found);
+    Ok(())
 }
 
 /// `is_registered_model_id(model_id)`.

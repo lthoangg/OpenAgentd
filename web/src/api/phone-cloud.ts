@@ -130,6 +130,28 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 }
 
 export const getPhoneCloudStatus = () => call<PhoneCloudStatus>('cloud_status')
+
+/** How long to wait for the shell to restore a stored account at launch. */
+const ACCOUNT_RESTORE_WAIT_MS = 3000
+const ACCOUNT_RESTORE_POLL_MS = 250
+
+/**
+ * Whether the phone is signed in to its account. At launch the shell takes a
+ * moment to restore a stored one and says `guest` until then, so `guest` is
+ * asked again for a while before it is believed.
+ */
+export async function phoneAccountConnected(): Promise<boolean> {
+  const deadline = Date.now() + ACCOUNT_RESTORE_WAIT_MS
+  for (;;) {
+    const status: PhoneCloudStatus | null = await getPhoneCloudStatus().catch(() => null)
+    if (status?.state === 'connected') return true
+    // Signing in, closing, … are not a stored account being restored.
+    if (status && status.state !== 'guest') return false
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_RESTORE_POLL_MS))
+  }
+}
+
 export const phoneCloudSignIn = () => call<PhoneCloudStatus>('cloud_sign_in')
 /** Joins with an invitation (scanned or pasted). The link works like a password. */
 export const phoneCloudJoinInvite = (link: string) => call<PhoneCloudStatus>('cloud_join_invite', { link })

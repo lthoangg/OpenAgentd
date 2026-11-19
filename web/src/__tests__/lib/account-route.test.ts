@@ -6,6 +6,7 @@
  * computer.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { waitFor } from '@testing-library/react'
 
 /** A plain stand-in for window.location whose reload is a mock. */
 function fakeLocation(real: Location, reload: () => void): Location {
@@ -36,6 +37,7 @@ const { reloadForBackendSwitch } = await import('@/lib/backend-switch')
 const { queryClient } = await import('@/lib/query-client')
 const { queryKeys } = await import('@/queries/keys')
 const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
+const { beginBackendSwitch, useBackendSwitchStore } = await import('@/stores/useBackendSwitchStore')
 
 const LAN = 'http://192.168.1.20:4082'
 const BRIDGE = 'http://127.0.0.1:5999'
@@ -86,6 +88,7 @@ beforeEach(() => {
   reload = mock(() => {})
   Object.defineProperty(window, 'location', { configurable: true, value: fakeLocation(realLocation, reload) })
   useServersScreenStore.setState({ request: 0, prefill: null })
+  useBackendSwitchStore.setState({ target: null, generation: 0, committing: false })
   shell()
 })
 
@@ -140,6 +143,33 @@ describe('at launch', () => {
     shell({ app_backend_status: () => ({ ...onLan, last_account_device: 'dev-gone' }) })
     expect(await checkRouteAtLaunch()).toBe('skipped')
     expect(ran('cloud_open_computer')).toHaveLength(0)
+  })
+
+  // A notification from another computer launched the app: its tap picks the computer.
+  const noServerYet = () => ({ ...onLan, base_url: '', servers: [], last_account_device: 'dev-mac' })
+
+  it('leaves the choice to a switch already under way', async () => {
+    shell({ app_backend_status: noServerYet })
+    beginBackendSwitch({ name: 'Linux box' })
+    expect(await checkRouteAtLaunch()).toBe('skipped')
+    expect(ran('cloud_open_computer')).toHaveLength(0)
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('gives way without a word to a switch that starts while it opens the last computer', async () => {
+    let opened: (value: unknown) => void = () => {}
+    shell({
+      app_backend_status: noServerYet,
+      cloud_open_computer: () => new Promise((resolve) => { opened = resolve }),
+    })
+    const launch = checkRouteAtLaunch()
+    await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
+    beginBackendSwitch({ name: 'Linux box' })
+    opened({ status: onBridge, via: 'account' })
+    expect(await launch).toBe('skipped')
+    // Not a failure: no Servers screen over the switch that replaced it, and no reload of its own.
+    expect(useServersScreenStore.getState().request).toBe(0)
+    expect(reload).not.toHaveBeenCalled()
   })
 })
 

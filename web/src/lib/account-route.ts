@@ -13,6 +13,9 @@
  *
  * - At launch: the computer last opened (`last_account_device`) is opened
  *   again, unless the app is on it already, also when no server is saved.
+ *   A switch that starts meanwhile wins: a notification from another
+ *   computer launched the app and its tap opens that one
+ *   (`open-on-server.ts`), or the person picked one on the Servers screen.
  * - On resume and on a network change: `cloud_poke`, so each link checks its
  *   session and tries the direct route again. On resume the shell first
  *   makes its bridges listen again (iOS may take a suspended app's
@@ -29,10 +32,9 @@ import {
   cloudPoke,
   cloudPokeAndWait,
   getPhoneCloudDevices,
-  getPhoneCloudStatus,
   isPhoneCloudShell,
   isServer,
-  type PhoneCloudStatus,
+  phoneAccountConnected,
 } from '@/api/phone-cloud'
 import { accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
@@ -42,10 +44,7 @@ import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 import { openServersScreen } from '@/stores/useServersScreenStore'
-
-/** How long to wait for the shell to restore a stored account at launch. */
-const ACCOUNT_RESTORE_WAIT_MS = 3000
-const ACCOUNT_RESTORE_POLL_MS = 250
+import { backendSwitchActive } from '@/stores/useBackendSwitchStore'
 
 export type RouteOutcome = 'switched' | 'failed' | 'skipped'
 
@@ -57,18 +56,6 @@ export function resetAccountRoute(): void {
   resetPageUnloading()
 }
 
-async function connectedAccount(): Promise<boolean> {
-  const deadline = Date.now() + ACCOUNT_RESTORE_WAIT_MS
-  for (;;) {
-    const status: PhoneCloudStatus | null = await getPhoneCloudStatus().catch(() => null)
-    if (status?.state === 'connected') return true
-    // Signing in, closing, … are not a stored account being restored.
-    if (status && status.state !== 'guest') return false
-    if (Date.now() >= deadline) return false
-    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_RESTORE_POLL_MS))
-  }
-}
-
 async function runLaunch(): Promise<RouteOutcome> {
   const status = await getAppBackendStatus()
   // A phone with only account computers has no server to be on at launch
@@ -76,16 +63,20 @@ async function runLaunch(): Promise<RouteOutcome> {
   if (!status?.external) return 'skipped'
   const last = status.last_account_device
   if (!last || status.account_device?.device_id === last) return 'skipped'
-  if (!(await connectedAccount())) return 'skipped'
+  if (!(await phoneAccountConnected())) return 'skipped'
   const devices = await getPhoneCloudDevices().catch(() => [])
   const device = devices.find((d) => !d.me && isServer(d) && d.device_id === last)
   if (!device) return 'skipped'
+  // Another switch already chose where the app goes.
+  if (backendSwitchActive()) return 'skipped'
   const result = await connectAccountComputer({
     deviceId: device.device_id,
     label: accountComputerTitle(device, status.computer_names),
     currentBaseUrl: normalizeServerBaseUrl(status.base_url),
   })
   if (!result.ok) {
+    // Replaced by a newer switch (Back leaves none under way): that one goes on.
+    if (result.cancelled && backendSwitchActive()) return 'skipped'
     openServersScreen()
     return 'failed'
   }

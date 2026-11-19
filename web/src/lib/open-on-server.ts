@@ -11,12 +11,16 @@
  *   on one machine: neither stands in for the other.
  *
  * A switch reloads the page; the session to open waits in sessionStorage and
- * is opened by `usePendingSessionOpen` once the new server is up. A failure
- * says why and shows the Servers screen, where the person can retry.
+ * is opened by the root route once the new server is up. A failure says why
+ * and shows the Servers screen, where the person can retry.
+ *
+ * A tap can also launch the app, before it is on any server: the computer
+ * the tap names is opened then, not the one the app was last on (the launch
+ * check in `account-route.ts` gives way to it).
  */
 import { accountComputerTitle, getAppBackendStatus, type AppBackendStatus } from '@/lib/app-backend'
 import type { NotificationTarget } from '@/lib/notification-taps'
-import { requestSessionOpen } from '@/lib/pending-session-open'
+import { holdSessionOpen, requestSessionOpen } from '@/lib/pending-session-open'
 
 export type OpenOutcome = 'opened' | 'switching' | 'failed'
 
@@ -49,8 +53,12 @@ async function afterSwitch(
 ): Promise<OpenOutcome> {
   // Back on the switching screen: the person stays where they were, no error.
   if (!result.ok) return result.cancelled ? 'failed' : fail(result.error)
-  requestSessionOpen(sessionId)
-  if (!result.reload) return 'opened'
+  if (!result.reload) {
+    requestSessionOpen(sessionId)
+    return 'opened'
+  }
+  // The reloaded page opens it; this one is leaving.
+  holdSessionOpen(sessionId)
   const { reloadForBackendSwitch } = await import('@/lib/backend-switch')
   reloadForBackendSwitch()
   return 'switching'
@@ -61,7 +69,10 @@ async function openOnDevice(target: NotificationTarget & { deviceId: string }, s
     requestSessionOpen(target.sessionId)
     return 'opened'
   }
-  const { getPhoneCloudDevices } = await import('@/api/phone-cloud')
+  const { getPhoneCloudDevices, phoneAccountConnected } = await import('@/api/phone-cloud')
+  // A tap that launched the app comes before the shell has restored the
+  // account, and no computer opens until then. Signed out, the shell says so.
+  await phoneAccountConnected()
   const devices = await getPhoneCloudDevices().catch(() => [])
   const device = devices.find((d) => d.device_id === target.deviceId)
   const { connectAccountComputer } = await import('@/lib/backend-switch')
@@ -95,10 +106,11 @@ let opening: Promise<OpenOutcome> | null = null
 export function openSessionOnServer(target: NotificationTarget): Promise<OpenOutcome> {
   const run = async (): Promise<OpenOutcome> => {
     const status = await getAppBackendStatus().catch(() => null)
-    if (!status?.base_url || (!target.deviceId && !target.baseUrl)) {
+    if (!status || (!target.deviceId && !target.baseUrl)) {
       requestSessionOpen(target.sessionId)
       return 'opened'
     }
+    // Empty when the app is on no server yet (a tap that launched it).
     const current = normalize(status.base_url)
     if (target.deviceId) return openOnDevice({ ...target, deviceId: target.deviceId }, status, current)
     return openOnServer({ ...target, baseUrl: target.baseUrl! }, status, current)

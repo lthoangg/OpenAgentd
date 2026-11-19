@@ -47,6 +47,10 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   servers. The iPhone shows its own notification instead of the push's
   whenever push is off or not registered yet, and registers again once
   notifications are allowed.
+  Fixed in `[v3.62.0]` for an account with several computers: a tap that
+  launched the app opened the session on the computer last used instead of
+  the one the notification came from, and a tap that switched computers
+  landed on that computer's start screen without opening the session.
   Nothing is missed after a reconnect `[v3.52.0]`: a phone, laptop or window
   that was in the background, asleep or offline catches up on what happened
   meanwhile when it reconnects (unread dots, session states, question cards),

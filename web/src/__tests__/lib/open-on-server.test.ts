@@ -9,7 +9,12 @@ let status: unknown = null
 mock.module('@/lib/app-backend', () => ({ ...realAppBackend, getAppBackendStatus: async () => status }))
 
 let devices: unknown[] = []
-mock.module('@/api/phone-cloud', () => ({ getPhoneCloudDevices: async () => devices }))
+/** Resolves once the shell has restored the phone's account (at once, unless a test holds it). */
+let accountRestored: Promise<boolean> = Promise.resolve(true)
+mock.module('@/api/phone-cloud', () => ({
+  getPhoneCloudDevices: async () => devices,
+  phoneAccountConnected: () => accountRestored,
+}))
 
 type Switch = { ok: true; reload: boolean } | { ok: false; error: string }
 let switchResult: Switch = { ok: true, reload: true }
@@ -45,6 +50,7 @@ beforeEach(() => {
   window.sessionStorage.clear()
   status = onServer(LAN_A)
   devices = [MAC, LINUX]
+  accountRestored = Promise.resolve(true)
   switchResult = { ok: true, reload: true }
   connectAccountComputer.mockClear()
   connectExternalBackend.mockClear()
@@ -97,6 +103,39 @@ describe('openSessionOnServer', () => {
     expect(reloadForBackendSwitch).toHaveBeenCalledTimes(1)
     // What the reloaded page reads.
     expect(takePendingSessionOpen()).toBe('s-linux')
+  })
+
+  it('leaves the session to the reloaded page: the page about to reload is not told to open it', async () => {
+    // The root route opens a waiting session as soon as it hears of one.
+    const takenBeforeReload: Array<string | null> = []
+    const root = () => { takenBeforeReload.push(takePendingSessionOpen()) }
+    window.addEventListener(PENDING_OPEN_EVENT, root)
+    try {
+      expect(await openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })).toBe('switching')
+    } finally {
+      window.removeEventListener(PENDING_OPEN_EVENT, root)
+    }
+    expect(takenBeforeReload).toEqual([])
+    expect(takePendingSessionOpen()).toBe('s-linux')
+  })
+
+  it('opens the computer a push came from when the tap launched the app, before it is on any server', async () => {
+    // A phone with only account computers: nothing to be on until one opens.
+    status = onServer('', { servers: [], last_account_device: 'dev-mac' })
+    expect(await openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })).toBe('switching')
+    expect(connectAccountComputer.mock.calls[0][0]).toEqual({ deviceId: 'dev-linux', label: 'Linux · 9C02 E1B7', currentBaseUrl: '' })
+    expect(takePendingSessionOpen()).toBe('s-linux')
+  })
+
+  it('waits for the shell to restore the account before it opens a computer', async () => {
+    let restored: (connected: boolean) => void = () => {}
+    accountRestored = new Promise((resolve) => { restored = resolve })
+    const opening = openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(connectAccountComputer).not.toHaveBeenCalled()
+    restored(true)
+    expect(await opening).toBe('switching')
+    expect(connectAccountComputer).toHaveBeenCalledTimes(1)
   })
 
   it('switches to the saved server an app notification was raised on', async () => {

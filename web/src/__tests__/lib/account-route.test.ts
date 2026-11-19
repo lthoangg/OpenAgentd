@@ -153,6 +153,16 @@ describe('at launch', () => {
     expect(ran('cloud_open_computer')).toHaveLength(0)
   })
 
+  it('believes a signed-out phone the first time (the shell answers once it has read its stored account)', async () => {
+    shell({
+      app_backend_status: () => ({ ...onLan, last_account_device: 'dev-mac' }),
+      cloud_status: () => ({ state: 'guest', notice: null, supported: true }),
+    })
+    expect(await checkRouteAtLaunch()).toBe('skipped')
+    expect(ran('cloud_status')).toHaveLength(1)
+    expect(ran('cloud_open_computer')).toHaveLength(0)
+  })
+
   // A notification from another computer launched the app: its tap picks the computer.
   const noServerYet = () => ({ ...onLan, base_url: '', servers: [], last_account_device: 'dev-mac' })
 

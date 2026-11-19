@@ -72,7 +72,8 @@ async function openOnDevice(target: NotificationTarget & { deviceId: string }, s
   }
   const { getPhoneCloudDevices, phoneAccountConnected } = await import('@/api/phone-cloud')
   // A tap that launched the app comes before the shell has restored the
-  // account, and no computer opens until then. Signed out, the shell says so.
+  // account, and no computer opens until then: the shell answers this once
+  // it has. Signed out, it says so.
   await phoneAccountConnected()
   const devices = await getPhoneCloudDevices().catch(() => [])
   const device = devices.find((d) => d.device_id === target.deviceId)

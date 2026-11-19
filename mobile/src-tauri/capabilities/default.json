@@ -54,6 +54,7 @@
     "allow-cloud-make-approver",
     "allow-cloud-sign-out",
     "allow-notification-take-taps",
+    "allow-deep-link-sequence",
     "allow-cloud-open-computer",
     "allow-cloud-rename-computer",
     "allow-cloud-poke",

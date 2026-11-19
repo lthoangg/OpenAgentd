@@ -175,6 +175,12 @@ const DELIVERED_STORAGE_KEY = 'openagentd.deepLink.delivered'
  * (a server switch, or iOS ending the page in the background) it would open
  * the session again, start another draft, or repeat a one-time OAuth code.
  * sessionStorage survives those reloads; live `onOpenUrl` links always run.
+ *
+ * A link is remembered with the phone shell's count of the links it has
+ * seen arrive (`deep_link_sequence`): the same link opened again while no
+ * page was listening (a widget's row or its New session button, tapped
+ * after iOS ended the page) has a later count, so it runs. Where the shell
+ * does not count (the desktop, an older phone shell) the link alone tells.
  */
 function loadDelivered(): string[] {
   try {
@@ -185,14 +191,31 @@ function loadDelivered(): string[] {
   }
 }
 
-function rememberDelivered(url: string): void {
-  const delivered = loadDelivered().filter((known) => known !== url)
-  delivered.push(url)
+function rememberDelivered(key: string): void {
+  const delivered = loadDelivered().filter((known) => known !== key)
+  delivered.push(key)
   try {
     window.sessionStorage.setItem(DELIVERED_STORAGE_KEY, JSON.stringify(delivered.slice(-8)))
   } catch {
     // Storage unavailable: a reload may run the link again.
   }
+}
+
+/** How many links the phone shell has seen arrive this app run; 0 where it does not count. */
+async function linkSequence(): Promise<number> {
+  if (!isMobileApp()) return 0
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const count: unknown = await invoke('deep_link_sequence')
+    return typeof count === 'number' && count > 0 ? count : 0
+  } catch {
+    return 0
+  }
+}
+
+/** What a link is remembered under: the link, after its count where the shell keeps one (a link holds no space). */
+function deliveredKey(url: string, sequence: number): string {
+  return sequence > 0 ? `${sequence} ${url}` : url
 }
 
 async function listenToDeepLinks(onUrls: (urls: string[], replayed: boolean) => void): Promise<(() => void) | undefined> {
@@ -289,8 +312,9 @@ export function useDeepLinkRouter(): void {
     let unlisten: (() => void) | undefined
     let disposed = false
     const handleUrls = async (urls: string[], replayed: boolean) => {
-      const fresh = replayed ? urls.filter((url) => !loadDelivered().includes(url)) : urls
-      for (const url of fresh) rememberDelivered(url)
+      const sequence = await linkSequence()
+      const fresh = replayed ? urls.filter((url) => !loadDelivered().includes(deliveredKey(url, sequence))) : urls
+      for (const url of fresh) rememberDelivered(deliveredKey(url, sequence))
       await Promise.all(fresh.map(handleUrl))
     }
 

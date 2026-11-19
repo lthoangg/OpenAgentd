@@ -43,6 +43,7 @@ fn main() {
                 "cloud_make_approver",
                 "cloud_sign_out",
                 "notification_take_taps",
+                "deep_link_sequence",
                 "cloud_open_computer",
                 "cloud_rename_computer",
                 "cloud_poke",

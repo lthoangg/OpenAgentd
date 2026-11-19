@@ -38,6 +38,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   A widget's session opens on the server the widget synced from
   `[v3.52.0]`, switching to it first when the app is on another one, and a
   link is handled once even when iOS reloads the app in the background.
+  Since `[v3.62.0]` the same row or **New session** tapped again after such
+  a reload opens again; it used to be taken for the tap already handled, and
+  the app opened where it had been.
   Since `[v3.55.0]` a widget never opens a session on the wrong server: a
   row whose server the app no longer knows opens nothing, says so, and shows
   Servers. Removing the server the widgets show, or signing out of the

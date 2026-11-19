@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-deep-link-sequence"
+description = "Enables the deep_link_sequence command without any pre-configured scope."
+commands.allow = ["deep_link_sequence"]
+
+[[permission]]
+identifier = "deny-deep-link-sequence"
+description = "Denies the deep_link_sequence command without any pre-configured scope."
+commands.deny = ["deep_link_sequence"]

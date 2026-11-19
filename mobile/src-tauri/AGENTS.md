@@ -32,6 +32,10 @@ integration for the mobile shell.
   while the app is open, a push from any other account computer shows as a
   banner (`../ios-widget/App/ForegroundPush.swift`); the plugin alone would
   hide every push.
+- `src/links.rs`: `deep_link_sequence`, the count of links the app was
+  opened with this run. The web UI remembers each handled link with it, so a
+  reloaded page skips the link it already ran but runs the same link opened
+  again while no page was listening (a widget's fixed links).
 - `src/keyboard_bar.rs` (iOS): hides the WebView's form accessory bar
   (`< > ✓` above the keyboard) at setup by moving WKWebView's content view to
   a subclass whose `inputAccessoryView` is nil. On iOS 26 the floating bar is

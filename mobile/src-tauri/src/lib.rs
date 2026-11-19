@@ -18,6 +18,7 @@ mod cloud_bridge;
 mod cloud_e2e_tests;
 #[cfg(target_os = "ios")]
 mod keyboard_bar;
+mod links;
 #[cfg(test)]
 mod preview_account_tests;
 mod push;
@@ -797,6 +798,7 @@ pub fn run() {
                 push_android::install(_app.handle());
             }
             taps::install(_app.handle());
+            links::install(_app.handle());
             #[cfg(target_os = "ios")]
             theme::paint_launch_background(_app.handle());
             #[cfg(target_os = "ios")]
@@ -848,6 +850,7 @@ pub fn run() {
             cloud::cloud_link_route,
             cloud::cloud_diagnostics,
             taps::notification_take_taps,
+            links::deep_link_sequence,
             cloud_open_computer,
             cloud_rename_computer,
             push::cloud_push_register,

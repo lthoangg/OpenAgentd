@@ -21,7 +21,8 @@ import { createPortal } from 'react-dom'
 import { AlertCircle, Check, Copy, Maximize2, X } from 'lucide-react'
 import type { MountOptions, Mounted } from 'pele/lazy'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { copyText, useChatMenu } from '@/components/ChatContextMenu'
+import { useChatMenu } from '@/components/ChatContextMenu'
+import { copyText } from '@/lib/copy-text'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { sanitizeDiagramSvg } from './diagram-svg'
 
@@ -126,7 +127,7 @@ export function MermaidBlock({ source }: { source: string }) {
   const [copied, setCopied] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const hostRef = useRef<HTMLDivElement>(null)
-  const chatMenu = useChatMenu('Actions for mermaid diagram', () => [{ label: 'Copy code', run: () => copyText(source) }])
+  const chatMenu = useChatMenu('Actions for mermaid diagram', () => [{ label: 'Copy code', run: () => { void copyText(source) } }])
 
   useEffect(() => {
     const host = hostRef.current

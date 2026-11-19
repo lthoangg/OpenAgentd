@@ -8,7 +8,7 @@ import { LongPressButton } from '@/components/ui/long-press-button'
 import { FilePreviewContent, CopyFileButton, canCopyFileContents, isMarkdownFile, type MarkdownView } from '../FileViewerPanel'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
-import { copyText } from '../ChatContextMenu'
+import { copyText } from '@/lib/copy-text'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { isMenuKey, menuPointFor } from '@/lib/focus/item-keys'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
@@ -98,8 +98,8 @@ const ALWAYS_LISTED = () => true
 function FilePathLabel({ workspace, path, mobile }: { workspace: string; path: string; mobile: boolean }) {
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const copyAbsolute = () => copyText(absoluteWorkspacePath(workspace, path))
-  const copyRelative = () => copyText(path)
+  const copyAbsolute = () => { void copyText(absoluteWorkspacePath(workspace, path)) }
+  const copyRelative = () => { void copyText(path) }
   const sheetItems: ActionSheetItem[] = [
     { id: 'copy-path', label: 'Copy path', icon: Copy, run: copyAbsolute },
     { id: 'copy-relative-path', label: 'Copy relative path', icon: Copy, run: copyRelative },

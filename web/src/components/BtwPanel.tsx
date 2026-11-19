@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils'
 import { CloseButton } from '@/components/ui/close-button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { copyText } from '@/components/ChatContextMenu'
+import { copyText } from '@/lib/copy-text'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -180,7 +180,7 @@ export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }
             </HeaderAction>
           </>
         )}
-        <HeaderAction label="Copy response" tooltip="Copy response" disabled={!current?.answer} onClick={() => current && copyText(current.answer)}>
+        <HeaderAction label="Copy response" tooltip="Copy response" disabled={!current?.answer} onClick={() => { if (current) void copyText(current.answer) }}>
           <Copy />
         </HeaderAction>
         {/* "…": it opens a confirmation. */}

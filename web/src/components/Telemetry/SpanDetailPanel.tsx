@@ -16,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { formatInt, formatMs, formatTps, formatUsd } from '@/utils/telemetryFormat'
 import { categorizeSpan } from '@/utils/traceTree'
-import { copyText } from '@/components/ChatContextMenu'
+import { copyText } from '@/lib/copy-text'
 import { SpanTypeChip } from './categories'
 import { shortDateTimeSeconds } from './ModelId'
 

@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/context-menu'
 import { MenuShortcut } from './MenuShortcut'
 import { WorkspaceGroupToggles } from './WorkspaceGroupToggles'
+import { copyText } from '@/lib/copy-text'
 
 /** Who a workspace menu is for. ``path`` is the repository; "New session" starts in ``sessionPath``, the checkout its list shows. */
 export interface WorkspaceMenuTarget {
@@ -95,7 +96,7 @@ export function WorkspaceActionsSheet({
               onClick={() => {
                 const action = mobileWorkspaceActions
                 setMobileWorkspaceActions(null)
-                if (action) void navigator.clipboard.writeText(action.path)
+                if (action) void copyText(action.path)
               }}
             >
               <Copy size={16} aria-hidden="true" />
@@ -230,7 +231,7 @@ export function WorkspaceActionsContextMenu({
           onClick={() => {
             const action = desktopWorkspaceActions
             setDesktopWorkspaceActions(null)
-            void navigator.clipboard.writeText(action.path)
+            void copyText(action.path)
           }}
         >
           <Copy size={12} aria-hidden="true" />

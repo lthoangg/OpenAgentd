@@ -158,7 +158,3 @@ export function useChatMenu(label: string, items: () => ChatMenuItem[]) {
   )
   return { onContextMenu, onKeyDown, menu }
 }
-
-export function copyText(text: string): void {
-  void navigator.clipboard?.writeText(text).catch(() => {})
-}

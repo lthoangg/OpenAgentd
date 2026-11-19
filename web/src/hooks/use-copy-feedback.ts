@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { softHapticFeedback } from '@/lib/haptics'
+
 /** How long a copy control reads "Copied" before it goes back to "Copy". */
 export const COPIED_MS = 1500
 
@@ -26,6 +28,8 @@ export function useCopyFeedback(resetMs = COPIED_MS) {
       } catch {
         return false
       }
+      // A phone taps softly as the label turns to "Copied".
+      softHapticFeedback()
       setCopied(true)
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => setCopied(false), resetMs)

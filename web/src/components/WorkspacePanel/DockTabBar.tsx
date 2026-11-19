@@ -55,6 +55,7 @@ import { MenuKeys } from './MenuKeys'
 import { DockOpenMenu, OPEN_MENU_WIDTH, menuPointBelow } from './DockOpenMenu'
 import { DOCK_TAB_ATTR, useTabDrag } from './useTabDrag'
 import type { TabDropTarget } from './useDockTabs'
+import { copyText } from '@/lib/copy-text'
 
 /** The one glyph size of the strip's action buttons (and, in the tabs, of the ×). */
 const STRIP_ICON = 14
@@ -265,7 +266,7 @@ export function DockTabMenuItems({ tab, tabs, workspace, dismiss, onClose, onClo
       onMoveToNextPane && (canMoveToNextPane?.(tab.id) ?? true) && item('Move to next pane', () => onMoveToNextPane(tab.id)),
     ],
     [
-      path && item('Copy path', () => { void navigator.clipboard?.writeText(path) }, <Copy size={12} aria-hidden="true" />),
+      path && item('Copy path', () => { void copyText(path) }, <Copy size={12} aria-hidden="true" />),
       changedPath && onRevealInGit && item('Reveal in Git', () => onRevealInGit(changedPath)),
     ],
   ].map((group) => group.filter(Boolean)).filter((group) => group.length > 0)

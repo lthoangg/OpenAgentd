@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/context-menu'
 import { absoluteWorkspacePath } from '@/utils/workspace'
 import type { ChangedFileInfo } from './diff-helpers'
+import { copyText } from '@/lib/copy-text'
 
 export interface CommitActionTarget {
   sha: string
@@ -66,7 +67,7 @@ export interface DockActionMenusProps {
 const MENU_DIVIDER = <ContextMenuSeparator />
 
 function copy(text: string) {
-  void navigator.clipboard?.writeText(text)
+  void copyText(text)
 }
 
 export function DockActionMenus({

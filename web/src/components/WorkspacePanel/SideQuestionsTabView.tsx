@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { copyText } from '@/components/ChatContextMenu'
+import { copyText } from '@/lib/copy-text'
 import { ExchangeView } from '@/components/BtwExchangeView'
 import { useSideQuestions, type BtwExchange } from '@/queries/useSideQuestionsQuery'
 import { useBtwStore } from '@/stores/useBtwStore'
@@ -129,7 +129,7 @@ export function SideQuestionsTabView({ sessionId, active }: SideQuestionsTabView
                             variant="ghost"
                             aria-label="Copy response"
                             disabled={!exchange.answer}
-                            onClick={() => copyText(exchange.answer)}
+                            onClick={() => { void copyText(exchange.answer) }}
                           >
                             <Copy />
                           </Button>

@@ -167,6 +167,11 @@ agnostic by design.
   they opt in with `supportsMultipleCredentials: true`; they then get the same
   account list, switching, and cooldowns, with per-account OAuth tokens kept in
   `credentials.yaml` `[v3.30.0]`.
+  Since `[v3.62.0]` a cooling row turns Ready by itself when its cooldown
+  ends, in Settings and in the run picker, instead of showing "resets in 0s"
+  until the app read the list again; redeeming a Codex limit reset ends that
+  account's cooldown at once, so it is used again without waiting out the
+  old reset time.
 - **Usage for each enabled OAuth profile** `[v3.39.0]` — Settings → Models
   shows each enabled profile's quota windows, spend caps and credits in its
   own row, without a duplicate provider-wide usage block. Disabled profiles

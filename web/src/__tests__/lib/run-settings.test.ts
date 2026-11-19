@@ -156,6 +156,16 @@ describe('quotaSegments', () => {
     expect(quotaSegments(u, NOW)?.detail).toBe('5-hour limit 20% used · Spark 5-hour limit reached')
   })
 
+  it("shows a Claude account's 5h and 7d, with the Opus weekly limit in the tooltip only", () => {
+    // The shape the Claude sign-in plugin reports: the account's windows in one limit, each model's weekly cap apart.
+    const u = usage(
+      { limit_id: 'claude', primary: { used_percent: 12, window_minutes: 300 }, secondary: { used_percent: 64, window_minutes: 10_080 } },
+      { limit_id: 'seven_day_opus', limit_name: 'Seven Day Opus', primary: { used_percent: 100, window_minutes: 10_080 } },
+    )
+    expect(texts(u)).toEqual(['5h 12%', '7d 64%'])
+    expect(quotaSegments(u, NOW)?.detail).toBe('5-hour limit 12% used · Weekly limit 64% used · Seven Day Opus Weekly limit reached')
+  })
+
   it('reads a sub-percent use as <1%, not 0%', () => {
     expect(texts(usage({ primary: { used_percent: 0.4, window_minutes: 300 } }))).toEqual(['5h <1%'])
   })

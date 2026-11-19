@@ -31,7 +31,28 @@ export function useProvidersQuery() {
     queryKey: queryKeys.settings.providers(),
     queryFn: listProviders,
     staleTime: 30_000,
+    // A cooling account turns ready on the server when its cooldown ends:
+    // read the list again then, so Settings and the run picker follow.
+    refetchInterval: (query) => msUntilCooldownEnds(query.state.data),
   })
+}
+
+/** Past the cooldown's end by this much, so the server has dropped it. */
+const COOLDOWN_SLACK_MS = 1_000
+/** The soonest a still-cooling list is read again (a client clock ahead of the server's). */
+const COOLDOWN_MIN_WAIT_MS = 5_000
+
+/** Milliseconds until the first cooling account's cooldown ends, or `false` when none is cooling. */
+export function msUntilCooldownEnds(data: ProvidersListBody | undefined, now = Date.now()): number | false {
+  let first: number | null = null
+  for (const provider of data?.providers ?? []) {
+    for (const c of provider.stored_credentials ?? []) {
+      if (c.status !== 'cooling_down' || c.cooldown_until === null) continue
+      first = first === null ? c.cooldown_until : Math.min(first, c.cooldown_until)
+    }
+  }
+  if (first === null) return false
+  return Math.min(Math.max(first * 1000 - now + COOLDOWN_SLACK_MS, COOLDOWN_MIN_WAIT_MS), MAX_TIMER_MS)
 }
 
 export function useSaveProviderMutation() {

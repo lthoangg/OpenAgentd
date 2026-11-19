@@ -283,7 +283,8 @@ pub struct RunArgs {
     #[arg(value_name = "PROMPT")]
     pub text: Option<String>,
     /// The prompt, as a flag (same as the positional PROMPT)
-    #[arg(long, value_name = "PROMPT", conflicts_with = "text")]
+    // A prompt is free text: a Markdown list starts with a dash.
+    #[arg(long, value_name = "PROMPT", conflicts_with = "text", allow_hyphen_values = true)]
     pub prompt: Option<String>,
     /// Model override, e.g. openai:gpt-5.5
     #[arg(long)]
@@ -653,6 +654,14 @@ mod tests {
         assert_eq!(kind(&["run"]), ErrorKind::MissingRequiredArgument);
         assert_eq!(kind(&["run", "--prompt", "hi", "--continue", "--session", "abc"]), ErrorKind::ArgumentConflict);
         assert_eq!(kind(&["run", "--prompt", "hi", "--cd", "/tmp", "--session", "abc"]), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn a_prompt_given_as_a_flag_may_start_with_a_dash() {
+        // A Markdown list as the prompt.
+        let Some(Command::Run(a)) = parse(&["run", "--prompt", "- You are given a file", "--json"]).unwrap() else { panic!("not run") };
+        assert_eq!(a.prompt_text(), "- You are given a file");
+        assert!(a.json);
     }
 
     #[test]

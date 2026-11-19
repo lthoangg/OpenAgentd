@@ -84,6 +84,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     the Task list and the Review panel. Terminal, find file and scheduled
     tasks open from the Review panel, the command palette from the drawer
     footer, and a swipe from the right edge opens the Review panel.
+    Fixed in `[v3.62.0]`: closing the Review panel while one of its tabs
+    changed (**Reply in chat** on a plan, for one) slid the whole chat a
+    finger's width off the left edge until the next keystroke.
   - A shell call's tooltip shows only its description (the command is
     already on the row), and other tooltips (copy buttons, a prompt's and an
     answer's actions, session rows) are the system's plain tooltips, so a

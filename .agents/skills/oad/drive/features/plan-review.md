@@ -40,3 +40,7 @@ and replies in the chat.
 
 - The pinned bar's text "Needs you · a plan to review" also shows on the
   transcript card; take the first match.
+- On a phone the closed plan page parks beside the screen. Anything that
+  calls `scrollIntoView` on an element in it scrolls `<body>` and slides the
+  chat sideways; the journey waits 400 ms after **Reply in chat** and checks
+  the card's left edge, since nothing on screen marks that moment.

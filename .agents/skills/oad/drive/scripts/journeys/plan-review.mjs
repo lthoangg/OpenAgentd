@@ -50,6 +50,11 @@ export default async function planReview({ page, expect, step, newSessionInDemo,
     if (phone) {
       // The sheet closed on the chat; the plan waits behind the pinned bar.
       await expect(page.getByRole("button", { name: "View plan" })).toBeVisible()
+      // The plan's page parks beside the screen a moment after it closes, and
+      // showing its open tab then slid the whole chat off the left edge until
+      // the next keystroke. Nothing on screen marks that moment, hence the wait.
+      await page.waitForTimeout(400)
+      expect((await review.boundingBox()).x).toBeGreaterThanOrEqual(0)
     } else {
       await expect(page.getByRole("list", { name: "Comments on the plan" })).toHaveCount(0)
       await expect(page.getByText("Send or remove your plan comments first")).toBeVisible()

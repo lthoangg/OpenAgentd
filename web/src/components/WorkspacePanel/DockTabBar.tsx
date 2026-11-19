@@ -399,6 +399,7 @@ export function DockTabBar({
     <div ref={stripRef} data-dock-strip="" className={DOCK_TAB_STRIP_CLASS}>
       <div
         ref={scrollerRef}
+        data-dock-tab-scroller=""
         className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden py-1 pl-1"
         onKeyDown={handleStripKeyDown}
         {...drag.handlers}

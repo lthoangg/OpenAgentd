@@ -148,6 +148,23 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'app.ts diff' }).getAttribute('aria-current')).toBe('true')
   })
 
+  // A phone's closed Review panel is parked beside the screen: scrollIntoView
+  // on its open tab scrolled <body> and slid the whole app sideways.
+  it('showing the open tab never scrolls ancestors', async () => {
+    const user = userEvent.setup()
+    const scrollIntoView = mock(() => {})
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      await renderPanel()
+      await openDiffTabFor(user, 'src/app.ts')
+      expect((await screen.findByRole('button', { name: 'app.ts diff' })).getAttribute('aria-current')).toBe('true')
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('opens and focuses a diff tab for a diffRequest prop', async () => {
     const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })

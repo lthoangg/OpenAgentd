@@ -70,6 +70,7 @@ import type { PlanCommentsHandoff } from './PlanReview/plan-comments-block'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { PhoneReviewBar } from './WorkspacePanel/PhoneReviewBar'
 import { useDockFrame } from './WorkspacePanel/useDockFrame'
+import { revealTab } from './WorkspacePanel/reveal-tab'
 import { useDockOpenFocus } from './WorkspacePanel/useDockOpenFocus'
 import { useDockQueries } from './WorkspacePanel/useDockQueries'
 import { DockPreviewPages, usePreviewListeners } from './WorkspacePanel/DockPreviewPages'
@@ -449,7 +450,7 @@ export function WorkspacePanel({
   }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
   useEffect(() => {
-    for (const tab of Object.values(activeTabs)) tabButtonRefs.current.get(tab?.id ?? '')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    for (const tab of Object.values(activeTabs)) revealTab(tabButtonRefs.current.get(tab?.id ?? ''))
   }, [activeTabs, visibleTabs.length])
 
   // ── Git actions ───────────────────────────────────────────────────────────

@@ -11,12 +11,13 @@ import { getPlatform } from '@/hooks/use-platform'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-const mockSaveMutate = mock(async () => ({
+const savedPage = async () => ({
   path: 'preferences.md',
   content: 'Updated preferences',
   etag: '"new-etag"',
   frontmatter: null,
-}))
+})
+const mockSaveMutate = mock(savedPage)
 
 const mockDeleteMutate = mock(async () => ({}))
 
@@ -81,6 +82,9 @@ describe('MemorySettingsPage', () => {
   afterEach(() => {
     cleanup()
     mockSaveMutate.mockClear()
+    // A test's rejection must not stay in place for the tests after it.
+    mockSaveMutate.mockImplementation(savedPage)
+    mockDeleteMutate.mockClear()
     mockFileError = null
     mockFiles = null
     mockFileData = {
@@ -274,6 +278,19 @@ describe('MemorySettingsPage', () => {
     expect(callArgs.path).toBe('preferences.md')
   })
 
+  it('deletes once when Delete page is pressed twice', async () => {
+    render(<MemorySettingsPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for preferences.md' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page…' }))
+    const confirm = await screen.findByRole('button', { name: 'Delete page' })
+
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(screen.queryByText('Delete this memory page?')).toBeNull())
+    expect(mockDeleteMutate).toHaveBeenCalledTimes(1)
+  })
+
   it('opens new memory page dialog and creates page', async () => {
     render(<MemorySettingsPage />)
     // A visible text button now (its name is still "New page")
@@ -297,6 +314,34 @@ describe('MemorySettingsPage', () => {
     })
     const callArgs = mockSaveMutate.mock.calls[0][0] as any
     expect(callArgs.path).toBe('topics/notes.md')
+  })
+
+  it('creates the page on Enter, and once when Create is pressed twice', async () => {
+    render(<MemorySettingsPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'New page' }))
+    const input = await screen.findByPlaceholderText('topics/new-page.md')
+    fireEvent.change(input, { target: { value: 'topics/notes' } })
+
+    // Enter in the field submits its form, as the Create button does.
+    const form = input.closest('form')
+    expect(form).not.toBeNull()
+    fireEvent.submit(form!)
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(screen.queryByText('New memory page')).toBeNull())
+    expect(mockSaveMutate).toHaveBeenCalledTimes(1)
+    expect((mockSaveMutate.mock.calls[0][0] as any).path).toBe('topics/notes.md')
+  })
+
+  it('ties the path error to its field', async () => {
+    render(<MemorySettingsPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'New page' }))
+    const input = await screen.findByPlaceholderText('topics/new-page.md')
+    fireEvent.change(input, { target: { value: 'topics/db' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    const error = await screen.findByRole('alert')
+    expect(input.getAttribute('aria-describedby')).toBe(error.id)
   })
 
   it('refuses to create a page over one that exists', async () => {

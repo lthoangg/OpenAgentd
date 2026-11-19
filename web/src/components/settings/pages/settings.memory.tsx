@@ -164,8 +164,13 @@ export function MemorySettingsPage() {
     reset: () => { if (fileData) setDraftContent(fileData.content) },
   }
 
+  // A second press while the first request is in flight does nothing: the
+  // buttons only read as disabled once the mutation has re-rendered them.
+  const inFlight = useRef(false)
+
   const handleDelete = async () => {
-    if (!selectedPath || !fileData) return
+    if (!selectedPath || !fileData || inFlight.current) return
+    inFlight.current = true
     try {
       await deleteMut.mutateAsync({
         path: selectedPath,
@@ -182,18 +187,21 @@ export function MemorySettingsPage() {
         const msg = err instanceof Error ? err.message : String(err)
         push({ tone: 'error', title: 'Delete failed', description: msg })
       }
+    } finally {
+      inFlight.current = false
     }
   }
 
   const handleCreateNew = async () => {
     let filename = newFileName.trim()
-    if (!filename) return
+    if (!filename || inFlight.current) return
     if (!filename.endsWith('.md')) filename += '.md'
     // Creating writes a starter page: never over one that exists.
     if (treeData?.pages.some((page) => page.path === filename)) {
       setNewFileError(`${filename} already exists. Open it from the list, or choose another path.`)
       return
     }
+    inFlight.current = true
     try {
       await saveMut.mutateAsync({
         path: filename,
@@ -207,6 +215,8 @@ export function MemorySettingsPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       push({ tone: 'error', title: 'Create failed', description: msg })
+    } finally {
+      inFlight.current = false
     }
   }
 
@@ -555,10 +565,10 @@ export function MemorySettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setDeleteOpen(false)}>
+            <Button onClick={() => setDeleteOpen(false)} disabled={deleteMut.isPending}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleDelete}>
+            <Button variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>
               Delete page
             </Button>
           </DialogFooter>
@@ -578,30 +588,32 @@ export function MemorySettingsPage() {
               ).
             </DialogDescription>
           </DialogHeader>
-          <div className="py-2">
-            <Input
-              value={newFileName}
-              onChange={(e) => { setNewFileName(e.target.value); setNewFileError(null) }}
-              placeholder="topics/new-page.md"
-              aria-label="Page path"
-              aria-invalid={newFileError !== null}
-              className="font-mono text-xs"
-              autoFocus
-            />
-            {newFileError && <p role="alert" className="mt-2 text-meta text-(--color-error)">{newFileError}</p>}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setNewFileOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              disabled={!newFileName.trim()}
-              onClick={handleCreateNew}
-            >
-              Create
-            </Button>
-          </DialogFooter>
+          {/* A form, so Enter in the field creates the page as the button does. */}
+          <form onSubmit={(event) => { event.preventDefault(); void handleCreateNew() }}>
+            <div className="py-2">
+              <Input
+                value={newFileName}
+                onChange={(e) => { setNewFileName(e.target.value); setNewFileError(null) }}
+                placeholder="topics/new-page.md"
+                aria-label="Page path"
+                aria-invalid={newFileError !== null}
+                aria-describedby={newFileError ? 'memory-new-page-error' : undefined}
+                className="font-mono text-xs"
+                enterKeyHint="done"
+                spellCheck={false}
+                autoFocus
+              />
+              {newFileError && <p id="memory-new-page-error" role="alert" className="mt-2 text-meta text-(--color-error)">{newFileError}</p>}
+            </div>
+            <DialogFooter>
+              <Button type="button" onClick={() => setNewFileOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={!newFileName.trim() || saveMut.isPending}>
+                Create
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </SettingsPage>

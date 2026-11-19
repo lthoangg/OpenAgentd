@@ -637,7 +637,14 @@ pub async fn consume_reset(credit_id: Option<&str>, slot: &TokenSlot) -> Result<
         }
         return Err(e);
     }
+    reset_redeemed(slot);
     get_usage_for(slot).await
+}
+
+/// A redeemed reset lifts the account's limit: the pool may send to it again
+/// at once instead of skipping it until the cooldown it got from the 429.
+fn reset_redeemed(slot: &TokenSlot) {
+    appv3_core::credentials::clear_cooldown(&slot.provider_id, &slot.credential_id);
 }
 
 // ── OAuth login ─────────────────────────────────────────────────────────────
@@ -931,5 +938,16 @@ mod tests {
         assert_eq!(appv3_core::pyjson::dumps_compact(&a.to_doc()), r#"{"access_token":"a","refresh_token":"r","expires_at":1767225600.5,"account_id":null}"#);
         let back = CodexAuth::from_doc(&a.to_doc()).unwrap();
         assert_eq!((back.access_token, back.expires_at), ("a".to_string(), 1767225600.5));
+    }
+
+    #[test]
+    fn a_redeemed_reset_ends_only_that_accounts_cooldown() {
+        use appv3_core::credentials as store;
+        let pid = "test-codex-reset";
+        store::set_cooldown(pid, "a", store::now_s() + 3600.0, "quota");
+        store::set_cooldown(pid, "b", store::now_s() + 3600.0, "quota");
+        reset_redeemed(&TokenSlot::new(pid, "a"));
+        assert!(store::cooldown(pid, "a").is_none());
+        assert!(store::cooldown(pid, "b").is_some(), "another account keeps its cooldown");
     }
 }

@@ -166,6 +166,13 @@ declare module "openagentd" {
     window_minutes?: number | null;
     resets_at?: number | null;
   }
+  /**
+   * One limit in a usage report. The first limit is the account's own: its
+   * `primary` is the shorter window (5 hours) and `secondary` the longer one
+   * (7 days), and the run picker shows both. A limit that belongs to one
+   * model (a weekly Opus cap) comes after it as its own limit; the picker
+   * keeps those to its tooltip.
+   */
   export interface UsageLimit {
     limit_id?: string | null;
     limit_name?: string | null;

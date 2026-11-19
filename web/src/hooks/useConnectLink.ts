@@ -12,6 +12,8 @@
  * replay is deduplicated: the plugin keeps reporting the last opened URL for
  * the life of the app, including after Save and use reloads the page and
  * after iOS kills a backgrounded WebContent process and Tauri reloads it.
+ * A link is remembered with the shell's link count (`lib/link-sequence.ts`),
+ * so the same QR code scanned again while no page was listening is shown.
  * That second reload can lose sessionStorage, so a replay is also dropped
  * when it points at the server and access key the app already uses.
  */
@@ -20,6 +22,7 @@ import { getStoredAccessKey } from '@/api/auth'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
 import { getAppBackendStatus } from '@/lib/app-backend'
 import { type ConnectLink, parseConnectLink } from '@/lib/connect-link'
+import { deliveredKey, linkSequence } from '@/lib/link-sequence'
 import { pingServer } from '@/lib/server-probe'
 
 const DELIVERED_STORAGE_KEY = 'openagentd.connectLink.delivered'
@@ -35,8 +38,8 @@ function loadDelivered(): Set<string> {
   }
 }
 
-function rememberDelivered(delivered: Set<string>, raw: string): void {
-  delivered.add(raw)
+function rememberDelivered(delivered: Set<string>, key: string): void {
+  delivered.add(key)
   try {
     window.sessionStorage.setItem(DELIVERED_STORAGE_KEY, JSON.stringify([...delivered].slice(-8)))
   } catch {
@@ -86,23 +89,26 @@ export function useConnectLink(): { request: AppBackendPrefill | null; clear: ()
     delivered.current ??= loadDelivered()
     const seen = delivered.current
 
-    const handle = async (raw: string, replayed: boolean) => {
+    const handle = async (raw: string, replayed: boolean, sequence: number) => {
       const link = parseConnectLink(raw)
-      if (!link || (replayed && seen.has(raw))) return
+      const key = deliveredKey(raw, sequence)
+      if (!link || (replayed && seen.has(key))) return
       if (replayed && await isActiveConnection(link).catch(() => false)) {
-        rememberDelivered(seen, raw)
+        rememberDelivered(seen, key)
         return
       }
       const baseUrl = await pickReachableUrl(link.urls)
       // Marked only once delivered: a disposed listener (StrictMode remount)
       // leaves the link to the next one.
-      if (disposed || (replayed && seen.has(raw))) return
-      rememberDelivered(seen, raw)
+      if (disposed || (replayed && seen.has(key))) return
+      rememberDelivered(seen, key)
       setRequest({ baseUrl, accessKey: link.key })
     }
 
     void listenForLinks((urls, replayed) => {
-      for (const url of urls) void handle(url, replayed)
+      void linkSequence().then((sequence) => {
+        for (const url of urls) void handle(url, replayed, sequence)
+      })
     }).then((stop) => {
       if (disposed) stop?.()
       else unlisten = stop

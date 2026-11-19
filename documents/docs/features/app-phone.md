@@ -40,7 +40,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   link is handled once even when iOS reloads the app in the background.
   Since `[v3.62.0]` the same row or **New session** tapped again after such
   a reload opens again; it used to be taken for the tap already handled, and
-  the app opened where it had been.
+  the app opened where it had been. The same goes for a computer's QR code
+  scanned again with the camera: the form to add that server shows again.
   Since `[v3.55.0]` a widget never opens a session on the wrong server: a
   row whose server the app no longer knows opens nothing, says so, and shows
   Servers. Removing the server the widgets show, or signing out of the

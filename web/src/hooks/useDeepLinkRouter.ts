@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { startNewSession } from '@/lib/new-session'
 import { loadLastWorkspace } from '@/utils/workspace'
 import { isMobileApp } from '@/lib/mobile-app'
+import { deliveredKey, linkSequence } from '@/lib/link-sequence'
 import { isTelemetryRange, type TelemetryRange } from '@/stores/useTelemetryStore'
 
 /** Longest ``prompt`` a ``new`` link fills in; the rest is cut. */
@@ -175,12 +176,8 @@ const DELIVERED_STORAGE_KEY = 'openagentd.deepLink.delivered'
  * (a server switch, or iOS ending the page in the background) it would open
  * the session again, start another draft, or repeat a one-time OAuth code.
  * sessionStorage survives those reloads; live `onOpenUrl` links always run.
- *
- * A link is remembered with the phone shell's count of the links it has
- * seen arrive (`deep_link_sequence`): the same link opened again while no
- * page was listening (a widget's row or its New session button, tapped
- * after iOS ended the page) has a later count, so it runs. Where the shell
- * does not count (the desktop, an older phone shell) the link alone tells.
+ * A link is remembered with the shell's link count (`lib/link-sequence.ts`),
+ * so a widget's row tapped again after iOS ended the page runs.
  */
 function loadDelivered(): string[] {
   try {
@@ -199,23 +196,6 @@ function rememberDelivered(key: string): void {
   } catch {
     // Storage unavailable: a reload may run the link again.
   }
-}
-
-/** How many links the phone shell has seen arrive this app run; 0 where it does not count. */
-async function linkSequence(): Promise<number> {
-  if (!isMobileApp()) return 0
-  try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const count: unknown = await invoke('deep_link_sequence')
-    return typeof count === 'number' && count > 0 ? count : 0
-  } catch {
-    return 0
-  }
-}
-
-/** What a link is remembered under: the link, after its count where the shell keeps one (a link holds no space). */
-function deliveredKey(url: string, sequence: number): string {
-  return sequence > 0 ? `${sequence} ${url}` : url
 }
 
 async function listenToDeepLinks(onUrls: (urls: string[], replayed: boolean) => void): Promise<(() => void) | undefined> {

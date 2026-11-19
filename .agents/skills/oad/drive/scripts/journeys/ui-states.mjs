@@ -151,6 +151,9 @@ export default async function uiStates({ page, expect, step, open, phone, run, d
 
   await step("Cancel keeps the group", async () => {
     await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    // On its way out the dialog still names the group, not "Delete group?".
+    // Read once, at once: a retried check would pass as soon as it is gone.
+    expect(await page.getByText("Delete group?", { exact: true }).count()).toBe(0)
     await expect(page.getByRole("dialog", { name: "Settings" }).getByText(group, { exact: true })).toBeVisible()
   })
 

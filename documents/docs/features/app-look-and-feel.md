@@ -24,7 +24,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   - **Asks before destroying.** Stop, Regenerate, Disconnect, clearing a
     plan, deleting a task and shortening retention all confirm first. Memory
     refuses to save over a page that failed to load, and every list has a
-    loading, empty and error state with **Retry**.
+    loading, empty and error state with **Retry**. Since `[v3.62.0]` a
+    confirmation keeps its words while it closes: "Delete Alpha?" used to
+    turn into "Delete group?" for a moment on Cancel.
   - **Right state.** A session whose folder is gone still opens its
     transcript under a notice; a wrong session URL says **Session not
     found**; Help opens the keyboard shortcuts; MCP never shows "Connect

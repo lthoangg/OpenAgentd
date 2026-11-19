@@ -8,6 +8,10 @@
  * confirm button shows a spinner and stays disabled until it settles, and
  * the dialog closes only when it resolves.
  *
+ * The words are the ones it opened with until it is gone: a caller's title
+ * usually names the thing being confirmed, and the caller forgets that thing
+ * as the dialog closes, while the dialog is still on screen fading out.
+ *
  * Default button, as in native alerts: a non-destructive confirm takes focus,
  * so Enter confirms; a destructive one never does: Cancel takes focus, so
  * Enter cancels and the destructive action always needs its own press.
@@ -54,6 +58,9 @@ export function ConfirmDialog({
   const [pending, setPending] = useState(false)
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const words = useRef({ title, description, confirmLabel })
+  if (open) words.current = { title, description, confirmLabel }
+  const shown = words.current
 
   const confirm = async () => {
     // A phone thumps once as a destructive action is confirmed (`lib/haptics`).
@@ -71,8 +78,8 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!pending) onOpenChange(next) }}>
       <DialogContent showCloseButton={false} alert initialFocus={tone === 'danger' ? cancelRef : confirmRef}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+          <DialogTitle>{shown.title}</DialogTitle>
+          {shown.description && <DialogDescription>{shown.description}</DialogDescription>}
         </DialogHeader>
         <DialogFooter>
           <Button ref={cancelRef} type="button" variant="default" onClick={() => onOpenChange(false)} disabled={pending}>
@@ -86,7 +93,7 @@ export function ConfirmDialog({
             disabled={pending}
           >
             {pending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
-            {confirmLabel}
+            {shown.confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

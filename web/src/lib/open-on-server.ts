@@ -57,9 +57,10 @@ async function afterSwitch(
     requestSessionOpen(sessionId)
     return 'opened'
   }
-  // The reloaded page opens it; this one is leaving.
-  holdSessionOpen(sessionId)
   const { reloadForBackendSwitch } = await import('@/lib/backend-switch')
+  // The reloaded page opens it; this one is leaving. Kept and reloaded in
+  // one step, so nothing on this page runs in between and takes it.
+  holdSessionOpen(sessionId)
   reloadForBackendSwitch()
   return 'switching'
 }
@@ -98,6 +99,18 @@ async function openOnServer(target: NotificationTarget & { baseUrl: string }, st
 }
 
 let opening: Promise<OpenOutcome> | null = null
+/** Opens under way whose target names a server: each may switch to it. */
+let choosingServer = 0
+
+/**
+ * Whether a tap or link is on its way to a server it names. The launch check
+ * (`account-route.ts`) then leaves the choice of server to it, and does not
+ * reload the page under it: the tap was already read from the shell's queue
+ * and would be lost.
+ */
+export function sessionServerOpenInFlight(): boolean {
+  return choosingServer > 0
+}
 
 /**
  * Open `target.sessionId` on its server, switching first when needed. One
@@ -117,6 +130,11 @@ export function openSessionOnServer(target: NotificationTarget): Promise<OpenOut
   }
   const next = (opening ?? Promise.resolve<OpenOutcome>('opened')).catch(() => 'failed' as const).then(run)
   opening = next
-  void next.finally(() => { if (opening === next) opening = null })
+  const namesServer = Boolean(target.deviceId || target.baseUrl)
+  if (namesServer) choosingServer += 1
+  void next.finally(() => {
+    if (namesServer) choosingServer -= 1
+    if (opening === next) opening = null
+  })
   return next
 }

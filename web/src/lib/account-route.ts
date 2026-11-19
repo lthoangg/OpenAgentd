@@ -16,6 +16,8 @@
  *   A switch that starts meanwhile wins: a notification from another
  *   computer launched the app and its tap opens that one
  *   (`open-on-server.ts`), or the person picked one on the Servers screen.
+ *   So does a tap still on its way to its computer: the page is not
+ *   reloaded under it.
  * - On resume and on a network change: `cloud_poke`, so each link checks its
  *   session and tries the direct route again. On resume the shell first
  *   makes its bridges listen again (iOS may take a suspended app's
@@ -39,6 +41,7 @@ import {
 import { accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
 import { connectAccountComputer, normalizeServerBaseUrl, reloadForBackendSwitch } from '@/lib/backend-switch'
+import { sessionServerOpenInFlight } from '@/lib/open-on-server'
 import { markPageUnloading, pageUnloading, resetPageUnloading } from '@/lib/page-unload'
 import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
 import { queryClient } from '@/lib/query-client'
@@ -67,8 +70,8 @@ async function runLaunch(): Promise<RouteOutcome> {
   const devices = await getPhoneCloudDevices().catch(() => [])
   const device = devices.find((d) => !d.me && isServer(d) && d.device_id === last)
   if (!device) return 'skipped'
-  // Another switch already chose where the app goes.
-  if (backendSwitchActive()) return 'skipped'
+  // Another switch, or a tapped notification, already chose where the app goes.
+  if (backendSwitchActive() || sessionServerOpenInFlight()) return 'skipped'
   const result = await connectAccountComputer({
     deviceId: device.device_id,
     label: accountComputerTitle(device, status.computer_names),
@@ -80,6 +83,8 @@ async function runLaunch(): Promise<RouteOutcome> {
     openServersScreen()
     return 'failed'
   }
+  // A tap that came meanwhile has not switched yet: it goes on from here.
+  if (sessionServerOpenInFlight()) return 'skipped'
   if (result.reload) reloadForBackendSwitch()
   return result.reload ? 'switched' : 'skipped'
 }

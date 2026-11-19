@@ -4,6 +4,8 @@
  * the reload a server switch does, and opened by the root route (on startup,
  * or at once through `PENDING_OPEN_EVENT`).
  */
+import { pageUnloading } from '@/lib/page-unload'
+
 const PENDING_KEY = 'oa-pending-session-open'
 /** A switch that takes longer than this no longer opens the session. */
 export const PENDING_OPEN_MAX_AGE_MS = 120_000
@@ -30,8 +32,12 @@ export function requestSessionOpen(sessionId: string): void {
   if (holdSessionOpen(sessionId)) window.dispatchEvent(new Event(PENDING_OPEN_EVENT))
 }
 
-/** The session waiting to be opened, once; null when none or too old. */
+/**
+ * The session waiting to be opened, once; null when none or too old. A page
+ * that is reloading takes nothing: the session is for the page after it.
+ */
 export function takePendingSessionOpen(now: number = Date.now()): string | null {
+  if (pageUnloading()) return null
   let raw: string | null = null
   try {
     raw = window.sessionStorage.getItem(PENDING_KEY)

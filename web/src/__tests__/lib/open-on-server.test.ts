@@ -25,6 +25,7 @@ mock.module('@/lib/backend-switch', () => ({ connectAccountComputer, connectExte
 
 const { openSessionOnServer, sessionServerUnknown } = await import('@/lib/open-on-server')
 const { takePendingSessionOpen, PENDING_OPEN_EVENT } = await import('@/lib/pending-session-open')
+const { markPageUnloading, resetPageUnloading } = await import('@/lib/page-unload')
 const { useToastStore } = await import('@/stores/useToastStore')
 const { useServersScreenStore } = await import('@/stores/useServersScreenStore')
 
@@ -190,5 +191,18 @@ describe('takePendingSessionOpen', () => {
     expect(takePendingSessionOpen()).toBeNull()
     requestSessionOpen('s2')
     expect(takePendingSessionOpen(Date.now() + 121_000)).toBeNull()
+  })
+
+  it('leaves the session to the next page once this one is reloading', async () => {
+    const { holdSessionOpen } = await import('@/lib/pending-session-open')
+    holdSessionOpen('s1')
+    markPageUnloading()
+    try {
+      // The root route mounting on the page that is leaving must not take it.
+      expect(takePendingSessionOpen()).toBeNull()
+    } finally {
+      resetPageUnloading()
+    }
+    expect(takePendingSessionOpen()).toBe('s1')
   })
 })

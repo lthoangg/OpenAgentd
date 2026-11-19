@@ -33,6 +33,9 @@ mock.module('@tauri-apps/api/core', () => ({
 }))
 
 const { checkRouteAtLaunch, resetAccountRoute, startAccountRouteWatch } = await import('@/lib/account-route')
+const { openSessionOnServer } = await import('@/lib/open-on-server')
+const { takePendingSessionOpen } = await import('@/lib/pending-session-open')
+const { resetPageUnloading } = await import('@/lib/page-unload')
 const { reloadForBackendSwitch } = await import('@/lib/backend-switch')
 const { queryClient } = await import('@/lib/query-client')
 const { queryKeys } = await import('@/queries/keys')
@@ -42,10 +45,12 @@ const { beginBackendSwitch, useBackendSwitchStore } = await import('@/stores/use
 const LAN = 'http://192.168.1.20:4082'
 const BRIDGE = 'http://127.0.0.1:5999'
 const MAC = { device_id: 'dev-mac', fingerprint: '3F9A 21C4', signer: true, me: false, kind: 'macos', server: true, client: true }
+const LINUX = { device_id: 'dev-linux', fingerprint: '9C02 E1B7', signer: false, me: false, kind: 'linux', server: true, client: false }
 const ME = { device_id: 'dev-me', fingerprint: 'AA11 BB22', signer: true, me: true, kind: 'ios', server: false, client: true }
 const SERVERS = [{ base_url: LAN, name: 'Studio Mac' }]
 const onLan = { base_url: LAN, mode: 'external', sidecar_running: false, external: true, supports_bundled: false, servers: SERVERS }
 const onBridge = { ...onLan, base_url: BRIDGE, account_device: { device_id: 'dev-mac', fingerprint: '3F9A 21C4', kind: 'macos' } }
+const onLinuxBridge = { ...onLan, base_url: 'http://127.0.0.1:6002', account_device: { device_id: 'dev-linux', fingerprint: '9C02 E1B7', kind: 'linux' } }
 
 let probes: string[] = []
 const originalFetch = globalThis.fetch
@@ -79,6 +84,7 @@ beforeEach(() => {
   platform = phone
   resetAccountRoute()
   window.localStorage.clear()
+  window.sessionStorage.clear()
   window.__OAD_API_BASE_URL__ = LAN
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
@@ -170,6 +176,60 @@ describe('at launch', () => {
     // Not a failure: no Servers screen over the switch that replaced it, and no reload of its own.
     expect(useServersScreenStore.getState().request).toBe(0)
     expect(reload).not.toHaveBeenCalled()
+  })
+
+  /** What the page after the reload opens (this one, reloading, takes nothing). */
+  function sessionForReloadedPage(): string | null {
+    resetPageUnloading()
+    return takePendingSessionOpen()
+  }
+
+  /** A shell whose answer to the tap's device list waits for `listDevices`; the launch's own is answered at once. */
+  function shellWithTapWaitingForDevices(tapAsksFirst: boolean, extra: Record<string, Handler> = {}) {
+    let asked = 0
+    let listDevices: () => void = () => {}
+    const held = new Promise<unknown>((resolve) => { listDevices = () => resolve([ME, MAC, LINUX]) })
+    shell({
+      app_backend_status: noServerYet,
+      cloud_devices: () => ((asked++ === 0) === tapAsksFirst ? held : [ME, MAC, LINUX]),
+      cloud_open_computer: (args) => ({ status: args?.deviceId === 'dev-linux' ? onLinuxBridge : onBridge, via: 'account' }),
+      ...extra,
+    })
+    return () => listDevices()
+  }
+
+  it('leaves the choice to a tapped notification that is on its way to another computer', async () => {
+    const listDevices = shellWithTapWaitingForDevices(true)
+    const tap = openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })
+    await waitFor(() => expect(ran('cloud_devices')).toHaveLength(1))
+    expect(await checkRouteAtLaunch()).toBe('skipped')
+    expect(ran('cloud_open_computer')).toHaveLength(0)
+    listDevices()
+    expect(await tap).toBe('switching')
+    expect(ran('cloud_open_computer').map((call) => call.args?.deviceId)).toEqual(['dev-linux'])
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(sessionForReloadedPage()).toBe('s-linux')
+  })
+
+  it('does not reload under a tap that arrived while it opened the last computer', async () => {
+    let opened: () => void = () => {}
+    const lastOpened = new Promise<unknown>((resolve) => { opened = () => resolve({ status: onBridge, via: 'account' }) })
+    const listDevices = shellWithTapWaitingForDevices(false, {
+      cloud_open_computer: (args) => (args?.deviceId === 'dev-mac' ? lastOpened : { status: onLinuxBridge, via: 'account' }),
+    })
+    const launch = checkRouteAtLaunch()
+    await waitFor(() => expect(ran('cloud_open_computer')).toHaveLength(1))
+    const tap = openSessionOnServer({ sessionId: 's-linux', deviceId: 'dev-linux' })
+    await waitFor(() => expect(ran('cloud_devices')).toHaveLength(2))
+    opened()
+    // A reload now would end the page with the tap already read from the shell's queue.
+    expect(await launch).toBe('skipped')
+    expect(reload).not.toHaveBeenCalled()
+    listDevices()
+    expect(await tap).toBe('switching')
+    expect(ran('cloud_open_computer').map((call) => call.args?.deviceId)).toEqual(['dev-mac', 'dev-linux'])
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(sessionForReloadedPage()).toBe('s-linux')
   })
 })
 

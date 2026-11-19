@@ -1,4 +1,5 @@
 import type { AgentCapabilities } from '@/api/types'
+import { useToastStore } from '@/stores/useToastStore'
 import { TEXT_FILE_EXTENSIONS } from '@/utils/file-extensions'
 
 /**
@@ -119,6 +120,27 @@ export function filesFromDataTransfer(dt: DataTransfer | null): File[] {
   }
 
   return dt.files ? Array.from(dt.files) : []
+}
+
+/**
+ * A drop that carried a folder says so: a folder cannot be attached, and
+ * leaving it out without a word looked like a drop that did nothing. Call it
+ * inside the drop handler, like ``filesFromDataTransfer``.
+ */
+export function noteDroppedFolder(dt: DataTransfer | null): void {
+  const items = dt?.items
+  if (!items) return
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.kind !== 'file' || typeof item.webkitGetAsEntry !== 'function') continue
+    if (!item.webkitGetAsEntry()?.isDirectory) continue
+    useToastStore.getState().push({
+      tone: 'info',
+      title: "Folders can't be attached",
+      description: 'To work in a folder, open it as a workspace.',
+    })
+    return
+  }
 }
 
 /**

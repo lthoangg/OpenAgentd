@@ -11,7 +11,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { isDraggingFiles } from '@/lib/is-dragging-files'
-import { filesFromDataTransfer } from '../InputComposer/files'
+import { filesFromDataTransfer, noteDroppedFolder } from '../InputComposer/files'
 import type { InputComposerHandle } from '../InputComposer'
 
 export interface UseDragDropResult {
@@ -73,6 +73,7 @@ export function useDragDrop(inputRef: RefObject<InputComposerHandle | null>): Us
 
       if (alreadyHandled) return
 
+      noteDroppedFolder(e.dataTransfer)
       const droppedFiles = filesFromDataTransfer(e.dataTransfer)
       if (droppedFiles.length > 0) {
         inputRef.current.addFiles(droppedFiles)

@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { useRef } from "react"
 import { InputComposer, type InputComposerHandle } from "@/components/InputComposer"
 import { useDragDrop } from "@/components/AgentChatView/useDragDrop"
+import { useToastStore } from "@/stores/useToastStore"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -83,6 +84,29 @@ describe("InputComposer drag-and-drop", () => {
     fireEvent.drop(pillElement(), folderTransfer(folder))
 
     expect(screen.queryByText("my-project")).toBeNull()
+  })
+
+  // A folder dropped on the window was ignored without a word.
+  it("says once that a folder cannot be attached, wherever it is dropped", () => {
+    useToastStore.setState({ toasts: [] })
+    render(<DropHarness />)
+    const folder = new File([], "my-project", { type: "" })
+
+    fireEvent.drop(pillElement(), folderTransfer(folder))
+    expect(useToastStore.getState().toasts.map((t) => [t.tone, t.title])).toEqual([["info", "Folders can't be attached"]])
+
+    useToastStore.setState({ toasts: [] })
+    fireEvent.drop(screen.getByTestId("main"), folderTransfer(folder))
+    expect(useToastStore.getState().toasts.map((t) => t.title)).toEqual(["Folders can't be attached"])
+  })
+
+  it("says nothing for a drop of files", () => {
+    useToastStore.setState({ toasts: [] })
+    render(<DropHarness />)
+
+    fireEvent.drop(pillElement(), fileTransfer([new File(["hello"], "hello.txt", { type: "text/plain" })]))
+
+    expect(useToastStore.getState().toasts).toEqual([])
   })
 
   it("clears the drag overlay after a drop on the pill", () => {

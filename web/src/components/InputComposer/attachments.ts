@@ -11,6 +11,7 @@ import type { AgentCapabilities } from '@/api/types'
 import {
   MAX_TOTAL_ATTACHMENT_BYTES,
   filesFromDataTransfer,
+  noteDroppedFolder,
   isFileTypeAllowed,
   splitFilesByBudget,
 } from './files'
@@ -110,6 +111,7 @@ export function useInputComposerAttachments({ capabilities }: UseInputComposerAt
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
+    noteDroppedFolder(e.dataTransfer)
     const dropped = filesFromDataTransfer(e.dataTransfer)
     if (dropped.length === 0) return
     // ``addFiles`` filters and commits in one state update — a per-file loop

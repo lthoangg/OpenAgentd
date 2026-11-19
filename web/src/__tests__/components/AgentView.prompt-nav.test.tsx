@@ -76,11 +76,11 @@ describe('AgentView — prompt navigation', () => {
     const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
     const scrollTo = layOut(container, { u1: -900, u2: -300, u3: 500 })
 
-    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+    fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true })
     expect(lastTop(scrollTo)).toBe(landing(-300))
 
     // A second press while the first jump is still scrolling steps on from it.
-    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+    fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true })
     expect(lastTop(scrollTo)).toBe(landing(-900))
   })
 
@@ -88,8 +88,26 @@ describe('AgentView — prompt navigation', () => {
     const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
     const scrollTo = layOut(container, { u1: -900, u2: -300, u3: 500 })
 
-    fireEvent.keyDown(document, { key: 'ArrowDown', ctrlKey: true, altKey: true })
+    fireEvent.keyDown(document, { key: 'ArrowDown', altKey: true })
     expect(lastTop(scrollTo)).toBe(landing(500))
+  })
+
+  // Off macOS that chord sends the focused tab to a side (`splitTabUp`).
+  it('leaves Ctrl+Alt+↑ alone off macOS', () => {
+    const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const scrollTo = layOut(container, { u1: -900, u2: -300, u3: 500 })
+    const before = scrollTo.mock.calls.length
+
+    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+    expect(scrollTo.mock.calls.length).toBe(before)
+  })
+
+  it('steps prompts with Alt+↑ while the caret is in the message box', () => {
+    const { container } = render(<><textarea aria-label="Message" /><AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} /></>)
+    const scrollTo = layOut(container, { u1: -900, u2: -300, u3: 500 })
+
+    fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'ArrowUp', altKey: true })
+    expect(lastTop(scrollTo)).toBe(landing(-300))
   })
 
   it('brings a prompt into view by id, for the composer’s ↑/↓ recall, while mounted', () => {
@@ -181,7 +199,7 @@ describe('AgentView — previous prompt that is not loaded yet', () => {
   }
 
   function pressPrevious() {
-    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+    fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true })
   }
 
   /** A scroll near the top, which on its own reveals or loads earlier turns. */
@@ -479,7 +497,7 @@ describe('AgentView — a pinned prompt', () => {
     const { container } = render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
     const scrollTo = layOut(container, { p1: -900 })
 
-    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+    fireEvent.keyDown(document, { key: 'ArrowUp', altKey: true })
 
     expect(lastTop(scrollTo)).toBe(landing(-900))
   })

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, dockTabStepKeys, promptStepKeys, shortcutLabel } from '@/lib/app-shortcuts'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
+import { formatChord } from '@/lib/keyboard/chord'
+import { HISTORY_ALT_BACK, HISTORY_ALT_FORWARD, usesAltArrowHistory } from '@/lib/keyboard/history-keys'
 
 const srcDir = fileURLToPath(new URL('../../', import.meta.url))
 /** Only the table and the low-level helpers may spell out a key. */
@@ -11,11 +13,23 @@ const ALLOWED = new Set(['lib/app-shortcuts.ts', 'lib/keyboard-shortcut.ts'])
 const LITERAL_SHORTCUT = /['"`]Mod\+|formatShortcut\(\s*['"`]|dispatchShortcutKey\(\s*['"`]/
 
 describe('APP_SHORTCUTS', () => {
-  it('assigns each key combination to exactly one command', () => {
-    const combos = Object.values(APP_SHORTCUTS).map((s) =>
-      `${'ctrl' in s && s.ctrl ? 'Ctrl+' : ''}${'alt' in s && s.alt ? 'Alt+' : ''}${'shift' in s && s.shift ? 'Shift+' : ''}${s.key.toUpperCase()}`)
-    expect(new Set(combos).size).toBe(combos.length)
-  })
+  // Compared as each OS presses them: off macOS the primary modifier is the
+  // Control key, so a ``mod`` chord and a ``ctrl`` chord can be the same keys.
+  for (const os of ['macos', 'windows', 'linux'] as const) {
+    it(`assigns each key combination to exactly one command on ${os}`, () => {
+      const prompts = promptStepKeys(os)
+      const tabs = dockTabStepKeys(os)
+      const chords = [
+        ...Object.values(APP_SHORTCUTS).map((s) => chordOf(s)),
+        prompts.previous, prompts.next,
+        NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, tabs.next, tabs.prev,
+        ...(usesAltArrowHistory(os) ? [HISTORY_ALT_BACK, HISTORY_ALT_FORWARD] : []),
+      ]
+      const combos = chords.map((chord) => formatChord(chord, os))
+      const twice = combos.filter((combo, index) => combos.indexOf(combo) !== index)
+      expect(twice).toEqual([])
+    })
+  }
 
   it('keeps bare ⌘S / Ctrl+S for Settings saves alone', () => {
     // Settings pages and editors bind Save inside the Settings modal (`within`);
@@ -42,7 +56,13 @@ describe('APP_SHORTCUTS', () => {
   it('registers every shortcut on the platform primary modifier', () => {
     expect(chordOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true, alt: false })
     expect(chordOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false, alt: false })
-    expect(chordOf(APP_SHORTCUTS.previousPrompt)).toEqual({ key: 'ArrowUp', mod: true, shift: false, alt: true })
+  })
+
+  it('steps prompts with ⌥⌘↑ on macOS and Alt+↑ elsewhere', () => {
+    expect(formatChord(promptStepKeys('macos').previous, 'macos')).toBe('⌥⌘↑')
+    expect(formatChord(promptStepKeys('ios').next, 'ios')).toBe('⌥⌘↓')
+    expect(formatChord(promptStepKeys('windows').previous, 'windows')).toBe('Alt+↑')
+    expect(formatChord(promptStepKeys('linux').next, 'linux')).toBe('Alt+↓')
   })
 
   it('opens the run picker on ⌘. (Ctrl+.), matched on the physical key', () => {
@@ -79,8 +99,6 @@ describe('APP_SHORTCUTS', () => {
   it('formats labels for each platform', () => {
     expect(shortcutLabel(APP_SHORTCUTS.maximizeDock, 'macos')).toBe('⌘⇧D')
     expect(shortcutLabel(APP_SHORTCUTS.settings, 'windows')).toBe('Ctrl+,')
-    expect(shortcutLabel(APP_SHORTCUTS.previousPrompt, 'macos')).toBe('⌥⌘↑')
-    expect(shortcutLabel(APP_SHORTCUTS.nextPrompt, 'windows')).toBe('Ctrl+Alt+↓')
   })
 
   it('is the only place a shortcut key is spelled out', () => {

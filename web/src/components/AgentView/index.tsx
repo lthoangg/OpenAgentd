@@ -33,7 +33,7 @@ import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppRes
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
-import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
+import { usePromptStepKeys } from './usePromptStepKeys'
 import type { ContentBlock } from '@/api/types'
 import type { OpenSessionHandler } from './UserBubble'
 import { sentFrom } from '@/utils/workspace-messages'
@@ -772,10 +772,7 @@ export function AgentView({
     return () => useTranscriptFollowStore.setState({ jumpToPrompt: null })
   }, [])
 
-  useShortcuts([
-    appShortcut('previousPrompt', () => { jumpToPrompt(-1) }),
-    appShortcut('nextPrompt', () => { jumpToPrompt(1) }),
-  ])
+  usePromptStepKeys(jumpToPrompt)
 
   return (
     <FileRefContext.Provider value={fileRefOpener ?? null}>

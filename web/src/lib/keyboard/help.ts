@@ -4,7 +4,7 @@
  * Labels come from the same chords the handlers match, per platform.
  */
 import type { OS } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, dockTabStepKeys, type AppShortcutName } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS, NEXT_DOCK_TAB_CHORD, PREV_DOCK_TAB_CHORD, chordOf, dockTabStepKeys, promptStepKeys, type AppShortcutName } from '@/lib/app-shortcuts'
 import { NEXT_REGION_CHORD, PREV_REGION_CHORD } from '@/lib/focus-regions'
 import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 
@@ -34,6 +34,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
   const appOnly = (label: string) => (desktopApp ? label : `${label} (desktop app)`)
   const altHistory = usesAltArrowHistory(os)
   const stepKeys = dockTabStepKeys(os)
+  const promptKeys = promptStepKeys(os)
 
   return [
     {
@@ -78,8 +79,8 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Switch Plan and Code mode', { key: 'Tab' }),
         keys('Earlier and later sent messages', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
         app('findInSession', 'Find in session (from the chat)'),
-        app('previousPrompt', 'Previous prompt'),
-        app('nextPrompt', 'Next prompt'),
+        keys('Previous prompt', promptKeys.previous),
+        keys('Next prompt', promptKeys.next),
         app('tasks', 'Tasks'),
       ],
     },

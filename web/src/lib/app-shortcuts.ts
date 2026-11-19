@@ -65,9 +65,6 @@ export const APP_SHORTCUTS = {
   save: { key: 'S' },
   historyBack: { key: '[' },
   historyForward: { key: ']' },
-  // Alt keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean.
-  previousPrompt: { key: 'ArrowUp', alt: true },
-  nextPrompt: { key: 'ArrowDown', alt: true },
   // No terminal key: Open Terminal in the palette and the Review panel's "+"
   // menu start one, and a focused terminal keeps Control+` for its shell.
   openGit: { key: 'G', shift: true },
@@ -117,6 +114,22 @@ export function dockTabStepKeys(os: OS): { next: KeyChord; prev: KeyChord } {
     : { next: NEXT_DOCK_TAB_KEYS.other, prev: PREV_DOCK_TAB_KEYS.other }
 }
 
+/**
+ * Previous / next prompt in the transcript: ⌥⌘↑ / ⌥⌘↓ on macOS, where Option
+ * keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean, and
+ * Alt+↑ / Alt+↓ elsewhere, beside Alt+← / Alt+→ for back and forward.
+ * Ctrl+Alt+arrow is not free off macOS: it sends the focused tab to a side
+ * (``splitTabUp``), and some Linux desktops take it to switch workspaces.
+ */
+export const PROMPT_STEP_KEYS = {
+  mac: { previous: { key: 'ArrowUp', mod: true, alt: true, shift: false }, next: { key: 'ArrowDown', mod: true, alt: true, shift: false } },
+  other: { previous: { key: 'ArrowUp', alt: true, shift: false }, next: { key: 'ArrowDown', alt: true, shift: false } },
+} as const satisfies Record<string, { previous: KeyChord; next: KeyChord }>
+
+export function promptStepKeys(os: OS): { previous: KeyChord; next: KeyChord } {
+  return isPrimaryModifierOS(os) ? PROMPT_STEP_KEYS.mac : PROMPT_STEP_KEYS.other
+}
+
 /** The chord the keyboard dispatcher matches for a shortcut. */
 export function chordOf(shortcut: AppShortcut): KeyChord {
   if (shortcut.ctrl) {
@@ -133,7 +146,13 @@ export function chordOf(shortcut: AppShortcut): KeyChord {
 }
 
 /** Every app chord: swallowed behind dialogs even when nothing handles it. */
-export const APP_SHORTCUT_CHORDS: readonly KeyChord[] = Object.values(APP_SHORTCUTS).map((s) => chordOf(s))
+export const APP_SHORTCUT_CHORDS: readonly KeyChord[] = [
+  ...Object.values(APP_SHORTCUTS).map((s) => chordOf(s)),
+  // The macOS prompt keys carry ⌘, like the table's. Alt+↑ / Alt+↓ are left
+  // out: ⌥↑ / ⌥↓ move the caret by paragraph on a Mac.
+  PROMPT_STEP_KEYS.mac.previous,
+  PROMPT_STEP_KEYS.mac.next,
+]
 
 /** Human-readable label, e.g. ``⌘⇧D`` or ``Ctrl+Shift+D``. */
 export function shortcutLabel(shortcut: AppShortcut, os: OS): string {

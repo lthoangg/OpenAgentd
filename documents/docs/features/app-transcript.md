@@ -451,10 +451,12 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens the run picker (Session Settings before v3.40.0).
-  - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
+  - `⌥⌘↑`/`⌥⌘↓` (`Alt+↑`/`Alt+↓` on Windows and Linux) jump between your
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the
-    chat actions menu do the same.
+    chat actions menu do the same. Before `[v3.62.0]` the Windows and Linux
+    keys were `Ctrl+Alt+↑`/`Ctrl+Alt+↓`, the same keys that send the focused
+    Review panel tab up or down, so one press could do either.
   - Opening a session loads everything from your latest prompt to the end,
     up to 500 messages, so a long run shows the prompt it answers in both
     transcript styles, with no scrolling or extra requests. A longer run

@@ -6,7 +6,9 @@
  * signed out. The code stays the same afterwards (the account's recovery
  * key cannot change), so the same saved code keeps working.
  *
- * The code works like a password: the field hides it, nothing keeps it
+ * The code works like a password, but it is 52 characters read off paper,
+ * so the field shows them as they are typed. The browser and the keyboard
+ * are told to keep out (no saving, no correcting), nothing keeps the code
  * after the submit, and it is checked here only for its shape.
  */
 import { useState } from 'react'
@@ -54,10 +56,11 @@ export function RecoverWithCode({ busy, onRecover, onCancel, device }: {
       <Field label="Recovery code" htmlFor="recovery-code">
         <Input
           id="recovery-code"
-          type="password"
+          type="text"
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
+          enterKeyHint="go"
           placeholder="XXXX-XXXX-…"
           value={code}
           onChange={(event) => setCode(event.target.value)}

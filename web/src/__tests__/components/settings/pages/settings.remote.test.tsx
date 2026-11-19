@@ -192,7 +192,7 @@ describe('RemoteSettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Other ways to sign in' }))
     fireEvent.click(screen.getByRole('button', { name: 'Lost your phone? Use your recovery code' }))
     const field = screen.getByLabelText('Recovery code')
-    expect(field.getAttribute('type')).toBe('password')
+    expect(field.getAttribute('type')).toBe('text')
     fireEvent.change(field, { target: { value: 'ABCD-EFGH' } })
     expect(screen.getByText('A recovery code is 13 groups of 4 letters and digits.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement).disabled).toBe(true)

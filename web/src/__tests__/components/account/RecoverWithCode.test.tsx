@@ -39,11 +39,24 @@ describe('RecoverWithCode', () => {
     render(<RecoverWithCode device="computer" busy={false} onRecover={(code) => sent.push(code)} />)
 
     const field = screen.getByLabelText('Recovery code') as HTMLInputElement
-    expect(field.type).toBe('password')
     fireEvent.change(field, { target: { value: `  ${CODE} ` } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(sent).toEqual([CODE])
     expect(field.value).toBe('')
+  })
+
+  // 52 characters cannot be typed blind. The keyboard and the browser must
+  // still leave them alone: no saving, no correcting, capitals on a phone.
+  it('shows the code as it is typed, and keeps the keyboard and the browser out of it', () => {
+    render(<RecoverWithCode device="phone" busy={false} onRecover={() => {}} />)
+
+    const field = screen.getByLabelText('Recovery code') as HTMLInputElement
+    expect(field.type).toBe('text')
+    expect(field.getAttribute('autocomplete')).toBe('off')
+    expect(field.getAttribute('autocorrect')).toBe('off')
+    expect(field.getAttribute('autocapitalize')).toBe('characters')
+    expect(field.getAttribute('spellcheck')).toBe('false')
+    expect(field.getAttribute('enterkeyhint')).toBe('go')
   })
 })
 

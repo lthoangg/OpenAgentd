@@ -197,6 +197,19 @@ describe('ModelSetupCard', () => {
     expect(onOpenProviders).toHaveBeenCalledTimes(1)
   })
 
+  // The agent's model runs on this computer and its app is not answering:
+  // the card must offer a way to look again, not only wait for a refetch.
+  it('offers Check again while a model on this computer is not running, and says when it still is not', async () => {
+    const ollama = provider('ollama', { kind: 'local', label: 'Ollama' })
+    const { invalidated } = renderCard({ readiness: { status: 'needs-provider', model: 'ollama:qwen3', provider: ollama } })
+    expect(screen.getByText(/Start Ollama, then check again\./)).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+
+    await waitFor(() => expect(invalidated).toContainEqual(queryKeys.settings.providers()))
+    expect((await screen.findByRole('status')).textContent).toBe('Ollama is not answering yet.')
+  })
+
   it('draws no border around anything inside the card, and keeps green text on the green wash', () => {
     const providers = [
       ...FRESH.filter((p) => p.id !== 'ollama'),

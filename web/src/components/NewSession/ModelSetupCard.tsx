@@ -39,6 +39,9 @@ const OAuthLoginDialog = lazySurface(
   'OAuthLoginDialog',
 )
 
+/** `pending` while Check again looks at the providers again (no provider has this id). */
+const CHECKING = ':check'
+
 function shortLabel(provider: ProviderInfo): string {
   return QUICK_PICK_LABELS[provider.id] ?? provider.label
 }
@@ -72,6 +75,8 @@ export function ModelSetupCard({
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [oauthProvider, setOauthProvider] = useState<ProviderInfo | null>(null)
+  /** Check again found the model's app still not answering. */
+  const [stillOff, setStillOff] = useState(false)
 
   // "Use" only fills agents that have no model, so it is offered only then.
   const detected = useMemo(() => (needsProvider ? [] : detectedProviders(providers)), [needsProvider, providers])
@@ -122,6 +127,23 @@ export function ModelSetupCard({
       setApiKey('')
       await invalidateModelSetup(queryClient)
       announce(selected, saved.default_model ?? currentModel)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(null)
+    }
+  }
+
+  // The providers list is not polled: without this the card only noticed a
+  // started app on the next refetch (a return to the window, at the earliest).
+  const handleCheck = async () => {
+    setPending(CHECKING)
+    setError(null)
+    setStillOff(false)
+    try {
+      await invalidateModelSetup(queryClient)
+      // Still here: a running app would have replaced this card.
+      setStillOff(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -270,9 +292,16 @@ export function ModelSetupCard({
         </div>
       )}
       {needsProvider && needsProvider.kind === 'local' && (
-        <p className="mt-2 text-xs text-(--color-text-muted)">
-          Start {needsProvider.label}; this card goes away once it answers.
-        </p>
+        <div className="mt-3">
+          <p className="text-xs text-(--color-text-muted)">Start {needsProvider.label}, then check again.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="primary" disabled={pending !== null} onClick={() => { void handleCheck() }}>
+              {pending === CHECKING && <Loader2 className="animate-spin" aria-hidden="true" />}
+              Check again
+            </Button>
+            {stillOff && <p role="status" className="text-xs text-(--color-text-muted)">{needsProvider.label} is not answering yet.</p>}
+          </div>
+        </div>
       )}
 
       {error && (

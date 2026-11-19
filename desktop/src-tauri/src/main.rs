@@ -30,6 +30,7 @@ mod haptics;
 mod global_shortcuts;
 mod caption;
 mod autostart;
+mod window_session;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -51,7 +52,7 @@ use crate::lifecycle::{Attempt, AttemptCause, Commit, SidecarSlot};
 use crate::sidecar::Sidecar;
 use crate::config::save_window_state;
 use crate::window::{
-    build_app_window, backend_unavailable_init_script, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX,
+    build_app_window, backend_unavailable_init_script_at, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX,
     ZOOM_DEFAULT, show_main_window, target_webview_window, frontend_init_script,
     show_target_window,
 };
@@ -250,12 +251,16 @@ pub fn backend_log_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf> {
     Ok(app.path().app_log_dir()?.join("backend.log"))
 }
 
+/// Before the app goes away (quit, restart, an update): keep the active
+/// window's frame for the next new window, and the list of open windows for
+/// the next launch (`window_session`).
 pub fn persist_active_window_state(app: &AppHandle) {
     if let Some(window) = target_webview_window(app) {
         if let Err(e) = save_window_state(app, &window) {
             log::warn!("failed to save window state: {e:#}");
         }
     }
+    window_session::save(app);
 }
 
 pub fn quit_app(app: &AppHandle) {
@@ -485,8 +490,12 @@ enum StartedBackend {
     Failed(String),
 }
 
-/// Build the main window while `backend` starts, then publish the backend.
-/// A launch at login passes `with_window` false and builds none.
+/// Build the main window while `backend` starts, publish the backend, then
+/// open the other windows of the last run (`window_session`). A main window
+/// that was on another computer waits for the backend too: the page of a
+/// window on an external server must not hear the built-in server's
+/// `backend-ready`. A launch at login passes `with_window` false and builds
+/// none; its windows come back when the app is first opened.
 ///
 /// `backend` must be spawned outside the runtime (from `setup`). Building a
 /// window blocks this task's worker until the main thread has built it, and a
@@ -497,21 +506,34 @@ async fn start_backend_and_window(
     backend: tauri::async_runtime::JoinHandle<Result<StartedBackend>>,
     with_window: bool,
 ) -> Result<()> {
-    let window = if with_window && app.get_webview_window(MAIN_WINDOW).is_none() {
-        build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script())
-            .await
-            .map(|_| ())
-    } else {
-        Ok(())
+    let saved = if with_window { window_session::load(&app) } else { Vec::new() };
+    let first = window_session::first_window(&saved).filter(|_| with_window && app.get_webview_window(MAIN_WINDOW).is_none());
+    let window = match first {
+        Some((path, frame)) => {
+            let built = build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script_at(&path), frame).await;
+            window_session::came_back(&saved, MAIN_WINDOW);
+            built.map(|_| ())
+        }
+        None => Ok(()),
     };
     let started = backend.await.map_err(|e| anyhow::anyhow!("backend start task: {e}"))??;
     publish_backend(&app, started).await?;
-    window
+    window?;
+    if with_window {
+        window_session::restore(&app, &saved).await;
+        if crate::servers::app_window_labels(&app).is_empty() {
+            // None of them could open (their computers are gone and the
+            // built-in server did not start): the main window says so.
+            crate::window::create_app_window(&app, Some(MAIN_WINDOW), None).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Spawn the bundled sidecar and wait until it is healthy. Touches no
-/// window, so it can run while one builds. A launch never connects to a
-/// saved server: those are choices in Choose Server, made per window.
+/// window, so it can run while one builds. The app itself never picks a
+/// saved server: a window is on one only because the person chose it in
+/// Choose Server, in this run or in the one whose windows come back.
 async fn start_backend(app: AppHandle) -> Result<StartedBackend> {
     let state: tauri::State<'_, AppState> = app.state();
     let attempt = state
@@ -763,6 +785,7 @@ fn main() {
             let at_login = autostart::launched_at_login(std::env::args());
             if at_login {
                 log::info!("startup: launched at login, staying in the background");
+                window_session::restore_later();
             }
             autostart::refresh(app.handle());
             tauri::async_runtime::spawn(async move {
@@ -833,6 +856,7 @@ fn main() {
                     api.prevent_close();
                     if let Some(window) = app.get_webview_window(label.as_str()) {
                         let _ = save_window_state(app, &window);
+                        window_session::window_closing(app, label.as_str());
                         let _ = window.destroy();
                         state
                             .window_backend_base_urls

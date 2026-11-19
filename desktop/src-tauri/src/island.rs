@@ -1,4 +1,4 @@
-// size-ceiling: 2504 — holds settings, geometry and the server feed: give each its own module
+// size-ceiling: 2508 — holds settings, geometry and the server feed: give each its own module
 //! Agent status island in the MacBook notch (macOS).
 //!
 //! A borderless black webview (`web/island.html`) sits over the notch, or
@@ -2118,6 +2118,9 @@ pub(crate) fn focus_window_showing(app: &AppHandle, session_id: &str) -> bool {
 /// `quiet`: a widget (the island, the pet) opens it, and the page does not
 /// put focus in the composer ([`open_path`], [`open_payload`]).
 pub(crate) async fn open_session(app: &AppHandle, server: ServerId, session_id: &str, mode: OpenIn, quiet: bool) -> Result<()> {
+    // After a launch at login the windows of the last run come back first,
+    // so the one that showed this session is found below.
+    crate::window_session::restore_if_pending(app).await;
     if focus_window_showing(app, session_id) {
         return Ok(());
     }
@@ -2334,6 +2337,7 @@ pub fn island_viewing(app: AppHandle, window: WebviewWindow, session_id: Option<
     if crate::window::is_overlay_window(&label) {
         return;
     }
+    crate::window_session::note_session(&label, session_id.as_deref());
     let key = session_id.as_deref().map(id_key);
     {
         let mut s = shared().lock().unwrap();

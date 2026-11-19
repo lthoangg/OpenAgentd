@@ -5,7 +5,7 @@ use std::collections::HashMap as StdHashMap;
 use std::path::Path;
 use tauri_plugin_dialog::MessageDialogResult;
 use crate::window::{
-    frontend_init_script, new_window_init_script,
+    backend_unavailable_init_script, frontend_init_script, new_window_init_script,
 };
 use crate::servers::{current_server, ServerId};
 use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
@@ -205,6 +205,17 @@ fn unavailable_desktop_startup_opens_a_new_session() {
 
     assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
     assert!(!script.contains("/coding"));
+}
+
+#[test]
+fn a_main_window_coming_back_opens_on_its_session_once_the_backend_is_up() {
+    let script = backend_unavailable_init_script_at("/0199f3a2-7c4e-7b61-9f0e-2f6c1d3a4b5c");
+
+    assert!(script.contains("'__OAD_BACKEND_UNAVAILABLE__', { value: true,"));
+    assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/0199f3a2-7c4e-7b61-9f0e-2f6c1d3a4b5c","#));
+    // A path is data, never script.
+    let hostile = backend_unavailable_init_script_at("/\"});alert(1);//");
+    assert!(hostile.contains(r#"value: "/\"});alert(1);//","#), "{hostile}");
 }
 
 #[test]

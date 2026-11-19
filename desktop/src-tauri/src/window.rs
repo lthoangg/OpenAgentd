@@ -173,6 +173,10 @@ pub fn show_target_window(app: &AppHandle) {
     } else {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
+            // The first open after a launch at login: the windows of the last run.
+            if crate::window_session::restore_if_pending(&handle).await {
+                return;
+            }
             if let Err(e) = create_app_window(&handle, None, None).await {
                 log::error!("failed to create app window: {e:#}");
             }
@@ -330,7 +334,16 @@ pub fn frontend_init_script_with_path(
 }
 
 pub fn backend_unavailable_init_script() -> String {
-    "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', { value: true, writable: true, configurable: true });Object.defineProperty(window, '__OAD_INITIAL_ROUTE__', { value: \"/\", writable: true, configurable: true });".to_string()
+    backend_unavailable_init_script_at("/")
+}
+
+/// The same, for a window that opens on `path` once a backend is up (the
+/// main window coming back on the session it showed).
+pub fn backend_unavailable_init_script_at(path: &str) -> String {
+    format!(
+        "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', {{ value: true, writable: true, configurable: true }});Object.defineProperty(window, '__OAD_INITIAL_ROUTE__', {{ value: {route_json}, writable: true, configurable: true }});",
+        route_json = serde_json::to_string(path).unwrap_or_else(|_| "\"/\"".into())
+    )
 }
 
 /// Marks a window the user opened with New Window. Its first load shows an
@@ -427,12 +440,15 @@ fn enable_history_swipe(win: &tauri::WebviewWindow) {
     }
 }
 
+/// Build an app window at `frame` (a window coming back where it was), else
+/// at the size and place saved on the last close.
 pub async fn build_app_window(
     app: &AppHandle,
     label: String,
     init_script: String,
+    frame: Option<SavedWindowState>,
 ) -> Result<tauri::WebviewWindow> {
-    let saved_size = load_window_state(app).ok().flatten();
+    let saved_size = frame.or_else(|| load_window_state(app).ok().flatten());
     build_app_window_sized(app, label, init_script, saved_size).await
 }
 
@@ -619,12 +635,14 @@ pub async fn create_app_window(
     label: Option<&str>,
     initial_path: Option<&str>,
 ) -> Result<tauri::WebviewWindow> {
-    create_app_window_with(app, label, initial_path, false, None).await
+    create_app_window_with(app, label, initial_path, false, None, None).await
 }
 
-/// New Window: a window that opens on an empty new session.
+/// New Window: a window that opens on an empty new session (after a launch
+/// at login, beside the windows of the last run).
 pub async fn create_fresh_app_window(app: &AppHandle) -> Result<tauri::WebviewWindow> {
-    create_app_window_with(app, None, None, true, None).await
+    crate::window_session::restore_if_pending(app).await;
+    create_app_window_with(app, None, None, true, None, None).await
 }
 
 /// A new window on `server`, opened at `initial_path`, whichever window is
@@ -635,7 +653,19 @@ pub async fn create_app_window_on_server(
     server: ServerId,
     initial_path: &str,
 ) -> Result<tauri::WebviewWindow> {
-    create_app_window_with(app, None, Some(initial_path), false, Some(&server)).await
+    create_app_window_with(app, None, Some(initial_path), false, Some(&server), None).await
+}
+
+/// A window of the last run coming back (`window_session`): its own label
+/// (the page keys its theme and storage by it), server, page and frame.
+pub async fn restore_app_window(
+    app: &AppHandle,
+    label: &str,
+    server: &ServerId,
+    initial_path: &str,
+    frame: Option<SavedWindowState>,
+) -> Result<tauri::WebviewWindow> {
+    create_app_window_with(app, Some(label), Some(initial_path), false, Some(server), frame).await
 }
 
 async fn create_app_window_with(
@@ -644,6 +674,7 @@ async fn create_app_window_with(
     initial_path: Option<&str>,
     fresh: bool,
     explicit_server: Option<&ServerId>,
+    frame: Option<SavedWindowState>,
 ) -> Result<tauri::WebviewWindow> {
     let _creation = WINDOW_CREATION_LOCK.lock().await;
     let state: tauri::State<'_, AppState> = app.state();
@@ -694,13 +725,15 @@ async fn create_app_window_with(
     };
     // Open at the size of the window you are in, like a browser does, placed
     // the platform's way (`opened_from`). With no window open, reopen at the
-    // size and place saved on the last close/quit.
-    let size = match target_webview_window(app) {
-        Some(window) => match window_size(&window) {
+    // size and place saved on the last close/quit. A window coming back has
+    // its own frame.
+    let size = match (frame, target_webview_window(app)) {
+        (Some(frame), _) => Some(frame),
+        (None, Some(window)) => match window_size(&window) {
             Some(state) => Some(opened_from(&window, state)),
             None => load_window_state(app).ok().flatten().map(SavedWindowState::size_only),
         },
-        None => load_window_state(app).ok().flatten(),
+        (None, None) => load_window_state(app).ok().flatten(),
     };
     let built = build_app_window_sized(app, window_label.clone(), init_script, size).await;
     if built.is_err() {

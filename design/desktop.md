@@ -113,6 +113,16 @@ Menus):
   press opens it. The system holds the state (a login item), so the switch
   shows what the system has, and a development build never registers
   itself.
+- **Windows come back.** Opening the app opens the windows that were open
+  when it went away (quit, a restart, an update): each at its size and
+  place, on the computer it was on and the session it showed, with the one
+  used last in front. A window closed by hand does not come back; the last
+  one closed does, so the app never opens to nothing. A computer that
+  cannot be opened again does not cost its window: a saved server that is
+  off shows Can't reach with Retry, and a server removed from the list or
+  an account computer that is offline opens the window on this computer's
+  start page. After a launch at login they come back the first time the
+  app is asked for a window.
 
 #### Companions
 

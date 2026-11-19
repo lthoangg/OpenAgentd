@@ -36,10 +36,22 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   `auto-launch` with the program quoted the way each needs); the entry starts
   the app with `--at-login`, and that launch builds no window
   (`start_backend_and_window`). A debug build refuses to register itself.
+- `src/window_session.rs`: the windows that were open
+  (`desktop-windows.json`: label, frame, computer, session), saved by
+  `persist_active_window_state` on every way out and when a window is
+  closed by hand, and opened again by the launch (`restore`, after the
+  built-in server is published; only a main window on the built-in server
+  is built before it). A launch at login leaves them for the first time a
+  window is asked for (`restore_if_pending`). The session comes from what
+  each page reports through `island_viewing`. The file is read as
+  untrusted: labels, session ids and frames this app could not have written
+  are dropped, and a saved server no longer in the server list is not
+  connected to.
 - `src/servers.rs`: which server each window is on (`ServerId`: builtin or
   one external URL). The notch, the tray's "Auto" usage, new windows and
   notification routing all ask it. A saved server is never chosen as a
-  window's server here; it only becomes one when the user clicks Connect.
+  window's server here; it only becomes one when the user clicks Connect,
+  or when a window that was on it comes back (`window_session`).
   An OS notification's title ends with its server's name
   (`notification_title`: always for an account computer, else when the app
   has a saved server or an open account computer besides the builtin). The

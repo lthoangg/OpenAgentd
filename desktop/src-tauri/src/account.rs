@@ -294,8 +294,20 @@ pub async fn cloud_open_computer(
         return Err("Only app windows can open a computer.".into());
     }
     let _ = lan_base_url;
+    let origin = open_bridge(&app, &device_id).await?;
+    let status = crate::commands::point_window_at(&app, &window, &origin).await?;
+    Ok(OpenedComputer {
+        status,
+        via: "account",
+    })
+}
+
+/// Asks the built-in server for the link and bridge to a computer of the
+/// account and answers the bridge's origin, which a window is then pointed
+/// at like a saved server. Fails when the computer cannot be reached now.
+pub async fn open_bridge(app: &AppHandle, device_id: &str) -> Result<String, String> {
     let answer = builtin_call(
-        &app,
+        app,
         "POST",
         "/open",
         Some(serde_json::json!({ "device_id": device_id })),
@@ -322,11 +334,7 @@ pub async fn cloud_open_computer(
             device: opened.device,
         },
     );
-    let status = crate::commands::point_window_at(&app, &window, &origin).await?;
-    Ok(OpenedComputer {
-        status,
-        via: "account",
-    })
+    Ok(origin)
 }
 
 /// Closes the bridges no window uses any more (a window switched away or

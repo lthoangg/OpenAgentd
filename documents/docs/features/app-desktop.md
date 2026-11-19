@@ -18,6 +18,16 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   launcher or the tray on Linux). The switch shows what the system has: an
   entry removed in the system's own login items reads as off. Linux gets
   the Desktop page for the first time, with Startup alone.
+- **Windows come back when the app opens** `[v3.62.0]` — quitting,
+  restarting or updating with several windows open used to bring back the
+  main window alone. Every window now reopens at its size and place, on
+  the computer it was on (this one, a saved server, a computer of your
+  account) and the session it showed, with the window used last in front.
+  A window you closed does not come back, except the last one closed. A
+  saved server that is off shows **Can't reach** with **Retry**; a server
+  you removed, or an account computer that is offline, opens its window on
+  this computer instead. With **Open at login** on, the windows come back
+  the first time you open the app.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns in
   the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
@@ -308,7 +318,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   last normal size saved on quit, while minimized/maximized dimensions are ignored.
   Since `[v3.31.0]` the main window also reopens where it was. If that screen
   is no longer connected, it is moved onto one that is. New windows opened
-  from an existing one only take its size.
+  from an existing one only take its size. Since `[v3.62.0]` every window
+  that was open reopens where it was (see *Windows come back when the app
+  opens*).
 - **Desktop shell polish** `[v3.31.0]`:
   - Before the UI loads, the window background uses the theme you picked in
     the app, even when it differs from the system theme, so it no longer

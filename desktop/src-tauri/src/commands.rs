@@ -546,8 +546,9 @@ pub async fn app_use_external_backend(
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     if persist.unwrap_or(true) {
         // Keep it in the server list only. It never becomes a server the app
-        // connects to on its own (`active_base_url` is left alone): the next
-        // launch opens on the builtin, and this server stays one Connect away.
+        // picks on its own (`active_base_url` is left alone): a new window
+        // opens on the builtin, and this server stays one Connect away. A
+        // window that was on it comes back on it (`window_session`).
         save_app_backend_config(
             &app,
             Some(&normalized),

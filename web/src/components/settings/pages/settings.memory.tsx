@@ -46,6 +46,7 @@ import { cn } from '@/lib/utils'
 import { createPortal } from 'react-dom'
 import { PhoneNavBar } from '@/components/phone/PhoneNavBar'
 import { useIsPhone } from '@/hooks/use-is-phone'
+import { failureToast } from '@/lib/failure-toast'
 
 /** The phone editor's formatting bar: text it wraps the selection in. */
 const MARKDOWN_TOOLS = [
@@ -149,8 +150,7 @@ export function MemorySettingsPage() {
       if (err instanceof ApiValidationError && err.status === 412) {
         setConflictOpen(true)
       } else {
-        const msg = err instanceof Error ? err.message : String(err)
-        push({ tone: 'error', title: 'Save failed', description: msg })
+        push(failureToast("Couldn't save the page", err))
       }
     }
   }
@@ -184,8 +184,7 @@ export function MemorySettingsPage() {
       if (err instanceof ApiValidationError && err.status === 412) {
         setConflictOpen(true)
       } else {
-        const msg = err instanceof Error ? err.message : String(err)
-        push({ tone: 'error', title: 'Delete failed', description: msg })
+        push(failureToast("Couldn't delete the page", err))
       }
     } finally {
       inFlight.current = false
@@ -213,8 +212,7 @@ export function MemorySettingsPage() {
       selectPage(filename)
       refetchTree()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      push({ tone: 'error', title: 'Create failed', description: msg })
+      push(failureToast("Couldn't create the page", err))
     } finally {
       inFlight.current = false
     }

@@ -85,7 +85,7 @@ export function ModelsPanel({
     try {
       await navigator.clipboard.writeText(qualifiedId)
     } catch {
-      push({ tone: 'error', title: 'Copy failed', description: qualifiedId })
+      push({ tone: 'error', title: "Couldn't copy", description: qualifiedId })
     }
   }
 

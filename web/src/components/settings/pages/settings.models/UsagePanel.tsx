@@ -440,7 +440,7 @@ export function UsagePanel({
         onError: () => {
           useToastStore.getState().push({
             tone: 'error',
-            title: 'Reset failed',
+            title: "Couldn't reset the rate limit",
             // Fixed words: the server's text is not shown.
             description: 'The reset could not be redeemed. Try again later.',
           })

@@ -14,6 +14,7 @@ import {
 } from '@/components/settings/McpServerDraft'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { errorMessage } from '@/utils/errors'
+import { failureToast } from '@/lib/failure-toast'
 
 /** A new connector starts as a web address that signs in: what most hosted tools need. */
 const TEMPLATE: McpServerDraft = { ...emptyDraft(), transport: 'http', oauthEnabled: true }
@@ -59,7 +60,7 @@ export function NewConnectorPage({ onBack, onCreated }: NewMcpServerPageProps) {
     } catch (err) {
       const msg = errorMessage(err)
       setSaveError(msg)
-      push({ tone: 'error', title: 'Create failed', description: msg })
+      push(failureToast("Couldn't create the connector", err))
     }
   }
 

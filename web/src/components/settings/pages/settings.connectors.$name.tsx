@@ -48,6 +48,7 @@ import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 import { commandLine } from '@/utils/command-line'
 import { errorMessage } from '@/utils/errors'
+import { failureToast } from '@/lib/failure-toast'
 
 interface McpServerDetailPageProps {
   name: string
@@ -101,7 +102,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
     } catch (err) {
       const msg = errorMessage(err)
       setSaveError(msg)
-      push({ tone: 'error', title: 'Save failed', description: msg })
+      push(failureToast(`Couldn't save "${name}"`, err))
     }
   }
 
@@ -111,8 +112,7 @@ export function ConnectorDetailPage({ name, onBack }: McpServerDetailPageProps) 
       push({ tone: 'success', title: `Deleted "${name}"` })
       onBack()
     } catch (err) {
-      const msg = errorMessage(err)
-      push({ tone: 'error', title: 'Delete failed', description: msg })
+      push(failureToast(`Couldn't delete "${name}"`, err))
     }
   }
 

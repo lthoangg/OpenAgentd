@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { SettingsSkeleton } from '@/components/settings/SettingsPage'
 import { errorMessage } from '@/utils/errors'
+import { failureToast } from '@/lib/failure-toast'
 
 interface SkillEditorPageProps {
   name: string
@@ -70,7 +71,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
     } catch (err) {
       const msg = errorMessage(err)
       setSaveError(msg)
-      push({ tone: 'error', title: 'Save failed', description: msg })
+      push(failureToast(`Couldn't save "${name}"`, err))
     }
   }
 
@@ -80,8 +81,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
       push({ tone: 'success', title: `Deleted "${name}"` })
       onBack()
     } catch (err) {
-      const msg = errorMessage(err)
-      push({ tone: 'error', title: 'Delete failed', description: msg })
+      push(failureToast(`Couldn't delete "${name}"`, err))
     }
   }
 

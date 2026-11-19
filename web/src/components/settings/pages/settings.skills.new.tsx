@@ -9,6 +9,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { Textarea } from '@/components/ui/textarea'
 import { EDITOR_BODY } from '@/components/settings/tokens'
 import { errorMessage } from '@/utils/errors'
+import { failureToast } from '@/lib/failure-toast'
 
 const TEMPLATE = `---
 name: new-skill
@@ -54,7 +55,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
     } catch (err) {
       const msg = errorMessage(err)
       setSaveError(msg)
-      push({ tone: 'error', title: 'Create failed', description: msg })
+      push(failureToast("Couldn't create the skill", err))
     }
   }
 

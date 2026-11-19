@@ -321,7 +321,7 @@ describe('ProviderCard — usage states', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Redeem reset' }))
     await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0))
     const toast = useToastStore.getState().toasts[0]
-    expect(toast.title).toBe('Reset failed')
+    expect(toast.title).toBe("Couldn't reset the rate limit")
     expect(JSON.stringify(toast)).not.toContain('secret-internal-detail')
   })
 

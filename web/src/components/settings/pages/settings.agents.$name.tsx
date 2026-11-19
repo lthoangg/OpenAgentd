@@ -30,6 +30,7 @@ import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import { SessionTools } from '@/components/SessionTools'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { failureToast } from '@/lib/failure-toast'
 
 /**
  * The tools the agent has right now in the open workspace: built-ins plus
@@ -104,7 +105,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
     } catch (err) {
       const msg = errorMessage(err)
       setSaveError(msg)
-      push({ tone: 'error', title: 'Save failed', description: msg })
+      push(failureToast(`Couldn't save "${label}"`, err))
     }
   }
 

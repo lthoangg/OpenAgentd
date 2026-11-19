@@ -1,8 +1,8 @@
 /**
  * A tapped "A device wants to join" must open the approval sheet even
  * before any server answers: the phone may be the account's first device.
- * Before the router is up the app mounts the account sync itself; once it is
- * up only the root route does (so never twice).
+ * The app mounts the account sync itself, once, before the router is up and
+ * after: the sheet a tap opened stays open while the app starts.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
@@ -46,11 +46,13 @@ describe('the account sync on the phone', () => {
     expect(await screen.findByTestId('phone-cloud-sync')).toBeTruthy()
   })
 
-  it('is left to the root route once the app is up', async () => {
+  it('goes on once the app is up, in the same place', async () => {
+    ready = false
+    const view = render(<App />)
+    const before = await screen.findByTestId('phone-cloud-sync')
     ready = true
-    render(<App />)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(screen.queryByTestId('phone-cloud-sync')).toBeNull()
+    view.rerender(<App />)
+    expect(screen.getAllByTestId('phone-cloud-sync')).toEqual([before])
   })
 })
 

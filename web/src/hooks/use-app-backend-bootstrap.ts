@@ -8,6 +8,7 @@ import {
   switchToBundledAppBackend,
 } from '@/lib/app-backend'
 import { queryClient } from '@/lib/query-client'
+import { noteAppStarted, setAppStarter } from '@/lib/app-start'
 import { clearProviderUsage } from '@/queries/providerUsageCache'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
 import { backendSwitchActive } from '@/stores/useBackendSwitchStore'
@@ -125,9 +126,31 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
       // after the whole router tree's first commit), and again for a
       // restarted or switched backend, whose cache was just cleared.
       preloadConnectedApp(queryClient)
+      noteAppStarted()
       setFailed(false)
       setUnavailable(false)
       setReady(true)
+    }
+
+    // One start from the shell's status: the poll's, or the one a switch
+    // asks for (below). Whichever comes first is the only one.
+    let starting = false
+    const start = async (status: AppBackendStatus | null) => {
+      starting = true
+      if (pollTimer) clearTimeout(pollTimer)
+      try {
+        if (status?.base_url) {
+          if (status.external) {
+            window.localStorage.setItem(ACTIVE_BACKEND_URL_STORAGE, status.base_url)
+          }
+          await applyDesktopBackend(status)
+        }
+      } catch (error) {
+        // Not started after all: the poll (or the switch's reload) goes on.
+        starting = false
+        throw error
+      }
+      finishReady()
     }
 
     const schedulePoll = () => {
@@ -148,7 +171,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     const bootstrap = async () => {
       try {
         const status = await getAppBackendStatus()
-        if (cancelled) return
+        if (cancelled || starting) return
         if (status?.backend_failed) {
           setFailed(true)
           setUnavailable(true)
@@ -164,18 +187,12 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
             schedulePoll()
             return
           }
-          if (status?.base_url) {
-            if (status.external) {
-              window.localStorage.setItem(ACTIVE_BACKEND_URL_STORAGE, status.base_url)
-            }
-            await applyDesktopBackend(status)
-          }
-          finishReady()
+          await start(status)
           return
         }
         schedulePoll()
       } catch {
-        if (cancelled) return
+        if (cancelled || starting) return
         if (!isTauri) {
           finishReady()
           return
@@ -183,6 +200,18 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
         schedulePoll()
       }
     }
+
+    // A switch that moved the shell before the app started here lands by
+    // starting it (`landOnSwitchedBackend`); the poll holds while its screen
+    // is up. False leaves the switch to reload, as it does on a running app.
+    const startForSwitch = async () => {
+      if (cancelled || starting) return false
+      const status = await getAppBackendStatus()
+      if (cancelled || starting || !status?.base_url || !isBootstrapReady(status, isTauri)) return false
+      await start(status)
+      return !cancelled
+    }
+    setAppStarter(startForSwitch)
 
     // Listen scoped to *this* webview window only. The generic `listen()`
     // from `@tauri-apps/api/event` registers with `target: { kind: 'Any' }`,
@@ -227,6 +256,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     return () => {
       cancelled = true
       if (pollTimer) clearTimeout(pollTimer)
+      setAppStarter(null)
       unlistenBackendEvents?.()
       unsubscribe()
     }

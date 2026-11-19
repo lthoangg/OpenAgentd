@@ -106,6 +106,24 @@ export function endBackendSwitch(generation: number): void {
   clearBackendSwitchHandoff()
 }
 
+/** The switch that starts the app on this page instead of reloading it (`landOnSwitchedBackend`). */
+let landing: number | null = null
+
+/** `generation` lands by starting the app here (`null`: it reloads after all). Its screen stays up until the app shows. */
+export function noteBackendSwitchLanding(generation: number | null): void {
+  landing = generation
+}
+
+/**
+ * The app started (`App`, in the commit that mounts the router): a switch
+ * that landed in place ends with it, so no frame shows the screen under it.
+ */
+export function endLandedBackendSwitch(): void {
+  if (landing === null) return
+  endBackendSwitch(landing)
+  landing = null
+}
+
 /** The new server is up: the next load is an ordinary one. */
 export function clearBackendSwitchHandoff(): void {
   try {

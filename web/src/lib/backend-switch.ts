@@ -8,6 +8,7 @@
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, refreshStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import { queryClient } from '@/lib/query-client'
+import { startAppHere } from '@/lib/app-start'
 import { markPageUnloading } from '@/lib/page-unload'
 import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
@@ -18,7 +19,9 @@ import {
   endBackendSwitch,
   isCurrentBackendSwitch,
   markBackendSwitchCommitting,
+  noteBackendSwitchLanding,
   noteBackendSwitchOrigin,
+  useBackendSwitchStore,
   type BackendSwitchOrigin,
   type BackendSwitchTarget,
 } from '@/stores/useBackendSwitchStore'
@@ -90,6 +93,22 @@ export function reloadForBackendSwitch(): void {
 export function reloadOntoMovedBridge(): void {
   markPageUnloading()
   window.location.reload()
+}
+
+/**
+ * Land on the server a switch moved this window to (its screen is still
+ * up). Where the app has not started on this page (a phone's cold launch
+ * with no server to be on), it starts there as it is: the page holds
+ * nothing of another server, a reload would load the bundle a second time,
+ * and the route saved at the last exit is this computer's, so it is kept.
+ * Anywhere else the window reloads.
+ */
+export async function landOnSwitchedBackend(): Promise<'started' | 'reloading'> {
+  noteBackendSwitchLanding(useBackendSwitchStore.getState().generation)
+  if (await startAppHere()) return 'started'
+  noteBackendSwitchLanding(null)
+  reloadForBackendSwitch()
+  return 'reloading'
 }
 
 /** What the switching screen calls the builtin sidecar. */

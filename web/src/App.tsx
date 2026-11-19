@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { Seal } from '@/components/brand/Logo'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
@@ -16,7 +16,7 @@ import { getAppBackendStatus, getBundledBackendLogPath } from '@/lib/app-backend
 import { WEB_BUILD_VERSION } from '@/lib/app-version'
 import { isDesktopShell } from '@/lib/desktop-shell'
 import { useBackHandler } from '@/lib/back-button'
-import { clearBackendSwitchHandoff, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
+import { clearBackendSwitchHandoff, endLandedBackendSwitch, pendingBackendSwitch, type BackendSwitchTarget } from '@/stores/useBackendSwitchStore'
 import { openServersScreen } from '@/stores/useServersScreenStore'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
@@ -33,8 +33,9 @@ import { router } from './router'
 const PHONE_SERVERS_AFTER_MS = 10_000
 
 // The phone's account sync (a tapped "A device wants to join" opens the
-// approval sheet). The root route mounts it once a server is up; before
-// that, this screen does, so a phone with no server can still approve.
+// approval sheet). Mounted here, once, under both the loading screens and
+// the running app: a phone with no server can still approve, and the sheet
+// a tap opened stays open while the app starts under it.
 const PhoneCloudSync = lazy(() =>
   import('@/hooks/use-phone-cloud-sync').then((module) => ({ default: module.PhoneCloudSync })),
 )
@@ -106,7 +107,10 @@ function App() {
   // nothing that sees the app running can still find the hand-off (a passive
   // effect could land a tick later on a busy main thread).
   useLayoutEffect(() => {
-    if (ready) clearBackendSwitchHandoff()
+    if (!ready) return
+    clearBackendSwitchHandoff()
+    // A switch that started the app on this page: its screen goes now.
+    endLandedBackendSwitch()
   }, [ready])
   // Back on that screen, so a server that never comes up does not trap the
   // person: forget the switch, and on a phone show its Computers list; else
@@ -141,49 +145,49 @@ function App() {
     if (!ready) setPhoneServers(true)
   }, [isPhone, connectRequest, clearConnectRequest, ready])
 
-  if (!ready) {
-    if (isPhone) {
-      return (
-        <>
-          {phoneServers ? (
-            <div className="mobile-safe-shell mobile-viewport h-dvh">
-              <ServersScreen active />
-            </div>
-          ) : (
-            <div className="mobile-safe-shell mobile-viewport relative flex h-dvh items-center justify-center bg-(--bg-page)">
-              {switchingTo && <BackendSwitchBack placement="bar" onBack={backFromSwitch} />}
-              <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center" role="status" aria-label="Loading OpenAgentd">
-                <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
-                {switchingTo && <BackendSwitchMessage target={switchingTo} />}
-              </div>
-            </div>
-          )}
-          <BackendSwitchScreen />
-          {isMobileApp() && (
-            <Suspense fallback={null}>
-              <PhoneCloudSync />
-            </Suspense>
-          )}
-        </>
-      )
-    }
-    return (
+  let screen: ReactNode
+  if (ready) {
+    screen = (
       <>
-        <AppLoadingScreen switchingTo={switchingTo} onSwitchBack={backFromSwitch} unavailable={unavailable} failed={failed} failureMessage={failureMessage} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
-        <BackendSwitchScreen />
+        <Suspense fallback={<AppLoadingScreen switchingTo={switchingTo} unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
+          <RouterProvider router={router} />
+        </Suspense>
+        {!isPhone && <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />}
+        {/* Keeps pages the agent opened driveable while no Preview tab shows them. */}
+        <PreviewKeepAlive />
       </>
+    )
+  } else if (!isPhone) {
+    screen = <AppLoadingScreen switchingTo={switchingTo} onSwitchBack={backFromSwitch} unavailable={unavailable} failed={failed} failureMessage={failureMessage} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
+  } else if (phoneServers) {
+    screen = (
+      <div className="mobile-safe-shell mobile-viewport h-dvh">
+        <ServersScreen active />
+      </div>
+    )
+  } else {
+    screen = (
+      <div className="mobile-safe-shell mobile-viewport relative flex h-dvh items-center justify-center bg-(--bg-page)">
+        {switchingTo && <BackendSwitchBack placement="bar" onBack={backFromSwitch} />}
+        <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center" role="status" aria-label="Loading OpenAgentd">
+          <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
+          {switchingTo && <BackendSwitchMessage target={switchingTo} />}
+        </div>
+      </div>
     )
   }
 
+  // One tree for every state: what sits after the screen keeps its place,
+  // and so its state, when the app starts.
   return (
     <>
-      <Suspense fallback={<AppLoadingScreen switchingTo={switchingTo} unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
-        <RouterProvider router={router} />
-      </Suspense>
-      {!isPhone && <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />}
-      {/* Keeps pages the agent opened driveable while no Preview tab shows them. */}
-      <PreviewKeepAlive />
+      {screen}
       <BackendSwitchScreen />
+      {isMobileApp() && (
+        <Suspense fallback={null}>
+          <PhoneCloudSync />
+        </Suspense>
+      )}
     </>
   )
 }

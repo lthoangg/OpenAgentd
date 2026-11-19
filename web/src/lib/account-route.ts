@@ -40,7 +40,7 @@ import {
 } from '@/api/phone-cloud'
 import { accountBridgeDeviceId, accountComputerTitle, getAppBackendStatus } from '@/lib/app-backend'
 import { apiBaseUrl } from '@/api/base-url'
-import { connectAccountComputer, normalizeServerBaseUrl, reloadForBackendSwitch, reloadOntoMovedBridge } from '@/lib/backend-switch'
+import { connectAccountComputer, landOnSwitchedBackend, normalizeServerBaseUrl, reloadForBackendSwitch, reloadOntoMovedBridge } from '@/lib/backend-switch'
 import { sessionOpensSettled, sessionServerOpenInFlight } from '@/lib/open-on-server'
 import { markPageUnloading, pageUnloading, resetPageUnloading } from '@/lib/page-unload'
 import { noteShellResume, watchShellResume } from '@/lib/shell-resume'
@@ -89,8 +89,11 @@ async function runLaunch(): Promise<RouteOutcome> {
     await sessionOpensSettled()
     if (pageUnloading()) return 'skipped'
   }
-  if (result.reload) reloadForBackendSwitch()
-  return result.reload ? 'switched' : 'skipped'
+  if (!result.reload) return 'skipped'
+  // At a cold launch with no server the app has not started yet: it starts
+  // on this computer here, without a second page load.
+  await landOnSwitchedBackend()
+  return 'switched'
 }
 
 /** At launch, once; later calls do nothing. `failed` shows the Servers screen (already opened here). */

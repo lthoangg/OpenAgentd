@@ -5,7 +5,7 @@
  * as handled, and the reload would throw all of it away.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 
 const realPlatform = await import('@/hooks/use-platform')
 const phone = { isTauri: true, os: 'ios', isMacOverlay: false, isFullscreen: false }
@@ -30,10 +30,12 @@ mock.module('@tauri-apps/api/webviewWindow', () => ({
 
 const { setApiBaseUrl } = await import('@/api/base-url')
 const { useAppBackendBootstrap } = await import('@/hooks/use-app-backend-bootstrap')
+const { resetAppStart, startAppHere } = await import('@/lib/app-start')
 const { beginBackendSwitch, endBackendSwitch, useBackendSwitchStore } = await import('@/stores/useBackendSwitchStore')
 
 beforeEach(() => {
   statusReads = 0
+  resetAppStart()
   window.localStorage.clear()
   window.sessionStorage.clear()
   useBackendSwitchStore.setState({ target: null, generation: 0, committing: false })
@@ -61,5 +63,24 @@ describe('starting the app while a server switch is under way', () => {
     const { result } = renderHook(() => useAppBackendBootstrap())
     await waitFor(() => expect(result.current.ready).toBe(true))
     expect(statusReads).toBe(1)
+  })
+
+  it('starts when the switch asks: the app had not started here, so nothing needs a reload', async () => {
+    beginBackendSwitch({ name: 'studio-mini' })
+    const { result } = renderHook(() => useAppBackendBootstrap())
+    await waitFor(() => expect(statusReads).toBeGreaterThan(0))
+    expect(result.current.ready).toBe(false)
+
+    let started = false
+    await act(async () => { started = await startAppHere() })
+    expect(started).toBe(true)
+    expect(result.current.ready).toBe(true)
+    expect(window.__OAD_API_BASE_URL__).toBe(BRIDGE)
+  })
+
+  it('leaves a switch to reload once the app has started on this page', async () => {
+    const { result } = renderHook(() => useAppBackendBootstrap())
+    await waitFor(() => expect(result.current.ready).toBe(true))
+    expect(await startAppHere()).toBe(false)
   })
 })

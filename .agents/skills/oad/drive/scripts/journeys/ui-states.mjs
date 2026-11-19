@@ -88,6 +88,8 @@ export default async function uiStates({ page, expect, step, open, phone, run, d
     if (phone) await page.getByRole("dialog", { name: "Usage" }).getByRole("button", { name: /^Filters/ }).click()
     await expect(page.getByRole("status", { name: "Loading the session's title" })).toBeVisible()
     await expect(page.getByText("Loading…")).toHaveCount(0)
+    // Nothing is known about the server yet, so it is not told to update.
+    await expect(page.getByText("Update the server to filter by workspace or model.")).toHaveCount(0)
   })
 
   await step("then the session's name", async () => {

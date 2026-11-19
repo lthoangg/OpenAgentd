@@ -69,7 +69,8 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
   const summary = useObservabilitySummaryQuery(days, { workspace, model, session })
   const turns = useInfiniteTracesQuery(days, TURNS_PAGE_SIZE, { workspace, model, session, errorsOnly })
   const data = summary.data
-  const facets = data?.facets ?? null
+  // Undefined until the server has answered; null when it predates filters.
+  const facets = data ? (data.facets ?? null) : undefined
   const filterableModels = useMemo(() => new Set(facets?.models ?? []), [facets])
   const turnRows = useMemo(() => turns.data?.pages.flatMap((page) => page.traces) ?? [], [turns.data])
   const showAgent = useMemo(() => new Set(turnRows.map((turn) => turn.agent_name ?? '')).size > 1, [turnRows])

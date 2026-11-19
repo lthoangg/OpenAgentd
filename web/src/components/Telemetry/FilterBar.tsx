@@ -41,8 +41,12 @@ export interface FilterBarProps {
   /** Display name for ``session`` (title, or a fallback while loading). */
   sessionLabel: string | null
   onSessionChange: (session: string | null) => void
-  /** ``null`` when the backend predates filters: the pickers are hidden. */
-  facets: { workspaces: string[]; models: string[] } | null
+  /**
+   * ``null`` when the backend predates filters: the pickers are hidden and a
+   * line says to update it. ``undefined`` while the summary is still loading:
+   * nothing is known about the server yet, so nothing is said about it.
+   */
+  facets: { workspaces: string[]; models: string[] } | null | undefined
   onClear: () => void
   fetching: boolean
   /** Recent turns show failed turns only. */

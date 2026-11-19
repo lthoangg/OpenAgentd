@@ -32,7 +32,9 @@ Everything stays local. No third-party telemetry SaaS.
   A `/telemetry` link opens Usage once: closed, it stays closed when the app
   opens again (before `[v3.59.0]` every later launch reopened it). While a
   session filter's title loads, its chip shows a visible placeholder
-  `[v3.59.0]`.
+  `[v3.59.0]`. Since `[v3.62.0]` the line "Update the server to filter by
+  workspace or model." shows only for a server that answered without
+  filters; it used to flash on every load.
 - **Model speed in telemetry** `[v3.0.0]` — every streamed model call records
   its time to first token and its output speed in tokens per second. The
   overview shows the median first token (with p95) and the median output speed

@@ -433,6 +433,16 @@ describe('TelemetryView overview', () => {
     expect(screen.queryByText('Workspaces')).toBeNull()
   })
 
+  it('asks to update the server only once the server has answered without filters', async () => {
+    useHandlers({ summary: () => summaryFixture({ facets: undefined, by_workspace: undefined }) })
+    renderView()
+
+    // Still loading: nothing is known about the server yet.
+    expect(screen.queryByText('Update the server to filter by workspace or model.')).toBeNull()
+    await screen.findByText('Models')
+    expect(screen.getByText('Update the server to filter by workspace or model.')).toBeTruthy()
+  })
+
   it('explains an empty window', async () => {
     useHandlers({ summary: () => summaryFixture({ totals: EMPTY_TOTALS, by_workspace: [], by_session: [], by_model: [], by_tool: [] }), turns: [] })
     renderView()

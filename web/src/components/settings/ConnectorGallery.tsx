@@ -11,9 +11,10 @@
  */
 import { useMemo, useState } from 'react'
 
-import type { GalleryEntry } from '@/api/client'
+import { ApiValidationError, type GalleryEntry } from '@/api/client'
 import { ConnectorIcon } from '@/components/ConnectorIcon'
 import { Button } from '@/components/ui/button'
+import { Callout } from '@/components/ui/callout'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
@@ -127,7 +128,7 @@ function ConnectorTile({ entry }: { entry: GalleryEntry }) {
 }
 
 export function ConnectorGallery({ query = '' }: { query?: string }) {
-  const { data, isLoading, isError } = useConnectorGalleryQuery()
+  const { data, isLoading, isError, error, refetch } = useConnectorGalleryQuery()
   const [category, setCategory] = useState<string | null>(null)
 
   const toAdd = useMemo(() => galleryToAdd(data?.entries ?? []), [data])
@@ -137,7 +138,20 @@ export function ConnectorGallery({ query = '' }: { query?: string }) {
     [toAdd, query, category],
   )
 
-  if (isError) return null
+  if (isError) {
+    // A server from before the gallery answers 404: nothing to offer, nothing to report.
+    if (error instanceof ApiValidationError && error.status === 404) return null
+    return (
+      <Callout
+        tone="error"
+        role="alert"
+        title="Couldn't load the connector gallery"
+        action={<Button size="xs" onClick={() => void refetch()}>Retry</Button>}
+      >
+        Your own connectors still work. Add one by hand with Add your own.
+      </Callout>
+    )
+  }
   // A search that matches nothing here leaves the section out; the page says so once.
   if (!isLoading && query.trim() && toAdd.every((e) => !matchesQuery(query, e.name, e.description))) return null
   if (!isLoading && toAdd.length === 0) return null

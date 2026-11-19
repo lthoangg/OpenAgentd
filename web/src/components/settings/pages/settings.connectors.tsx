@@ -160,7 +160,7 @@ function ConnectorsPage({ selectedName, onSelect, onNew }: McpListPageProps) {
             tone="error"
             role="alert"
             title="Couldn't load connectors"
-            action={<Button size="xs" onClick={() => void refetch()}>Retry</Button>}
+            action={<Button size="xs" onClick={() => { void refetch(); void gallery.refetch() }}>Retry</Button>}
           >
             {error instanceof Error ? error.message : 'Check the server connection, then try again.'}
           </Callout>
@@ -201,7 +201,8 @@ function ConnectorsPage({ selectedName, onSelect, onNew }: McpListPageProps) {
           )
         )}
 
-        <ConnectorGallery query={query} />
+        {/* One error at a time: while the list itself failed to load, its Retry reloads the gallery too. */}
+        {!isError && <ConnectorGallery query={query} />}
 
         {query.trim() && shown.length === 0 && galleryHits === 0 && !isLoading && (
           <p className={cn(TEXT.hint, 'py-6 text-center')}>No connectors match &ldquo;{query}&rdquo;.</p>

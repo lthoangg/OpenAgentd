@@ -168,4 +168,35 @@ describe('ConnectorGallery', () => {
     await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading the gallery' })).toBeNull())
     expect(screen.queryByRole('heading', { name: 'Add a connector' })).toBeNull()
   })
+
+  it('says so when the gallery cannot be loaded, and loads it on Retry', async () => {
+    let healthy = false
+    server.use(http.get('http://localhost/api/mcp/gallery', () => (healthy
+      ? HttpResponse.json({ source: 'cloud', entries: ENTRIES })
+      : HttpResponse.json({ detail: 'boom' }, { status: 500 }))))
+    renderGallery()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain("Couldn't load the connector gallery")
+    healthy = true
+    await userEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Context7')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // A server from before the gallery has nothing to offer and nothing to report.
+  it('stays out of the way on a server that has no gallery', async () => {
+    let asked = 0
+    server.use(http.get('http://localhost/api/mcp/gallery', () => {
+      asked += 1
+      return HttpResponse.json({ detail: 'Not Found' }, { status: 404 })
+    }))
+    const { container } = renderGallery()
+
+    await waitFor(() => expect(asked).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading the gallery' })).toBeNull())
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(container.textContent).toBe('')
+  })
 })

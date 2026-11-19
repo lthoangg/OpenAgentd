@@ -209,7 +209,10 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   - Long-pressing app buttons and icons no longer opens the iOS link and
     image menu. Message text, images, code and input fields keep it.
   - Switches and segmented controls tick with a light haptic, and git
-    actions end with a success or error haptic.
+    actions end with a success or error haptic. Since `[v3.62.0]` the
+    phone also taps when the scanner reads a QR code, when a copy
+    succeeds, when a device is added to the account (or refused), and when
+    a destructive action is confirmed.
   - List rows darken while your finger is on them.
   - On an Android phone turned sideways, the drawers and the review dock
     stay usable and keep clear of the camera cutout.

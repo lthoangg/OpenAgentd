@@ -96,8 +96,9 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   (`capabilities/island.json`, like the tray popup's `capabilities/tray.json`)
   and, like the tray popup, never gets the backend token
   (`window::is_overlay_window`).
-  The feed runs on every platform, always: the tray's "Needs you" list and
-  mark read it too. Its `open_session` is the one session → window router:
+  The feed runs on every platform, always: the tray's Needs you mark (a
+  count on the icon and in its tooltip; the tray lists no sessions) reads
+  it too. Its `open_session` is the one session → window router:
   every way to open a session (island, pet, tray, OS notification, "Open in
   new window", `app_new_window` with a session path) focuses the window that
   already shows it (every app window reports its session through

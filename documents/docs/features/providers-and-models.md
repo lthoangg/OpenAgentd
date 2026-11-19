@@ -44,7 +44,10 @@ agnostic by design.
   Ollama) is offered with a one-click **Use**. **More providers…** opens
   Settings → Models. Open sessions keep the banner, which now follows the
   same rule, so it no longer hides while sends would fail and no longer shows
-  for a working Ollama setup.
+  for a working Ollama setup. Since `[v3.62.0]`, when the agent's model
+  runs on this computer and its app is not running, the card says to start
+  it and has **Check again**; before, it only went away after leaving the
+  window and coming back.
 - **A saved key is enough to chat** `[v3.31.0]` — when the first provider
   gets a credential (Settings → Models, the setup card, or `POST
   /api/settings/providers/{id}/credentials`), agents that have no model yet

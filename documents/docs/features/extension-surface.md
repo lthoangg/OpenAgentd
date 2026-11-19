@@ -57,6 +57,9 @@ Four orthogonal ways to add capability.
     on writes an ordinary `mcp.json` entry. A connector already added by hand
     shows as on, and one on an old address of a connector is offered **Update**.
     The agent's `mcp` `servers` action lists the gallery's connectors too.
+    Since `[v3.62.0]` a gallery that fails to load says **Couldn't load the
+    connector gallery** with **Retry** (the section used to be left out
+    without a word), and the page's own Retry reloads the gallery too.
   - **Connector logos and a cleaner Connectors page** `[v3.60.0]` — gallery
     connectors show their service's logo (one colour, following light and dark
     mode) in Settings → Connectors, the composer's "+" menu and a connector's

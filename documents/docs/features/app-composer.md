@@ -156,11 +156,12 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     through earlier ones and Close only hides the panel. Show them again with a bare
     `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
     Answers no longer credit you with the runtime's own notes, such as a Plan
-    mode note or a goal reminder `[v3.31.1]`.
+    mode note or a goal reminder `[v3.31.1]`. Since `[v3.62.0]` the panel's
+    tooltips spell their keys for the platform (⇧← / ⇧→ on macOS).
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
-- **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the coding chat area to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
+- **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the coding chat area to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`. Since `[v3.62.0]` a dropped folder says **Folders can't be attached** and that a folder is worked in by opening it as a workspace.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of
   tighter per-category rules behind a smaller request-body cap. Oversize files

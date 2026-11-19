@@ -376,7 +376,15 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     **Retry**, what cannot come back **can't be undone**, and a computer
     that does not answer is **Can't reach** (lists said "Offline"). The
     banner for the app's own stopped engine reads **OpenAgentd stopped on
-    this computer**. A test holds each of these.
+    this computer**. A test holds each of these. Since `[v3.62.0]` the
+    Settings toasts follow it too ("Save failed", "Delete failed" and the
+    like now say **Couldn't save …**, with the server's own text behind
+    **Copy details**), and a test refuses a title of a verb and "failed".
+  - **Copying from a menu says Copied** `[v3.62.0]`. Copy path, Copy link
+    and the other copy items in the sidebar's and the Review panel's menus
+    wrote to the clipboard and showed nothing. They now show a brief
+    **Copied**, or **Couldn't copy** when the clipboard refuses, and a phone
+    taps softly.
   - **Delete side questions…** names what its dialog does (the button said
     "Clear"). An empty session is headed **Ask anything**, and a workspace's
     new session **What should we do in {name}?** ("build" assumed code).

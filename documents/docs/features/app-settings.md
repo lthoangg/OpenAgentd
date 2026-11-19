@@ -80,6 +80,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     editors). The **Let agents message other workspaces** switch now applies
     right away, like the groups below it. **Memory** uses the save bar, with
     **Discard…** and ⌘S, instead of its own Save button.
+  - Since `[v3.62.0]` Memory's **Delete page** and **Create** send one
+    request however fast they are pressed (a double click used to end in an
+    error toast), and Enter creates the page from the **New page** dialog.
   - **Typed text is never lost without asking.** Memory asks **Discard
     changes?** before it opens another page over unsaved edits. A fresh copy
     of the page, for example after the agent saves it, no longer replaces what

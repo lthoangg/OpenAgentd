@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/callout'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { outcomeHapticFeedback } from '@/lib/haptics'
 
 interface Mutation<V, R = unknown> {
   mutate: (variables: V, options?: { onSuccess?: (data: R) => void }) => void
@@ -73,6 +74,13 @@ export function ApprovalSheet({
   const busy = confirm.isPending || reject.isPending
   const failure = begin.error ?? confirm.error ?? reject.error
 
+  // Face ID and the sheet closing by itself say little: a phone gives the
+  // system's pattern for how adding the device ended.
+  const refused = confirm.error
+  useEffect(() => {
+    if (refused) outcomeHapticFeedback('error')
+  }, [refused])
+
   const close = () => {
     // A confirm in flight (Face ID, Touch ID) decides by itself; do not race it.
     if (!settled.current && !busy) {
@@ -96,6 +104,7 @@ export function ApprovalSheet({
     confirm.mutate({ enrollmentId, approver: approves, roles: chosen }, {
       onSuccess: () => {
         settled.current = true
+        outcomeHapticFeedback('success')
         onClose()
       },
     })

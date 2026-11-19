@@ -15,12 +15,29 @@ mock.module('@tauri-apps/plugin-barcode-scanner', () => ({
   scan: async () => (content === null ? Promise.reject(new Error('cancelled')) : { content }),
 }))
 
+const haptics: string[] = []
+const realHaptics = await import('@/lib/haptics')
+mock.module('@/lib/haptics', () => ({ ...realHaptics, softHapticFeedback: () => { haptics.push('soft') } }))
+
 const { scanQrCode } = await import('@/lib/qr-scan')
 
 describe('scanQrCode', () => {
   it('asks for the camera, then returns the scanned text', async () => {
     expect(await scanQrCode()).toEqual({ kind: 'scanned', text: content! })
     expect(requested).toEqual(['camera'])
+  })
+
+  // The viewfinder closes by itself: the tap says the code was read.
+  it('taps softly when a code is read, and not when the scan ends without one', async () => {
+    haptics.length = 0
+    await scanQrCode()
+    expect(haptics).toEqual(['soft'])
+
+    const read = content
+    content = null
+    await scanQrCode()
+    content = read
+    expect(haptics).toEqual(['soft'])
   })
 
   it('says denied when the camera stays off', async () => {

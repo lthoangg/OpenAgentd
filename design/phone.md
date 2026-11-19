@@ -215,6 +215,8 @@ in `.agents/plans/phone-ux-sweep-one-design-system-end-to-end-a0dfe956/mockups/`
   draft. With no server and nothing on screen, the chat shows "Can't reach
   the server" with **Retry**, not a spinner.
 - **Feedback.** Haptics come from the gesture (`lib/haptics.ts`): soft for
-  a push or a send, medium for a long press or Stop, a tick for an arriving
-  question, the error outcome for a refused action. A destructive action
-  offers Undo or confirms.
+  a push, a send, a copy or a QR code read; medium for a long press, Stop or
+  a destructive confirm; a tick for an arriving question; the success
+  outcome when a device is added and the error outcome for a refused
+  action. A destructive action offers Undo or confirms. A copy from a menu
+  also says "Copied" (`lib/copy-text.ts`), since the menu is gone by then.

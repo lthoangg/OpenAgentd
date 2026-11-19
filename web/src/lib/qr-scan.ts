@@ -3,6 +3,7 @@
  * `openagentd://connect` code the desktop's Network access card shows.
  * The Servers list fills its own add form from the code.
  */
+import { softHapticFeedback } from '@/lib/haptics'
 import { isMobileApp } from '@/lib/mobile-app'
 
 /** The iOS and Android apps: the only shells with the scanner plugin. */
@@ -32,7 +33,10 @@ export async function scanQrCode(): Promise<ScanOutcome> {
   root.setAttribute('data-qr-scanning', '')
   try {
     const result = await scanner.scan({ windowed: true, formats: [scanner.Format.QRCode] })
-    return result?.content ? { kind: 'scanned', text: result.content } : { kind: 'cancelled' }
+    if (!result?.content) return { kind: 'cancelled' }
+    // The viewfinder closes by itself: the tap says the code was read.
+    softHapticFeedback()
+    return { kind: 'scanned', text: result.content }
   } catch {
     return { kind: 'cancelled' }
   } finally {

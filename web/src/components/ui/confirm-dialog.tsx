@@ -20,6 +20,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { mediumHapticFeedback } from '@/lib/haptics'
 import {
   Dialog,
   DialogContent,
@@ -55,6 +56,8 @@ export function ConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null)
 
   const confirm = async () => {
+    // A phone thumps once as a destructive action is confirmed (`lib/haptics`).
+    if (tone === 'danger') mediumHapticFeedback()
     setPending(true)
     try {
       await onConfirm()

@@ -60,7 +60,7 @@ anydoc = "=0.2.4"
 # Not used directly: pins anydoc's PDF engine. Past the 1.14.2 that v2's
 # anydoc 0.2.4 wheel was built with, so PDF text no longer matches v2 byte
 # for byte (sub/superscripts, de-hyphenation, fenced code); see REPORT.md.
-pdf-inspector = "=1.25.2"
+pdf-inspector = "=1.26.0"
 urlencoding = "2"
 toml = "1.1"
 

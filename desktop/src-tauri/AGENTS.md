@@ -61,6 +61,10 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   servers marked `enabled` (`followed_servers`), with or without a window.
 - `src/commands.rs`: Tauri commands exposed to the frontend; access-key and
   download commands are thin wrappers over `openagentd-shell-core`.
+- `src/notifications.rs`: `show_desktop_notification`: the OS notification
+  for a finished turn or a question (one request per notification id, the
+  pet's bubble instead while it is on screen, a question's options as
+  buttons, a click routed through `island::open_session`).
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
 - `src/lifecycle.rs`: `SidecarSlot`, the single owner of the bundled sidecar.
   Every start, reload, stop and watchdog restart takes a decision from it;

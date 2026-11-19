@@ -31,6 +31,7 @@ mod global_shortcuts;
 mod caption;
 mod autostart;
 mod window_session;
+mod notifications;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -687,7 +688,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::show_desktop_notification,
+            notifications::show_desktop_notification,
             commands::secure_get_access_key,
             commands::secure_set_access_key,
             commands::secure_delete_access_key,

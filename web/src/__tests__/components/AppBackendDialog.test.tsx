@@ -364,6 +364,19 @@ describe('AppBackendDialog', () => {
     expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
   })
 
+  it('connects on Enter from a field of the add form, once', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+    await openAddForm(user)
+
+    await user.click(screen.getByLabelText('Address'))
+    await user.paste('http://127.0.0.1:4082')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => expect(useCalls()).toHaveLength(1))
+    expect(useCalls()[0].args).toMatchObject({ baseUrl: 'http://127.0.0.1:4082', persist: true })
+  })
+
   it('renames a computer in place from Edit in its Details, without switching to it', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)

@@ -1,4 +1,4 @@
-// size-ceiling: 1082 — move ComputersList, ServerForm and ServerRow into files of their own
+// size-ceiling: 931 — move ComputersList and ServerRow into files of their own
 /**
  * AppBackendPanel — choose which computer's OpenAgentd this app talks to.
  *
@@ -41,7 +41,6 @@ import { ActionSheet, type ActionSheetItem } from '@/components/ui/action-sheet'
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/ui/chip'
 import { STATUS } from '@/lib/status'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
@@ -49,7 +48,6 @@ import { ComputerDetailsDialog } from '@/components/ComputerDetails'
 import { ServerUpdateOnRow } from '@/components/settings/ServerUpdate'
 import { Callout } from '@/components/ui/callout'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Field } from '@/components/ui/field'
 import { PanelSection } from '@/components/ui/panel-section'
 import { SectionCard } from '@/components/ui/section-card'
 import { ICON_SIZE_INLINE, ROW_PAD, TEXT } from '@/components/settings/tokens'
@@ -57,7 +55,6 @@ import { isDesktopShell } from '@/lib/desktop-shell'
 import { useLongPress } from '@/hooks/use-long-press'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { mediumHapticFeedback } from '@/lib/haptics'
-import { shake } from '@/lib/shake'
 import { checkServerAuth, pingServer } from '@/lib/server-probe'
 import { cn } from '@/lib/utils'
 import { NAME_NEEDS_UPDATE, renameComputerInUse, serverInUseKeepsName } from '@/lib/computer-rename'
@@ -88,6 +85,7 @@ import {
   type ServerWatchState,
 } from '@/lib/app-backend'
 import { useAppStatusWithNames } from '@/lib/account-computers'
+import { ServerForm } from '@/components/ServerForm'
 import { FORM_CLOSED, NO_VALUES, formTargetOf, serverFormStep, type ServerFormTarget } from '@/components/server-form-state'
 
 /** Where Rename would be, for a computer the app is not on. */
@@ -798,142 +796,6 @@ function ComputersList({ untitled, touch, children }: { untitled: boolean; touch
     >
       {children}
     </PanelSection>
-  )
-}
-
-/**
- * The fields and the one button of a form, drawn where it was opened: under
- * the row being edited, or at the end of the list for a new computer.
- * Connect (Save, when editing) tests the address and key first and says
- * why in place when the test fails. Escape cancels the form (and only it,
- * not the dialog around it).
- */
-function ServerForm({
-  mode,
-  label,
-  baseUrl,
-  accessKey,
-  serverName,
-  onBaseUrlChange,
-  onAccessKeyChange,
-  onServerNameChange,
-  error,
-  tested,
-  pending,
-  onSave,
-  onCancel,
-}: {
-  mode: 'add' | 'edit'
-  /** The edited computer's name; `null` for a new one. */
-  label: string | null
-  baseUrl: string
-  accessKey: string
-  serverName: string
-  onBaseUrlChange: (value: string) => void
-  onAccessKeyChange: (value: string) => void
-  onServerNameChange: (value: string) => void
-  error: string | null
-  /** The address and key as typed already passed a test (a scanned code is tested on arrival). */
-  tested: boolean
-  pending: boolean
-  onSave: () => void
-  onCancel: () => void
-}) {
-  const touchForm = useTouchFirst()
-  const urlRef = useRef<HTMLInputElement>(null)
-  const fieldsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    urlRef.current?.focus({ preventScroll: true })
-    urlRef.current?.scrollIntoView?.({ block: 'nearest' })
-  }, [])
-  // A rejected address or key shakes the fields (a repeat of the same
-  // message too: the error clears when a new try starts).
-  useEffect(() => {
-    if (error) shake(fieldsRef.current)
-  }, [error])
-  const title = mode === 'edit' ? `Edit ${label}` : 'Add a computer by address'
-  const saveLabel = mode === 'add' ? (pending ? 'Connecting…' : 'Connect') : (pending ? 'Saving…' : 'Save')
-  return (
-    <div
-      role="group"
-      aria-label={title}
-      data-server-form={mode}
-      className="bg-(--bg-key)/20"
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return
-        event.preventDefault()
-        event.stopPropagation()
-        onCancel()
-      }}
-    >
-      <p className={cn('px-4 pt-4', TEXT.title)}>{title}</p>
-      <div ref={fieldsRef} className="grid gap-y-5 px-4 py-4">
-        <Field label="Address" htmlFor="app-backend-url">
-          <Input
-            ref={urlRef}
-            id="app-backend-url"
-            type="url"
-            inputMode="url"
-            value={baseUrl}
-            onChange={(event) => onBaseUrlChange(event.target.value)}
-            placeholder="http://<host>:4082"
-            autoComplete="off"
-            spellCheck={false}
-            className="h-9 font-mono"
-          />
-        </Field>
-        <Field label="Access key" htmlFor="app-backend-key">
-          <Input
-            id="app-backend-key"
-            value={accessKey}
-            onChange={(event) => onAccessKeyChange(event.target.value)}
-            placeholder="Leave empty if it has none"
-            type="password"
-            autoComplete="off"
-            className="h-9"
-          />
-        </Field>
-        <Field label="Name" htmlFor="app-backend-name">
-          <Input
-            id="app-backend-name"
-            value={serverName}
-            onChange={(event) => onServerNameChange(event.target.value)}
-            placeholder="Work laptop, Home server"
-            autoComplete="off"
-            className="h-9"
-          />
-        </Field>
-      </div>
-      <div className={touchForm ? 'flex flex-col gap-3 px-4 pb-4' : 'flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-center'}>
-        <div className={cn('min-w-0 flex-1 leading-relaxed', touchForm ? 'text-meta' : 'text-xs')}>
-          {error ? (
-            <p role="alert" className="text-(--color-error)">{error}</p>
-          ) : tested ? (
-            <p role="status" className="font-medium text-(--accent-green-text)">Connection successful.</p>
-          ) : null}
-        </div>
-        {touchForm ? (
-          // Touch: one large button, with Cancel under it.
-          <div className="grid gap-2">
-            <Button type="button" variant="primary" onClick={onSave} disabled={pending} className="h-11 w-full">
-              {saveLabel}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending} className="h-11 w-full">
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
-              Cancel
-            </Button>
-            <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending}>
-              {saveLabel}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
   )
 }
 

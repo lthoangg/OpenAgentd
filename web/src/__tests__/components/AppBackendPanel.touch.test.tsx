@@ -105,6 +105,28 @@ describe('Servers rows on touch', () => {
     expect(document.querySelector('[data-server-form]')).toBeNull()
   })
 
+  it('labels the keyboard’s Return key: Next between the fields, Go on the last', async () => {
+    render(<AppBackendPanel active />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a computer by address' }))
+    const form = document.querySelector<HTMLElement>('[data-server-form="add"]')!
+    const hint = (label: string) => within(form).getByLabelText(label).getAttribute('enterkeyhint')
+    expect([hint('Address'), hint('Access key'), hint('Name')]).toEqual(['next', 'next', 'go'])
+  })
+
+  it('moves to the next field on Return instead of connecting half a form', async () => {
+    render(<AppBackendPanel active />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a computer by address' }))
+    const form = document.querySelector<HTMLElement>('[data-server-form="add"]')!
+    const address = within(form).getByLabelText('Address')
+    fireEvent.change(address, { target: { value: 'http://10.0.0.9:4082' } })
+    calls.length = 0
+
+    const pressed = fireEvent.keyDown(address, { key: 'Enter' })
+    expect(pressed).toBe(false)
+    expect(document.activeElement).toBe(within(form).getByLabelText('Access key'))
+    expect(calls.some((call) => call.includes('10.0.0.9'))).toBe(false)
+  })
+
   it('fills its own add form from a scanned QR code, with no sheet or dialog', async () => {
     render(<AppBackendPanel active />)
     fireEvent.click(await screen.findByRole('button', { name: 'Scan QR code' }))

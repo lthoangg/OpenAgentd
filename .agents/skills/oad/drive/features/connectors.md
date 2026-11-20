@@ -4,7 +4,8 @@ Turn on ready-made connectors from the gallery, and sign in to account ones from
 
 ## Sub-features
 
-- Settings → Connectors: "Your connectors" first (each with its logo or monogram, status, switch, and Connect when it needs sign-in), then the gallery "Add a connector" of ones not added yet: free (switch), account (Connect → sign-in) and key (Set up) tiles, with category filters. One search box filters both.
+- Settings → Connectors: "Connectors" first (gallery ones, by address: logo, service description, status, switch, Connect when it needs sign-in), then "MCP servers" (added by hand, or from a plugin or project: monogram, the command or host in mono, "Add server" in its heading or a dashed "Add an MCP server" when there are none), then the gallery "Add a connector" of ones not added yet: free (switch), account (Connect → sign-in) and key (Set up) tiles, with category filters. One search box filters all three.
+- A row you own has "⋯" (a menu with a mouse, an action sheet on touch): Open settings, then Remove… (MCP server) or Disconnect… (connector), each with a confirm. Disconnect deletes the entry and its sign-in, so the connector's tile is back in the gallery. Plugin and project rows have no "⋯".
 - Gallery connectors show the service's logo (an SVG path in the signed list, `icon`); `GET /api/mcp/servers` names each connector's gallery entry (`gallery: {id, name, icon}`), so the list and the "+" menu show it too.
 - Sign-in driven by the client: the server hands back the service's page, and the code returns to localhost (a browser on the server's machine) or through the relay page (`account.openagentd.dev/oauth/callback`) to `oauth-done.html` or `openagentd://mcp-oauth`.
 - `oauth-done.html`: finishes a relayed sign-in with this browser's access key.
@@ -16,12 +17,12 @@ Turn on ready-made connectors from the gallery, and sign in to account ones from
 
 ## Driving it with Playwright
 
-- Dialog "Settings", button "Connectors", regions "Your connectors" and "Add a connector", one searchbox.
+- Dialog "Settings", button "Connectors", regions "Connectors" (match it `exact: true`), "MCP servers" and "Add a connector", one searchbox.
 - A gallery tile is a list item in "Add a connector" holding the name: free ones have the switch "Turn on <name>", account ones "Connect", key ones "Set up". An added connector leaves the gallery.
-- A row in "Your connectors" is a list item named after the connector (the service's name for a gallery one); its switch is "Turn off <name>" / "Turn on <name>", and "Connect" shows while it needs sign-in.
+- A row in "Connectors" or "MCP servers" is a list item named after the connector (the service's name for a gallery one); its switch is "Turn off <name>" / "Turn on <name>", "Connect" shows while it needs sign-in, and its "⋯" is the button "More actions for <name>". Its items are `menuitem`s on desktop and `[data-action-sheet-item]` buttons on touch; the confirm is a dialog named "Remove “<name>”?" or "Disconnect <name>?".
 - Context7 needs the internet; a turned-on one shows "Ready · N tools", and `GET /api/mcp/servers` lists it as ready.
 - An agent reaches it through `drive:script` calling `tools.mcp({action: "call", server: "context7", …})`.
-- Connect opens a popup to the service's page; the connector's row in "Your connectors" shows "Waiting for sign-in in your browser…" with Cancel and Paste address.
+- Connect opens a popup to the service's page; the connector's row in "Connectors" shows "Waiting for sign-in in your browser…" with Cancel and Paste address.
 
 ## Gotchas
 

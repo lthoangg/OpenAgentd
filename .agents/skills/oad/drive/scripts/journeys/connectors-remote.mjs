@@ -12,7 +12,7 @@ export default async function connectorsRemote({ page, expect, step, open, api, 
   )
   const dialog = page.getByRole("dialog", { name: "Settings" })
   const tile = (name) => dialog.getByRole("region", { name: "Add a connector" }).getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) })
-  const row = (name) => dialog.getByRole("region", { name: "Your connectors" }).getByRole("listitem", { name, exact: true })
+  const row = (name) => dialog.getByRole("region", { name: "Connectors", exact: true }).getByRole("listitem", { name, exact: true })
   let signIn
   let authUrl
 

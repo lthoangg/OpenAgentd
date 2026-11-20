@@ -89,7 +89,8 @@ export default async function projectConnectors({ page, expect, step, phone, api
     await page.getByRole("button", { name: "Settings", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Settings" })
     await dialog.getByRole("button", { name: /^Connectors\b/ }).click()
-    await expect(dialog.getByRole("heading", { name: "Your connectors" })).toBeVisible({ timeout: 15_000 })
+    // Not a gallery address, so it is under MCP servers.
+    await expect(dialog.getByRole("heading", { name: "MCP servers" })).toBeVisible({ timeout: 15_000 })
     const entry = dialog.getByText(name, { exact: true })
     await entry.scrollIntoViewIfNeeded()
     await expect(entry).toBeVisible()

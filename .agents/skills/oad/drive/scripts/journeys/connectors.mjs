@@ -1,14 +1,25 @@
 // Turn a free connector on from the gallery and use it in a session; start
-// an account connector's sign-in and see where it would come back to.
+// an account connector's sign-in and see where it would come back to; see a
+// hand-added MCP server listed apart and remove it; disconnect a connector
+// and see it back in the gallery.
 // Feature notes: ../../features/connectors.md
 export default async function connectors({ page, expect, step, open, api, newSessionInDemo, send, run, history, sessionId }) {
   const dialog = page.getByRole("dialog", { name: "Settings" })
   // A gallery tile: a list item in "Add a connector" holding the name.
   const gallery = dialog.getByRole("region", { name: "Add a connector" })
   const tile = (name) => gallery.getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) })
-  // A connector you have: its row in "Your connectors", named after it.
-  const yours = dialog.getByRole("region", { name: "Your connectors" })
+  // A connector you have: its row in "Connectors", named after it.
+  const yours = dialog.getByRole("region", { name: "Connectors", exact: true })
   const row = (name) => yours.getByRole("listitem", { name, exact: true })
+  // A server added by hand: its row in "MCP servers".
+  const servers = dialog.getByRole("region", { name: "MCP servers" })
+  const serverRow = (name) => servers.getByRole("listitem", { name, exact: true })
+  // A row's "⋯" action: a menu with a mouse, an action sheet on touch.
+  const rowAction = async (rowLocator, name, label) => {
+    await rowLocator.getByRole("button", { name: `More actions for ${name}` }).click()
+    await page.locator("[role=menuitem], [data-action-sheet-item]").filter({ hasText: label }).click()
+  }
+  const handAdded = `drive-tools-${run}`
 
   // Precondition: neither connector is added yet (the other width adds them).
   const remove = async (name) => {
@@ -28,6 +39,7 @@ export default async function connectors({ page, expect, step, open, api, newSes
   await step("Settings → Connectors opens on the gallery, one search box above it", async () => {
     await remove("context7")
     await remove("notion")
+    await remove(handAdded)
     await openConnectors()
     await expect(dialog.getByRole("searchbox", { name: "Search connectors…" })).toHaveCount(1)
     await expect(dialog.getByRole("textbox", { name: "Search the gallery" })).toHaveCount(0) // no second box for the gallery
@@ -37,7 +49,7 @@ export default async function connectors({ page, expect, step, open, api, newSes
     await expect(tile("Context7").getByRole("switch", { name: "Turn on Context7" })).toBeVisible()
   })
 
-  await step("turn Context7 on with its switch: it moves to Your connectors and connects with no account", async () => {
+  await step("turn Context7 on with its switch: it moves to Connectors and connects with no account", async () => {
     await tile("Context7").getByRole("switch", { name: "Turn on Context7" }).click()
     await expect(row("Context7").getByText(/^Ready · \d+ tools$/)).toBeVisible({ timeout: 30_000 })
     await expect(tile("Context7")).toHaveCount(0) // listed once
@@ -68,7 +80,7 @@ export default async function connectors({ page, expect, step, open, api, newSes
     expect(result.content).toContain(`c7-${run} true`)
   })
 
-  await step("Connect on Notion opens Notion's sign-in page; Notion waits under Your connectors", async () => {
+  await step("Connect on Notion opens Notion's sign-in page; Notion waits under Connectors", async () => {
     await openConnectors()
     const popup = page.waitForEvent("popup")
     await tile("Notion").getByRole("button", { name: "Connect" }).click()
@@ -95,6 +107,28 @@ export default async function connectors({ page, expect, step, open, api, newSes
     await openConnectors()
     await expect(page.locator("html")).toHaveClass(/\bdark\b/)
     await expect(row("Notion")).toBeVisible()
+    await page.emulateMedia({ colorScheme: "light" })
+  })
+
+  await step("a server added by hand is listed under MCP servers with what it runs, and Remove deletes it", async () => {
+    await api("POST", "/mcp/servers", { name: handAdded, server: { transport: "stdio", command: "npx", args: ["-y", "drive-tools"], env: {}, enabled: false } })
+    await openConnectors()
+    await expect(serverRow(handAdded).getByText("npx -y drive-tools")).toBeVisible({ timeout: 15_000 })
+    await expect(row(handAdded)).toHaveCount(0)
+    await rowAction(serverRow(handAdded), handAdded, "Remove…")
+    const confirm = page.getByRole("dialog", { name: `Remove “${handAdded}”?` })
+    await confirm.getByRole("button", { name: "Remove", exact: true }).click()
+    await expect(serverRow(handAdded)).toHaveCount(0, { timeout: 15_000 })
+    const { servers: left } = await api("GET", "/mcp/servers")
+    expect(left.some((s) => s.name === handAdded)).toBe(false)
+  })
+
+  await step("Disconnect on Context7 removes it, and its tile is back in the gallery", async () => {
+    await rowAction(row("Context7"), "Context7", "Disconnect…")
+    const confirm = page.getByRole("dialog", { name: "Disconnect Context7?" })
+    await confirm.getByRole("button", { name: "Disconnect", exact: true }).click()
+    await expect(row("Context7")).toHaveCount(0, { timeout: 15_000 })
+    await expect(tile("Context7").getByRole("switch", { name: "Turn on Context7" })).toBeVisible({ timeout: 15_000 })
   })
 
   await step("the page a relayed sign-in returns to says when a code is stale", async () => {

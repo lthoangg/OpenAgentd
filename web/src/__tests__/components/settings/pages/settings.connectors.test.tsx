@@ -51,17 +51,18 @@ const ENTRIES: GalleryEntry[] = [
   { type: 'connector', id: 'context7', name: 'Context7', category: 'docs', description: 'Library docs.', url: 'https://mcp.context7.com/mcp', auth: 'none', server: null, update_for: null },
 ]
 
-function renderList(servers: ServerStatus[], onSelect: (name: string) => void = () => {}, entries: GalleryEntry[] = ENTRIES) {
+function renderList(servers: ServerStatus[], onSelect: (name: string) => void = () => {}, entries: GalleryEntry[] = ENTRIES, onNew: () => void = () => {}) {
   api.use(http.get('http://localhost/api/mcp/gallery', () => HttpResponse.json({ source: 'cloud', entries })))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } })
   client.setQueryData(queryKeys.health(), { status: 'ok', version: '3.0.0', capabilities: [] })
   client.setQueryData(queryKeys.mcp.list(), { servers })
   client.setQueryData(queryKeys.mcp.gallery(), { source: 'cloud', entries })
-  return render(
+  render(
     <QueryClientProvider client={client}>
-      <ConnectorsListPage onSelect={onSelect} onNew={() => {}} />
+      <ConnectorsListPage onSelect={onSelect} onNew={onNew} />
     </QueryClientProvider>,
   )
+  return client
 }
 
 /** A connector's row: the list item named after it. */
@@ -70,30 +71,35 @@ const row = (name: string) => screen.getByRole('listitem', { name })
 const opener = (name: string) => within(row(name)).getByRole('button', { name: new RegExp(`^${name.replace(/[/.]/g, '\\$&')}\\b`) })
 
 describe('ConnectorsListPage — layout', () => {
-  it('puts your connectors first, then the gallery of ones not added yet', () => {
+  it('puts connectors first, then your MCP servers, then the gallery of ones not added yet', () => {
     renderList([NOTION, server('my-tools')])
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
-    expect(headings).toEqual(['Your connectors', 'Add a connector'])
+    expect(headings).toEqual(['Connectors', 'MCP servers', 'Add a connector'])
+    expect(within(screen.getByRole('region', { name: 'Connectors' })).getByRole('listitem', { name: 'Notion' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'MCP servers' })).getByRole('listitem', { name: 'my-tools' })).toBeInTheDocument()
     // Notion is added: it is a row, not a gallery tile.
-    expect(row('Notion')).toBeInTheDocument()
     expect(document.querySelector('[data-connector="notion"]')).toBeNull()
     expect(document.querySelector('[data-connector="context7"]')).not.toBeNull()
   })
 
-  it('names a gallery connector by its service, with its logo; others by their id, with a monogram', () => {
-    renderList([NOTION, server('my-tools')])
+  it('names a gallery connector by its service, with its logo; others by their id, with a monogram and what they run', () => {
+    const web = server('slack', { transport: 'http', config: { ...HTTP, url: 'https://mcp.slack.com/mcp' } })
+    renderList([NOTION, server('my-tools', { config: { transport: 'stdio', command: 'npx', args: ['-y', 'my-tools'], env: { TOKEN: 'secret' }, enabled: true } }), web])
     expect(row('Notion').querySelector('[data-connector-icon="logo"] path')?.getAttribute('d')).toBe(LOGO.path)
     expect(within(row('Notion')).getByText('Pages and databases.')).toBeInTheDocument()
     expect(row('my-tools').querySelector('[data-connector-icon="monogram"]')?.textContent).toBe('MT')
-    expect(within(row('my-tools')).getByText('A program on this computer')).toBeInTheDocument()
+    expect(within(row('my-tools')).getByText('npx -y my-tools')).toBeInTheDocument()
+    expect(row('my-tools').textContent).not.toContain('secret')
+    expect(within(row('slack')).getByText('mcp.slack.com')).toBeInTheDocument()
   })
 
-  it('has one search box, which filters your connectors and the gallery', async () => {
+  it('has one search box, which filters every section', async () => {
     renderList([NOTION, server('my-tools')])
     expect(screen.getAllByRole('searchbox')).toHaveLength(1)
     await userEvent.type(screen.getByRole('searchbox'), 'library')
     expect(screen.queryByRole('listitem', { name: 'Notion' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Your connectors' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Connectors' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: 'MCP servers' })).toBeNull()
     expect(document.querySelector('[data-connector="context7"]')).not.toBeNull()
     await userEvent.clear(screen.getByRole('searchbox'))
     await userEvent.type(screen.getByRole('searchbox'), 'zzz')
@@ -117,13 +123,66 @@ describe('ConnectorsListPage — layout', () => {
     await waitFor(() => expect(sent).toMatchObject({ server: { enabled: false } }))
   })
 
-  it('says there are none yet only when the gallery has nothing to offer either', () => {
-    renderList([], () => {}, [])
-    expect(screen.getByText('No connectors yet')).toBeInTheDocument()
+  it('offers to add an MCP server from its section, also when there is none yet', async () => {
+    let added = 0
+    renderList([], () => {}, ENTRIES, () => { added++ })
+    expect(screen.queryByRole('heading', { level: 2, name: 'Connectors' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Add an MCP server' }))
     cleanup()
-    renderList([])
-    expect(screen.queryByText('No connectors yet')).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Add a connector' })).toBeInTheDocument()
+    renderList([server('my-tools')], () => {}, ENTRIES, () => { added++ })
+    await userEvent.click(within(screen.getByRole('region', { name: 'MCP servers' })).getByRole('button', { name: 'Add server' }))
+    expect(added).toBe(2)
+  })
+})
+
+describe('ConnectorsListPage — Remove and Disconnect', () => {
+  const openMenu = async (name: string) => {
+    await userEvent.click(within(row(name)).getByRole('button', { name: `More actions for ${name}` }))
+  }
+
+  it('removes an MCP server from its row, after a confirm', async () => {
+    const deleted: string[] = []
+    api.use(http.delete('http://localhost/api/mcp/servers/:name', ({ params }) => {
+      deleted.push(String(params.name))
+      return HttpResponse.json({ name: params.name })
+    }))
+    renderList([server('my-tools')])
+    await openMenu('my-tools')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain('Remove “my-tools”?')
+    expect(deleted).toEqual([])
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(deleted).toEqual(['my-tools']))
+  })
+
+  it('disconnects a connector, which puts it back in the gallery', async () => {
+    let servers = [NOTION]
+    api.use(
+      http.delete('http://localhost/api/mcp/servers/:name', ({ params }) => {
+        servers = servers.filter((s) => s.name !== params.name)
+        return HttpResponse.json({ name: params.name })
+      }),
+      http.get('http://localhost/api/mcp/servers', () => HttpResponse.json({ servers })),
+    )
+    const client = renderList(servers)
+    // After the delete the gallery reads Notion with no connector at its address.
+    api.use(http.get('http://localhost/api/mcp/gallery', () => HttpResponse.json({ source: 'cloud', entries: ENTRIES.map((e) => ({ ...e, server: null })) })))
+    client.setDefaultOptions({ queries: { retry: false, staleTime: 0 } })
+    expect(document.querySelector('[data-connector="notion"]')).toBeNull()
+    await openMenu('Notion')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect…' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain('Disconnect Notion?')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
+    await waitFor(() => expect(screen.queryByRole('listitem', { name: 'Notion' })).toBeNull())
+    await waitFor(() => expect(document.querySelector('[data-connector="notion"]')).not.toBeNull())
+  })
+
+  it('has no menu on a plugin\'s or a project\'s server: they are removed where they come from', () => {
+    renderList([server('changelog-tools/github', { plugin: 'changelog-tools' }), server('team', { project: { name: 'team' } as ServerStatus['project'] })])
+    expect(within(row('changelog-tools/github')).queryByRole('button', { name: /More actions/ })).toBeNull()
+    expect(within(row('team')).queryByRole('button', { name: /More actions/ })).toBeNull()
   })
 })
 

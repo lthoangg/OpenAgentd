@@ -4,7 +4,7 @@
  * A sign-in can start on a gallery tile (Connect adds the connector, then
  * signs in) and the tile leaves the gallery as soon as the connector exists.
  * Keeping the sign-in here, not in the tile, lets the connector's row in
- * "Your connectors" show that it is waiting and offer Cancel.
+ * "Connectors" show that it is waiting and offer Cancel.
  */
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -48,7 +48,7 @@ export function ConnectorSignInsProvider({ children }: { children: ReactNode }) 
       const ac = new AbortController()
       controllers.current.set(name, ac)
       sync()
-      // The connector shows up in "Your connectors" while the sign-in is open.
+      // The connector shows up under "Connectors" while the sign-in is open.
       void client.invalidateQueries({ queryKey: queryKeys.mcp.all() })
       await signInToMcpServer(name, { popup, signal: ac.signal })
       push({ tone: 'success', title: `Signed in to ${label}` })

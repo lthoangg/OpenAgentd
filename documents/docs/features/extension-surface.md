@@ -71,6 +71,12 @@ Four orthogonal ways to add capability.
     connector's name and a one-line status (a failure is one line, in full on
     hover), says **Connect** instead of **Sign in**, and ends with **Add a
     connector**. tldraw joins the gallery as a free connector.
+    Since `[v3.62.0]` the page lists gallery connectors under **Connectors**
+    and servers added by hand (or from a plugin or a project) under **MCP
+    servers**, each with the command or host it runs, and **Add server** sits
+    in that section. A row's **⋯** menu has **Remove** for an MCP server and
+    **Disconnect** for a connector, both after a confirm; Disconnect removes
+    the connector and its sign-in, and it goes back to **Add a connector**.
   - **Sign in from any device** `[v3.58.0]` — connector sign-in opens on the device
     in hand: a browser on another computer, the phone app, or through a proxy or
     the relay. The code comes back through

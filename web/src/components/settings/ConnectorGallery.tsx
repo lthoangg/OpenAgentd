@@ -4,10 +4,10 @@
  * switch; account ones Connect (add, then sign in at the service); key ones
  * Set up with a pasted key. The action says what each takes.
  *
- * It lists only connectors not added yet: an added one lives in "Your
- * connectors", with its switch. The list comes from the cloud (signed)
- * through the server, so new ones appear without an update. The page owns
- * the search box, which filters this and "Your connectors" together.
+ * It lists only connectors not added yet: an added one lives under
+ * "Connectors", with its switch, until it is disconnected. The list comes
+ * from the cloud (signed) through the server, so new ones appear without an
+ * update. The page owns the search box, which filters every section.
  */
 import { useMemo, useState } from 'react'
 
@@ -58,7 +58,7 @@ function ConnectorTile({ entry }: { entry: GalleryEntry }) {
   const turnOn = async (withKey?: string) => {
     try {
       await enable.mutateAsync({ id: entry.id, key: withKey })
-      push({ tone: 'success', title: `Added ${entry.name}`, description: 'It is under Your connectors.' })
+      push({ tone: 'success', title: `Added ${entry.name}`, description: 'It is under Connectors.' })
     } catch (err) {
       fail(`Couldn't turn on ${entry.name}`, err)
     }
@@ -148,7 +148,7 @@ export function ConnectorGallery({ query = '' }: { query?: string }) {
         title="Couldn't load the connector gallery"
         action={<Button size="xs" onClick={() => void refetch()}>Retry</Button>}
       >
-        Your own connectors still work. Add one by hand with Add your own.
+        Your connectors and MCP servers still work. Add a server by hand under MCP servers.
       </Callout>
     )
   }

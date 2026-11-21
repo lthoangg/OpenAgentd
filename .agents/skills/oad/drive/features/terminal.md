@@ -6,7 +6,12 @@ A shell in the session's workspace, inside the Review panel.
 
 - Opening a terminal tab.
 - Typing a command and reading its output.
-- On a phone: the key bar under the terminal (Esc, Ctrl, arrows, …).
+- On a phone: the key bar under the terminal, in two layouts (keyboard down:
+  Show keyboard, Esc, Tab, ^C, ↑, ↓, Enter, More; keyboard up: Line, Esc,
+  Tab, Ctrl, ^C, the arrows, More).
+- On a phone: the gestures on the terminal (drag scrolls, hold then drag
+  sends arrows, double tap sends Tab, pinch sizes the text, long press opens
+  the four-row menu).
 
 ## How to get to it (user POV)
 
@@ -22,9 +27,20 @@ A shell in the session's workspace, inside the Review panel.
 - The command prints a value the shell computes (`drive-$((40+2))`), so the
   echoed command line cannot pass the check, and it creates a file the
   journey then finds on disk.
+- Gestures go through CDP `Input.dispatchTouchEvent` (the journey's
+  `fingers` helper): each frame is the touch points at that moment, then a
+  pause. Coordinates come from `.xterm-screen`'s box.
+- The soft keyboard is the visible viewport shrinking: the journey focuses
+  the terminal and calls `page.setViewportSize` 300px shorter, which is what
+  `useMobileViewportGuards` reads as the keyboard coming up.
 
 ## Gotchas
 
 - Headless Chromium does not paint xterm's WebGL canvas. The harness turns
   WebGL off so xterm uses its DOM renderer; a WebGL-only fault would not show.
-- The phone key bar and the command line field are not driven.
+- The workspace's shell outlives a run, with its history and its prompt
+  line: a step that needs one arrow up runs its own command first and
+  drags only past the tolerance, lifting before the slowest repeat.
+- Wait for a closing sheet to leave before the next touch on the terminal:
+  its scrim takes the touch while it slides away.
+- The command line field is not driven.

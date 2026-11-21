@@ -213,11 +213,16 @@ drawer and full-screen sheet.
   blur says so; the page's events stay in its frame). Phones have one strip:
   panes join there.
 - **The terminal surface has one menu.** Right-click with a pointer and a
-  long press on touch open the same items (`terminal-menu.ts`): the context
-  menu with keys, the phone action sheet without. Touch adds **Select Text**
-  first, because xterm selects only with a mouse: it shows the output as
-  plain text for the system's own selection. The touch key bar is ordered
-  by use (Esc, Ctrl, Alt, Tab, ^C, arrows on the first screen of a 390pt
-  phone), with **Line** pinned at its start for the command field; it shows
-  on a phone, and on a tablet while the soft keyboard is up for the
-  terminal. Terminal text follows Text size.
+  long press on touch open it (`terminal-menu.ts`): the context menu with
+  keys and every row, the phone action sheet with only what touch can use
+  (Select Text, Paste, Find, Clear). xterm selects only with a mouse, so
+  **Select Text** shows the output as plain text for the system's own
+  selection, with Copy and Add to chat. The surface owns its touches
+  (`use-terminal-touch.ts`): drag scrolls, hold then drag sends arrows,
+  double tap sends Tab, pinch sets the terminal's text size. The touch key
+  bar never scrolls: every key fits a 390pt phone, with the soft keyboard
+  up (Line, Esc, Tab, Ctrl, ^C, arrows, More) and down (Show keyboard, Esc,
+  Tab, ^C, ↑, ↓, Enter, More); More holds only keys the phone keyboard
+  lacks or hides. It shows on a phone, and on a tablet while the soft
+  keyboard is up for the terminal. Terminal text follows Text size unless
+  a pinch set its own.

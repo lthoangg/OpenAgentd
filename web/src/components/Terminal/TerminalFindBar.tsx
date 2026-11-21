@@ -5,6 +5,9 @@
  * to highlight every match, Enter / Shift+Enter (or the arrows) to step,
  * Escape to close. ``search`` is xterm's SearchAddon; its result events give
  * the "3 of 12" count, which needs the decoration options.
+ *
+ * On a phone (``wide``) the bar spans the terminal and its field reads at
+ * 16px, so iOS does not zoom the page as it takes focus.
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { CaseSensitive } from 'lucide-react'
@@ -22,9 +25,11 @@ interface TerminalFindBarProps {
   initialQuery?: string
   /** Bump to move focus back into the input (find pressed while already open). */
   focusSignal?: number
+  /** Span the terminal's width (a phone). */
+  wide?: boolean
 }
 
-export function TerminalFindBar({ search, theme, onClose, initialQuery = '', focusSignal = 0 }: TerminalFindBarProps) {
+export function TerminalFindBar({ search, theme, onClose, initialQuery = '', focusSignal = 0, wide = false }: TerminalFindBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState(initialQuery)
   const [caseSensitive, setCaseSensitive] = useState(false)
@@ -91,7 +96,10 @@ export function TerminalFindBar({ search, theme, onClose, initialQuery = '', foc
     <div
       role="search"
       aria-label="Find in terminal"
-      className="flex items-center gap-1 rounded-md border border-(--color-border-subtle) bg-(--bg-card) py-1 pl-2 pr-1 shadow-(--shadow-depth)"
+      className={cn(
+        'flex items-center gap-1 rounded-md border border-(--color-border-subtle) bg-(--bg-card) py-1 pl-2 pr-1 shadow-(--shadow-depth)',
+        wide && 'w-full',
+      )}
     >
       <input
         ref={inputRef}
@@ -106,9 +114,12 @@ export function TerminalFindBar({ search, theme, onClose, initialQuery = '', foc
         aria-label="Find in terminal"
         autoComplete="off"
         spellCheck={false}
-        className="h-7 w-40 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted) outline-none pointer-coarse:h-9"
+        className={cn(
+          'h-7 bg-transparent text-(--color-text) placeholder-(--color-text-muted) outline-none pointer-coarse:h-9',
+          wide ? 'min-w-0 flex-1 text-base' : 'w-40 text-xs',
+        )}
       />
-      <span role="status" className={cn('min-w-16 text-right font-mono text-meta tabular-nums text-(--color-text-muted)', !status && 'invisible')}>
+      <span role="status" className={cn('shrink-0 text-right font-mono text-meta tabular-nums text-(--color-text-muted)', wide ? 'min-w-12' : 'min-w-16', !status && 'invisible')}>
         {status}
       </span>
       <FindBarButton

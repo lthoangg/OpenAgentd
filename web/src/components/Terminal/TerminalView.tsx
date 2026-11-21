@@ -17,11 +17,14 @@
  * terminals wake up already matching.
  *
  * Font: a fixed Nerd Font stack at the app's Text size (`lib/terminal-font.ts`).
+ * A pinch on touch sets a size of its own on this device (`terminalFontPx`).
  *
  * `data-swipe-ignore` opts the surface out of mobile edge-swipe so
- * xterm owns its own touches. On touch a drag only scrolls: xterm selects
- * with a mouse, so the long-press menu's Select Text opens the output as
- * plain text (`TerminalTextView`) for the platform's own selection.
+ * the terminal owns its touches. xterm.js 6 handles none, so
+ * `useTerminalTouch` does: drag scrolls, hold opens the menu, hold and drag
+ * sends arrows, double tap sends Tab, pinch sizes the text. xterm selects
+ * only with a mouse, so the menu's Select Text opens the output as plain
+ * text (`TerminalTextView`) for the platform's own selection.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -33,8 +36,8 @@ import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
 import { useTouchFirst } from '@/hooks/use-touch-first'
 import { getPlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { mediumHapticFeedback } from '@/lib/haptics'
 import { lazySurface } from '@/lib/lazy-surface'
+import { cn } from '@/lib/utils'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { getTerminalRuntime, terminalClosedMessage, useTerminalStore } from '@/stores/useTerminalStore'
 import { closedReasonOf, shellErrorOf } from '@/stores/terminal-state'
@@ -44,13 +47,14 @@ import { readCommandFieldOn, TerminalCommandField, writeCommandFieldOn } from '.
 import { TerminalContextMenu } from './TerminalContextMenu'
 import { addToChatShortcutLabel } from './terminal-keys'
 import { TerminalKeyBar } from './TerminalKeyBar'
+import { TerminalMoreSheet } from './TerminalMoreSheet'
 import { TerminalTextView } from './TerminalTextView'
 import { addTerminalSelectionToChat, copyTerminalSelection, pasteIntoTerminal } from './terminal-actions'
 import type { TerminalMenuAction } from './terminal-menu'
 import { stickyModifierTransform, type StickyModifiers } from './terminal-modifiers'
 import { terminalBufferText, type TerminalText } from './terminal-text'
-import { useLongPressSurface } from './use-long-press-surface'
 import { useTerminalAutoFocus } from './use-terminal-autofocus'
+import { useTerminalTouch } from './use-terminal-touch'
 
 export type { TerminalSessionStatus as TerminalStatus } from '@/stores/useTerminalStore'
 
@@ -63,6 +67,7 @@ interface TerminalViewProps {
 }
 
 export function TerminalView({ sessionId }: TerminalViewProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const meta = useTerminalStore((s) => s.sessions[sessionId])
   const status = meta?.shellState.kind ?? 'error'
@@ -77,7 +82,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const commandFieldRef = useRef<HTMLInputElement>(null)
   const { resolved } = useThemePreference()
   const textSize = useDisplayPrefsStore((s) => s.textSize)
+  const terminalFontPx = useDisplayPrefsStore((s) => s.terminalFontPx)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  // The keyboard was up when More opened: a key from it gives it back.
+  const moreWithKeyboardRef = useRef(false)
   const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [textSnapshot, setTextSnapshot] = useState<TerminalText | null>(null)
   const [findOpen, setFindOpen] = useState(false)
@@ -96,10 +105,10 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
 
-  // The terminal reads at the app's Text size, live.
+  // The terminal reads at the app's Text size, live, unless a pinch set its own.
   useEffect(() => {
-    useTerminalStore.getState().syncFontSize(terminalFontSize(textSize))
-  }, [textSize])
+    useTerminalStore.getState().syncFontSize(terminalFontPx ?? terminalFontSize(textSize))
+  }, [terminalFontPx, textSize])
 
   // Sticky Ctrl/Alt (terminal-modifiers.ts): the next key is sent with them,
   // then they release. Registered on the store so it applies to keystrokes
@@ -245,25 +254,41 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     else getTerminalRuntime(sessionId)?.handle?.term.focus()
   }, [commandFieldOn, sessionId])
 
-  const pasteFromBar = useCallback(() => {
-    const term = getTerminalRuntime(sessionId)?.handle?.term
-    // term.paste, not raw input: it honours bracketed-paste mode.
-    if (term) void pasteIntoTerminal(term)
-  }, [sessionId])
+  /** Bring the soft keyboard up: into the command field when it is on. */
+  const showKeyboard = useCallback(() => {
+    if (commandFieldOn && commandFieldRef.current) commandFieldRef.current.focus()
+    else getTerminalRuntime(sessionId)?.handle?.term.focus()
+  }, [commandFieldOn, sessionId])
+
+  const hideKeyboard = useCallback(() => {
+    const active = document.activeElement
+    if (active instanceof HTMLElement && rootRef.current?.contains(active)) active.blur()
+  }, [])
+
+  const openMore = useCallback(() => {
+    moreWithKeyboardRef.current = keyboardOpen
+    setMoreOpen(true)
+  }, [keyboardOpen])
+
+  const sendFromMore = useCallback((data: string) => {
+    useTerminalStore.getState().sendInput(sessionId, data)
+    if (moreWithKeyboardRef.current) showKeyboard()
+  }, [sessionId, showKeyboard])
+
+  const toggleAltFromMore = useCallback(() => {
+    setModifiers({ ...modifiersRef.current, alt: !modifiersRef.current.alt })
+    if (moreWithKeyboardRef.current) showKeyboard()
+  }, [setModifiers, showKeyboard])
 
   const reconnect = useCallback(() => {
     useTerminalStore.getState().reconnect(sessionId)
   }, [sessionId])
 
-  // Long-press on the terminal surface itself opens the terminal menu. Touch
-  // has no context menu and xterm's touch handling only scrolls, so this
-  // fills the gap on a phone and on a tablet however wide (a mouse press
-  // never counts as a hold).
+  // Touch gestures on the surface, on a phone and on a tablet however wide
+  // (a mouse never counts): the long press opens the terminal menu.
   const touchMenu = isMobile || touchFirst
-  const surfaceLongPress = useLongPressSurface(touchMenu, () => {
-    mediumHapticFeedback()
-    setActionSheetOpen(true)
-  })
+  const openMenu = useCallback(() => setActionSheetOpen(true), [])
+  useTerminalTouch({ enabled: touchMenu, sessionId, surfaceRef: containerRef, onMenu: openMenu })
 
   const addToChat = useCallback(() => {
     const term = getTerminalRuntime(sessionId)?.handle?.term
@@ -314,6 +339,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
   return (
     <div
+      ref={rootRef}
       className="flex h-full flex-col"
       data-swipe-ignore
       onFocus={() => setFocusWithin(true)}
@@ -321,15 +347,18 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
       }}
     >
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-(--color-surface) p-2">
+      {/* A phone keeps every column it can: 4px around the text, not 8. */}
+      <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-(--color-surface)', isMobile ? 'p-1' : 'p-2')}>
         <div
           ref={containerRef}
           data-testid="terminal-surface"
-          className="h-full w-full"
-          {...surfaceLongPress}
+          // Touch: the gestures are ours (no webview scroll or zoom), and a
+          // hold opens our menu, not the webview's text selection and callout.
+          className={cn('h-full w-full', touchMenu && 'touch-none select-none [-webkit-touch-callout:none]')}
           onContextMenu={(event) => {
-            // Touch: the long press opens the sheet. A pointer: the terminal's
-            // menu, not the webview's menu for xterm's hidden input.
+            // Touch: the long press opens the sheet (useTerminalTouch). A
+            // pointer: the terminal's menu, not the webview's menu for
+            // xterm's hidden input.
             event.preventDefault()
             if (!touchMenu) setContextMenuAt({ x: event.clientX, y: event.clientY })
           }}
@@ -343,7 +372,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           />
         )}
         {((findOpen && search) || (!isMobile && !findOpen && hasSelection)) && (
-          <div className="absolute right-4 top-2 z-20 flex flex-col items-end gap-1">
+          <div className={cn('absolute z-20 flex flex-col items-end gap-1', isMobile ? 'inset-x-1 top-1' : 'right-4 top-2')}>
             {findOpen && search && (
               <TerminalFindBar
                 search={search}
@@ -351,6 +380,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
                 onClose={closeFind}
                 initialQuery={findSeed}
                 focusSignal={findSignal}
+                wide={isMobile}
               />
             )}
             {!isMobile && !findOpen && hasSelection && (
@@ -394,22 +424,31 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       {showKeyBar && (
         <TerminalKeyBar
           onKey={sendKey}
-          onPaste={pasteFromBar}
           ctrlArmed={modifiers.ctrl}
           onCtrlToggle={() => setModifiers({ ...modifiersRef.current, ctrl: !modifiersRef.current.ctrl })}
-          altArmed={modifiers.alt}
-          onAltToggle={() => setModifiers({ ...modifiersRef.current, alt: !modifiersRef.current.alt })}
+          // A tablet shows the bar only while its keyboard is up.
+          typing={keyboardOpen || !isMobile}
           lineOn={commandFieldOn}
           onLineToggle={toggleCommandField}
+          onShowKeyboard={showKeyboard}
+          onHideKeyboard={hideKeyboard}
+          onMore={openMore}
         />
       )}
 
       <TerminalActionSheet
         open={actionSheetOpen}
         onClose={() => setActionSheetOpen(false)}
-        hasSelection={hasSelection}
-        os={getPlatform().os}
         onAction={runMenuAction}
+      />
+      <TerminalMoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        onKey={sendFromMore}
+        altArmed={modifiers.alt}
+        onAltToggle={toggleAltFromMore}
+        fontPx={terminalFontPx}
+        onResetFont={() => useDisplayPrefsStore.getState().setTerminalFontPx(null)}
       />
       {contextMenuAt && (
         <TerminalContextMenu

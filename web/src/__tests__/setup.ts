@@ -94,6 +94,7 @@ mock.module("@/components/Terminal/xterm-instance", () => ({
       focus: () => {},
       onData: () => {},
       open: () => {},
+      scrollToBottom: () => {},
       options: {},
       rows: 24,
       cols: 80,

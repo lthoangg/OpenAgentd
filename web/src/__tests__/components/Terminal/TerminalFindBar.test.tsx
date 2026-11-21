@@ -52,6 +52,14 @@ describe('TerminalFindBar', () => {
     expect(document.activeElement).toBe(input)
   })
 
+  it('on a phone spans the terminal, its field at 16px so iOS does not zoom', () => {
+    const { input } = setup({ wide: true })
+    expect(screen.getByRole('search').className).toContain('w-full')
+    expect(input.className).toContain('flex-1')
+    expect(input.className).toContain('text-base')
+    expect(input.className).not.toContain('w-40')
+  })
+
   it('searches as you type, with match decorations so the count is reported', () => {
     const { input, calls } = setup()
     fireEvent.change(input, { target: { value: 'error' } })

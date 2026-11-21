@@ -2,99 +2,77 @@
  * TerminalKeyBar — touch accessory row for keys soft keyboards lack.
  *
  * xterm.js's touch support is a long-standing upstream gap
- * (xtermjs/xterm.js#1101, #3727, #5377): no Esc/Tab/Ctrl/Alt/arrows on the
- * soft keyboard and unreliable touch paste. This bar supplies them,
- * following the accessory-row pattern of iSH / Termius.
+ * (xtermjs/xterm.js#1101, #3727, #5377): no Esc/Tab/Ctrl/arrows on the soft
+ * keyboard. This bar supplies them, following the accessory row of Termius.
+ * It never scrolls: every key fits a 390pt phone, and the rest are one tap
+ * away in More (``TerminalMoreSheet``).
  *
- * Order is by use, so the first screen of a 390pt phone holds what a shell
- * needs most: Esc, Ctrl, Alt, Tab, ^C and the arrows. The bar scrolls for
- * symbols, Home/End/PgUp/PgDn, ^D ^L ^R and Paste.
+ * Two layouts, by whether the soft keyboard is up:
  *
- * `Ctrl` and `Alt` are sticky modifiers owned by the parent (`TerminalView`):
- * soft-keyboard letters flow through xterm's `onData`, not this bar, so the
- * modifier is applied where every input stream is forwarded
- * (`terminal-modifiers.ts`), keys from this bar included (Ctrl+← jumps a
- * word). This bar only renders their state.
- * `Paste` asks the parent, which pastes through xterm (bracketed paste, so
- * several lines go in as one paste instead of running one by one).
- * The first key, pinned while the bar scrolls, turns the command line field
- * (`TerminalCommandField`) on or off.
+ * - typing: Line, Esc, Tab, Ctrl, ^C, the four arrows, More. Line turns the
+ *   command line field (``TerminalCommandField``) on or off.
+ * - reading (keyboard down): Show keyboard, Esc, Tab, ^C, up, down, Enter,
+ *   More, at the phone's full key width: enough to answer a program's prompt
+ *   (an agent's "1. Yes / 2. No") without bringing the keyboard up.
+ *
+ * A swipe down on the bar puts the keyboard away. ``Ctrl`` is a sticky
+ * modifier owned by the parent (``TerminalView``): soft-keyboard letters flow
+ * through xterm's ``onData``, so the modifier is applied where every input
+ * stream is forwarded (``terminal-modifiers.ts``), keys from this bar
+ * included (Ctrl+← jumps a word). This bar only renders its state.
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  ClipboardPaste,
+  CornerDownLeft,
+  Ellipsis,
+  Keyboard,
   TextCursorInput,
 } from 'lucide-react'
 
+import { swallowReleaseClick } from '@/hooks/use-long-press'
 import { haptic } from '@/lib/haptics'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 interface TerminalKeyBarProps {
   /** Send one key's bytes as terminal input (the parent applies modifiers). */
   onKey: (data: string) => void
-  /** Paste the clipboard into the terminal. */
-  onPaste: () => void
   /** Sticky-Ctrl state (armed = the next key is sent with Ctrl). */
   ctrlArmed: boolean
   onCtrlToggle: () => void
-  /** Sticky-Alt state (armed = the next key is sent with Alt). */
-  altArmed: boolean
-  onAltToggle: () => void
+  /** The soft keyboard is up: the typing layout. */
+  typing: boolean
   /** The command line field is on. */
   lineOn: boolean
   onLineToggle: () => void
+  onShowKeyboard: () => void
+  onHideKeyboard: () => void
+  onMore: () => void
 }
 
-const ARROW_KEYS = [
-  { label: 'left', seq: '\x1b[D', Icon: ArrowLeft },
-  { label: 'up', seq: '\x1b[A', Icon: ArrowUp },
-  { label: 'down', seq: '\x1b[B', Icon: ArrowDown },
-  { label: 'right', seq: '\x1b[C', Icon: ArrowRight },
-] as const
+const ARROWS = {
+  left: { label: 'Arrow left', seq: '\x1b[D', Icon: ArrowLeft },
+  up: { label: 'Arrow up', seq: '\x1b[A', Icon: ArrowUp },
+  down: { label: 'Arrow down', seq: '\x1b[B', Icon: ArrowDown },
+  right: { label: 'Arrow right', seq: '\x1b[C', Icon: ArrowRight },
+} as const
 
-const QUICK_SYMBOLS = [
-  { label: '|', seq: '|' },
-  { label: '/', seq: '/' },
-  { label: '~', seq: '~' },
-  { label: '-', seq: '-' },
-] as const
-
-const NAV_KEYS = [
-  { label: 'Home', seq: '\x1b[H', repeat: false },
-  { label: 'End', seq: '\x1b[F', repeat: false },
-  { label: 'PgUp', seq: '\x1b[5~', repeat: true },
-  { label: 'PgDn', seq: '\x1b[6~', repeat: true },
-] as const
-
-// Signals and line keys with no soft-keyboard equivalent: close a REPL /
-// send EOF, clear a scrolled-up screen, search the shell's history.
-const SIGNAL_KEYS = [
-  { label: '^D', seq: '\x04', title: 'Send Ctrl+D (EOF)' },
-  { label: '^L', seq: '\x0c', title: 'Send Ctrl+L (clear screen)' },
-  { label: '^R', seq: '\x12', title: 'Send Ctrl+R (search history)' },
-] as const
-
-const INTERRUPT = { label: '^C', seq: '\x03', title: 'Send Ctrl+C (interrupt)' } as const
-
-const KEY_SHAPE = cn(
-  'flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md px-2',
-  'text-xs font-medium active:bg-(--bg-key) select-none',
-)
+/** A drag down the bar this far (px) puts the keyboard away. */
+const SWIPE_DOWN_PX = 24
 
 /**
- * A key's fill: armed (a sticky modifier, the field's switch) or plain. One
+ * A key's shape and fill: armed (Ctrl, the field's switch) or plain. One fill
  * or the other, never both: ``cn`` does not merge, so two fills would leave
  * the winner to stylesheet order (an armed Ctrl used to look unarmed).
  */
 function keyClass(armed = false): string {
   return cn(
-    KEY_SHAPE,
+    'flex h-10 min-w-0 flex-1 basis-0 items-center justify-center rounded-md',
+    'text-xs font-medium active:bg-(--bg-key) select-none',
     armed ? 'bg-(--color-fill-selected) text-(--color-text-on-selected)' : 'bg-(--color-surface-2) text-(--color-text)',
   )
 }
@@ -104,51 +82,62 @@ const KEY_CLASS = keyClass()
 /** Keep xterm's hidden input (or the command field) focused, so the soft keyboard stays up. */
 const preventFocusLoss = (e: React.PointerEvent) => e.preventDefault()
 
-interface RepeatableKeyButtonProps {
-  label: string
-  seq: string
-  onSend: (seq: string) => void
-  children: React.ReactNode
+interface KeyProps {
+  label?: string
+  pressed?: boolean
   className?: string
+  onPress: () => void
+  children: ReactNode
 }
 
-/** A key that repeats while held, like a hardware arrow key. */
-function RepeatableKeyButton({ label, seq, onSend, children, className }: RepeatableKeyButtonProps) {
+function Key({ label, pressed, className, onPress, children }: KeyProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={pressed}
+      className={cn(keyClass(pressed), className)}
+      onPointerDown={preventFocusLoss}
+      onClick={() => {
+        haptic('tick')
+        onPress()
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** A key that repeats while held, like a hardware arrow key; one haptic per press. */
+function RepeatableKey({ label, seq, onSend, children }: { label: string; seq: string; onSend: (seq: string) => void; children: ReactNode }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pointerFiredRef = useRef(false)
 
   const stopRepeat = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    if (intervalRef.current !== null) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
+    if (timerRef.current !== null) clearTimeout(timerRef.current)
+    if (intervalRef.current !== null) clearInterval(intervalRef.current)
+    timerRef.current = null
+    intervalRef.current = null
   }, [])
 
   const startRepeat = useCallback(() => {
     stopRepeat()
     pointerFiredRef.current = true
+    haptic('tick')
     onSend(seq)
     timerRef.current = setTimeout(() => {
-      intervalRef.current = setInterval(() => {
-        onSend(seq)
-      }, 70)
+      intervalRef.current = setInterval(() => onSend(seq), 70)
     }, 300)
   }, [seq, onSend, stopRepeat])
 
-  useEffect(() => {
-    return () => stopRepeat()
-  }, [stopRepeat])
+  useEffect(() => stopRepeat, [stopRepeat])
 
   return (
     <button
       type="button"
       aria-label={label}
-      className={cn(KEY_CLASS, className)}
+      className={KEY_CLASS}
       onPointerDown={(e) => {
         e.preventDefault()
         startRepeat()
@@ -160,7 +149,9 @@ function RepeatableKeyButton({ label, seq, onSend, children, className }: Repeat
       onPointerLeave={stopRepeat}
       onPointerCancel={stopRepeat}
       onClick={() => {
+        // A keyboard or assistive activation: no pointer press came first.
         if (!pointerFiredRef.current) {
+          haptic('tick')
           onSend(seq)
         }
       }}
@@ -170,146 +161,92 @@ function RepeatableKeyButton({ label, seq, onSend, children, className }: Repeat
   )
 }
 
-function SignalKey({ label, seq, title, onSend }: { label: string; seq: string; title: string; onSend: (seq: string) => void }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={title}
-            className={cn(KEY_CLASS, 'font-mono')}
-            onPointerDown={preventFocusLoss}
-            onClick={() => onSend(seq)}
-          >
-            {label}
-          </button>
-        }
-      />
-      <TooltipContent>{title}</TooltipContent>
-    </Tooltip>
+export function TerminalKeyBar({
+  onKey,
+  ctrlArmed,
+  onCtrlToggle,
+  typing,
+  lineOn,
+  onLineToggle,
+  onShowKeyboard,
+  onHideKeyboard,
+  onMore,
+}: TerminalKeyBarProps) {
+  const swipeRef = useRef<{ x: number; y: number; done: boolean } | null>(null)
+
+  const arrow = (key: keyof typeof ARROWS) => {
+    const { label, seq, Icon } = ARROWS[key]
+    return (
+      <RepeatableKey key={key} label={label} seq={seq} onSend={onKey}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </RepeatableKey>
+    )
+  }
+  const esc = <Key key="esc" onPress={() => onKey('\x1b')}>Esc</Key>
+  const tab = <Key key="tab" onPress={() => onKey('\t')}>Tab</Key>
+  const interrupt = (
+    <Key key="interrupt" label="Send Ctrl+C (interrupt)" className="font-mono" onPress={() => onKey('\x03')}>^C</Key>
   )
-}
-
-function Separator() {
-  return <div className="mx-0.5 h-5 w-px shrink-0 bg-(--color-border)" aria-hidden="true" />
-}
-
-export function TerminalKeyBar({ onKey, onPaste, ctrlArmed, onCtrlToggle, altArmed, onAltToggle, lineOn, onLineToggle }: TerminalKeyBarProps) {
-  const send = useCallback(
-    (seq: string) => {
-      haptic('tick')
-      onKey(seq)
-    },
-    [onKey],
+  const more = (
+    <Key key="more" label="More keys" onPress={onMore}>
+      <Ellipsis className="h-4 w-4" aria-hidden="true" />
+    </Key>
   )
 
   return (
     <div
-      className="flex items-center gap-1.5 overflow-x-auto px-1 py-1.5"
+      className="flex touch-none items-center gap-0.5 px-1 py-1"
       data-swipe-ignore
       role="toolbar"
       aria-label="Terminal keys"
+      onPointerDown={(e) => {
+        swipeRef.current = e.pointerType === 'mouse' ? null : { x: e.clientX, y: e.clientY, done: false }
+      }}
+      onPointerMove={(e) => {
+        const swipe = swipeRef.current
+        if (!swipe || swipe.done || !typing) return
+        const dy = e.clientY - swipe.y
+        if (dy > SWIPE_DOWN_PX && dy > Math.abs(e.clientX - swipe.x)) {
+          swipe.done = true
+          // The key under the finger must not also fire on release.
+          swallowReleaseClick()
+          onHideKeyboard()
+        }
+      }}
+      onPointerUp={() => { swipeRef.current = null }}
+      onPointerCancel={() => { swipeRef.current = null }}
     >
-      <button
-        type="button"
-        aria-label="Command line field"
-        aria-pressed={lineOn}
-        // Pinned: the field's switch stays in reach while the bar scrolls.
-        className={cn(keyClass(lineOn), 'sticky left-0 z-10 gap-1 shadow-(--shadow-depth)')}
-        onPointerDown={preventFocusLoss}
-        onClick={() => {
-          haptic('tick')
-          onLineToggle()
-        }}
-      >
-        <TextCursorInput className="h-3.5 w-3.5" aria-hidden="true" />
-        Line
-      </button>
-      <button type="button" className={KEY_CLASS} onPointerDown={preventFocusLoss} onClick={() => send('\x1b')}>
-        Esc
-      </button>
-      <button
-        type="button"
-        aria-pressed={ctrlArmed}
-        className={keyClass(ctrlArmed)}
-        onPointerDown={preventFocusLoss}
-        onClick={() => {
-          haptic('tick')
-          onCtrlToggle()
-        }}
-      >
-        Ctrl
-      </button>
-      <button
-        type="button"
-        aria-pressed={altArmed}
-        className={keyClass(altArmed)}
-        onPointerDown={preventFocusLoss}
-        onClick={() => {
-          haptic('tick')
-          onAltToggle()
-        }}
-      >
-        Alt
-      </button>
-      <button type="button" className={KEY_CLASS} onPointerDown={preventFocusLoss} onClick={() => send('\t')}>
-        Tab
-      </button>
-      <SignalKey {...INTERRUPT} onSend={send} />
-
-      {ARROW_KEYS.map(({ label, seq, Icon }) => (
-        <RepeatableKeyButton key={label} label={`Arrow ${label}`} seq={seq} onSend={send}>
-          <Icon className="h-3.5 w-3.5" />
-        </RepeatableKeyButton>
-      ))}
-
-      <Separator />
-
-      {QUICK_SYMBOLS.map(({ label, seq }) => (
-        <button
-          key={label}
-          type="button"
-          aria-label={`Symbol ${label}`}
-          className={cn(KEY_CLASS, 'font-mono')}
-          onPointerDown={preventFocusLoss}
-          onClick={() => send(seq)}
-        >
-          {label}
-        </button>
-      ))}
-
-      <Separator />
-
-      {NAV_KEYS.map(({ label, seq, repeat }) =>
-        repeat ? (
-          <RepeatableKeyButton key={label} label={label} seq={seq} onSend={send}>
-            {label}
-          </RepeatableKeyButton>
-        ) : (
-          <button key={label} type="button" className={KEY_CLASS} onPointerDown={preventFocusLoss} onClick={() => send(seq)}>
-            {label}
-          </button>
-        ),
+      {typing ? (
+        <>
+          <Key label="Command line field" pressed={lineOn} onPress={onLineToggle}>
+            <TextCursorInput className="h-4 w-4" aria-hidden="true" />
+          </Key>
+          {esc}
+          {tab}
+          <Key pressed={ctrlArmed} onPress={onCtrlToggle}>Ctrl</Key>
+          {interrupt}
+          {arrow('left')}
+          {arrow('up')}
+          {arrow('down')}
+          {arrow('right')}
+          {more}
+        </>
+      ) : (
+        <>
+          <Key label="Show keyboard" onPress={onShowKeyboard}>
+            <Keyboard className="h-4 w-4" aria-hidden="true" />
+          </Key>
+          {esc}
+          {tab}
+          {interrupt}
+          {arrow('up')}
+          {arrow('down')}
+          <Key label="Enter" onPress={() => onKey('\r')}>
+            <CornerDownLeft className="h-4 w-4" aria-hidden="true" />
+          </Key>
+          {more}
+        </>
       )}
-
-      <Separator />
-
-      {SIGNAL_KEYS.map((key) => (
-        <SignalKey key={key.label} {...key} onSend={send} />
-      ))}
-      <button
-        type="button"
-        aria-label="Paste"
-        className={KEY_CLASS}
-        onPointerDown={preventFocusLoss}
-        onClick={() => {
-          haptic('select')
-          onPaste()
-        }}
-      >
-        <ClipboardPaste className="h-3.5 w-3.5" />
-      </button>
     </div>
   )
 }

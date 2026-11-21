@@ -30,6 +30,7 @@ interface FakeTerm {
   focus: ReturnType<typeof mock>
   onData: ReturnType<typeof mock>
   paste: ReturnType<typeof mock>
+  scrollToBottom: ReturnType<typeof mock>
   options: { theme?: unknown; fontFamily?: string; fontSize?: number }
   rows: number
   cols: number
@@ -57,6 +58,7 @@ function makeFakeTerm(): FakeTerm {
     }),
     // Like xterm: pasted text reaches the shell through the `onData` handler.
     paste: fn((text: string) => typed?.(text)),
+    scrollToBottom: fn(() => {}),
     options: {},
     rows: 24,
     cols: 80,
@@ -405,6 +407,16 @@ describe('useTerminalStore', () => {
     s.sendInput(id, 'ls')
     expect(lastSocket!.sendInput).toHaveBeenCalledWith('LS')
     expect(getTerminalRuntime(id)!.lastActivityAt).toBeGreaterThanOrEqual(before)
+  })
+
+  it('sendInput brings the prompt back into view, as typing in xterm does', async () => {
+    const s = useTerminalStore.getState()
+    const id = open()
+    await settle()
+    const term = createdTerms.at(-1)!
+    term.scrollToBottom.mockClear()
+    s.sendInput(id, '\x1b[A')
+    expect(term.scrollToBottom).toHaveBeenCalledTimes(1)
   })
 
   it('syncTheme swaps the xterm theme on every live session', async () => {

@@ -34,7 +34,7 @@ describe('text size', () => {
     useDisplayPrefsStore.getState().setTextSize('large')
 
     expect(document.documentElement.dataset.textSize).toBe('large')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed', detailSeeded: true, textSize: 'large', previewOpen: 'panel', diffLayout: 'unified' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed', detailSeeded: true, textSize: 'large', previewOpen: 'panel', diffLayout: 'unified', terminalFontPx: null })
   })
 
   it('reads an unknown stored size as Default', async () => {

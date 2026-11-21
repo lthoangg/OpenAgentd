@@ -9,35 +9,19 @@ afterEach(cleanup)
 
 const rows = () => Array.from(document.querySelectorAll<HTMLElement>('[data-action-sheet-item]'))
 
-function renderSheet(overrides: { open?: boolean; hasSelection?: boolean; onAction?: (action: TerminalMenuAction) => void; onClose?: () => void } = {}) {
+function renderSheet(overrides: { open?: boolean; onAction?: (action: TerminalMenuAction) => void; onClose?: () => void } = {}) {
   const onAction = overrides.onAction ?? mock(() => {})
   const onClose = overrides.onClose ?? mock(() => {})
-  render(
-    <TerminalActionSheet
-      open={overrides.open ?? true}
-      onClose={onClose}
-      hasSelection={overrides.hasSelection ?? true}
-      os="ios"
-      onAction={onAction}
-    />,
-  )
+  render(<TerminalActionSheet open={overrides.open ?? true} onClose={onClose} onAction={onAction} />)
   return { onAction, onClose }
 }
 
 describe('TerminalActionSheet', () => {
-  it('is the shared phone action sheet, with Select Text first', () => {
+  it('is the shared phone action sheet with four rows, none greyed out', () => {
     renderSheet()
     expect(document.querySelector('[data-action-sheet]')).toBeTruthy()
-    expect(rows().map((row) => row.textContent)).toEqual([
-      'Select Text', 'Copy', 'Paste', 'Select All', 'Find', 'Add to chat', 'Clear',
-    ])
-  })
-
-  it('disables Copy and Add to chat without a selection', () => {
-    renderSheet({ hasSelection: false })
-    expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Add to chat' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Select Text' })).not.toBeDisabled()
+    expect(rows().map((row) => row.textContent)).toEqual(['Select Text', 'Paste', 'Find', 'Clear'])
+    for (const row of rows()) expect(row).not.toBeDisabled()
   })
 
   it('closes, then runs the chosen action', () => {

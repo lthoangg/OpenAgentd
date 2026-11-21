@@ -107,6 +107,11 @@ export const MACHINES: Record<string, MachineEntry> = {
     fields: ['approvalTap'],
     initial: [],
   },
+  'terminal touch': {
+    file: 'components/Terminal/terminal-touch-state.ts',
+    fields: ['touchGesture.current'],
+    initial: [],
+  },
 }
 
 /**

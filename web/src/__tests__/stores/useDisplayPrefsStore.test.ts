@@ -69,7 +69,7 @@ describe('useDisplayPrefsStore — transcript style', () => {
     useDisplayPrefsStore.getState().setTranscriptStyle('reader')
 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader', detailSeeded: true, textSize: 'default', previewOpen: 'panel', diffLayout: 'unified' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader', detailSeeded: true, textSize: 'default', previewOpen: 'panel', diffLayout: 'unified', terminalFontPx: null })
   })
 
   it('reads a stored style it does not know as Full, what that install showed', async () => {
@@ -91,7 +91,7 @@ describe('useDisplayPrefsStore — removed new session composer setting', () => 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
 
     useDisplayPrefsStore.getState().setTranscriptStyle('detailed')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed', detailSeeded: true, textSize: 'default', previewOpen: 'panel', diffLayout: 'unified' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed', detailSeeded: true, textSize: 'default', previewOpen: 'panel', diffLayout: 'unified', terminalFontPx: null })
   })
 })
 
@@ -118,5 +118,22 @@ describe('useDisplayPrefsStore — diff layout', () => {
     localStorage.setItem(DISPLAY_PREFS_STORAGE_KEY, JSON.stringify({ state: { diffLayout: 'columns' }, version: 0 }))
     await useDisplayPrefsStore.persist.rehydrate()
     expect(useDisplayPrefsStore.getState().diffLayout).toBe('unified')
+  })
+})
+
+describe('useDisplayPrefsStore — terminal text size', () => {
+  afterEach(() => { useDisplayPrefsStore.setState({ terminalFontPx: null }) })
+
+  it('follows Text size until a pinch sets one, remembers it, and reads a bad value as none', async () => {
+    expect(useDisplayPrefsStore.getState().terminalFontPx).toBeNull()
+    useDisplayPrefsStore.getState().setTerminalFontPx(16)
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state.terminalFontPx).toBe(16)
+
+    await useDisplayPrefsStore.persist.rehydrate()
+    expect(useDisplayPrefsStore.getState().terminalFontPx).toBe(16)
+
+    localStorage.setItem(DISPLAY_PREFS_STORAGE_KEY, JSON.stringify({ state: { terminalFontPx: 'huge' }, version: 0 }))
+    await useDisplayPrefsStore.persist.rehydrate()
+    expect(useDisplayPrefsStore.getState().terminalFontPx).toBeNull()
   })
 })

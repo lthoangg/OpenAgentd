@@ -22,7 +22,7 @@ interface TerminalContextMenuProps {
 export function TerminalContextMenu({ at, onDismiss, hasSelection, os, onAction }: TerminalContextMenuProps) {
   return (
     <ContextMenu at={at} label="Terminal" onDismiss={onDismiss} className="min-w-48">
-      {terminalMenuItems({ touch: false, hasSelection, os }).map(({ action, label, icon: Icon, disabled, separatorBefore, keys }) => (
+      {terminalMenuItems({ hasSelection, os }).map(({ action, label, icon: Icon, disabled, separatorBefore, keys }) => (
         <Fragment key={action}>
           {separatorBefore && <ContextMenuSeparator />}
           <button

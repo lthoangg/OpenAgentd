@@ -24,6 +24,9 @@
  *
  * ``diffLayout``: a diff tab's layout on desktop, ``unified`` or ``split``
  * (side by side, which falls back to unified in a narrow panel).
+ *
+ * ``terminalFontPx``: the terminal's text size a pinch set on this device,
+ * or ``null`` to follow Text size (``lib/terminal-font.ts``).
  */
 import { withViewTransition } from '@/lib/view-transition'
 import { create } from 'zustand'
@@ -92,6 +95,8 @@ interface DisplayPrefsState {
   setPreviewOpen: (where: PreviewOpen) => void
   diffLayout: DiffLayout
   setDiffLayout: (layout: DiffLayout) => void
+  terminalFontPx: number | null
+  setTerminalFontPx: (px: number | null) => void
 }
 
 function isTranscriptStyle(value: unknown): value is TranscriptStyle {
@@ -108,6 +113,10 @@ function isPreviewOpen(value: unknown): value is PreviewOpen {
 
 function isDiffLayout(value: unknown): value is DiffLayout {
   return value === 'unified' || value === 'split'
+}
+
+function isFontPx(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 8 && value <= 32
 }
 
 export const useDisplayPrefsStore = create<DisplayPrefsState>()(
@@ -132,16 +141,18 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
       setPreviewOpen: (where) => set({ previewOpen: where }),
       diffLayout: DEFAULT_DIFF_LAYOUT,
       setDiffLayout: (layout) => set({ diffLayout: layout }),
+      terminalFontPx: null,
+      setTerminalFontPx: (px) => set({ terminalFontPx: px }),
     }),
     {
       name: DISPLAY_PREFS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ transcriptStyle, detailSeeded, textSize, previewOpen, diffLayout }) => ({ transcriptStyle, detailSeeded, textSize, previewOpen, diffLayout }),
+      partialize: ({ transcriptStyle, detailSeeded, textSize, previewOpen, diffLayout, terminalFontPx }) => ({ transcriptStyle, detailSeeded, textSize, previewOpen, diffLayout, terminalFontPx }),
       // Stored without a schema: an unknown value from another build reads
       // as the default rather than as a transcript that renders nothing.
       // Only known keys are kept, which drops v3.18.0's `newSessionComposer`.
       merge: (persisted, current) => {
-        const stored = persisted as { transcriptStyle?: unknown; detailSeeded?: unknown; textSize?: unknown; previewOpen?: unknown; diffLayout?: unknown } | undefined
+        const stored = persisted as { transcriptStyle?: unknown; detailSeeded?: unknown; textSize?: unknown; previewOpen?: unknown; diffLayout?: unknown; terminalFontPx?: unknown } | undefined
         const style = stored?.transcriptStyle
         const size = stored?.textSize
         // Nothing stored: a new install, or one that never changed a display
@@ -158,6 +169,7 @@ export const useDisplayPrefsStore = create<DisplayPrefsState>()(
           textSize: isTextSize(size) ? size : DEFAULT_TEXT_SIZE,
           previewOpen: isPreviewOpen(stored?.previewOpen) ? stored.previewOpen : DEFAULT_PREVIEW_OPEN,
           diffLayout: isDiffLayout(stored?.diffLayout) ? stored.diffLayout : DEFAULT_DIFF_LAYOUT,
+          terminalFontPx: isFontPx(stored?.terminalFontPx) ? stored.terminalFontPx : null,
         }
       },
     },

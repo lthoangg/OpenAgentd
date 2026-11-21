@@ -810,6 +810,10 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!rt?.socket) return
     rt.lastActivityAt = Date.now()
     rt.socket.sendInput(rt.inputTransform(data))
+    // Input from anywhere (the key bar, a gesture, More) brings the prompt
+    // back into view, as xterm does for its own keys: a key pressed while
+    // scrolled up otherwise answers out of sight.
+    rt.handle?.term.scrollToBottom()
   },
 
   runCommand: (id, command) => {

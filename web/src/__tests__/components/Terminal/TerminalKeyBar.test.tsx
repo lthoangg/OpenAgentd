@@ -1,134 +1,138 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { TerminalKeyBar } from '@/components/Terminal/TerminalKeyBar'
 
 afterEach(cleanup)
 
-function renderBar(overrides?: {
-  onKey?: (data: string) => void
-  onPaste?: () => void
-  ctrlArmed?: boolean
-  onCtrlToggle?: () => void
-  altArmed?: boolean
-  onAltToggle?: () => void
-  lineOn?: boolean
-  onLineToggle?: () => void
-}) {
-  const onKey = overrides?.onKey ?? mock(() => {})
-  const onPaste = overrides?.onPaste ?? mock(() => {})
-  const onCtrlToggle = overrides?.onCtrlToggle ?? mock(() => {})
-  const onAltToggle = overrides?.onAltToggle ?? mock(() => {})
-  const onLineToggle = overrides?.onLineToggle ?? mock(() => {})
+function renderBar(overrides: Partial<{
+  onKey: (data: string) => void
+  ctrlArmed: boolean
+  onCtrlToggle: () => void
+  typing: boolean
+  lineOn: boolean
+  onLineToggle: () => void
+  onShowKeyboard: () => void
+  onHideKeyboard: () => void
+  onMore: () => void
+}> = {}) {
+  const props = {
+    onKey: mock(() => {}),
+    onCtrlToggle: mock(() => {}),
+    onLineToggle: mock(() => {}),
+    onShowKeyboard: mock(() => {}),
+    onHideKeyboard: mock(() => {}),
+    onMore: mock(() => {}),
+    ...overrides,
+  }
   render(
     <TerminalKeyBar
-      onKey={onKey}
-      onPaste={onPaste}
-      ctrlArmed={overrides?.ctrlArmed ?? false}
-      onCtrlToggle={onCtrlToggle}
-      altArmed={overrides?.altArmed ?? false}
-      onAltToggle={onAltToggle}
-      lineOn={overrides?.lineOn ?? false}
-      onLineToggle={onLineToggle}
+      {...props}
+      ctrlArmed={overrides.ctrlArmed ?? false}
+      typing={overrides.typing ?? true}
+      lineOn={overrides.lineOn ?? false}
     />,
   )
-  return { onKey, onPaste, onCtrlToggle, onAltToggle, onLineToggle }
+  return props
 }
 
 /** Each key's visible label, or its name for icon keys, in bar order. */
 const keyOrder = () =>
   Array.from(screen.getByRole('toolbar').querySelectorAll('button')).map(
-    (button) => button.textContent || button.getAttribute('aria-label'),
+    (button) => button.getAttribute('aria-label') ?? button.textContent,
   )
 
 describe('TerminalKeyBar', () => {
-  it('puts the keys a shell needs most first: Esc, Ctrl, Alt, Tab, ^C, then the arrows', () => {
-    renderBar()
+  it('typing: Line, Esc, Tab, Ctrl, ^C, the four arrows and More, in one row that never scrolls', () => {
+    renderBar({ typing: true })
     expect(keyOrder()).toEqual([
-      'Line',
-      'Esc', 'Ctrl', 'Alt', 'Tab', '^C',
-      'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right',
-      '|', '/', '~', '-',
-      'Home', 'End', 'PgUp', 'PgDn',
-      '^D', '^L', '^R', 'Paste',
+      'Command line field', 'Esc', 'Tab', 'Ctrl', 'Send Ctrl+C (interrupt)',
+      'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right', 'More keys',
+    ])
+    expect(screen.getByRole('toolbar').className).not.toContain('overflow-x')
+  })
+
+  it('reading (keyboard down): what answers a prompt, with Enter and a way back to the keyboard', () => {
+    renderBar({ typing: false })
+    expect(keyOrder()).toEqual([
+      'Show keyboard', 'Esc', 'Tab', 'Send Ctrl+C (interrupt)', 'Arrow up', 'Arrow down', 'Enter', 'More keys',
     ])
   })
 
-  it('sends Esc and Tab escape sequences', () => {
+  it('sends each key as its bytes', () => {
     const onKey = mock(() => {})
-    renderBar({ onKey })
+    renderBar({ onKey, typing: false })
     fireEvent.click(screen.getByText('Esc'))
-    expect(onKey).toHaveBeenCalledWith('\x1b')
     fireEvent.click(screen.getByText('Tab'))
-    expect(onKey).toHaveBeenCalledWith('\t')
-  })
-
-  it('sends arrow-key sequences', () => {
-    const onKey = mock(() => {})
-    renderBar({ onKey })
-    fireEvent.click(screen.getByLabelText('Arrow up'))
-    expect(onKey).toHaveBeenCalledWith('\x1b[A')
-    fireEvent.click(screen.getByLabelText('Arrow left'))
-    expect(onKey).toHaveBeenCalledWith('\x1b[D')
-  })
-
-  it('sends Home, End, PgUp and PgDn', () => {
-    const onKey = mock(() => {})
-    renderBar({ onKey })
-    for (const name of ['Home', 'End', 'PgUp', 'PgDn']) fireEvent.click(screen.getByRole('button', { name }))
-    expect(onKey.mock.calls.map(([seq]) => seq)).toEqual(['\x1b[H', '\x1b[F', '\x1b[5~', '\x1b[6~'])
-  })
-
-  it('Ctrl and Alt report their armed state and fire their toggles', () => {
-    const onCtrlToggle = mock(() => {})
-    const onAltToggle = mock(() => {})
-    renderBar({ ctrlArmed: true, altArmed: false, onCtrlToggle, onAltToggle })
-    expect(screen.getByText('Ctrl').getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByText('Alt').getAttribute('aria-pressed')).toBe('false')
-    // One fill per key: the armed one alone, so it cannot lose to the plain one.
-    expect(screen.getByText('Ctrl').className).toContain('bg-(--color-fill-selected)')
-    expect(screen.getByText('Ctrl').className).not.toContain('bg-(--color-surface-2)')
-    expect(screen.getByText('Alt').className).toContain('bg-(--color-surface-2)')
-    fireEvent.click(screen.getByText('Ctrl'))
-    fireEvent.click(screen.getByText('Alt'))
-    expect(onCtrlToggle).toHaveBeenCalledTimes(1)
-    expect(onAltToggle).toHaveBeenCalledTimes(1)
-  })
-
-  it('sends Ctrl+C / Ctrl+D / Ctrl+L / Ctrl+R via quick-action buttons', () => {
-    const onKey = mock(() => {})
-    renderBar({ onKey })
     fireEvent.click(screen.getByLabelText('Send Ctrl+C (interrupt)'))
-    fireEvent.click(screen.getByLabelText('Send Ctrl+D (EOF)'))
-    fireEvent.click(screen.getByLabelText('Send Ctrl+L (clear screen)'))
-    fireEvent.click(screen.getByLabelText('Send Ctrl+R (search history)'))
-    expect(onKey.mock.calls.map(([seq]) => seq)).toEqual(['\x03', '\x04', '\x0c', '\x12'])
+    fireEvent.click(screen.getByLabelText('Enter'))
+    fireEvent.click(screen.getByLabelText('Arrow up'))
+    expect(onKey.mock.calls.map(([seq]) => seq)).toEqual(['\x1b', '\t', '\x03', '\r', '\x1b[A'])
   })
 
-  it('asks the terminal to paste instead of typing the clipboard as keys', () => {
+  it('an arrow held repeats', async () => {
     const onKey = mock(() => {})
-    const onPaste = mock(() => {})
-    renderBar({ onKey, onPaste })
-    fireEvent.click(screen.getByRole('button', { name: 'Paste' }))
-    expect(onPaste).toHaveBeenCalledTimes(1)
-    expect(onKey).not.toHaveBeenCalled()
+    renderBar({ onKey })
+    const left = screen.getByLabelText('Arrow left')
+    fireEvent.pointerDown(left, { pointerType: 'touch' })
+    await act(() => new Promise((resolve) => setTimeout(resolve, 450)))
+    fireEvent.pointerUp(left, { pointerType: 'touch' })
+    fireEvent.click(left)
+    expect(onKey.mock.calls.length).toBeGreaterThan(1)
+    expect(onKey.mock.calls.every(([seq]) => seq === '\x1b[D')).toBe(true)
   })
 
-  it('has the command line switch first, pinned, showing whether the field is on', () => {
-    const onLineToggle = mock(() => {})
-    const onKey = mock(() => {})
-    renderBar({ lineOn: true, onLineToggle, onKey })
+  it('Ctrl reports its armed state with one fill and fires its toggle', () => {
+    const onCtrlToggle = mock(() => {})
+    renderBar({ ctrlArmed: true, onCtrlToggle })
+    const ctrl = screen.getByRole('button', { name: 'Ctrl' })
+    expect(ctrl.getAttribute('aria-pressed')).toBe('true')
+    expect(ctrl.className).toContain('bg-(--color-fill-selected)')
+    expect(ctrl.className).not.toContain('bg-(--color-surface-2)')
+    fireEvent.click(ctrl)
+    expect(onCtrlToggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('Line shows whether the field is on and toggles it without sending a key', () => {
+    const props = renderBar({ lineOn: true })
     const line = screen.getByRole('button', { name: 'Command line field' })
     expect(line.getAttribute('aria-pressed')).toBe('true')
-    expect(line.className).toContain('sticky')
     fireEvent.click(line)
-    expect(onLineToggle).toHaveBeenCalledTimes(1)
-    expect(onKey).not.toHaveBeenCalled()
+    expect(props.onLineToggle).toHaveBeenCalledTimes(1)
+    expect(props.onKey).not.toHaveBeenCalled()
   })
 
-  it('opts out of edge swipe via data-swipe-ignore', () => {
+  it('More and Show keyboard call their handlers', () => {
+    const props = renderBar({ typing: false })
+    fireEvent.click(screen.getByLabelText('More keys'))
+    fireEvent.click(screen.getByLabelText('Show keyboard'))
+    expect(props.onMore).toHaveBeenCalledTimes(1)
+    expect(props.onShowKeyboard).toHaveBeenCalledTimes(1)
+  })
+
+  it('a swipe down the bar puts the keyboard away, and the key under the finger does not fire', () => {
+    const props = renderBar({ typing: true })
+    const esc = screen.getByText('Esc')
+    fireEvent.pointerDown(esc, { pointerType: 'touch', clientX: 100, clientY: 10 })
+    fireEvent.pointerMove(esc, { pointerType: 'touch', clientX: 102, clientY: 50 })
+    fireEvent.pointerUp(esc, { pointerType: 'touch' })
+    fireEvent.click(esc)
+    expect(props.onHideKeyboard).toHaveBeenCalledTimes(1)
+    expect(props.onKey).not.toHaveBeenCalled()
+  })
+
+  it('a sideways drag is not a swipe down', () => {
+    const props = renderBar({ typing: true })
+    const bar = screen.getByRole('toolbar')
+    fireEvent.pointerDown(bar, { pointerType: 'touch', clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(bar, { pointerType: 'touch', clientX: 90, clientY: 40 })
+    expect(props.onHideKeyboard).not.toHaveBeenCalled()
+  })
+
+  it('opts out of edge swipe and of the browser panning it', () => {
     renderBar()
     const toolbar = screen.getByRole('toolbar')
     expect(toolbar.getAttribute('data-swipe-ignore')).not.toBeNull()
+    expect(toolbar.className).toContain('touch-none')
   })
 })

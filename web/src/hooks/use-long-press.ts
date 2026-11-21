@@ -1,19 +1,16 @@
 /**
  * useLongPress — shared press-and-hold gesture core.
  *
- * Two call sites need identical timing/tolerance behavior but attach it
- * to different DOM shapes:
- *   - `LongPressButton` (a real `<button>`) — also tracks a `pressing`
- *     boolean for the scale-down visual affordance and fires its own
- *     haptic.
- *   - `useLongPressSurface` (xterm's non-button DOM, e.g. the terminal
- *     viewport) — no visual press state, haptic left to the caller.
+ * Every press-and-hold in the app has the same timing and tolerance:
+ * `LongPressButton` (a real `<button>`, which also tracks a `pressing`
+ * boolean for the scale-down affordance), rows and bubbles that call this
+ * hook directly, and the terminal surface's gestures (`use-terminal-touch`),
+ * which read the two constants below.
  *
- * This hook holds the one piece that must stay identical between them:
- * the 520ms hold threshold, the 10px move-cancel tolerance, and the
- * pointer event plumbing. `onPressChange` is optional so callers that
- * don't need visual press feedback (the terminal surface) don't pay for
- * state they don't use.
+ * This hook holds the one piece that must stay identical between them: the
+ * 520ms hold threshold, the 10px move-cancel tolerance, and the pointer
+ * event plumbing. `onPressChange` is optional so callers that don't need
+ * visual press feedback don't pay for state they don't use.
  */
 import { useCallback, useRef } from 'react'
 import type React from 'react'

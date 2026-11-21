@@ -484,7 +484,7 @@ agent against it.
   build) is never idle-closed, by either reaper, on macOS and Linux `[v3.5.0]`.
   Includes PTY output backpressure, GPU-accelerated WebGL rendering `[v1.118.0]`,
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
-  soft-keyboard focus preservation, quick symbol row).
+  soft-keyboard focus preservation).
   Terminal font is a best-guess Nerd Font stack (MesloLGS NF and similar)
   for correct Powerlevel10k/Starship glyph rendering, at 13 px (at the
   Text size since `[v3.57.0]`).
@@ -530,16 +530,35 @@ agent against it.
     own selection, handles and magnifier; **Copy** and **Add to chat** take
     the selection, **Done** goes back to the live terminal.
   - **One terminal menu** `[v3.57.0]`: the long press opens the phone's
-    action sheet (Select Text, Copy, Paste, Select All, Find, Add to chat,
-    Clear), and a right-click with a mouse opens the same menu with its keys
-    instead of the webview's text-field menu.
-  - **Key bar by use** `[v3.57.0]`: Esc, Ctrl, Alt, Tab, ^C and the arrows
-    come first, so ^C no longer sits off-screen on a phone; the bar scrolls
-    to `| / ~ -`, Home, End, PgUp, PgDn, ^D, ^L, ^R and Paste. **Alt** is a
-    sticky modifier like Ctrl (Alt+b, Alt+f, Alt+.), and both now apply to
-    the bar's own keys: Ctrl+← jumps a word. The bar's Paste goes in as one
-    paste, so several lines no longer run one by one. On an iPad the bar
-    shows while the soft keyboard is up for the terminal.
+    action sheet, and a right-click with a mouse opens the terminal's menu
+    with its keys instead of the webview's text-field menu. Since
+    `[v3.62.0]` the touch sheet is four rows, Select Text, Paste, Find and
+    Clear: Copy and Add to chat were greyed out nearly always (a finger
+    cannot select in the terminal) and live in Select Text, and Select All
+    is gone from touch. The mouse menu keeps all six.
+  - **Touch gestures** `[v3.62.0]`: a drag scrolls the output, with a fling
+    (it had stopped scrolling at all on touch screens); in vim, less or tmux
+    it scrolls the program as a mouse wheel does. Hold, then drag sends
+    arrow keys toward the finger, faster the farther it goes (up brings back
+    the last command, sideways moves the cursor). A double tap sends Tab. A
+    pinch sets the terminal's text size, 10 to 20 px, kept on the device
+    until **Reset** in More. A long press no longer starts the webview's own
+    text selection.
+  - **Key bar by use** `[v3.57.0]`, **in one row** `[v3.62.0]`: the bar no
+    longer scrolls. With the soft keyboard up it holds Line, Esc, Tab, Ctrl,
+    ^C, the four arrows and More; with it down, Show keyboard, Esc, Tab, ^C,
+    ↑, ↓, Enter and More, enough to answer a program's prompt without the
+    keyboard. A swipe down on the bar puts the keyboard away. **More** holds
+    Alt, ⇧Tab and the `|`, `~`, `\` and backtick keys. Ctrl and Alt are
+    sticky modifiers and apply to the bar's keys too (Ctrl+← jumps a word).
+    Keys removed in
+    `[v3.62.0]`, and what does the same: `/` and `-` (the keyboard), ^D, ^L,
+    ^R (Ctrl, then the letter), Home and End (Ctrl+A, Ctrl+E, or hold and
+    drag), PgUp and PgDn (a drag), Paste (long press, Paste). On an iPad
+    the bar shows while the soft keyboard is up for the terminal.
+  - **Find on a phone** `[v3.62.0]` spans the terminal's width, and its
+    field no longer zooms the page on iOS. The terminal on a phone has 4 px
+    around its text instead of two paddings, a few more columns.
   - **Command line field** `[v3.57.0]`: **Line**, the key bar's first key
     (it stays in place while the bar scrolls), adds an ordinary text field
     above the bar where Vietnamese Telex and other input methods, dictation

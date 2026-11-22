@@ -562,6 +562,7 @@ async fn http_api_end_to_end() {
     linked_sessions_flow(&c, &pool).await;
     waiting_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
+    site_access_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
     worktree_tree_flow(&c, root.path()).await;
     side_question_flow(&c, &pool, &sid).await;
@@ -661,6 +662,7 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::UNAUTHORIZED);
 
     preview_routes(&c, root.path()).await;
+    site_preview_routes(&c, root.path()).await;
     preview_tunnel(&c, &pool, root.path()).await;
     first_chat_mode_flow(&c, root.path()).await;
     server_name_flow(&c).await;
@@ -1018,7 +1020,7 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
 
     let api_port = appv3_core::settings().api_port;
     for (body, why) in [
-        (json!({"workspace": ws, "url": "http://example.com"}), "non-loopback"),
+        (json!({"workspace": ws, "url": "ftp://example.com"}), "not a web page"),
         (json!({"workspace": ws, "url": format!("http://127.0.0.1:{api_port}")}), "the API itself"),
         (json!({"workspace": ws}), "no target"),
         (json!({"workspace": ws, "url": "http://localhost:5173", "path": "designs/landing.html"}), "two targets"),
@@ -1050,6 +1052,89 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
     assert_eq!(st, StatusCode::NO_CONTENT);
     let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
+}
+
+/// A page of the public web. The app shows it, so the server keeps no
+/// listener for it: it carries the agent's commands to the app and the
+/// page's answers back, and holds the user's site rules.
+async fn site_preview_routes(c: &Client, root: &std::path::Path) {
+    let ws = root.join("preview-ws").to_string_lossy().to_string();
+    let (st, p) = c.json("POST", "/api/preview", Some(json!({"workspace": ws, "url": "https://shop.example/cart?x=1"}))).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert_eq!((p["kind"].as_str(), p["port"].as_u64(), p["origin"].as_str()), (Some("site"), Some(0), Some("https://shop.example")), "{p}");
+    let id = p["id"].as_str().unwrap().to_string();
+    let entry = appv3_preview::global().get(&id).unwrap();
+    let agent = format!("/api/preview/{id}/agent");
+
+    // The app polls for a command, runs it in its view and posts the answer.
+    let app = async {
+        let (st, command) = c.json("GET", &agent, None).await;
+        assert_eq!(st, StatusCode::OK, "{command}");
+        let (st, _) = c.json("POST", &agent, Some(json!({"id": command["id"], "ok": true, "result": {"text": "Page: /cart"}}))).await;
+        assert_eq!(st, StatusCode::NO_CONTENT);
+        command
+    };
+    let tool = async {
+        while !entry.agent.connected() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        entry.agent.run(json!({"action": "snapshot", "site": "shop.example"}), std::time::Duration::from_secs(10)).await
+    };
+    let (command, result) = tokio::join!(app, tool);
+    assert_eq!(command["command"], json!({"action": "snapshot", "site": "shop.example"}));
+    assert_eq!(result.unwrap()["text"], "Page: /cart");
+    let (st, _) = c.json("POST", &agent, Some(json!({"id": 7}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Where the page is now: the host the agent's next command is allowed for.
+    let page = format!("/api/preview/{id}/page");
+    let (st, _) = c.json("POST", &page, Some(json!({"url": "https://other.example/landing"}))).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    assert_eq!(entry.page_url().as_deref(), Some("https://other.example/landing"));
+    for bad in [json!({"url": "http://127.0.0.1:1/"}), json!({"url": "javascript:alert(1)"}), json!({"url": "https://shop.example/", "extra": 1}), json!({})] {
+        let (st, v) = c.json("POST", &page, Some(bad.clone())).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
+    }
+    assert_eq!(entry.page_url().as_deref(), Some("https://other.example/landing"), "a refused address changes nothing");
+
+    let (st, _) = c.json("POST", &format!("/api/preview/{id}/console"), Some(json!({"entries": [{"level": "error", "message": "boom", "url": "/cart", "ts": 1}]}))).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    assert_eq!(entry.console_error_count(), 1);
+
+    // Only a site's page is driven through the API: a local preview's page polls its own listener.
+    let (_, local) = c.json("POST", "/api/preview", Some(json!({"workspace": ws, "path": "designs/landing.html"}))).await;
+    let local_id = local["id"].as_str().unwrap().to_string();
+    for part in ["agent", "page", "console"] {
+        let (st, _) = c.json("POST", &format!("/api/preview/{local_id}/{part}"), Some(json!({"url": "https://shop.example/"}))).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{part}");
+    }
+    appv3_preview::global().close(&local_id);
+    appv3_preview::global().close(&id);
+    let (st, _) = c.json("GET", &agent, None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    // The user's site rules.
+    let (st, rules) = c.json("GET", "/api/browser/sites", None).await;
+    assert_eq!((st, rules), (StatusCode::OK, json!({"default": "ask", "allowed": [], "blocked": []})));
+    let (st, rules) = c
+        .json(
+            "PUT",
+            "/api/browser/sites",
+            Some(json!({"default": "allow", "allowed": ["https://www.Example.com/pricing", "example.com", "*.corp.test"], "blocked": ["bank.test"]})),
+        )
+        .await;
+    assert_eq!((st, rules.clone()), (StatusCode::OK, json!({"default": "allow", "allowed": ["example.com", "*.corp.test"], "blocked": ["bank.test"]})));
+    let (_, read) = c.json("GET", "/api/browser/sites", None).await;
+    assert_eq!(read, rules);
+    assert!(appv3_core::settings().config_dir.join("browser-sites.json").is_file());
+    for bad in [json!({"allowed": ["not a site"]}), json!({"default": "sometimes"}), json!(["example.com"])] {
+        let (st, v) = c.json("PUT", "/api/browser/sites", Some(bad.clone())).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
+    }
+    let (_, read) = c.json("GET", "/api/browser/sites", None).await;
+    assert_eq!(read, rules, "a refused change changes nothing");
+    let (st, _) = c.json("PUT", "/api/browser/sites", Some(json!({"default": "ask"}))).await;
+    assert_eq!(st, StatusCode::OK);
 }
 
 fn urlencode(s: &str) -> String {
@@ -1838,6 +1923,74 @@ async fn confirm_change_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path
     assert_eq!(st, StatusCode::CONFLICT);
     wait_idle(&csid).await;
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{csid}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+}
+
+/// The card that asks whether the agent may use a site: the answer is
+/// applied on the server (this chat, or the saved list), never by the agent.
+async fn site_access_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    use appv3_agent::site_access::{self, Access};
+    let sid = appv3_db::codec::api_uuid(&appv3_db::create_session(pool, appv3_db::NewSession { workspace: ws.display().to_string(), ..Default::default() }).await.unwrap().id);
+    let open = |call: &'static str, host: &'static str| {
+        let sid = sid.clone();
+        async move {
+            let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "preview", "arguments": "{}"}}]);
+            appv3_db::save_message(pool, &sid, appv3_db::NewMessage { tool_calls: Some(tool_calls), ..appv3_db::NewMessage::assistant(None) }).await.unwrap();
+            let q = appv3_db::create_pending_question_with(pool, &sid, call, "preview", &site_access::payload(host, &format!("https://{host}/"))).await.unwrap();
+            appv3_db::codec::api_uuid(&q.id)
+        }
+    };
+    let answer = |qid: String, body: Value| {
+        let uri = format!("/api/agent/{sid}/question/{qid}/answer");
+        async move { c.json("POST", &uri, Some(body)).await }
+    };
+    let saved = || async { c.json("GET", "/api/browser/sites", None).await.1["allowed"].clone() };
+
+    // Declined: the agent is refused for the rest of the chat, and nothing is saved.
+    let qid = open("call-site-1", "www.shop.test").await;
+    let (_, v) = c.json("GET", &format!("/api/agent/{sid}/question"), None).await;
+    assert_eq!(v["question"]["kind"], json!("site_access"), "{v}");
+    assert!(v["question"]["questions"][0]["question"].as_str().unwrap().contains("**shop.test**"), "{v}");
+    let (st, v) = answer(qid, json!({"answers": [["Decline"]]})).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(tool_result(pool, &sid, "call-site-1").await, "The user declined: you may not use shop.test in this chat.");
+    assert_eq!(site_access::decide(Some(&sid), "shop.test"), Access::Declined);
+    assert_eq!(saved().await, json!([]));
+    wait_idle(&sid).await;
+
+    // Allow once: this chat only.
+    let qid = open("call-site-2", "docs.test").await;
+    let (st, v) = answer(qid.clone(), json!({"answers": [["Allow once"]]})).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(tool_result(pool, &sid, "call-site-2").await, "The user allowed docs.test for this chat. Call preview again to continue.");
+    assert_eq!(site_access::decide(Some(&sid), "www.docs.test"), Access::Allowed);
+    assert_eq!(site_access::decide(None, "docs.test"), Access::Ask, "another chat asks for itself");
+    assert_eq!(saved().await, json!([]));
+    let (st, _) = answer(qid, json!({"answers": [["Always allow"]]})).await;
+    assert_eq!(st, StatusCode::CONFLICT, "an answered card cannot be answered again");
+    assert_eq!(saved().await, json!([]));
+    wait_idle(&sid).await;
+
+    // Always allow: saved to the list, for every chat. Typed text is a reason not to.
+    let qid = open("call-site-3", "threads.test").await;
+    let (st, v) = answer(qid, json!({"answers": [["Always allow"]]})).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(tool_result(pool, &sid, "call-site-3").await.starts_with("The user allowed threads.test; it is saved"));
+    assert_eq!(saved().await, json!(["threads.test"]));
+    assert_eq!(site_access::decide(None, "www.threads.test"), Access::Allowed);
+    wait_idle(&sid).await;
+    let qid = open("call-site-4", "mail.test").await;
+    let (st, v) = answer(qid.clone(), json!({"answers": [["Always allow", "only the inbox"]]})).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = answer(qid, json!({"answers": [["only the inbox"]]})).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(tool_result(pool, &sid, "call-site-4").await, "The user did not allow mail.test in this chat. They said:\n\nonly the inbox");
+    assert_eq!(saved().await, json!(["threads.test"]));
+    wait_idle(&sid).await;
+
+    let (st, _) = c.json("PUT", "/api/browser/sites", Some(json!({"default": "ask"}))).await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
 }
 

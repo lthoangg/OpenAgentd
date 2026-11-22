@@ -102,6 +102,8 @@ async fn handle(State(entry): State<Arc<Entry>>, req: Request) -> Response {
             let _guard = entry.begin();
             crate::static_files::serve(&entry, &root, req).await
         }
+        // A site has no listener, so no request reaches this.
+        Backend::Site(_) => plain(StatusCode::NOT_FOUND, "Not found."),
     }
 }
 

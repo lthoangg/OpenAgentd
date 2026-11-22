@@ -9,6 +9,11 @@
 //! console output to [`CONSOLE_PATH`]. It also runs the agent's commands
 //! (snapshot, click, fill, …) that it long-polls from [`AGENT_PATH`].
 //!
+//! A site (a page on another machine) has no listener and is never fetched
+//! here. The desktop app shows it in a browser view of its own, loads the
+//! same script into it, and carries commands and results between that view
+//! and this registry through `/api/preview/{id}/agent`.
+//!
 //! Clients on another device reach a listener through [`tunnel`]: their
 //! native relay listens on the device's own loopback and carries raw TCP
 //! over an authenticated WebSocket.
@@ -26,7 +31,7 @@ mod ws;
 
 pub use manager::{global, static_backend, Entry, Manager, PreviewError, PreviewInfo, TunnelSlot, IDLE_SECS, MAX_ALIAS_PORTS, MAX_PREVIEWS, MAX_TUNNELS};
 pub use static_files::{resolve_workspace_file, url_path};
-pub use target::{parse_url_target, Backend, TargetError, UrlTarget};
+pub use target::{parse_site_url, parse_url_target, site_host, Backend, SiteTarget, TargetError, UrlTarget};
 
 /// Paths the preview listener answers itself instead of forwarding.
 pub const RESERVED_PREFIX: &str = "/__openagentd/";

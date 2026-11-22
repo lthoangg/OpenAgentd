@@ -292,7 +292,7 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     Move path resolved through symlinks first, so plan files themselves stay
     with the `plan` tool (`tools/src/patch.rs` `plan_mode_refusal`);
     `preview` refuses `click`, `fill` and `press`, in a `chain` too
-    (`tools/preview.rs`). A `plan` save in Plan mode names the plan's
+    (`tools/preview_args.rs`). A `plan` save in Plan mode names the plan's
     attachments folder (its path without `.md`).
   - **Compaction.** Compaction inserts a pinned, hidden `note` row
     (`extra.session_plan`) restating the plan before the summary unless one

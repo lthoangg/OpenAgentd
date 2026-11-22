@@ -2,6 +2,51 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## Preview takes pages of the public web (v3.62.0)
+
+`POST /api/preview` with a `url` on another machine (`https://example.com/docs`;
+`http` too, and a host with no scheme is read as `https`) used to answer 422.
+It now answers a preview with `kind: "site"`, `port: 0`, and `target` and
+`origin` both the site's origin: the server opens no listener and never
+fetches the page, which the desktop app shows in a browser view of its own.
+A server on this computer is a local preview as before, and the OpenAgentd
+API port is still refused. A client that cannot show a site (a phone, a
+browser, an older app) should not create one; it sees `kind: "site"` in
+`GET /api/preview` only for pages another client or the agent opened.
+
+Three routes carry what a framed local page does for itself through its
+listener; they answer 404 for any other kind of preview:
+
+- `GET /api/preview/{id}/agent`: the app's long poll for the agent's next
+  command, `{"id", "command"}`, or 204 when none comes in time.
+  `POST` on the same path is a command's result (`{"id", "ok", "result"?,
+  "error"?}`).
+- `POST /api/preview/{id}/console`: console entries, as the listener's
+  `/__openagentd/console` takes them.
+- `POST /api/preview/{id}/page`: `{"url"}`, where the page is now. The
+  agent's commands are allowed, or asked about, by that address's host.
+
+A command for a site's page carries `site`, the host it was allowed for; the
+app runs it only while the page is on that host. One command is for the app
+itself, not the page: `{"action": "goto", "url"}` sends a loaded page to
+another address of its site (the agent opened it).
+
+The `preview` tool accepts such URLs for `open` and uses the same page
+actions on them. Before each use it checks the user's site rules, new in
+`{config dir}/browser-sites.json`: `{"default": "ask" | "allow", "allowed":
+[host…], "blocked": [host…]}`, an entry being a host (`example.com`, which
+also covers `www.`) or `*.example.com` (its subdomains). A missing or
+unreadable file is `ask` with empty lists. `GET /api/browser/sites` reads
+them and `PUT` replaces them (entries are normalized; one that is not a host
+is 422).
+
+A site the rules do not settle opens a pending question of kind
+`site_access`, whose payload adds `site: {"host", "url"}` to the usual
+`questions`. It is answered through the existing answer route with one of
+the labels `Allow once`, `Always allow`, `Decline`; anything else declines.
+The server applies the answer (this chat, in memory, or the saved list); the
+tool result tells the agent to call `preview` again. No SSE event was added.
+
 ## Live events name the model as the stored row does (v3.62.0)
 
 `metadata.model` on the live `message` and `thinking` deltas and on `usage`

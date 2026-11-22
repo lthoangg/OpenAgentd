@@ -180,7 +180,10 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// `.env`: without it, agents asked users to paste keys into the chat.
 /// Lowered by 255 when sentences that repeated a parameter's own description
 /// or its schema `default` were dropped from glob, grep, read and todo.
-const LEAD_ALWAYS_ON_CHARS: usize = 45_918;
+/// Raised by 266 for `preview` to say it also opens pages of the public web:
+/// where they open, that the user is asked once per site, and never to type
+/// the user's passwords. Without it a model does not know it may open one.
+const LEAD_ALWAYS_ON_CHARS: usize = 46_184;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

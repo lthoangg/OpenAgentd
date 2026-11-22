@@ -23,17 +23,22 @@ pub const MAX_TUNNELS: usize = 32;
 /// A page the agent opened stays wanted (an app window keeps it loaded out
 /// of sight) until the agent has not used it for this long.
 pub const AGENT_PAGE_TTL_SECS: u64 = 15 * 60;
+/// Counts the agent's opens and uses of pages, so the latest can be told.
+static AGENT_ORDER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct PreviewInfo {
     pub id: String,
     pub workspace: String,
-    /// `url` for a dev server, `file` for a workspace directory.
+    /// `url` for a dev server, `file` for a workspace directory, `site`
+    /// for a page on another machine.
     pub kind: &'static str,
-    /// The proxied origin, or the served directory.
+    /// The proxied origin, the served directory, or the site's origin.
     pub target: String,
+    /// The listener's port; 0 for a site, which has none.
     pub port: u16,
-    /// Where the iframe loads the preview from.
+    /// Where the iframe loads the preview from (a site's own origin: the
+    /// desktop app's browser view loads it, nothing frames it).
     pub origin: String,
 }
 
@@ -78,6 +83,11 @@ pub struct Entry {
     /// `{"kind": "file", "path"}`, the web's `PreviewTarget`) and when it
     /// last used the page.
     agent_page: Mutex<Option<(serde_json::Value, u64)>>,
+    /// Its place among the pages the agent opened or used ([`AGENT_ORDER`]);
+    /// 0 for a page the agent never touched.
+    agent_order: AtomicU64,
+    /// A site's page address, as the app that shows it last reported.
+    page_url: Mutex<Option<String>>,
 }
 
 /// Marks a request or WebSocket as in flight; the preview is not idle while
@@ -105,8 +115,29 @@ impl Entry {
         let (kind, target) = match &self.backend {
             Backend::Upstream(t) => ("url", t.origin()),
             Backend::Static(root) => ("file", root.display().to_string()),
+            Backend::Site(site) => ("site", site.origin.clone()),
         };
-        PreviewInfo { id: self.id.clone(), workspace: self.workspace.clone(), kind, target, port: self.port, origin: format!("http://127.0.0.1:{}", self.port) }
+        let origin = match &self.backend {
+            Backend::Site(site) => site.origin.clone(),
+            _ => format!("http://127.0.0.1:{}", self.port),
+        };
+        PreviewInfo { id: self.id.clone(), workspace: self.workspace.clone(), kind, target, port: self.port, origin }
+    }
+
+    /// A page on another machine, shown by the desktop app's browser view.
+    pub fn is_site(&self) -> bool {
+        matches!(self.backend, Backend::Site(_))
+    }
+
+    /// The app that shows a site's page reports where the page is now.
+    pub fn set_page_url(&self, url: String) {
+        *self.page_url.lock().unwrap_or_else(|e| e.into_inner()) = Some(url);
+        self.touch();
+    }
+
+    /// Where a site's page was last reported to be.
+    pub fn page_url(&self) -> Option<String> {
+        self.page_url.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     fn touch(&self) {
@@ -180,12 +211,23 @@ impl Entry {
     /// The agent opened `target` here: any app window may load it out of sight.
     pub fn agent_opened(&self, target: serde_json::Value) {
         *self.agent_page.lock().unwrap_or_else(|e| e.into_inner()) = Some((target, now_secs()));
+        self.agent_order.store(AGENT_ORDER.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
     }
 
     /// The agent used the page (any page action): it stays wanted longer.
     pub fn agent_used(&self) {
         if let Some(page) = self.agent_page.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
             page.1 = now_secs();
+            self.agent_order.store(AGENT_ORDER.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+        }
+    }
+
+    /// Larger for the page the agent opened or used later; 0 for one it did
+    /// not open, or has not used for [`AGENT_PAGE_TTL_SECS`].
+    pub fn agent_order(&self) -> u64 {
+        match self.agent_page() {
+            Some(_) => self.agent_order.load(Ordering::SeqCst),
+            None => 0,
         }
     }
 
@@ -232,7 +274,7 @@ impl Manager {
         if blocked {
             return Err(PreviewError::Invalid(format!("Port {} is the OpenAgentd API and cannot be previewed.", t.port)));
         }
-        if self.lock().iter().any(|e| e.port == t.port) {
+        if self.lock().iter().any(|e| !e.is_site() && e.port == t.port) {
             return Err(PreviewError::Invalid(format!("Port {} is another preview and cannot be previewed.", t.port)));
         }
         Ok(())
@@ -251,11 +293,19 @@ impl Manager {
             e.touch();
             return Ok(e.info());
         }
-        let listener = bind(preferred_port).await?;
-        let port = listener.local_addr().map_err(|e| PreviewError::Bind(e.to_string()))?.port();
+        // A site has no listener: the desktop app loads it, and this entry
+        // only carries the agent's commands and the page's console.
+        let listener = match &backend {
+            Backend::Site(_) => None,
+            _ => Some(bind(preferred_port).await?),
+        };
+        let port = match &listener {
+            Some(l) => l.local_addr().map_err(|e| PreviewError::Bind(e.to_string()))?.port(),
+            None => 0,
+        };
         let denied = match &backend {
             Backend::Static(root) => Some(DeniedPaths::new(root, None)),
-            Backend::Upstream(_) => None,
+            Backend::Upstream(_) | Backend::Site(_) => None,
         };
         let (stop, stop_rx) = watch::channel(false);
         let entry = Arc::new(Entry {
@@ -272,6 +322,8 @@ impl Manager {
             tunnels: AtomicUsize::new(0),
             stop,
             agent_page: Mutex::new(None),
+            agent_order: AtomicU64::new(0),
+            page_url: Mutex::new(None),
         });
         {
             let mut entries = self.lock();
@@ -290,7 +342,9 @@ impl Manager {
             entries.push(entry.clone());
         }
         tracing::info!("preview_started id={} port={} target={}", entry.id, port, entry.info().target);
-        tokio::spawn(crate::proxy::serve(listener, entry.clone(), stop_rx));
+        if let Some(listener) = listener {
+            tokio::spawn(crate::proxy::serve(listener, entry.clone(), stop_rx));
+        }
         if reaper && !self.reaper_started.swap(true, Ordering::SeqCst) {
             tokio::spawn(async move {
                 loop {

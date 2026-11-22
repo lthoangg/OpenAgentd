@@ -1,7 +1,10 @@
-//! Preview targets: a loopback dev server or a workspace directory.
+//! Preview targets: a loopback dev server, a workspace directory, or a site.
 //!
 //! Only loopback origins are proxied. Anything else would turn the preview
-//! listener into an SSRF relay reachable from the page it serves.
+//! listener into an SSRF relay reachable from the page it serves. A site (a
+//! page on another machine) is never fetched here: the desktop app shows it
+//! in a browser view of its own, and this server only carries the agent's
+//! commands to that view.
 
 use reqwest::Url;
 use std::fmt;
@@ -38,12 +41,21 @@ impl UrlTarget {
     }
 }
 
-/// What a preview listener serves.
+/// A site: an `http(s)` origin on another machine, such as `https://example.com`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SiteTarget {
+    /// Scheme, host and any non-default port.
+    pub origin: String,
+}
+
+/// What a preview shows.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Backend {
     Upstream(UrlTarget),
     /// A workspace root served as static files.
     Static(PathBuf),
+    /// A site in the desktop app's browser view; it has no listener.
+    Site(SiteTarget),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +120,52 @@ pub fn parse_url_target(raw: &str) -> Result<(UrlTarget, String), TargetError> {
     Ok((UrlTarget { scheme, host, port }, path))
 }
 
+fn is_this_computer(host: &url::Host<&str>) -> bool {
+    match host {
+        url::Host::Domain(d) => {
+            let d = d.trim_end_matches('.').to_ascii_lowercase();
+            d == "localhost" || d.ends_with(".localhost")
+        }
+        url::Host::Ipv4(ip) => ip.is_loopback() || ip.is_unspecified(),
+        url::Host::Ipv6(ip) => ip.is_loopback() || ip.is_unspecified() || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback() || v4.is_unspecified()),
+    }
+}
+
+/// Parse a user- or agent-supplied address of a page on another machine
+/// into its site and the full URL to open. A bare `example.com/docs` gets
+/// `https://`. Servers on this computer are refused: they are previewed
+/// through the proxy ([`parse_url_target`]), which keeps the API port away.
+pub fn parse_site_url(raw: &str) -> Result<(SiteTarget, String), TargetError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(invalid("URL is empty."));
+    }
+    let with_scheme = if raw.contains("://") { raw.to_string() } else { format!("https://{raw}") };
+    let url = Url::parse(&with_scheme).map_err(|e| invalid(format!("Invalid URL '{raw}': {e}.")))?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(invalid(format!("Only http and https pages can be opened, not '{}'.", url.scheme())));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(invalid("Preview URLs cannot contain credentials."));
+    }
+    match url.host() {
+        None => Err(invalid("URL has no host.")),
+        Some(host) if is_this_computer(&host) => Err(invalid("Servers on this computer are previewed as local servers.")),
+        Some(_) => Ok((SiteTarget { origin: url.origin().ascii_serialization() }, url.to_string())),
+    }
+}
+
+/// The host of a page address, as site rules name it: lower case, without
+/// a trailing dot or a port. `None` for anything that is not an `http(s)` URL.
+pub fn site_host(url: &str) -> Option<String> {
+    let url = Url::parse(url.trim()).ok()?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return None;
+    }
+    let host = url.host_str()?.trim_end_matches('.').to_ascii_lowercase();
+    (!host.is_empty()).then_some(host)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +207,41 @@ mod tests {
         ] {
             assert!(parse_url_target(raw).is_err(), "{raw} should be rejected");
         }
+    }
+
+    #[test]
+    fn sites_are_http_pages_on_another_machine() {
+        let ok = |raw: &str| {
+            let (site, url) = parse_site_url(raw).unwrap();
+            (site.origin, url)
+        };
+        assert_eq!(ok("https://Example.com/a?b=1#c"), ("https://example.com".into(), "https://example.com/a?b=1#c".into()));
+        assert_eq!(ok("example.com/docs"), ("https://example.com".into(), "https://example.com/docs".into()));
+        assert_eq!(ok("http://192.168.1.20:3000"), ("http://192.168.1.20:3000".into(), "http://192.168.1.20:3000/".into()));
+        for raw in [
+            "",
+            "ftp://example.com/",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "http://localhost:8000/",
+            "http://app.localhost/",
+            "http://LOCALHOST./",
+            "http://127.0.0.1:4082/api",
+            "http://0.0.0.0:5173/",
+            "http://[::1]:5173/",
+            "http://[::ffff:127.0.0.1]/",
+            "https://user:[REDACTED]@example.com/",
+        ] {
+            assert!(parse_site_url(raw).is_err(), "{raw} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_site_host_is_lower_case_without_port_or_dot() {
+        assert_eq!(site_host("https://WWW.Example.com.:8443/x").as_deref(), Some("www.example.com"));
+        assert_eq!(site_host("http://192.168.1.20:3000/").as_deref(), Some("192.168.1.20"));
+        assert_eq!(site_host("about:blank"), None);
+        assert_eq!(site_host("not a url"), None);
     }
 
     #[test]

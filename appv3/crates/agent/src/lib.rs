@@ -30,6 +30,7 @@ pub mod service;
 pub mod session;
 pub mod session_frozen;
 pub mod side_question;
+pub mod site_access;
 pub mod skills;
 pub mod snapshot;
 mod snapshot_gix;

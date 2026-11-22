@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod agents;
+pub mod browser;
 pub mod desktop;
 pub mod events;
 pub mod health;
@@ -45,6 +46,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/observability", misc::observability_router())
         .nest("/api/terminal", terminal::router())
         .nest("/api/preview", preview::router())
+        .nest("/api/browser", browser::router())
         .nest("/api/desktop", desktop::router())
         .nest("/api/cloud", crate::cloud::routes::router())
         .nest("/api/server", server_update::router().merge(server_name::router()))

@@ -17,6 +17,12 @@
  * (snapshot, click, fill, press, scroll, navigate, wait, inspect) and
  * posts each result back there. A virtual cursor in the overlay glides to
  * each element the agent acts on, so the user can follow along.
+ *
+ * The desktop app also loads this script into its native view of a public
+ * site (`window.__openagentdNative`, set before it). Nothing frames that
+ * page and it cannot reach a preview listener, so messages and results wait
+ * in an outbox the app collects, and commands arrive through
+ * `window.__openagentdNativeBridge`.
  */
 (function () {
   'use strict';
@@ -28,14 +34,27 @@
   var w = window;
   if (w.__openagentdPreview) return;
   w.__openagentdPreview = true;
-  if (w.parent === w || w.parent !== w.top) return;
+  // The app's native view: the top document, marked by the app before this ran.
+  var native = w.__openagentdNative === true && w.parent === w;
+  if (!native && (w.parent === w || w.parent !== w.top)) return;
 
   var doc = document;
   var originalFetch = typeof w.fetch === 'function' ? w.fetch.bind(w) : null;
+  // Kept from before the page's own scripts ran, which may replace them.
+  var toJson = JSON.stringify;
+  var fromJson = JSON.parse;
+  // Native view only: what the app has not collected yet.
+  var outbox = [];
+  var MAX_OUTBOX = 400;
 
   function post(msg) {
     msg.ns = NS;
     msg.v = VERSION;
+    if (native) {
+      outbox.push(msg);
+      if (outbox.length > MAX_OUTBOX) outbox.splice(0, outbox.length - MAX_OUTBOX);
+      return;
+    }
     try {
       w.parent.postMessage(msg, '*');
     } catch (_) {
@@ -90,7 +109,8 @@
     if (!queue.length) return;
     var entries = queue.splice(0, 200);
     post({ type: 'console', entries: entries });
-    if (!originalFetch) return;
+    // The app passes a native view's console on to the server itself.
+    if (native || !originalFetch) return;
     try {
       originalFetch(CONSOLE_PATH, {
         method: 'POST',
@@ -108,7 +128,12 @@
     if (flushTimer === null) flushTimer = setTimeout(flush, 500);
   }
 
+  // The desktop shell's own bridge writes to a native view's console when
+  // it refuses the page a call to the app. That is not the site's output.
+  var SHELL_NOISE = /^(Unhandled promise rejection: )?\S+ not allowed on window "browser\/|^IPC custom protocol failed, Tauri will now use the postMessage interface/;
+
   function record(level, message) {
+    if (native && SHELL_NOISE.test(message)) return;
     queue.push({ level: level, message: truncate(message, MAX_ARG), url: pagePath(), ts: Date.now() });
     if (queue.length > 500) queue.splice(0, queue.length - 500);
     schedule();
@@ -700,6 +725,7 @@
     var escape = keymap.escape && event.key === 'Escape' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
     if (!escape && !keymapHit(event)) return;
     event.preventDefault();
+    if (native) return;
     try {
       w.parent.postMessage({ ns: KEYS_NS, v: 1, type: 'key', key: event.key, code: event.code, metaKey: event.metaKey, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey }, '*');
     } catch (_) {
@@ -1317,6 +1343,10 @@
   }
 
   function sendReply(reply) {
+    if (native) {
+      post({ type: 'agent-reply', reply: reply });
+      return;
+    }
     if (!originalFetch) return;
     var body = JSON.stringify(reply);
     try {
@@ -1371,7 +1401,8 @@
   w.addEventListener('pagehide', flushReply);
 
   function pollAgent() {
-    if (!originalFetch) return;
+    // A native view gets its commands from the app (the bridge below).
+    if (native || !originalFetch) return;
     var started = Date.now();
     originalFetch(AGENT_PATH, { cache: 'no-store' })
       .then(function (res) {
@@ -1399,10 +1430,7 @@
 
   // ── Commands from the dock ────────────────────────────────────────────
 
-  w.addEventListener('message', function (event) {
-    if (event.source !== w.parent) return;
-    var data = event.data;
-    if (!data || data.ns !== NS || data.v !== VERSION) return;
+  function handleDock(data) {
     switch (data.type) {
       case 'hello':
         sendReady();
@@ -1430,7 +1458,51 @@
         setKeymap(data.keymap);
         break;
     }
-  });
+  }
+
+  if (native) {
+    // Each takes and returns text, so the app passes JSON it built itself.
+    Object.defineProperty(w, '__openagentdNativeBridge', {
+      value: {
+        /** Everything posted since the last call, as a JSON array ('' when none). */
+        drain: function () {
+          if (!outbox.length) return '';
+          var out = outbox;
+          outbox = [];
+          try {
+            return toJson(out);
+          } catch (_) {
+            return '';
+          }
+        },
+        /** Run the agent's command `{ id, command }`; its result arrives in the outbox. */
+        run: function (json) {
+          try {
+            runCommand(fromJson(json));
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+        /** A dock command, as `handleDock` takes it. */
+        dock: function (json) {
+          try {
+            handleDock(fromJson(json));
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+      },
+    });
+  } else {
+    w.addEventListener('message', function (event) {
+      if (event.source !== w.parent) return;
+      var data = event.data;
+      if (!data || data.ns !== NS || data.v !== VERSION) return;
+      handleDock(data);
+    });
+  }
 
   // Test hook: Happy DOM tests drive the runtime through these.
   w.__openagentdPreviewInternals = {

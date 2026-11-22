@@ -28,8 +28,12 @@ pub fn builtin_skills_root() -> PathBuf {
 /// Files in the config dir that hold secrets: the credential store, its
 /// lock, the dotenv backups the migrations keep, and the user's `mcp.json`
 /// (its secrets live in the store, but one edited by hand holds them until
-/// the next start; the agent changes it with the `mcp` tool). Agent tools
-/// never touch them.
+/// the next start; the agent changes it with the `mcp` tool). With them,
+/// the user's list of sites the agent may use (`browser-sites.json`, read
+/// by `appv3_agent::site_access`): only the user changes it, on a card or
+/// in Settings. Agent tools never touch them.
+pub const SITE_RULES_FILE: &str = "browser-sites.json";
+
 pub fn secret_config_files() -> Vec<PathBuf> {
     let cfg = &appv3_core::settings().config_dir;
     vec![
@@ -38,6 +42,7 @@ pub fn secret_config_files() -> Vec<PathBuf> {
         cfg.join(".env.migrated"),
         cfg.join(appv3_core::runtime_settings::DOTENV_BACKUP),
         cfg.join("mcp.json"),
+        cfg.join(SITE_RULES_FILE),
     ]
 }
 

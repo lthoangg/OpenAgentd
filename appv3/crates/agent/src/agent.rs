@@ -584,8 +584,23 @@ impl Agent {
             // In a turn nobody is watching, `ask_user` refuses and a
             // submitting `plan` only saves, so they run with the others.
             let unattended = state.metadata.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
+            // `preview` calls on a site the user has not allowed yet open a
+            // card, so they pause like a change to confirm. Decided here,
+            // before anything runs, and told to the tool, which refuses
+            // rather than pause in a call this loop did not plan for.
+            let site_asks: std::collections::HashSet<String> = if unattended {
+                Default::default()
+            } else {
+                tc_list
+                    .iter()
+                    .filter(|tc| tc.function.name == crate::tools::preview::PREVIEW_TOOL)
+                    .filter(|tc| crate::tools::preview_site::asks_for_site(&tc.function.arguments, base_ctx.session_id.as_deref(), base_ctx.workspace.as_deref()))
+                    .map(|tc| tc.id.clone())
+                    .collect()
+            };
+            state.metadata.lock().unwrap().insert(crate::site_access::SITE_ASK_META.into(), json!(site_asks.iter().collect::<Vec<_>>()));
             let (pausing_calls, other_calls): (Vec<ToolCall>, Vec<ToolCall>) =
-                tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && waits_on_a_person(tc)));
+                tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_LEAD || (!unattended && (waits_on_a_person(tc) || site_asks.contains(&tc.id))));
             let (user_asks, pausing_calls): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(|tc| tc.function.name == ASK_USER);
             let meta = state.metadata.clone();
             let mut base_ctx = base_ctx.clone();
@@ -688,7 +703,7 @@ impl Agent {
                 // submissions the last opens the review. A change to confirm
                 // waits behind a question, and opens its card only alone.
                 let (submit_calls, rest): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(submits_plan);
-                let (confirm_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = rest.into_iter().partition(opens_confirm);
+                let (confirm_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = rest.into_iter().partition(|tc| opens_confirm(tc) || site_asks.contains(&tc.id));
                 let mut confirm_calls = confirm_calls.into_iter();
                 let (held, held_reason, primary, asked) = if let Some((primary, asked)) = asked_early {
                     for tc in &user_asks[1..] {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import { parseAddress } from '@/components/Preview/preview-address'
+import { parseAddress, siteUnavailableMessage } from '@/components/Preview/preview-address'
 
 const WS = '/Users/me/project'
 
@@ -19,20 +19,24 @@ describe('parseAddress', () => {
     }
   })
 
-  it('turns away sites that are not on this computer, with or without a scheme', () => {
-    for (const [value, host] of [
-      ['https://example.com', 'example.com'],
-      ['http://192.168.1.4:3000/x', '192.168.1.4'],
-      ['example.com:8080', 'example.com'],
-      ['example.com', 'example.com'],
-      ['www.google.com/search?q=x', 'www.google.com'],
-      ['docs.github.io', 'docs.github.io'],
+  it('reads an address on another machine as a site, https unless it names a scheme', () => {
+    for (const [value, url] of [
+      ['https://example.com', 'https://example.com'],
+      ['http://192.168.1.4:3000/x', 'http://192.168.1.4:3000/x'],
+      ['example.com:8080', 'https://example.com:8080'],
+      ['example.com', 'https://example.com'],
+      ['www.google.com/search?q=x', 'https://www.google.com/search?q=x'],
+      ['docs.github.io', 'https://docs.github.io'],
     ]) {
-      expect(parseAddress(value, WS)).toEqual({
-        kind: 'invalid',
-        message: `Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files, not ${host}.`,
-      })
+      expect(parseAddress(value, WS)).toEqual({ kind: 'site', url })
     }
+  })
+
+  it('says where sites open, for a client that cannot show one', () => {
+    expect(siteUnavailableMessage('https://example.com/docs')).toBe(
+      'Public sites such as example.com open in the OpenAgentd desktop app on a Mac. Here, Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files.',
+    )
+    expect(siteUnavailableMessage('not a url')).toContain('such as not a url open')
   })
 
   it('still reads web file names and ./ paths that look like hosts as workspace files', () => {

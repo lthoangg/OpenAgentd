@@ -18,6 +18,8 @@ mod watchdog;
 mod remote_update;
 mod network_access;
 mod preview_relay;
+mod browser_cookies;
+mod browser_view;
 mod servers;
 mod shell_prefs;
 mod badge;
@@ -684,6 +686,7 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .manage(state)
         .manage(preview_relay::PreviewRelays::default())
+        .manage(browser_view::BrowserViews::default())
         .on_menu_event(|app, event| {
             if !island::handle_menu_event(app, event.id().as_ref()) && !pet::handle_menu_event(app, event.id().as_ref()) {
                 handle_desktop_menu(app, event.id().as_ref());
@@ -718,6 +721,16 @@ fn main() {
             commands::app_set_network_access_key,
             preview_relay::preview_relay_open,
             preview_relay::preview_relay_close,
+            browser_view::browser_view_open,
+            browser_view::browser_view_frame,
+            browser_view::browser_view_go,
+            browser_view::browser_view_close,
+            browser_view::browser_view_reset,
+            browser_view::browser_view_run,
+            browser_view::browser_view_dock,
+            browser_view::browser_view_import_cookies,
+            browser_view::browser_view_clear_cookies,
+            browser_view::browser_profile_clear,
             menu::set_tray_session,
             app_menu::set_menu_text_size,
             context_menu::show_app_menu,
@@ -851,6 +864,13 @@ fn main() {
             }
             RunEvent::WindowEvent {
                 label,
+                event: WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. },
+                ..
+            } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
+                browser_view::owner_changed(app, label.as_str());
+            }
+            RunEvent::WindowEvent {
+                label,
                 event: WindowEvent::CloseRequested { api, .. },
                 ..
             } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
@@ -860,6 +880,8 @@ fn main() {
                     if let Some(window) = app.get_webview_window(label.as_str()) {
                         let _ = save_window_state(app, &window);
                         window_session::window_closing(app, label.as_str());
+                        // Before the window goes: its pages are child windows of it.
+                        browser_view::close_window(app, label.as_str());
                         let _ = window.destroy();
                         state
                             .window_backend_base_urls

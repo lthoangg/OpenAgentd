@@ -50,6 +50,31 @@ export async function updateDeniedPathsSettings(
   return res.json()
 }
 
+/**
+ * Which sites the agent may use in the Preview tab: what applies to a site
+ * in neither list, the sites it may use and the ones it may not. A list
+ * entry is a host (`example.com`, which covers `www.` too) or
+ * `*.example.com` for its subdomains.
+ */
+export type BrowserSites = { default: 'ask' | 'allow'; allowed: string[]; blocked: string[] }
+
+export async function getBrowserSites(): Promise<BrowserSites> {
+  const res = await fetch(`${apiBaseUrl()}/browser/sites`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /browser/sites')
+  return res.json()
+}
+
+/** Replace the rules; resolves them as the server stored them (a pasted URL becomes its host). */
+export async function updateBrowserSites(body: BrowserSites): Promise<BrowserSites> {
+  const res = await fetch(`${apiBaseUrl()}/browser/sites`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /browser/sites')
+  return res.json()
+}
+
 
 export type SummarizationSettings = {
   /** null = use the auto-computed model-aware threshold */

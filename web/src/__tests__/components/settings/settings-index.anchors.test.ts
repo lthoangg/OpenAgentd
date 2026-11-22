@@ -30,6 +30,7 @@ const PAGE_SOURCES: Record<TopLevelSection, readonly string[]> = {
   sessions: [`${P}/sessions/titles.tsx`, `${P}/sessions/summaries.tsx`, `${P}/sessions/goals.tsx`, `${P}/sessions/history.tsx`],
   workspaces: [`${P}/settings.workspaces.tsx`],
   blocked_files: [`${P}/settings.blocked_files.tsx`],
+  browser: [`${P}/settings.browser.tsx`],
   secrets: [`${P}/settings.secrets.tsx`],
   switch_computer: [`${P}/settings.switch_computer.tsx`, 'components/AppBackendPanel.tsx', 'components/NetworkAccessCard.tsx', 'components/DirectSessionsCard.tsx'],
   remote: [`${P}/settings.remote.tsx`, 'components/account/DeviceRows.tsx'],

@@ -11,6 +11,8 @@ export type AddressInput =
   | { kind: 'page'; path: string }
   /** A local server address (`localhost:3000`, `http://127.0.0.1:8080/x`). */
   | { kind: 'url'; url: string }
+  /** A page on another machine (`example.com/docs`), as a full URL. */
+  | { kind: 'site'; url: string }
   /**
    * A workspace file, relative to the root. `fallback` (a full path typed
    * as-is) is the server path to use when it is not a workspace file.
@@ -51,8 +53,9 @@ const FILE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'ico', 'css', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'map', 'wasm',
 ])
 
-function notLocal(host: string): AddressInput {
-  return { kind: 'invalid', message: `Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files, not ${host}.` }
+/** A site: `https://` unless the address names its own scheme. */
+function site(value: string): AddressInput {
+  return { kind: 'site', url: /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}` }
 }
 
 /** The host of a URL-like address, as written (`[::1]` keeps its brackets). */
@@ -77,10 +80,21 @@ export function parseAddress(raw: string, workspace: string): AddressInput | nul
   if (value.startsWith('/')) return { kind: 'page', path: value }
   if (URL_LIKE.test(value)) {
     const host = hostOf(value)
-    // A bare `:5173` is localhost; anything naming another machine is turned away here, before a tab opens for it.
-    return host && !LOCAL_HOST.test(host) ? notLocal(host) : { kind: 'url', url: value }
+    // A bare `:5173` is localhost; anything naming another machine is a site.
+    return host && !LOCAL_HOST.test(host) ? site(value) : { kind: 'url', url: value }
   }
-  const site = BARE_HOST.exec(value)
-  if (site && !FILE_EXTENSIONS.has(site[2].toLowerCase())) return notLocal(site[1].toLowerCase())
+  const bare = BARE_HOST.exec(value)
+  if (bare && !FILE_EXTENSIONS.has(bare[2].toLowerCase())) return site(value)
   return { kind: 'file', path: slashes(value).replace(/^(?:\.\/)+/, '') }
+}
+
+/** What the address bar says for a site on a client that cannot show one. */
+export function siteUnavailableMessage(url: string): string {
+  let host = url
+  try {
+    host = new URL(url).hostname
+  } catch {
+    // Shown as typed.
+  }
+  return `Public sites such as ${host} open in the OpenAgentd desktop app on a Mac. Here, Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files.`
 }

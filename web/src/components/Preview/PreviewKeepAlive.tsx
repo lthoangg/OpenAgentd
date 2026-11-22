@@ -26,16 +26,22 @@
  * driveable while its session is not on screen, plus the ones this window
  * saw the agent open. With several windows, only the one holding a Web Lock
  * frames them, so one page polls a listener.
+ *
+ * A page of the public web is not framed at all: the desktop shell shows it
+ * in a native view, and the hidden copy here only holds that page
+ * (`site-pages.ts`), which keeps its view loaded out of sight.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { apiBaseUrl } from '@/api/base-url'
 import { listAgentPages, openPreview, previewMode } from '@/api/preview'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { browserViewsAvailable, isPublicTarget } from '@/lib/browser-view'
 import {
   type AgentPreview,
   isShownInTab,
   usePreviewKeepAliveStore,
 } from '@/stores/usePreviewKeepAliveStore'
+import { sitePage } from './site-pages'
 
 /** How often unused previews are dropped. */
 const EXPIRE_CHECK_MS = 30_000
@@ -188,14 +194,41 @@ function HiddenPreviewFrame({ entry }: { entry: AgentPreview }) {
   )
 }
 
+/** Holds the agent's site page, so its native view stays loaded with no tab showing it. */
+function HiddenSitePage({ entry }: { entry: AgentPreview }) {
+  const { key, workspace, target } = entry
+  const url = target.kind === 'url' ? target.url : ''
+  const page = sitePage(workspace, url)
+  useEffect(() => page?.retain(), [page])
+  // The first time, a page that is already loaded (a tab just closed) stays
+  // as it is; a new agent open goes to its address.
+  const loadedRef = useRef(false)
+  useEffect(() => {
+    if (!page) return
+    if (loadedRef.current) void page.open(url, null)
+    else void page.ensure(url, null)
+    loadedRef.current = true
+  }, [page, url])
+  const previewId = useSyncExternalStore(page?.subscribe ?? noSubscription, () => page?.getState().previewId ?? null)
+  useEffect(() => {
+    if (previewId) usePreviewKeepAliveStore.getState().setAgentPreviewId(key, previewId)
+  }, [key, previewId])
+  return null
+}
+
+function noSubscription(): () => void {
+  return () => {}
+}
+
 export function PreviewKeepAlive() {
   const phone = useIsMobile()
+  const sites = !phone && browserViewsAvailable()
   const usable = !phone && previewMode() !== 'unavailable'
   const agent = usePreviewKeepAliveStore((s) => s.agent)
   const tabs = usePreviewKeepAliveStore((s) => s.tabs)
   const hasEntries = Object.keys(agent).length > 0
-  const holder = useKeepAliveLock(usable)
-  useServerAgentPages(usable && holder)
+  const holder = useKeepAliveLock(usable || sites)
+  useServerAgentPages((usable || sites) && holder)
 
   useEffect(() => {
     if (!hasEntries) return
@@ -203,14 +236,13 @@ export function PreviewKeepAlive() {
     return () => window.clearInterval(timer)
   }, [hasEntries])
 
-  const hidden = usable && holder ? Object.values(agent).filter((entry) => !isShownInTab(tabs, entry)) : []
-  useFocusGuard(hidden.length > 0)
+  // A site needs the desktop app's native view; a local page needs a reachable listener.
+  const hidden = holder ? Object.values(agent).filter((entry) => (isPublicTarget(entry.target) ? sites : usable) && !isShownInTab(tabs, entry)) : []
+  useFocusGuard(hidden.some((entry) => !isPublicTarget(entry.target)))
   if (hidden.length === 0) return null
   return (
     <>
-      {hidden.map((entry) => (
-        <HiddenPreviewFrame key={entry.key} entry={entry} />
-      ))}
+      {hidden.map((entry) => (isPublicTarget(entry.target) ? <HiddenSitePage key={entry.key} entry={entry} /> : <HiddenPreviewFrame key={entry.key} entry={entry} />))}
     </>
   )
 }

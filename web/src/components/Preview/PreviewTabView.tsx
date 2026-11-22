@@ -12,7 +12,7 @@
  * The tab stays mounted while another dock tab is active, so the page, its
  * state, and pending comments survive switching tabs.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -32,8 +32,8 @@ import { type PreviewInfo, type PreviewTarget, addRecentPreviewUrl, openPreview,
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { openExternalUrl } from '@/lib/open-external'
+import { browserViewsAvailable } from '@/lib/browser-view'
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/use-platform'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -43,6 +43,8 @@ import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale,
 import { PreviewAddress } from './PreviewAddress'
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
 import { PreviewConsole } from './PreviewConsole'
+import { ToolbarButton } from './ToolbarButton'
+import { useElementSize } from './use-element-size'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { formatChord } from '@/lib/keyboard/chord'
@@ -94,71 +96,6 @@ export interface PreviewTabViewProps {
   active?: boolean
   /** Close this tab: Cmd/Ctrl+W pressed while focus was in the page. */
   onRequestClose?: (tabId: string) => void
-}
-
-function useElementSize(ref: RefObject<HTMLElement | null>): { width: number; height: number } {
-  const [size, setSize] = useState({ width: 0, height: 0 })
-  useEffect(() => {
-    const node = ref.current
-    if (!node) return
-    const measure = () => {
-      const rect = node.getBoundingClientRect()
-      setSize((prev) => (prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }))
-    }
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [ref])
-  return size
-}
-
-/** A phone's bar tool: 44px and round. Forced, or the dock button's own 28px touch size wins. */
-const PHONE_TOOL_CLASS = 'size-11! rounded-full! [&_svg]:size-5'
-
-function ToolbarButton({
-  label,
-  onClick,
-  disabled,
-  disabledReason,
-  pressed,
-  children,
-  className,
-}: {
-  label: string
-  onClick?: () => void
-  disabled?: boolean
-  /** Why it is disabled; the tooltip says this instead of the label while it is. */
-  disabledReason?: string
-  pressed?: boolean
-  children: React.ReactNode
-  className?: string
-}) {
-  const reason = disabled ? disabledReason : undefined
-  // A phone's bottom bar: thumb-sized 44px round buttons with 20px glyphs.
-  const phone = useIsMobile()
-  return (
-    <Tooltip>
-      {/* The trigger wraps the button in a span, so a disabled one still gets the hover. */}
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            aria-label={label}
-            aria-description={reason}
-            aria-pressed={pressed}
-            className={cn(DOCK_ACTION_BUTTON_CLASS, phone && PHONE_TOOL_CLASS, pressed && 'bg-(--bg-key) text-(--color-text)', className)}
-          >
-            {children}
-          </button>
-        }
-      />
-      <TooltipContent side="bottom">{reason ?? label}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 function originOf(url: string): string | null {
@@ -605,7 +542,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
 
   const submitUrl = (raw: string) => {
     setAddressError(null)
-    void import('./preview-address').then(({ parseAddress }) => {
+    void import('./preview-address').then(({ parseAddress, siteUnavailableMessage }) => {
       const input = parseAddress(raw, workspace)
       if (!input) return
       switch (input.kind) {
@@ -616,6 +553,11 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         return
       case 'invalid':
         setAddressError(input.message)
+        return
+      case 'site':
+        // A page of the public web gets a tab of its own, with a native view.
+        if (browserViewsAvailable()) onOpenTarget?.({ kind: 'url', url: input.url })
+        else setAddressError(siteUnavailableMessage(input.url))
         return
       case 'file':
         // A file tab's server is the workspace: its other files open in place.

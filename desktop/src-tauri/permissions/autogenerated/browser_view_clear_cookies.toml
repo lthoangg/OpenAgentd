@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-view-clear-cookies"
+description = "Enables the browser_view_clear_cookies command without any pre-configured scope."
+commands.allow = ["browser_view_clear_cookies"]
+
+[[permission]]
+identifier = "deny-browser-view-clear-cookies"
+description = "Denies the browser_view_clear_cookies command without any pre-configured scope."
+commands.deny = ["browser_view_clear_cookies"]

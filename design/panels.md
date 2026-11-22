@@ -105,8 +105,8 @@ Settings adds its own shell on top:
   opens full-screen, with Back in the overlay header. An editor (agent,
   skill, connector) brings its own Back, so the overlay's Back hides while
   one is open: one Back on screen.
-- **Nav.** Three groups in sentence case (Basics, Agent, Advanced), 15
-  sections, no icons at full width, counts in words ("4 skills",
+- **Nav.** Four groups in sentence case (Basics, Agent, Work, Devices) and
+  About, 17 sections, no icons at full width, counts in words ("4 skills",
   "1 needs sign-in"; nothing for none), a "Search settings" box on top.
 - **One save rule.** A page of fields keeps a draft and saves from the save
   bar (`SaveBar`: Save, ⌘S, "Discard…" asks first); when Save is blocked the
@@ -181,3 +181,14 @@ Comment keeps a button of its own.
   (the scale is left out at 100%); in Responsive the size shows for a moment
   while the panel is resized. A phone's size button takes the pressed fill
   while a fixed size is chosen.
+- **A public site** (desktop app on a Mac) is a tab of its own with the
+  same bar, plus the agent's access to the site (a picker beside the size:
+  the agent icon always, "Agent allowed", "Agent asks first" or "Agent
+  blocked" from `@2xl`) and a "⋯" menu for its cookies (**Import cookies…**,
+  **Sign out of this site…**). The page is a native view over the tab's page
+  area, so nothing of the app can be drawn on top of it: tooltips of the bar
+  go up, the comment composer sits in the tab's flow above the page instead
+  of floating over the element, and the view hides while a menu, a dialog or
+  another overlay covers any part of the page area. On every other client
+  the tab says "Public sites open in the desktop app" with **Open in
+  browser**.

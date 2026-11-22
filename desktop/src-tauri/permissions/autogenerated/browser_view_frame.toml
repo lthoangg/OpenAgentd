@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-view-frame"
+description = "Enables the browser_view_frame command without any pre-configured scope."
+commands.allow = ["browser_view_frame"]
+
+[[permission]]
+identifier = "deny-browser-view-frame"
+description = "Denies the browser_view_frame command without any pre-configured scope."
+commands.deny = ["browser_view_frame"]

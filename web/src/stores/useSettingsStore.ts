@@ -37,6 +37,7 @@ export const SETTINGS_SECTION_IDS = [
   'sessions',
   'workspaces',
   'blocked_files',
+  'browser',
   'secrets',
   'switch_computer',
   'remote',

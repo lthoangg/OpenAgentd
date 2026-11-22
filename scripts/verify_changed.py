@@ -38,6 +38,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("native/cloud/**", ("verify-cloud", "verify-v3", "verify-mobile")),
     ("native/shell-core/**", ("verify-shell-core", "verify-desktop", "verify-mobile")),
     ("mobile/android-plugin/**", ("verify-mobile",)),
+    # The preview script: the desktop shell compiles it in for public sites.
+    ("appv3/crates/preview/assets/**", ("verify-desktop",)),
     # Sources the web tests read to hold the UI to the backend and the shells.
     ("appv3/crates/agent/data/**", ("verify-web",)),
     ("appv3/crates/preview/assets/**", ("verify-web",)),

@@ -148,6 +148,7 @@ export const queryKeys = {
   },
   settings: {
     deniedPaths: () => ['settings', 'denied-paths'] as const,
+    browserSites: () => ['settings', 'browser-sites'] as const,
     secrets: () => ['settings', 'secrets'] as const,
     sandbox: () => ['settings', 'denied-paths'] as const,
     summarization: () => ['settings', 'summarization'] as const,

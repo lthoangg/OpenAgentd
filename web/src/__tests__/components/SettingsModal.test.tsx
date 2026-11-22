@@ -69,6 +69,7 @@ mock.module('@/components/settings/pages/settings.connectors.new', () => ({ NewC
 mock.module('@/components/settings/pages/settings.connectors.$name', () => ({ ConnectorDetailPage: () => <div>mcp-edit</div> }))
 mock.module('@/components/settings/pages/settings.models', () => ({ ModelsSettingsPage: () => <div>providers</div> }))
 mock.module('@/components/settings/pages/settings.blocked_files', () => ({ BlockedFilesSettingsPage: () => <div>denied-paths</div> }))
+mock.module('@/components/settings/pages/settings.browser', () => ({ BrowserSettingsPage: () => <div>browser-sites</div> }))
 
 import { SettingsModal } from '@/components/SettingsModal'
 import { useSettingsStore } from '@/stores/useSettingsStore'

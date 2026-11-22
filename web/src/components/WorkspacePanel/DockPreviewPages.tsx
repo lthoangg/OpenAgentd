@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { closePreview, type PreviewTarget } from '@/api/preview'
 import type { DesignFeedback } from '@/lib/design-feedback'
+import { isPublicTarget } from '@/lib/browser-view'
 import { lazySurface } from '@/lib/lazy-surface'
 import { cn } from '@/lib/utils'
 import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
@@ -20,6 +21,7 @@ import { paneStyle } from './usePaneLayout'
 
 // Kept out of the startup bundle; prefetched while the app is idle.
 const PreviewTabView = lazySurface(() => import('../Preview/PreviewTabView'), 'PreviewTabView')
+const BrowserTabView = lazySurface(() => import('../Preview/BrowserTabView'), 'BrowserTabView')
 
 /** The preview listener behind each preview tab, closed when its last tab closes. */
 export function usePreviewListeners() {
@@ -118,17 +120,31 @@ export function DockPreviewPages({
             onFocusCapture={() => focusPane(pane)}
             onPointerDownCapture={() => focusPane(pane)}
           >
-            <PreviewTabView
-              workspace={workspace}
-              tabId={tab.id}
-              target={tab.target}
-              navKey={tab.navKey}
-              onPreviewId={handlePreviewId}
-              onSendComments={onSendPreviewComments}
-              onOpenTarget={openPreviewTarget}
-              active={open && showing}
-              onRequestClose={closeTab}
-            />
+            {isPublicTarget(tab.target) ? (
+              // A site is drawn by the desktop shell, not framed (lib/browser-view).
+              <BrowserTabView
+                workspace={workspace}
+                tabId={tab.id}
+                target={tab.target}
+                navKey={tab.navKey}
+                onSendComments={onSendPreviewComments}
+                onOpenTarget={openPreviewTarget}
+                active={open && showing}
+                onRequestClose={closeTab}
+              />
+            ) : (
+              <PreviewTabView
+                workspace={workspace}
+                tabId={tab.id}
+                target={tab.target}
+                navKey={tab.navKey}
+                onPreviewId={handlePreviewId}
+                onSendComments={onSendPreviewComments}
+                onOpenTarget={openPreviewTarget}
+                active={open && showing}
+                onRequestClose={closeTab}
+              />
+            )}
           </div>
         )
       })}

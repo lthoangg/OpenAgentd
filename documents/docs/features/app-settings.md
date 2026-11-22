@@ -59,6 +59,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   Desktop. **Agent**: Agents, Skills, Connectors, Plugins, Memory. **Work**:
   Sessions, Workspaces, Blocked files. **Devices**: Switch computer, Remote
   control. **About** sits on its own at the bottom of the sidebar.
+  - **Browser** `[v3.62.0]`, under **Work**: the sites the agent may use in
+    the Preview tab (ask for each new site or allow all, allowed sites,
+    blocked sites), and in the desktop app on a Mac **Clear browsing data**.
   - **General** (was Appearance) has two headings: **Appearance** (theme,
     text size) and **Chat** (Detail, Open previews).
   - **Switch computer** (was Server; the same name as ⌘K → **Switch

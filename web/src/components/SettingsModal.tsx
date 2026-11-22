@@ -66,6 +66,7 @@ import { ConnectorDetailPage } from '@/components/settings/pages/settings.connec
 import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
 import { ModelsSettingsPage } from '@/components/settings/pages/settings.models'
 import { BlockedFilesSettingsPage } from '@/components/settings/pages/settings.blocked_files'
+import { BrowserSettingsPage } from '@/components/settings/pages/settings.browser'
 import { SecretsSettingsPage } from '@/components/settings/pages/settings.secrets'
 import { WorkspacesSettingsPage } from '@/components/settings/pages/settings.workspaces'
 import { SessionsSettingsPage } from '@/components/settings/pages/settings.sessions'
@@ -322,6 +323,7 @@ function SectionContent({
     case 'plugins':      return <PluginsSettingsPage />
     case 'models':        return <ModelsSettingsPage />
     case 'blocked_files': return <BlockedFilesSettingsPage />
+    case 'browser': return <BrowserSettingsPage />
     case 'secrets': return <SecretsSettingsPage />
     case 'workspaces':   return <WorkspacesSettingsPage />
     case 'sessions':     return <SessionsSettingsPage />

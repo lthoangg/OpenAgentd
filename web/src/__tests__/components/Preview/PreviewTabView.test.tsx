@@ -27,6 +27,9 @@ const invokeMock = mock(async (..._args: unknown[]) => {
   return { port: Number(relayOrigin.split(':')[2]), origin: relayOrigin }
 })
 mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
+// Whether this client shows public sites (the desktop app on a Mac).
+let showsSites = false
+mock.module('@/lib/browser-view', () => ({ browserViewsAvailable: () => showsSites }))
 let isMobile = false
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => isMobile, MOBILE_QUERY: '(max-width: 767px)' }))
 const originalFetch = globalThis.fetch
@@ -813,17 +816,31 @@ describe('PreviewTabView', () => {
       expect(onOpenTarget).not.toHaveBeenCalled()
     })
 
-    it('says in place that another site cannot be previewed, without opening a tab for it', async () => {
+    it('says in place where a public site opens, on a client that cannot show one, without opening a tab for it', async () => {
       const { onOpenTarget } = await renderView()
       enterAddress('https://example.com/docs')
       const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toContain('Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files, not example.com.')
+      expect(alert.textContent).toContain('Public sites such as example.com open in the OpenAgentd desktop app on a Mac. Here, Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files.')
       expect(onOpenTarget).not.toHaveBeenCalled()
       expect(previewBodies).toHaveLength(1)
       // Nothing to retry: the address was wrong. Editing it clears the message.
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
       fireEvent.change(screen.getByRole('textbox', { name: 'Preview address' }), { target: { value: 'localhost:3000' } })
       expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('opens a public site in a tab of its own where the app can show one', async () => {
+      showsSites = true
+      try {
+        const { onOpenTarget } = await renderView()
+        enterAddress('example.com/docs')
+        await waitFor(() => expect(onOpenTarget).toHaveBeenCalledWith({ kind: 'url', url: 'https://example.com/docs' }))
+        expect(screen.queryByRole('alert')).toBeNull()
+        // The server is not asked for it: a site has no listener.
+        expect(previewBodies).toHaveLength(1)
+      } finally {
+        showsSites = false
+      }
     })
 
     it('falls back to the dev server for a full path that is not a workspace file', async () => {

@@ -28,10 +28,14 @@ export function PreviewCommentComposer({
   onCancel,
 }: {
   element: ElementDescriptor
-  /** Stage-relative point under the element. */
-  anchor: ComposerAnchor
-  /** Stage size, to keep the composer inside it. */
-  bounds: { width: number; height: number }
+  /**
+   * Stage-relative point under the element. Without one the composer is a
+   * block in the page's flow: over a native view (a public site) nothing of
+   * the app can float.
+   */
+  anchor?: ComposerAnchor | null
+  /** Stage size, to keep an anchored composer inside it. */
+  bounds?: { width: number; height: number }
   onAdd: (text: string) => void
   onCancel: () => void
 }) {
@@ -43,9 +47,10 @@ export function PreviewCommentComposer({
     const h = ref.current?.offsetHeight
     if (h && h !== height) setHeight(h)
   }, [height, text])
-  const width = Math.min(COMPOSER_WIDTH, Math.max(160, bounds.width - 16))
-  const left = Math.max(8, Math.min(anchor.left, bounds.width - width - 8))
-  const top = Math.max(8, Math.min(anchor.top, bounds.height - height - 8))
+  const box = bounds ?? { width: COMPOSER_WIDTH + 16, height: height + 16 }
+  const width = Math.min(COMPOSER_WIDTH, Math.max(160, box.width - 16))
+  const left = Math.max(8, Math.min(anchor?.left ?? 8, box.width - width - 8))
+  const top = Math.max(8, Math.min(anchor?.top ?? 8, box.height - height - 8))
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape') {
@@ -62,8 +67,8 @@ export function PreviewCommentComposer({
       ref={ref}
       role="group"
       aria-label="New comment"
-      className="shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
-      style={{ top, left, width }}
+      className={cn('rounded-sm border border-(--color-border) bg-(--bg-card) p-2', anchor ? 'shadow-(--shadow-depth) absolute z-20' : 'm-2 max-w-md shrink-0')}
+      style={anchor ? { top, left, width } : undefined}
     >
       <p className="mb-1.5 truncate border-l-2 border-(--color-border-strong) pl-2 font-mono text-meta leading-relaxed text-(--color-text-subtle)">
         {elementLabel(element)}

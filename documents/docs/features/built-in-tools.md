@@ -85,7 +85,17 @@ MCP.
   form, submitting it and taking a snapshot, stopping at the first step that
   fails `[v3.5.0]`. Session settings list `preview` among the agent's tools
   in coding workspaces `[v3.5.0]`.
-  Only loopback URLs are accepted, never the OpenAgentd API port. Everything
+  Since v3.62.0 `open` also takes a page of the public web
+  (`https://example.com/docs`), shown by the desktop app on a Mac in its own
+  browser profile, where you may be signed in. The agent may use a site only
+  once you allowed it (a card asks the first time; Settings → Browser keeps
+  the lists), each command runs only while the page is still on the site it
+  was allowed for, what a page says reaches the agent marked as data from
+  the site, password fields stay hidden from it, and it has no access to
+  cookies. In Plan mode it only looks, as on local pages. With several
+  pages loaded, an action that names no page goes to the one the agent
+  opened or used last.
+  A server on this computer is opened by its loopback URL, never the OpenAgentd API port. Everything
   works only while the page is open in the Preview tab *(since v3.42.0, or
   loaded out of sight while the desktop app is open)*; there is no headless
   browser and no screenshots.

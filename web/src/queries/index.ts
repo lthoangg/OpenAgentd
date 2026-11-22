@@ -62,6 +62,7 @@ export {
   useDeniedPathsSettingsQuery,
   useUpdateDeniedPathsSettingsMutation,
 } from './useDeniedPathsSettingsQuery'
+export { useBrowserSitesQuery, useChangeBrowserSitesMutation } from './useBrowserSitesQuery'
 export {
   useSecretsQuery,
   useSaveSecretMutation,

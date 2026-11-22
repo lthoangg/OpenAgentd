@@ -1,4 +1,4 @@
-/** The settings registry: 16 sections in four named groups, with About apart at the bottom. */
+/** The settings registry: 17 sections in four named groups, with About apart at the bottom. */
 import { describe, expect, it } from 'bun:test'
 
 import { parentSection, sectionDef, SETTINGS_GROUPS, SETTINGS_SECTIONS } from '@/components/settings/sections'
@@ -10,11 +10,11 @@ describe('settings sections', () => {
     expect(byGroup).toEqual([
       ['Basics', ['General', 'Models', 'Image and video', 'Desktop']],
       ['Agent', ['Agents', 'Skills', 'Connectors', 'Plugins', 'Memory']],
-      ['Work', ['Sessions', 'Workspaces', 'Blocked files', 'Secrets']],
+      ['Work', ['Sessions', 'Workspaces', 'Blocked files', 'Browser', 'Secrets']],
       ['Devices', ['Switch computer', 'Remote control']],
       [null, ['About']],
     ])
-    expect(SETTINGS_SECTIONS).toHaveLength(16)
+    expect(SETTINGS_SECTIONS).toHaveLength(17)
   })
 
   it('names every section id after its label', () => {

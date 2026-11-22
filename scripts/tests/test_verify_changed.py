@@ -63,6 +63,7 @@ def test_a_change_selects_every_surface_that_builds_or_reads_it():
     # Web tests hold the menu's shortcuts to the in-app table.
     assert mod.targets_for(["desktop/src-tauri/src/menu.rs"]) == ["verify-scripts", "verify-web", "verify-desktop"]
     assert mod.targets_for(["appv3/crates/agent/data/sse_events.json"]) == ["verify-web", "verify-v3"]
+    assert mod.targets_for(["appv3/crates/preview/assets/inspector.js"]) == ["verify-web", "verify-v3", "verify-desktop"]
     assert mod.targets_for(["install.sh", "mobile/scripts/publish-apk.sh"]) == ["verify-scripts"]
     # verify-quick, which always runs, covers these.
     assert mod.targets_for(["README.md", "documents/docs/features.md", "LICENSE"]) == []

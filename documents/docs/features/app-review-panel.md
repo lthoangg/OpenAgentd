@@ -133,6 +133,37 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     work from inside the page too.
   - **Models** in Settings → Models: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
+- **Public sites in the Preview tab** `[v3.62.0]` (desktop app on a Mac):
+  the Preview tab's address bar takes any site (`example.com`, `https://…`),
+  not only servers on this computer. The real page loads in a browser view
+  inside the tab, with a profile that belongs to OpenAgentd: nothing is
+  shared with Safari or Chrome, you sign in on the page as in any browser,
+  and the sign-in is kept after a restart. Each site gets a tab of its own,
+  with Back, Forward, Refresh, the console, device sizes, **Comment** and
+  **Open in browser**; a link that asks for a new window opens in the same
+  tab, and downloads are not started (a notice says so). The page is hidden
+  while a menu or dialog of the app is over it. A page that cannot be loaded
+  (a mistyped address, no connection) says so under the address bar.
+  - **The agent uses a site only after you allow it.** The first time the
+    agent's `preview` tool opens a site, or a page it uses moves to another
+    site, a card asks: **Allow once** (this chat), **Always allow** (saved)
+    or **Decline** (refused for the rest of the chat). A scheduled run, or a
+    session nobody is following, is refused with the reason instead of
+    asking. The picker in the tab's bar shows and changes the answer for the
+    site you are on. You can browse any site yourself without being asked.
+  - **Settings → Browser** holds the rules: ask for each new site or allow
+    all, a list of allowed sites and a list of blocked ones
+    (`example.com` also covers `www.`; `*.example.com` covers subdomains),
+    and **Clear browsing data**, which signs every site out. The rules are
+    kept by the computer the agents run on, so they apply from any device.
+  - **Import cookies…** in the tab's **⋯** menu is for a site that will not
+    sign in inside the app: paste that site's cookies exported from a browser
+    where you are signed in (a cookie extension's JSON, or a `cookies.txt`
+    file). Only the site's own cookies are kept, and they are not shown
+    again. **Sign out of this site…** deletes them.
+  - Phones, a plain browser, and the Windows and Linux apps say that public
+    sites open in the desktop app on a Mac, and offer **Open in browser**.
+    Local dev servers and workspace files preview as before on every client.
 - **The agent can use a preview without the Preview tab open** `[v3.42.0]`:
   while the app is open on desktop, a page the agent opened stays loaded out
   of sight when no Preview tab shows it (the tab was closed, or **Previews**

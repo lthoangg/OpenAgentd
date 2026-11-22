@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-profile-clear"
+description = "Enables the browser_profile_clear command without any pre-configured scope."
+commands.allow = ["browser_profile_clear"]
+
+[[permission]]
+identifier = "deny-browser-profile-clear"
+description = "Denies the browser_profile_clear command without any pre-configured scope."
+commands.deny = ["browser_profile_clear"]

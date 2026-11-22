@@ -28,8 +28,9 @@ export type PreviewTarget = { kind: 'url'; url: string } | { kind: 'file'; path:
 export interface PreviewInfo {
   id: string
   workspace: string
-  kind: 'url' | 'file'
-  /** Proxied origin (`http://localhost:5173`) or the served directory. */
+  /** `site`: a page on another machine, shown by the desktop app's own view (see `openSitePage`). */
+  kind: 'url' | 'file' | 'site'
+  /** Proxied origin (`http://localhost:5173`), the served directory, or the site's origin. */
   target: string
   /** The listener's port on the server (also when framed through a relay). */
   port: number
@@ -230,4 +231,74 @@ export async function listAgentPages(): Promise<AgentPage[]> {
     }
   }
   return pages
+}
+
+// ── Sites ────────────────────────────────────────────────────────────────
+// A page on another machine has no listener: the desktop app shows it in a
+// native view (`lib/browser-view.ts`) and carries the agent's commands and
+// the page's answers between that view and the server through these calls.
+
+/** Start (or reuse) the server's record of the site page `url` in `workspace`. */
+export async function openSitePage(workspace: string, url: string): Promise<PreviewInfo> {
+  const res = await fetch(`${apiBaseUrl()}/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace, url }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'openSitePage')
+  return (await res.json()) as PreviewInfo
+}
+
+/** The agent's command for a site's page: `{ id, command }`, as the page script takes it. */
+export interface SiteCommand {
+  id: string
+  command: Record<string, unknown>
+}
+
+/** The server no longer has this preview (closed for being idle, or restarted). */
+export class PreviewGoneError extends Error {}
+
+/**
+ * Wait for the agent's next command for site preview `id`. Resolves null
+ * when none came in time (ask again), and rejects with `PreviewGoneError`
+ * when the server no longer has the preview.
+ */
+export async function nextSiteCommand(id: string, signal: AbortSignal): Promise<SiteCommand | null> {
+  const res = await fetch(`${apiBaseUrl()}/preview/${encodeURIComponent(id)}/agent`, { signal, cache: 'no-store' })
+  if (res.status === 204) return null
+  if (res.status === 404) throw new PreviewGoneError('Preview not found.')
+  if (!res.ok) await parseDetailOrThrow(res, 'nextSiteCommand')
+  const body = (await res.json()) as Partial<SiteCommand>
+  if (typeof body.id !== 'string' || typeof body.command !== 'object' || body.command === null) return null
+  return { id: body.id, command: body.command }
+}
+
+/** A command's result: what the page reported, or why the app could not run it. */
+export interface SiteReply {
+  id: string
+  ok: boolean
+  result?: unknown
+  error?: string
+}
+
+async function postSite(id: string, part: 'agent' | 'console' | 'page', body: unknown): Promise<void> {
+  // Best effort: a preview that is gone has nobody waiting for this.
+  await fetch(`${apiBaseUrl()}/preview/${encodeURIComponent(id)}/${part}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(() => {})
+}
+
+export function sendSiteResult(id: string, reply: SiteReply): Promise<void> {
+  return postSite(id, 'agent', reply)
+}
+
+export function sendSiteConsole(id: string, entries: unknown[]): Promise<void> {
+  return postSite(id, 'console', { entries })
+}
+
+/** Tell the server where the site's page is now; it allows the agent's commands by that host. */
+export function reportSiteAddress(id: string, url: string): Promise<void> {
+  return postSite(id, 'page', { url })
 }

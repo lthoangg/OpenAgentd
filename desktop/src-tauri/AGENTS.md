@@ -14,6 +14,24 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   last zoom chosen (`shell_prefs`). Windows and Linux hide the native menu
   bar; the app menu opens from the header's ☰ button or an Alt tap
   (`context_menu::show_app_menu`).
+- `src/browser_view.rs`: public sites in the Preview tab. Each page is a
+  borderless child window of the app window, placed over the tab's page area
+  by the page (`browser_view_open`, `browser_view_frame`), in a browser
+  profile of its own (macOS: one fixed data store). Its label starts with
+  `browser/` and is in no capability, so a site can call no command and
+  never gets the backend token (`window::is_overlay_window`); navigation is
+  `http`/`https` to other machines only. The page gets the backend's preview
+  script (`appv3/crates/preview/assets/inspector.js`, compiled in), and the
+  shell pulls what the script queued with `eval_with_callback`. A command of
+  the agent runs only in a document of the host the server allowed: the
+  script that delivers it checks `location.hostname` first (`run_call`),
+  since the view's address is the next page's while one loads. Read a
+  view's address with `address`, never Tauri's `url()`, which panics on the
+  main thread (ending the app) while a view has no page. Treat everything
+  read from a page as data.
+- `src/browser_cookies.rs`: reads a pasted cookie export (extension JSON or
+  `cookies.txt`) for **Import cookies**; cookie values are never logged or
+  put in an error.
 - `src/shell_prefs.rs`: `desktop-shell.json`, the shell-level preferences that
   outlive a session: the last zoom and the global shortcuts switch.
 - `src/context_menu.rs`: the app menu as a pop-up on Windows/Linux

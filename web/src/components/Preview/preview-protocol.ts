@@ -134,7 +134,14 @@ function parseEntries(value: unknown): PreviewConsoleEntry[] {
 /** Parse a page message, or ``null`` when it is not from ``frame`` at ``origin``. */
 export function parsePageMessage(event: Pick<MessageEvent, 'origin' | 'source' | 'data'>, origin: string, frame: Window | null | undefined): PageMessage | null {
   if (!frame || event.source !== frame || event.origin !== origin) return null
-  const data: unknown = event.data
+  return parsePageData(event.data)
+}
+
+/**
+ * Parse what a page's script sent, however it arrived: posted by a framed
+ * page, or collected from a site's page by the desktop shell.
+ */
+export function parsePageData(data: unknown): PageMessage | null {
   if (!isRecord(data) || data.ns !== PREVIEW_NS || data.v !== PREVIEW_VERSION) return null
   switch (data.type) {
     case 'ready': {

@@ -317,7 +317,7 @@ function SiteTab({ workspace, tabId, target, navKey, onSendComments, onOpenTarge
   const consoleLabel = errorCount ? `Console (${errorCount} errors)` : 'Console'
   const designShortcut = formatChord(DESIGN_CHORD, os)
   const designLabel = designDisabled
-    ? 'Comment (the page is still loading)'
+    ? state.error ? 'Comment (unavailable on this page)' : 'Comment (the page is still loading)'
     : mode === 'inspect' ? `Stop commenting (Esc or ${designShortcut})` : `Comment on an element (${designShortcut})`
   const host = publicUrl(url)?.hostname.toLowerCase() ?? ''
   const failure = addressError ?? state.error

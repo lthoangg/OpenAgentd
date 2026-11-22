@@ -133,6 +133,16 @@ describe('BrowserTabView', () => {
     await waitFor(() => expect((screen.getByLabelText('Preview address') as HTMLInputElement).value).toContain('shop.example/checkout'))
   })
 
+  it('says that a page did not load, and stops offering comments on it', async () => {
+    const { viewId } = renderTab()
+    await waitFor(() => expect(calls('browser_view_open')).toHaveLength(1))
+    expect(screen.getByRole('button', { name: 'Comment (the page is still loading)' })).toBeTruthy()
+    // The view is at rest with no address: its first page never arrived.
+    await emit(viewId, { kind: 'url', url: '', loading: false })
+    expect(screen.getByRole('alert').textContent).toBe('shop.example could not be loaded. Check the address and your connection.')
+    expect((screen.getByRole('button', { name: 'Comment (unavailable on this page)' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('drives the view from the toolbar', async () => {
     const { viewId } = renderTab()
     await waitFor(() => expect(calls('browser_view_open')).toHaveLength(1))

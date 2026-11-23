@@ -604,22 +604,43 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
         <div className="space-y-2 pt-1">
           <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
             {provider.credentials.map((credential) => (
-              <label key={credential.name} className="block">
-                <span className="text-xs font-medium text-(--color-text)">{credential.label}</span>
-                <Input
-                  type={credential.secret ? 'password' : 'text'}
-                  value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
-                  onChange={(e) => {
-                    setCloudValues((values) => ({ ...values, [credential.name]: e.target.value }))
-                    setVerifiedCloudSignature('')
-                    setSaveCheck({ phase: 'idle' })
-                  }}
-                  placeholder={credential.placeholder}
-                  autoComplete="off"
-                  className="mt-2 h-9 font-mono text-xs"
-                  spellCheck={false}
-                />
-              </label>
+              <div key={credential.name}>
+                <label className="block">
+                  <span className="text-xs font-medium text-(--color-text)">{credential.label}</span>
+                  <Input
+                    type={credential.secret ? 'password' : 'text'}
+                    value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
+                    onChange={(e) => {
+                      setCloudValues((values) => ({ ...values, [credential.name]: e.target.value }))
+                      setVerifiedCloudSignature('')
+                      setSaveCheck({ phase: 'idle' })
+                    }}
+                    placeholder={credential.placeholder}
+                    autoComplete="off"
+                    aria-describedby={credential.help ? `${bodyId}-${credential.name}-help` : undefined}
+                    className="mt-2 h-9 font-mono text-xs"
+                    spellCheck={false}
+                  />
+                </label>
+                {credential.help && (
+                  <p id={`${bodyId}-${credential.name}-help`} className="mt-1.5 text-meta leading-relaxed text-(--color-text-muted)">
+                    {credential.help}
+                    {credential.help_url && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-0.5 text-(--color-text) underline underline-offset-2 hover:text-(--color-accent)"
+                          onClick={() => void openExternalUrl(credential.help_url!)}
+                        >
+                          Open<span className="sr-only"> where to get the {credential.label}</span>
+                          <ExternalLink size={12} aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
             ))}
           </div>
           <div className="flex pt-1 sm:justify-end">

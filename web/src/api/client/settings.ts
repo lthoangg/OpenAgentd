@@ -265,6 +265,10 @@ export type ProviderInfo = {
     secret: boolean
     required: boolean
     placeholder: string
+    /** Where to find this value (and, for a token, which permission it needs). */
+    help?: string
+    /** Page that `help` describes, opened from the field's "Open" link. */
+    help_url?: string
   }>
   saved_credentials: Record<string, string>
   env_var: string

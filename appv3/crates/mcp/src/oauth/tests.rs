@@ -65,3 +65,18 @@ fn models() {
         r#"{"response_types":["code"],"scope":"a b","client_name":null,"client_uri":"https://ex.com","logo_uri":null,"contacts":null,"tos_uri":null,"policy_uri":null,"jwks_uri":null,"jwks":null,"software_id":null,"software_version":null,"redirect_uris":["http://localhost:5/callback"],"token_endpoint_auth_method":null,"grant_types":["authorization_code","refresh_token"],"application_type":null,"client_id":"x","client_secret":null,"client_id_issued_at":12,"client_secret_expires_at":null,"issuer":null}"#
     );
 }
+
+/// The client learns the sign-in page as soon as it is announced: a code or a
+/// Cancel it sends before the flow starts waiting must still reach the flow.
+#[tokio::test]
+async fn a_client_code_or_cancel_that_beats_the_wait_still_reaches_it() {
+    let waiting = callback::expect_client("early-finish", "state-early-finish");
+    assert_eq!(finish_client_oauth("state-early-finish", "the-code", None), Ok("early-finish".to_string()));
+    assert_eq!(waiting.wait().await.unwrap().code, "the-code");
+    assert_eq!(finish_client_oauth("state-early-finish", "the-code", None), Err(FinishError::Unknown), "single use");
+
+    let waiting = callback::expect_client("early-cancel", "state-early-cancel");
+    cancel_client_oauth("early-cancel");
+    let err = waiting.wait().await.err().expect("a cancelled sign-in fails");
+    assert!(err.to_string().contains("was cancelled"), "{err}");
+}

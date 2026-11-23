@@ -1174,7 +1174,6 @@ impl OAuthProvider {
         }
         let pairs: Vec<(&str, &str)> = params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let url = format!("{auth_endpoint}?{}", urlencode(&pairs));
-        // redirect_handler
         let Some(mode) = callback::mode(&self.name) else { return Err(required(needs_oauth_message(&self.name))) };
         tracing::info!("mcp_oauth_authorize name={} url={}", self.name, url_for_log(url.as_ref()));
         let result = match &*mode {
@@ -1185,17 +1184,18 @@ impl OAuthProvider {
                 self.callback.wait().await?
             }
             Mode::Client(c) if c.relay.is_none() => {
+                let from_client = callback::expect_client(&self.name, &state);
                 c.announce(&url);
-                // The browser reaches the loopback listener; a pasted address
-                // (finish) or Cancel arrive through the client instead.
+                // The browser reaches the loopback listener; a pasted address or Cancel, the client.
                 tokio::select! {
                     r = self.callback.wait() => r?,
-                    r = callback::wait_for_client(&self.name, &state) => r?,
+                    r = from_client.wait() => r?,
                 }
             }
             Mode::Client(c) => {
+                let from_client = callback::expect_client(&self.name, &state);
                 c.announce(&url);
-                callback::wait_for_client(&self.name, &state).await?
+                from_client.wait().await?
             }
         };
         let state_ok = result.state.as_deref().map(|s| constant_eq(s.as_bytes(), state.as_bytes())).unwrap_or(false);

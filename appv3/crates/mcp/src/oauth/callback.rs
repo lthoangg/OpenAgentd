@@ -102,20 +102,34 @@ fn pending() -> &'static Mutex<HashMap<String, Pending>> {
     S.get_or_init(Default::default)
 }
 
-/// Wait for the client to bring back the code for `state`.
-pub(super) async fn wait_for_client(server: &str, state: &str) -> Result<CodeResult, McpError> {
+/// A sign-in that accepts the client's code for one `state`. Register it
+/// before the client learns the sign-in page: a code or Cancel that arrives
+/// first must find it.
+pub(super) struct ClientWait {
+    server: String,
+    state: String,
+    rx: oneshot::Receiver<CodeResult>,
+}
+
+pub(super) fn expect_client(server: &str, state: &str) -> ClientWait {
     let (tx, rx) = oneshot::channel();
-    {
-        let mut p = pending().lock().unwrap();
-        p.retain(|_, f| f.at.elapsed() < CLIENT_SIGN_IN_TIMEOUT && !f.tx.is_closed());
-        p.insert(state.to_string(), Pending { server: server.to_string(), tx, at: Instant::now() });
-    }
-    let res = tokio::time::timeout(CLIENT_SIGN_IN_TIMEOUT, rx).await;
-    pending().lock().unwrap().remove(state);
-    match res {
-        Ok(Ok(r)) => Ok(r),
-        Ok(Err(_)) => Err(required(format!("Sign-in to MCP server '{server}' was cancelled."))),
-        Err(_) => Err(McpError::Transport("TimeoutError", "Timed out waiting for OAuth callback.".into())),
+    let mut p = pending().lock().unwrap();
+    p.retain(|_, f| f.at.elapsed() < CLIENT_SIGN_IN_TIMEOUT && !f.tx.is_closed());
+    p.insert(state.to_string(), Pending { server: server.to_string(), tx, at: Instant::now() });
+    ClientWait { server: server.to_string(), state: state.to_string(), rx }
+}
+
+impl ClientWait {
+    /// Wait for the client to bring back the code.
+    pub(super) async fn wait(self) -> Result<CodeResult, McpError> {
+        let ClientWait { server, state, rx } = self;
+        let res = tokio::time::timeout(CLIENT_SIGN_IN_TIMEOUT, rx).await;
+        pending().lock().unwrap().remove(&state);
+        match res {
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(_)) => Err(required(format!("Sign-in to MCP server '{server}' was cancelled."))),
+            Err(_) => Err(McpError::Transport("TimeoutError", "Timed out waiting for OAuth callback.".into())),
+        }
     }
 }
 

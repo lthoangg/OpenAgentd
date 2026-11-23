@@ -268,11 +268,30 @@ fn model_name(model: &str) -> String {
     l.strip_prefix("anthropic.").map(String::from).unwrap_or(l)
 }
 
-fn uses_adaptive(model: &str) -> bool {
-    let n = model_name(model);
-    ["claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-4-6", "claude-sonnet-5", "claude-fable-5", "claude-mythos"]
-        .iter()
-        .any(|p| n.starts_with(p))
+/// Models from before adaptive thinking, which take a `budget_tokens` budget
+/// instead. Every other model gets adaptive thinking, so a new release works
+/// without a code change. Matches the dated, Bedrock (`us.anthropic.…-v1:0`)
+/// and Vertex (`…@20250514`) forms of an id.
+fn uses_budget_thinking(model: &str) -> bool {
+    let l = model.to_lowercase();
+    let Some(n) = l.find("claude-").map(|i| &l[i..]) else {
+        return false;
+    };
+    if n.starts_with("claude-3") {
+        return true;
+    }
+    if ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-1", "claude-opus-4-0", "claude-sonnet-4-0"].iter().any(|p| n.starts_with(p)) {
+        return true;
+    }
+    // The first Claude 4 ids carry no minor version: `claude-sonnet-4`,
+    // `claude-sonnet-4-20250514`, `claude-sonnet-4@20250514`. A minor
+    // version (`claude-sonnet-4-6`) is a later model.
+    ["claude-opus-4", "claude-sonnet-4"].iter().any(|p| {
+        n.strip_prefix(p).is_some_and(|rest| {
+            let date = rest.strip_prefix('-').or_else(|| rest.strip_prefix('@'));
+            rest.is_empty() || date.is_some_and(|d| d.len() >= 8 && d.bytes().take(8).all(|b| b.is_ascii_digit()))
+        })
+    })
 }
 
 fn thinking_budget(level: &str, max_tokens: i64) -> i64 {
@@ -303,7 +322,7 @@ fn apply_thinking(model: &str, kw: &Kwargs, payload: &mut Map<String, Value>) ->
         }
         return false;
     }
-    if uses_adaptive(model) {
+    if !uses_budget_thinking(model) {
         payload.insert("thinking".into(), json!({"type": "adaptive", "display": "summarized"}));
         payload.insert("output_config".into(), json!({"effort": level}));
         return true;
@@ -716,6 +735,37 @@ mod tests {
     fn thinking_budget_matches_v2() {
         assert_eq!(thinking_budget("low", 32000), 8000);
         assert_eq!(thinking_budget("high", 1000), 1024);
+    }
+
+    /// Adaptive thinking is the default, so a new model works without a code
+    /// change; only the older models that predate it get a token budget.
+    #[test]
+    fn thinking_is_adaptive_unless_the_model_predates_it() {
+        let kw: Kwargs = [("thinking_level".to_string(), json!("high"))].into_iter().collect();
+        let thinking_type = |model: &str| {
+            let mut p = Map::new();
+            p.insert("max_tokens".into(), json!(32000));
+            assert!(apply_thinking(model, &kw, &mut p), "{model}");
+            p["thinking"]["type"].as_str().unwrap().to_string()
+        };
+        for model in ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-4-6", "claude-sonnet-4-6", "claude-nova-7", "anthropic.claude-haiku-5-5"] {
+            assert_eq!(thinking_type(model), "adaptive", "{model}");
+        }
+        for model in [
+            "claude-3-7-sonnet-20250219",
+            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-0",
+            "claude-opus-4-20250514",
+            "claude-opus-4-1",
+            "claude-opus-4-5",
+            "claude-sonnet-4-5-20250929",
+            "claude-haiku-4-5",
+            "anthropic.claude-sonnet-4-20250514-v1:0",
+            "us.anthropic.claude-opus-4-1-20250805-v1:0",
+            "claude-sonnet-4@20250514",
+        ] {
+            assert_eq!(thinking_type(model), "enabled", "{model}");
+        }
     }
 
     #[test]

@@ -92,6 +92,11 @@ agnostic by design.
   sent without their old thinking (their text and tool calls stay), and
   requests to Anthropic's API let it drop any other thinking block whose
   conversation changed instead of failing the turn.
+- **Adaptive thinking on new Claude models by default** `[v3.62.0]` — Claude
+  models now get adaptive thinking (effort levels) unless they predate it
+  (Claude 3.x, Sonnet/Opus 4.0, Opus 4.1, and the 4.5 models, which keep token
+  budgets). Haiku 5.5 with thinking on no longer fails with HTTP 400, and
+  later Claude releases work without an update.
 - **Budget-based thinking metadata synthesis** `[v1.83.0]` — models whose
   registry metadata exposes raw `budget_tokens` reasoning support but no named
   effort levels now surface standard `none/low/medium/high` thinking choices in

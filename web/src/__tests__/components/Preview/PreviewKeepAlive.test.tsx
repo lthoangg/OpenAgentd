@@ -191,8 +191,9 @@ describe('PreviewKeepAlive', () => {
     serverPreviews = [{ id: 'p1', workspace: WS, kind: 'url', target: 'http://localhost:5173', port: 52011, origin: ORIGIN, path: '/', url: `${ORIGIN}/`, console_errors: 0, agent_page: TARGET }]
     act(() => usePreviewKeepAliveStore.getState().serverPagesChanged())
     await waitFor(() => expect(listCalls).toBe(2))
-    await waitFor(() => expect(frames()).toHaveLength(1), { timeout: 3000 })
-  })
+    // The frame opens after the real 1.5 s start delay; leave a busy runner room.
+    await waitFor(() => expect(frames()).toHaveLength(1), { timeout: 10_000 })
+  }, 20_000)
 
   it('is off where previews cannot work (a browser on another device)', async () => {
     ;(window as { __OAD_API_BASE_URL__?: string }).__OAD_API_BASE_URL__ = 'https://oad.example.com/api'

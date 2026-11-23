@@ -251,5 +251,45 @@
       "GOOGLE_CLOUD_LOCATION"
     ],
     "docs_url": "https://cloud.google.com/vertex-ai/docs/start/cloud-environment"
+  },
+  {
+    "id": "cf",
+    "label": "Cloudflare",
+    "description": "Workers AI models, and third-party models (OpenAI, Anthropic, Google\u2026) through AI Gateway, billed by Cloudflare.",
+    "kind": "cloud_creds",
+    "suggested_models": [
+      "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
+    ],
+    "env_var": "",
+    "models_dev_provider_id": "cloudflare-workers-ai",
+    "models_dev_provider_ids": [
+      "cloudflare-workers-ai",
+      "cloudflare-ai-gateway"
+    ],
+    "env_vars": [
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_API_TOKEN"
+    ],
+    "credentials": [
+      {
+        "name": "CLOUDFLARE_ACCOUNT_ID",
+        "label": "Account ID",
+        "secret": false,
+        "required": true,
+        "placeholder": "32-character account ID",
+        "help": "Cloudflare dashboard \u2192 Workers AI \u2192 Use REST API \u2192 copy Account ID.",
+        "help_url": "https://dash.cloudflare.com/?to=/:account/ai/workers-ai"
+      },
+      {
+        "name": "CLOUDFLARE_API_TOKEN",
+        "label": "API token",
+        "secret": true,
+        "required": true,
+        "placeholder": "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+        "help": "Same page \u2192 Create a Workers AI API Token. It needs Account \u2192 Workers AI \u2192 Read; an AI Gateway-only token is refused.",
+        "help_url": "https://dash.cloudflare.com/?to=/:account/ai/workers-ai"
+      }
+    ],
+    "docs_url": "https://developers.cloudflare.com/workers-ai/get-started/rest-api/"
   }
 ]

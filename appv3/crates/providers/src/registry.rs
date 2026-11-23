@@ -45,7 +45,11 @@ fn merge_into(reg: &mut Registry, key: &str, value: &Value) {
 fn provider_id_aliases() -> HashMap<String, String> {
     let mut m = HashMap::new();
     for e in catalog::all_providers() {
-        if let (Some(id), Some(src)) = (e["id"].as_str(), e.get("models_dev_provider_id").and_then(|v| v.as_str())) {
+        let Some(id) = e["id"].as_str() else { continue };
+        // `models_dev_provider_ids` lets one provider take its models from
+        // several models.dev lists (Cloudflare: Workers AI and AI Gateway).
+        let extra = e.get("models_dev_provider_ids").and_then(|v| v.as_array()).into_iter().flatten().filter_map(|v| v.as_str());
+        for src in e.get("models_dev_provider_id").and_then(|v| v.as_str()).into_iter().chain(extra) {
             if !src.is_empty() {
                 m.insert(src.to_lowercase(), id.to_lowercase());
             }
@@ -577,6 +581,22 @@ mod tests {
         assert_eq!(g["thinking"]["levels"], json!(["none", "low", "medium", "high"]));
         // codex inherits openai metadata via metadata_source_provider
         assert!(reg.contains_key("codex:gpt-z"));
+    }
+
+    #[test]
+    fn both_cloudflare_models_dev_lists_map_onto_cf() {
+        let md = json!({
+            "cloudflare-workers-ai": {"id": "cloudflare-workers-ai", "models": {"@cf/deepseek-ai/deepseek-v4.1-flash-1017": {
+                "id": "@cf/deepseek-ai/deepseek-v4.1-flash-1017", "tool_call": true, "limit": {"context": 1048576, "output": 1048576}, "cost": {"input": 0.1, "output": 0.4}}}},
+            "cloudflare-ai-gateway": {"id": "cloudflare-ai-gateway", "models": {"openai/gpt-4.1": {"id": "openai/gpt-4.1", "limit": {"context": 1047576, "output": 32768}}}}
+        });
+        let reg = build_registry(Some(&md), &Registry::new());
+        let w = &reg["cf:@cf/deepseek-ai/deepseek-v4.1-flash-1017"];
+        assert_eq!(w["limits"]["context_length"], 1048576);
+        assert_eq!(w["features"]["tool_call"], true);
+        assert_eq!(w["cost"]["input"], 0.1);
+        assert_eq!(reg["cf:openai/gpt-4.1"]["limits"]["context_length"], 1047576);
+        assert!(!reg.keys().any(|k| k.starts_with("cloudflare-")), "no unaliased cloudflare keys");
     }
 
     fn utc(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {

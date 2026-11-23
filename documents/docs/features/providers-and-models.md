@@ -10,7 +10,7 @@ Part of the [feature catalogue](../features.md), under *5. Providers and models*
 Switch providers with one line in your agent config. The product is provider-
 agnostic by design.
 
-**18 first-class providers:**
+**19 first-class providers:**
 
 | Provider | Config syntax | Auth |
 |---|---|---|
@@ -26,6 +26,7 @@ agnostic by design.
 | Grok Build | `grok:grok-4.7` | `agentd auth grok` `[v1.112.0]` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
+| Cloudflare (Workers AI + AI Gateway) | `cf:@cf/deepseek-ai/deepseek-v4.1-flash-1017` · `cf:openai/gpt-4.1` | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Account → Workers AI → Read) `[v3.62.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-4.1` | `agentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `agentd auth codex` |
@@ -56,6 +57,21 @@ agnostic by design.
   match, the newest tool-calling model is used. Models the user chose are
   never replaced. `POST /api/settings/default-model` also accepts
   `{"provider": "<id>"}` to apply the same choice.
+- **Cloudflare Workers AI and AI Gateway** `[v3.62.0]` — the `cf` provider
+  sends every model through Cloudflare's REST API
+  (`api.cloudflare.com/client/v4/accounts/{account}/ai/v1`, chat
+  completions) and routes it through the account's `default` AI Gateway,
+  which Cloudflare creates on first use; its logging, caching and rate
+  limits apply. Workers AI
+  models use `@cf/…` ids; third-party models use `author/model`
+  (`openai/gpt-4.1`, `anthropic/claude-sonnet-4.6`) and are billed through
+  Cloudflare Unified Billing, so the account needs credits for them. The
+  model list has the account's Workers AI text models plus the third-party
+  models models.dev lists for AI Gateway. The Settings card asks for two
+  values, the Account ID and an API token, and under each says where to get
+  it, with a link to the dashboard's Workers AI → Use REST API page. The
+  token needs **Account → Workers AI → Read**; one with only AI Gateway
+  permissions is refused.
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable
   providers no longer block startup; an unconfigured stub surfaces an
   actionable UI error on first use.

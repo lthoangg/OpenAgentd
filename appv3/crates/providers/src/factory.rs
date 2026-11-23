@@ -263,6 +263,7 @@ pub fn build_member(name: &str, model: &str, model_kwargs: Kwargs, creds: &Crede
         "codex" => crate::codex::build_for(model, kw, &slot.cloned().unwrap_or_else(crate::codex::oauth_slot)),
         "grok" => crate::grok::build_for(model, kw, &slot.cloned().unwrap_or_else(crate::grok::oauth_slot)),
         "bedrock" => crate::bedrock::build(model, kw, creds),
+        "cf" => crate::cloudflare::build(model, kw, creds),
         "zai" => {
             let key = require_api_key(creds, "ZAI_API_KEY", "ZAI")?;
             let mut p = OpenAiProvider::new(&key, model, "https://api.z.ai/api/paas/v4", kw, CompletionsDialect::Zai, true)?;

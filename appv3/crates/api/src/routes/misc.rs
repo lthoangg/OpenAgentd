@@ -328,7 +328,7 @@ async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
 
 // ── diagnostics ─────────────────────────────────────────────────────────────
 
-const SECRET_FIELDS: [&str; 16] = [
+const SECRET_FIELDS: [&str; 17] = [
     "ZAI_API_KEY",
     "GOOGLE_API_KEY",
     "ANTHROPIC_API_KEY",
@@ -344,6 +344,7 @@ const SECRET_FIELDS: [&str; 16] = [
     "CLIPROXY_API_KEY",
     "OLLAMA_API_KEY",
     "VERTEXAI_API_KEY",
+    "CLOUDFLARE_API_TOKEN",
     "DATABASE_URL",
 ];
 const MAX_DIR_ENTRIES: usize = 1000;

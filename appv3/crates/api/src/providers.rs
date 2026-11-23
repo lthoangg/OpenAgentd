@@ -340,6 +340,11 @@ async fn try_discover_provider_models(entry: &Value, overrides: &HashMap<String,
             "codex" => Ok(appv3_providers::codex::model_ids(appv3_providers::codex::load_catalog(false).await.as_ref())),
             "grok" => appv3_providers::grok::discover_models().await.map_err(|e| anyhow::anyhow!(e)),
             "bedrock" => appv3_providers::bedrock::discover_models(overrides).await.map_err(|e| anyhow::anyhow!(e)),
+            "cf" => {
+                use appv3_providers::cloudflare as cf;
+                let values: HashMap<String, String> = [cf::ACCOUNT_VAR, cf::TOKEN_VAR].into_iter().map(|n| (n.to_string(), resolve(overrides, n, "", pinned))).collect();
+                cf::discover_models(&cf::store_from(&values)).await.map_err(|e| anyhow::anyhow!(e))
+            }
             _ => match find_provider_plugin(id) {
                 Some(p) if p.has_discover_models() => {
                     let store = match credential_id {

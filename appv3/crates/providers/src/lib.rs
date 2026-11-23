@@ -3,6 +3,7 @@
 pub mod anthropic;
 pub mod bedrock;
 pub mod catalog;
+pub mod cloudflare;
 pub mod codex;
 pub mod copilot;
 pub mod credentials_migration;

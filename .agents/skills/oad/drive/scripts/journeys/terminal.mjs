@@ -7,6 +7,34 @@ export default async function terminal({ page, expect, step, seedSession, open, 
   const id = await seedSession(`Terminal session ${run}`)
   const marker = `terminal-${run}-${Date.now()}.txt`
 
+  if (!phone) {
+    await step("open a terminal from the palette while in chat: typing goes to the shell", async () => {
+      await open(`/${id}`)
+      const input = page.getByRole("textbox", { name: "Message input" })
+      await input.click()
+      await expect(input).toBeFocused()
+      await page.keyboard.press("ControlOrMeta+k")
+      const palette = page.getByRole("dialog", { name: "Command palette" })
+      await expect(palette.getByRole("textbox")).toBeFocused()
+      await page.keyboard.type("Open Terminal")
+      await palette.getByRole("button", { name: /^Open Terminal/ }).click()
+      await expect(palette).toHaveCount(0)
+      const shell = page.getByRole("complementary", { name: "Review panel" })
+      await expect(shell.locator(".xterm-rows")).toBeVisible()
+      // No click into the terminal: the keys go wherever focus landed.
+      await expect(shell.getByRole("textbox", { name: "Terminal input" })).toBeFocused()
+      await page.keyboard.type(`echo first-$((1+1))-${run}`)
+      await page.keyboard.press("Enter")
+      await expect(shell.locator(".xterm-rows")).toContainText(`first-2-${run}`)
+      await expect(input).toHaveValue("")
+      // Close it and the panel, so the steps below start as a user with no shell does.
+      await shell.getByRole("button", { name: /^Close Terminal/ }).first().click()
+      await expect(shell.locator(".xterm-rows")).toHaveCount(0)
+      await page.getByRole("button", { name: "Review panel", exact: true }).click()
+      await expect(shell).toBeHidden()
+    })
+  }
+
   let panel
   await step("open the terminal", async () => {
     await open(`/${id}`)
@@ -28,6 +56,30 @@ export default async function terminal({ page, expect, step, seedSession, open, 
   await step("it ran in the session's workspace", async () => {
     await expect.poll(() => existsSync(`${demo}/${marker}`)).toBe(true)
   })
+
+  if (!phone) {
+    await step("typing in chat while the shell exits and reconnects: the chat keeps the keys", async () => {
+      const input = page.getByRole("textbox", { name: "Message input" })
+      await panel.getByRole("textbox", { name: "Terminal input" }).focus()
+      await page.keyboard.type("sleep 1; exit")
+      await page.keyboard.press("Enter")
+      await input.click()
+      await page.keyboard.type(`while-exit-${run} `)
+      const reconnect = panel.getByRole("button", { name: "Reconnect" })
+      await expect(reconnect).toBeVisible()
+      await expect(input).toBeFocused()
+      // Reconnect, then straight back to the chat while the shell comes up.
+      await reconnect.click()
+      await input.click()
+      await page.keyboard.type(`while-reconnect-${run}`)
+      await expect(reconnect).toHaveCount(0)
+      await expect(panel.locator(".xterm-rows")).toContainText("%")
+      await page.waitForTimeout(500)
+      await expect(input).toBeFocused()
+      await expect(input).toHaveValue(`while-exit-${run} while-reconnect-${run}`)
+      await input.fill("")
+    })
+  }
 
   if (!phone) return
 

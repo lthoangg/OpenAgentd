@@ -72,6 +72,9 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const meta = useTerminalStore((s) => s.sessions[sessionId])
   const status = meta?.shellState.kind ?? 'error'
   const handleReady = meta?.handleReady ?? false
+  // Read on every render (each store change re-renders): a reconnect after an
+  // idle close builds a new xterm, and the attach effect keys on which one.
+  const handle = getTerminalRuntime(sessionId)?.handle ?? null
   const [modifiers, setModifiersState] = useState<StickyModifiers>({ ctrl: false, alt: false })
   const modifiersRef = useRef<StickyModifiers>({ ctrl: false, alt: false })
   const isMobile = useIsMobile()
@@ -127,17 +130,16 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   // Detach on unmount WITHOUT disposing — the session lives on.
   useEffect(() => {
     const el = containerRef.current
-    const rt = getTerminalRuntime(sessionId)
-    if (!el || !rt?.handle) return
+    if (!el || !handle) return
 
-    const { term, fit } = rt.handle
+    const { term, fit } = handle
     if (term.element) {
       // Previously opened elsewhere — re-parent the existing DOM.
       el.appendChild(term.element)
     } else {
       term.open(el)
     }
-    rt.handle.enableWebgl?.()
+    handle.enableWebgl?.()
     useTerminalStore.getState().setAttached(sessionId, true)
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null
@@ -176,23 +178,22 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       visualViewport?.removeEventListener('resize', refit)
       resizeObserver.disconnect()
       useTerminalStore.getState().setAttached(sessionId, false)
-      rt.handle?.disableWebgl?.()
+      handle.disableWebgl?.()
       // Detach the DOM so the next mount can re-parent it cleanly.
       if (term.element && term.element.parentElement === el) {
         el.removeChild(term.element)
       }
     }
-    // `status` in deps: after a reconnect the store may have built a fresh
-    // xterm handle (idle-close disposes the old one), so re-attach on every
-    // lifecycle change. Re-parenting an unchanged handle is a cheap no-op.
-    // `handleReady` in deps: the xterm chunk loads on demand, so the first
-    // mount usually runs before any handle exists and bails at the guard
-    // above. This flag is what brings the effect back once it does.
-  }, [handleReady, isMobile, sessionId, status])
+    // Keyed on the handle, not the status: the xterm chunk loads on demand,
+    // so the first mount runs before any handle exists, and a reconnect after
+    // an idle close builds a new one. A status flip alone must not re-attach:
+    // moving the DOM drops the focus out of the terminal (a new shell turns
+    // connected just after it takes focus, and typing then went to the chat).
+  }, [handle, isMobile, sessionId])
 
   // Focus follows the user opening the terminal, not its status flipping
   // (busy, connected, reconnecting) while they type in the composer.
-  useTerminalAutoFocus(getTerminalRuntime(sessionId)?.handle?.term, containerRef)
+  useTerminalAutoFocus(handle?.term, containerRef)
 
   const openFind = useCallback(() => {
     const term = getTerminalRuntime(sessionId)?.handle?.term

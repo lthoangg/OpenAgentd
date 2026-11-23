@@ -6,6 +6,9 @@ A shell in the session's workspace, inside the Review panel.
 
 - Opening a terminal tab.
 - Typing a command and reading its output.
+- On desktop: focus. A new terminal opened from the palette while the chat
+  has focus takes the keys at once (no click into it). Typing in the chat
+  while the shell exits and reconnects keeps the keys in the chat.
 - On a phone: the key bar under the terminal, in two layouts (keyboard down:
   Show keyboard, Esc, Tab, ^C, ↑, ↓, Enter, More; keyboard up: Line, Esc,
   Tab, Ctrl, ^C, the arrows, More).
@@ -44,3 +47,8 @@ A shell in the session's workspace, inside the Review panel.
 - Wait for a closing sheet to leave before the next touch on the terminal:
   its scrim takes the touch while it slides away.
 - The command line field is not driven.
+- Open Terminal from the palette, not the launcher, to test focus: Chromium
+  focuses a clicked button, but macOS WebKit does not, so there the chat
+  keeps focus. The palette hands focus back to the chat as it closes, which
+  is the macOS case. The step then closes its terminal and the panel, or the
+  launcher step after it does not settle.

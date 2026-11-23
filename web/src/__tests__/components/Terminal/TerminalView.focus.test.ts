@@ -10,10 +10,18 @@ const source = readFileSync(
 )
 
 describe('TerminalView focus', () => {
-  it('does not focus the terminal from the attach effect, which re-runs on every status change', () => {
-    const attach = source.slice(source.indexOf('// Attach: re-parent'), source.indexOf('[handleReady, isMobile, sessionId, status])'))
+  const attachEnd = '}, [handle, isMobile, sessionId])'
+  const attach = source.slice(source.indexOf('// Attach: re-parent'), source.indexOf(attachEnd))
+
+  it('does not focus the terminal from the attach effect', () => {
     expect(attach.length).toBeGreaterThan(0)
     expect(attach).not.toContain('term.focus()')
+  })
+
+  it('re-attaches only for a new xterm, not on a status change, which would drop focus', () => {
+    // Moving a focused node out and back blurs it: a new shell turned
+    // connected right after taking focus, and the next keys went to the chat.
+    expect(source).toContain(attachEnd)
   })
 
   it('leaves focusing to the open-time hook', () => {

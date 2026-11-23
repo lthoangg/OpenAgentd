@@ -523,6 +523,9 @@ agent against it.
   - On Windows and Linux `Ctrl+Shift+C` / `Ctrl+Shift+V` copy and paste
     `[v3.42.0]`, and a terminal no longer takes focus from the composer when
     it reconnects or its state changes.
+    Since `[v3.62.0]` a terminal you open takes the keyboard at once, even
+    from the composer, so typing right after opening it reaches the shell;
+    a click elsewhere while it starts keeps the focus there.
   - **Select Text on touch** `[v3.57.0]`: on a phone or tablet a drag in the
     terminal scrolls, so before only Select All could select. A long press
     now opens **Select Text** first, which shows the output as plain text

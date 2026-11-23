@@ -35,13 +35,47 @@ describe('useTerminalAutoFocus', () => {
     expect(term.focused).toBe(1)
   })
 
-  it('does not steal focus from the composer when the terminal appears later', () => {
+  it('focuses a terminal that arrives after the tab opened over the composer', () => {
+    // The xterm handle is built after the view mounts: opening the tab still
+    // means the user asked for the terminal, though the composer holds focus.
+    composer()
+    const term = fakeTerm()
+    const root = document.createElement('div')
+    const { rerender } = renderHook(({ t }) => useTerminalAutoFocus(t, { current: root }), { initialProps: { t: null as ReturnType<typeof fakeTerm> | null } })
+    rerender({ t: term })
+    expect(term.focused).toBe(1)
+  })
+
+  it('focuses a late terminal even when focus returns to the composer by itself', () => {
+    // e.g. the command palette closing hands focus back to the composer.
     const term = fakeTerm()
     const root = document.createElement('div')
     const { rerender } = renderHook(({ t }) => useTerminalAutoFocus(t, { current: root }), { initialProps: { t: null as ReturnType<typeof fakeTerm> | null } })
     composer()
     rerender({ t: term })
+    expect(term.focused).toBe(1)
+  })
+
+  it('does not steal focus when the user clicks elsewhere while the terminal loads', () => {
+    const term = fakeTerm()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const { rerender } = renderHook(({ t }) => useTerminalAutoFocus(t, { current: root }), { initialProps: { t: null as ReturnType<typeof fakeTerm> | null } })
+    const textarea = composer()
+    textarea.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    rerender({ t: term })
     expect(term.focused).toBe(0)
+  })
+
+  it('takes focus on a late arrival when the click was inside the terminal', () => {
+    const term = fakeTerm()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const { rerender } = renderHook(({ t }) => useTerminalAutoFocus(t, { current: root }), { initialProps: { t: null as ReturnType<typeof fakeTerm> | null } })
+    composer()
+    root.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    rerender({ t: term })
+    expect(term.focused).toBe(1)
   })
 
   it('does not steal focus when a reconnect swaps in a new terminal', () => {

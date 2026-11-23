@@ -23,15 +23,23 @@ const onlyPinned = (data: SessionPages) => keepRows(data, (session) => Boolean(s
 /** Every session list here is in recent-activity order (newest message first). */
 const SORT = 'activity' as const
 
-export function useSessionsQuery() {
-  return useInfiniteQuery({
+/**
+ * Every coding session, most recently active first; also warmed on connect.
+ * A plain object, not ``infiniteQueryOptions``: many tests mock the module.
+ */
+export function codingSessionsQueryOptions() {
+  return {
     queryKey: queryKeys.session.sessions.workspace('__all_coding__', SORT),
-    queryFn: ({ pageParam, signal }) =>
+    queryFn: ({ pageParam, signal }: { pageParam: string | null; signal: AbortSignal }) =>
       listSessions(pageParam, SESSION_PAGE_SIZE, { sort: SORT }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
-  })
+  }
+}
+
+export function useSessionsQuery() {
+  return useInfiniteQuery(codingSessionsQueryOptions())
 }
 
 /**

@@ -1,9 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { getCodingWorkspaceTree, listProviders, listSessions } from '@/api/client'
+import { getCodingWorkspaceTree, listProviders } from '@/api/client'
 import { queryKeys } from '@/queries/keys'
 import { agentRegistryQueryOptions } from '@/queries/agent-registry'
-
-const SESSION_PAGE_SIZE = 20
+import { codingSessionsQueryOptions } from '@/queries/useSessionsQuery'
 
 /** Warm data needed by the workspace entry surface. */
 export function preloadConnectedApp(client: QueryClient): void {
@@ -23,10 +22,6 @@ export function preloadConnectedApp(client: QueryClient): void {
     queryFn: getCodingWorkspaceTree,
     staleTime: 30_000,
   })
-  void client.prefetchInfiniteQuery({
-    queryKey: queryKeys.session.sessions.workspace('__all_coding__', 'activity'),
-    queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listSessions(pageParam, SESSION_PAGE_SIZE, { sort: 'activity' }),
-    initialPageParam: null as string | null,
-  })
+  // The same options the sidebar reads, so the warmed pages page on alike.
+  void client.prefetchInfiniteQuery(codingSessionsQueryOptions())
 }

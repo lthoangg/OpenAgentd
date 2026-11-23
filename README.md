@@ -131,6 +131,7 @@ The [full tour](https://openagentd.dev/features/) covers agent teams, goals, the
 
 - [openagentd.dev](https://openagentd.dev) for features, setup guides and downloads.
 - [Discord](https://discord.gg/cz6GQHQUMg) and the [Facebook group](https://www.facebook.com/groups/1256361676707935) for questions and chat.
+- [Sponsor the project](https://github.com/sponsors/lthoangg) on GitHub Sponsors.
 - [Issues](https://github.com/lthoangg/openagentd/issues) for bugs, requests and roadmap discussion.
 - [Releases](https://github.com/lthoangg/openagentd/releases) for builds and release notes.
 - [Security policy](SECURITY.md) to report a vulnerability privately.

@@ -95,14 +95,23 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
   const perAccountUsage = provider.kind === 'oauth' && hasCredentialList && supportsCredentialUsage(provider)
   const showSignInUsage = provider.kind === 'oauth' && usageAvailable && !perAccountUsage
   const cloudExtra = useMemo<Record<string, string>>(() => {
+    // Only fields the user changed. The server merges a save into the stored
+    // credential and treats an empty value as "clear this field", and it
+    // never echoes secrets back: sending every field would turn an untouched
+    // token into "" and wipe it. A blanked secret is not sent either;
+    // removing credentials is its own action.
     const out: Record<string, string> = {}
     for (const credential of provider.credentials) {
-      out[credential.name] = (cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? '').trim()
+      const typed = cloudValues[credential.name]
+      if (typed === undefined) continue
+      const value = typed.trim()
+      const changed = credential.secret ? value.length > 0 : value !== (provider.saved_credentials[credential.name] ?? '').trim()
+      if (changed) out[credential.name] = value
     }
     return out
   }, [cloudValues, provider.credentials, provider.saved_credentials])
   const cloudSignature = useMemo(() => JSON.stringify(cloudExtra), [cloudExtra])
-  const hasCloudCandidate = Object.values(cloudExtra).some((value) => value.length > 0)
+  const hasCloudCandidate = Object.keys(cloudExtra).length > 0
   const hasCandidateKey = trimmedKey.length > 0
   // Credentials already stored on the daemon: listing models re-uses them
   // server-side, so a refresh must not require retyping a secret the UI
@@ -253,6 +262,7 @@ export function ProviderCard({ provider, defaultExpanded = true }: { provider: P
       })
       setApiKey('')
       setVerifiedKey('')
+      setCloudValues({})
       setVerifiedCloudSignature('')
       push({ tone: 'success', title: hasSavedCredentials ? 'Saved' : 'Connected', description: provider.label })
     } catch (err) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ProviderInfo } from '@/api/client'
 import { ProviderCard } from '@/components/settings/pages/settings.models/ProviderCard'
@@ -7,10 +7,21 @@ import { ProviderCard } from '@/components/settings/pages/settings.models/Provid
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 const opened: string[] = []
 mock.module('@/lib/open-external', () => ({ openExternalUrl: async (url: string) => { opened.push(url) } }))
+type Extra = Record<string, string> | undefined
+const checked: Extra[] = []
+const saved: Extra[] = []
 mock.module('@/api/client', () => ({
   listProviders: () => Promise.resolve({ providers: [] }),
   getProviderUsage: () => Promise.reject(new Error('no usage')),
   configureDefaultModel: () => Promise.resolve({ agents_updated: 0 }),
+  listProviderModels: (_id: string, body: { extra?: Extra }) => {
+    checked.push(body.extra)
+    return Promise.resolve({ provider: 'cf', models: ['@cf/a'], source: 'provider' })
+  },
+  saveProvider: (_id: string, body: { extra?: Extra }) => {
+    saved.push(body.extra)
+    return Promise.resolve({ saved: true })
+  },
 }))
 
 const dash = 'https://dash.cloudflare.com/?to=/:account/ai/workers-ai'
@@ -71,5 +82,56 @@ describe('ProviderCard — cloud credential fields', () => {
     renderCard({ ...cloudflare, credentials: [{ name: 'X', label: 'Region', secret: false, required: true, placeholder: '' }] })
     expect(screen.getByLabelText('Region').getAttribute('aria-describedby')).toBeNull()
     expect(screen.queryByRole('button', { name: /^Open where to get/ })).toBeNull()
+  })
+})
+
+describe('ProviderCard — saving cloud credentials', () => {
+  afterEach(cleanup)
+  // Saved: the server echoes the account ID back, never the token.
+  const connected: ProviderInfo = {
+    ...cloudflare,
+    saved_credentials: { CLOUDFLARE_ACCOUNT_ID: 'acct1' },
+    is_configured: true,
+    is_saved: true,
+    is_reachable: true,
+    cached_models: ['@cf/a'],
+    visible_models: ['@cf/a'],
+  }
+  const save = () => screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  it('has nothing to save on a connected card until a field changes', () => {
+    renderCard(connected)
+    expect(save().disabled).toBe(true)
+    expect(screen.getByText(/Credentials saved/)).toBeDefined()
+  })
+
+  it('sends only the changed field, so the stored token is kept', async () => {
+    checked.length = 0
+    saved.length = 0
+    renderCard(connected)
+    fireEvent.change(screen.getByLabelText('Account ID'), { target: { value: ' acct2 ' } })
+    fireEvent.click(save())
+    await waitFor(() => expect(saved).toHaveLength(1))
+    expect(checked).toEqual([{ CLOUDFLARE_ACCOUNT_ID: 'acct2' }])
+    expect(saved).toEqual([{ CLOUDFLARE_ACCOUNT_ID: 'acct2' }])
+  })
+
+  it('never sends a blanked token, and an unchanged account ID is not a change', () => {
+    renderCard(connected)
+    const token = screen.getByLabelText('API token')
+    fireEvent.change(token, { target: { value: 'tok' } })
+    expect(save().disabled).toBe(false)
+    fireEvent.change(token, { target: { value: '  ' } })
+    fireEvent.change(screen.getByLabelText('Account ID'), { target: { value: 'acct1' } })
+    expect(save().disabled).toBe(true)
+  })
+
+  it('sends both fields on the first connect', async () => {
+    saved.length = 0
+    renderCard(cloudflare)
+    fireEvent.change(screen.getByLabelText('Account ID'), { target: { value: 'acct1' } })
+    fireEvent.change(screen.getByLabelText('API token'), { target: { value: 'tok' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    await waitFor(() => expect(saved).toEqual([{ CLOUDFLARE_ACCOUNT_ID: 'acct1', CLOUDFLARE_API_TOKEN: 'tok' }]))
   })
 })

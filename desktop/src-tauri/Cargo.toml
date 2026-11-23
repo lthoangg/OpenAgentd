@@ -63,7 +63,7 @@ tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["signal"] }
+nix = { version = "0.32", features = ["signal"] }
 
 # Linux: keeps the hidden GTK menu bar hidden and reads the desktop's font
 # (src/window.rs). Tauri already builds this crate; the version matches

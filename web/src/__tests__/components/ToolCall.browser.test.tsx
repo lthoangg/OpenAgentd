@@ -13,7 +13,7 @@ import type { ContentBlock } from '@/api/types'
 
 afterEach(cleanup)
 
-const OPENED = "Opening http://localhost:5173/pricing in the user's Preview tab (served at http://127.0.0.1:52011/pricing)."
+const OPENED = "Opening http://localhost:5173/pricing in the user's Browser tab (served at http://127.0.0.1:52011/pricing)."
 
 function header(title: string): HTMLElement | undefined {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-tool-label]')).find((node) => node.getAttribute('data-tool-label') === title)
@@ -31,7 +31,7 @@ describe('browser tool card', () => {
   it('draws a call by its former name, preview, like a browser call', () => {
     render(<ToolCall name="preview" args={JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })} done result={OPENED} />)
     expect(header('preview: localhost:5173/pricing')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Open preview' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open in Browser' })).toBeTruthy()
   })
 
   it('names page actions and offers no Open button for them', () => {
@@ -49,7 +49,7 @@ describe('browser tool card', () => {
     for (const [args, label] of cases) {
       render(<ToolCall name="browser" args={JSON.stringify(args)} done result="Clicked <button>. Page is now /." />)
       expect(header(`browser: ${label}`)).toBeTruthy()
-      expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Open in Browser' })).toBeNull()
       cleanup()
     }
   })
@@ -61,17 +61,17 @@ describe('browser tool card', () => {
     expect(node?.textContent).toContain('Fill e1 → Fill e2 → Click e4 +2 more')
   })
 
-  it('offers Open preview once the page opened, and asks the shell for it', () => {
+  it('offers Open in Browser once the page opened, and asks the shell for it', () => {
     const seen: unknown[] = []
     const listener = (event: Event) => seen.push((event as CustomEvent).detail)
     window.addEventListener(OPEN_PREVIEW_EVENT, listener)
     const args = JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })
     const { rerender } = render(<ToolCall name="browser" args={args} />)
-    expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open in Browser' })).toBeNull()
     rerender(<ToolCall name="browser" args={args} done result="The browser needs a workspace." />)
-    expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open in Browser' })).toBeNull()
     rerender(<ToolCall name="browser" args={args} done result={OPENED} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Browser' }))
     window.removeEventListener(OPEN_PREVIEW_EVENT, listener)
     expect(seen).toEqual([{ kind: 'url', url: 'http://localhost:5173/pricing' }])
   })

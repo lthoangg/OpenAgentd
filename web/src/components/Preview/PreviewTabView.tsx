@@ -669,13 +669,13 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       </Button>
     </div>
   )
-  const openLabel = reach === 'relay' ? 'Open in browser (not available from this device)' : 'Open in browser'
+  const openLabel = reach === 'relay' ? 'Open in your browser (not available from this device)' : 'Open in your browser'
   const openDisabled = !pageUrl || reach === 'relay'
   // Back and Forward need the page's own script; say which thing is missing.
   const navReason = (dir: 'back' | 'forward') => pageDown
     ? `Can't go ${dir}: ${downTitle.charAt(0).toLowerCase()}${downTitle.slice(1)}`
     : inspectorMissing
-      ? `Can't go ${dir} on this page: it did not load the preview script`
+      ? `Can't go ${dir} on this page: it did not load the OpenAgentd page script`
       : `Can't go ${dir} yet: the page is still loading`
   toggleDesignRef.current = () => {
     if (designDisabled) return
@@ -686,8 +686,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     return (
       <EmptyState
         icon={Globe}
-        title="Preview isn't available in this browser"
-        body="The preview runs next to the OpenAgentd server. Open it in the OpenAgentd app, or in a browser on the computer that runs the server."
+        title="The Browser tab isn't available here"
+        body="The Browser tab runs next to the OpenAgentd server. Open it in the OpenAgentd app, or in a browser on the computer that runs the server."
       />
     )
   }
@@ -777,7 +777,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
         {phone ? (
           // Phones: the rarer tools share one menu, so the address keeps room.
           <Dropdown
-            aria-label="More preview actions"
+            aria-label="More browser actions"
             align="end"
             dense
             trigger={
@@ -843,7 +843,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
       {(error || addressError || inspectorMissing) && (
         <div role={error || addressError ? 'alert' : 'status'} className={cn('flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-meta', error || addressError ? 'border-(--color-error)/25 bg-(--color-error-subtle) text-(--color-error)' : 'border-(--color-border-subtle) bg-(--bg-key) text-(--color-text-muted)')}>
           <p className="min-w-0 flex-1 break-words">
-            {addressError ?? error ?? 'Comment tools and the console are unavailable on this page: it did not load the preview script (a strict Content-Security-Policy can block it).'}
+            {addressError ?? error ?? 'Comment tools and the console are unavailable on this page: it did not load the OpenAgentd page script (a strict Content-Security-Policy can block it).'}
           </p>
           {error && !addressError && (
             <Button type="button" size="xs" variant="subtle" onClick={() => void reload()}>
@@ -864,7 +864,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
               <iframe
                 key={frameKey}
                 ref={frameRef}
-                title={`Preview of ${target.kind === 'url' ? target.url : target.path}`}
+                title={`Browser page of ${target.kind === 'url' ? target.url : target.path}`}
                 src={src}
                 onLoad={onFrameLoad}
                 // Own origin (allow-same-origin keeps the page's storage);

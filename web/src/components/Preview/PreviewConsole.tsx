@@ -1,5 +1,5 @@
 /**
- * The Preview tab's console panel: what the page logged, filtered to
+ * The Browser tab's console panel: what the page logged, filtered to
  * errors, warnings or everything. It opens on Errors when there are any,
  * since the toolbar's badge counts those.
  */
@@ -41,7 +41,7 @@ export function PreviewConsole({ entries, onClear, onClose }: {
   }, [shown.length, filter])
 
   return (
-    <section aria-label="Preview console" className="flex max-h-44 shrink-0 flex-col border-t border-(--color-border) bg-(--bg-page)">
+    <section aria-label="Browser console" className="flex max-h-44 shrink-0 flex-col border-t border-(--color-border) bg-(--bg-page)">
       <div className="flex min-h-8 shrink-0 items-center gap-2 py-1 pr-1 pl-2">
         <SegmentedControl
           label="Console output to show"

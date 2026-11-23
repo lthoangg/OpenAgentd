@@ -133,14 +133,22 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     work from inside the page too.
   - **Models** in Settings → Models: the Shown / Hidden toggle and Copy
     are always visible and touch-sized.
-- **Public sites in the Preview tab** `[v3.62.0]` (desktop app on a Mac):
-  the Preview tab's address bar takes any site (`example.com`, `https://…`),
+- **The Preview tab is now the Browser tab** `[v3.62.0]`: the tab, its
+  row in the **+** menu, the command **Open Browser**, the keyboard help
+  group, Settings → General → **Open the Browser tab** (was **Open
+  previews**), the tool row's **Open in Browser** chip and the composer chip
+  ("Browser comments · 2 comments") all say Browser, as does the agent's
+  `browser` tool. What the tab does is unchanged; the button that hands a
+  page to your own browser now reads **Open in your browser**. Searching
+  Settings or the Command Palette for "preview" still finds them.
+- **Public sites in the Browser tab** `[v3.62.0]` (desktop app on a Mac):
+  the Browser tab's address bar takes any site (`example.com`, `https://…`),
   not only servers on this computer. The real page loads in a browser view
   inside the tab, with a profile that belongs to OpenAgentd: nothing is
   shared with Safari or Chrome, you sign in on the page as in any browser,
   and the sign-in is kept after a restart. Each site gets a tab of its own,
   with Back, Forward, Refresh, the console, device sizes, **Comment** and
-  **Open in browser**; a link that asks for a new window opens in the same
+  **Open in your browser**; a link that asks for a new window opens in the same
   tab, and downloads are not started (a notice says so). The page is hidden
   while a menu or dialog of the app is over it. A page that cannot be loaded
   (a mistyped address, no connection) says so under the address bar.
@@ -162,13 +170,13 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     file). Only the site's own cookies are kept, and they are not shown
     again. **Sign out of this site…** deletes them.
   - Phones, a plain browser, and the Windows and Linux apps say that public
-    sites open in the desktop app on a Mac, and offer **Open in browser**.
+    sites open in the desktop app on a Mac, and offer **Open in your browser**.
     Local dev servers and workspace files preview as before on every client.
-- **The agent can use a preview without the Preview tab open** `[v3.42.0]`:
+- **The agent can use a preview without the Browser tab open** `[v3.42.0]`:
   while the app is open on desktop, a page the agent opened stays loaded out
-  of sight when no Preview tab shows it (the tab was closed, or **Previews**
+  of sight when no Browser tab shows it (the tab was closed, or **Previews**
   is set to Manually), so snapshot, click, fill and the console keep working. It is
-  dropped after 15 minutes without agent use, and opening the Preview tab
+  dropped after 15 minutes without agent use, and opening the Browser tab
   takes over from it. Focus the page takes (a fill) goes back to where you
   were typing. A page action right after `open` waits up to 8 seconds for the
   page to load instead of failing at once. Since v3.58.0 the server lists the
@@ -176,7 +184,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   agent is a member; one app window (the one holding a lock) loads them, and
   a page action sent in the same batch as `open` waits for it. When no app
   window is open the agent is told so, instead of being asked to open the
-  page again. Phones still need the workspace's Preview sheet.
+  page again. Phones still need the workspace's Browser sheet.
 - **Multi-type file lightbox** `[since v1.0, v1.92.0, v1.99.8, v1.123.0]` — click any
   generated or attached file to open `FileLightbox`, a full-screen gallery
   covering images, video, audio, PDFs, text, and generic file types in one modal.

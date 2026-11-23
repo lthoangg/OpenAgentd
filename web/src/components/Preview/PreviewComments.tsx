@@ -1,5 +1,5 @@
 /**
- * Comments in the Preview tab: the composer anchored under a picked
+ * Comments in the Browser tab: the composer anchored under a picked
  * element and the numbered list with **Send to agent**.
  */
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'

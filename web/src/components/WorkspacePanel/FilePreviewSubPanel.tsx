@@ -212,14 +212,14 @@ export function FilePreviewSubPanel({
                   <button
                     type="button"
                     onClick={() => onOpenPreview(file.path)}
-                    aria-label="Open in preview"
+                    aria-label="Open in the Browser tab"
                     className={DOCK_ACTION_BUTTON_CLASS}
                   >
                     <Globe size={14} aria-hidden="true" />
                   </button>
                 }
               />
-              <TooltipContent side="bottom">Open in preview</TooltipContent>
+              <TooltipContent side="bottom">Open in the Browser tab</TooltipContent>
             </Tooltip>
           )}
           <Tooltip>

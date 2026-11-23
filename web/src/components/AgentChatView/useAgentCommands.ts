@@ -173,9 +173,9 @@ export function useAgentCommands({
       ? [{
           id: 'open-preview',
           group: 'View' as const,
-          label: 'Open Preview',
-          description: 'Show a local dev server or HTML file in the Review panel',
-          keywords: 'browser web view localhost dev server design inspect',
+          label: 'Open Browser',
+          description: 'Show a website, local dev server or HTML file in the Review panel',
+          keywords: 'preview web view website localhost dev server design inspect',
           action: handleOpenPreview,
         }]
       : []),

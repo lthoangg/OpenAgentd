@@ -1,4 +1,4 @@
-/** Viewport presets for the Preview tab's device frame. */
+/** Viewport presets for the Browser tab's device frame. */
 
 export interface DevicePreset {
   id: 'responsive' | 'mobile' | 'tablet' | 'desktop'

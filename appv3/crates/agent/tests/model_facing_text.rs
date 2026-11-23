@@ -183,7 +183,10 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 266 for `preview` to say it also opens pages of the public web:
 /// where they open, that the user is asked once per site, and never to type
 /// the user's passwords. Without it a model does not know it may open one.
-const LEAD_ALWAYS_ON_CHARS: usize = 46_184;
+/// Raised by 90 when `browser` was regrouped (open, read, act, chain) and
+/// told the model when to use it and when `web_fetch` is enough, so it does
+/// not open a public site, and ask the user, only to read a page's text.
+const LEAD_ALWAYS_ON_CHARS: usize = 46_274;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

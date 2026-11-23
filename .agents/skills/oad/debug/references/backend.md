@@ -26,7 +26,7 @@ appv3/crates/
   tools/      built-in agent tools (shell, grep, patch, read, …); tool_start/tool_error logging in src/lib.rs
   core/       settings and XDG paths (src/settings.rs), auth policy (src/auth.rs), path safety
   jsplugin/   QuickJS runtime for .ts/.js plugins
-  mcp/ memory/ preview/ terminal/   MCP client, memory, Preview tab proxy, PTY terminals
+  mcp/ memory/ preview/ terminal/   MCP client, memory, Browser tab proxy, PTY terminals
   cli/        the `agentd` binary; `server serve` is the sidecar entry; loguru-format logging (src/logging.rs)
 appv3/crates/agent/data/sse_events.json   SSE event contract shared with web
 appv3/REPORT.md                  index of every deliberate wire or on-disk difference from v2 (parts in appv3/report/)

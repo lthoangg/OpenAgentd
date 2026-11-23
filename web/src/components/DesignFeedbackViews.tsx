@@ -1,5 +1,5 @@
 /**
- * Design feedback from the Preview tab: the removable chip in the composer
+ * Design feedback from the Browser tab: the removable chip in the composer
  * and the card a sent message shows instead of the raw block.
  */
 import { MousePointerClick, X } from 'lucide-react'
@@ -20,12 +20,12 @@ function PinNumber({ n }: { n: number }) {
   )
 }
 
-/** The composer's chips, one per batch sent from a Preview tab. */
+/** The composer's chips, one per batch sent from a Browser tab. */
 export function DesignFeedbackStrip({ items, onRemove, below = false }: { items: readonly DesignFeedback[]; onRemove: (index: number) => void; below?: boolean }) {
   return (
     <div className={cn(below ? 'mt-3' : 'mb-3', '-mx-2 -my-2')}>
       <div className="overflow-x-auto px-2 py-2">
-        <ul aria-label="Preview comments" className="flex w-max flex-nowrap items-center gap-2">
+        <ul aria-label="Browser comments" className="flex w-max flex-nowrap items-center gap-2">
           {items.map((feedback, index) => (
             <li key={index} className="group relative inline-block shrink-0">
               <Tooltip>

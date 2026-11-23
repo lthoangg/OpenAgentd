@@ -32,7 +32,7 @@ describe('searchSettings', () => {
       expect(labelsFor(query)).toContain('setting:general:Detail')
     }
     for (const query of ['previews', 'manually', 'review panel', 'automatically']) {
-      expect(labelsFor(query)).toContain('setting:general:Open previews')
+      expect(labelsFor(query)).toContain('setting:general:Open the Browser tab')
     }
   })
 

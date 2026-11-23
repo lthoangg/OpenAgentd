@@ -13,7 +13,7 @@ in. The agent uses a site only after the user allows it.
 - Chat has the tool too: a site saved in a project chat opens there with no
   card.
 - A client that cannot show a site (a browser, a phone) says where sites
-  open, in the Preview tab.
+  open, in the Browser tab.
 
 ## How to get to it (user POV)
 
@@ -38,5 +38,5 @@ in. The agent uses a site only after the user allows it.
   the desktop dev build (`oad/testing` → `references/native.md`).
 - Each run uses hosts named after `ctx.run`, so a site an earlier run saved
   cannot satisfy a check.
-- On a phone the Preview sheet opens only from the tool row, so the notice
+- On a phone the Browser sheet opens only from the tool row, so the notice
   is checked at the desktop width.

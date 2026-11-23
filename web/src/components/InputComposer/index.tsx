@@ -139,7 +139,7 @@ export interface InputComposerHandle {
    * mentions, so they render as chips and the backend attaches the files.
    */
   appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => void
-  /** Attach design feedback from a Preview tab as a removable chip. */
+  /** Attach design feedback from a Browser tab as a removable chip. */
   addDesignFeedback: (feedback: DesignFeedback) => void
   /** Attach comments from the Plan tab; they merge into the one plan comments chip. */
   addPlanComments: (block: PlanCommentsBlock) => void

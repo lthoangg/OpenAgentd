@@ -191,7 +191,7 @@ export function dockTabLabel(tab: DockTab): string {
     case 'goal':
       return tab.title === 'Goal' ? 'Session goal' : tab.title
     case 'preview':
-      return `Preview ${tab.title}`
+      return `Browser ${tab.title}`
     case 'attachment':
       return `Attachment ${tab.title}`
     default:
@@ -209,7 +209,7 @@ export function dockTabTooltip(tab: DockTab): string | null {
     case 'commit':
       return safeDecodeURIComponent(tab.commit.subject)
     case 'preview':
-      return tab.target.kind === 'file' ? `${tab.target.path} (preview)` : `${tab.target.url} (preview)`
+      return tab.target.kind === 'file' ? `${tab.target.path} (browser)` : `${tab.target.url} (browser)`
     case 'attachment':
       return `${tab.item.name} (attachment)`
     default:

@@ -1,7 +1,7 @@
 /**
  * A site tab's own toolbar controls: what the agent may do on the site the
  * page is on (the rules of Settings → Browser, for this one site), and a
- * menu for the site's cookies in the Preview tab's profile.
+ * menu for the site's cookies in the Browser tab's profile.
  */
 import { useEffect, useId, useState } from 'react'
 import { Bot, MoreHorizontal } from 'lucide-react'
@@ -114,7 +114,7 @@ function ImportCookiesDialog({ viewId, site, open, onClose }: { viewId: string; 
           <DialogTitle>Import cookies for {site}</DialogTitle>
           <DialogDescription>
             For a site that will not sign in here. In a browser where you are signed in to {site}, export its cookies (a cookie
-            extension&apos;s JSON, or a cookies.txt file) and paste them. They are saved in the Preview tab&apos;s profile and not shown again.
+            extension&apos;s JSON, or a cookies.txt file) and paste them. They are saved in the Browser tab&apos;s profile and not shown again.
           </DialogDescription>
         </DialogHeader>
         <Field label="Cookie export" htmlFor={fieldId} error={error} hint="Cookies sign in as you. Paste them only here, never into a chat.">
@@ -142,7 +142,7 @@ function ImportCookiesDialog({ viewId, site, open, onClose }: { viewId: string; 
   )
 }
 
-/** The site's cookies in the Preview tab's profile: bring them in, or delete them. */
+/** The site's cookies in the Browser tab's profile: bring them in, or delete them. */
 export function SiteMenu({ viewId, host }: { viewId: string; host: string }) {
   const [importing, setImporting] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -166,7 +166,7 @@ export function SiteMenu({ viewId, host }: { viewId: string; host: string }) {
         open={signingOut}
         onOpenChange={setSigningOut}
         title={`Sign out of ${site}?`}
-        description="Its cookies are deleted from the Preview tab's profile, and the page loads again. Your other browsers are not affected."
+        description="Its cookies are deleted from the Browser tab's profile, and the page loads again. Your other browsers are not affected."
         confirmLabel="Sign out"
         onConfirm={async () => {
           try {

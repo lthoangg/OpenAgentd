@@ -64,13 +64,13 @@ export default async function siteAccess({ page, expect, step, open, newSessionI
   await step("the agent opens it with no card; a browser says where sites open", async () => {
     await send(`drive:browser {"action": "open", "url": "https://${allowed}/guide"}`)
     await finished(4)
-    expect(lastToolResult()).toContain(`Opening https://${allowed}/guide in the user's Preview tab`)
+    expect(lastToolResult()).toContain(`Opening https://${allowed}/guide in the user's Browser tab`)
     await expect(card).toHaveCount(0)
     const { previews } = await api("GET", "/preview")
     expect(previews.some((p) => p.kind === "site" && p.origin === `https://${allowed}`)).toBe(true)
     if (phone) return // a phone opens a preview only from the tool row
     await expect(page.getByText("Public sites open in the desktop app")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Open in browser" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Open in your browser" })).toBeVisible()
   })
 
   await step("in Chat the agent has browser too, and uses the saved site", async () => {
@@ -82,7 +82,7 @@ export default async function siteAccess({ page, expect, step, open, newSessionI
     await expect(page.getByRole("button", { name: /^Folder: Chat\. Change folder$/ })).toBeVisible()
     await send(`drive:browser {"action": "open", "url": "https://${allowed}/chat-${id}"}`)
     await finished(1)
-    expect(lastToolResult()).toContain(`Opening https://${allowed}/chat-${id} in the user's Preview tab`)
+    expect(lastToolResult()).toContain(`Opening https://${allowed}/chat-${id} in the user's Browser tab`)
     await expect(card).toHaveCount(0)
     const offered = modelRequests().at(-1).request.tools.map((t) => t.function.name)
     expect(offered).toContain("browser")

@@ -1,5 +1,5 @@
 /**
- * Pages of the public web in the Preview tab (desktop app).
+ * Pages of the public web in the Browser tab (desktop app).
  *
  * The desktop shell shows such a page in a native view of its own, placed
  * over the tab's page area (`desktop/src-tauri/src/browser_view.rs`): a real

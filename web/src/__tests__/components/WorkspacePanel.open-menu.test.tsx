@@ -101,7 +101,7 @@ describe('Review dock "+" menu', () => {
     const menu = await openMenu()
     // Opening things only: the pane's splits are in its ⋯ menu. No Goal or
     // Side questions row: this session has neither yet.
-    expect(rowNames(menu)).toEqual(['Git', 'Plan (open)', 'Tasks', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(rowNames(menu)).toEqual(['Git', 'Plan (open)', 'Tasks', 'Scheduled tasks', 'Terminal', 'Browser', 'Find file…'])
 
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Git' }))
     expect(screen.queryByRole('menu')).toBeNull()
@@ -152,7 +152,7 @@ describe('Review dock "+" menu', () => {
     expect(screen.getByRole('button', { name: 'Open in Review panel' }).textContent).toBe('')
     // Tasks and side questions open above the chat on phones, not in the
     // dock; the plan and the goal open here everywhere.
-    expect(rowNames(await openMenu())).toEqual(['Git', 'Plan (open)', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(rowNames(await openMenu())).toEqual(['Git', 'Plan (open)', 'Scheduled tasks', 'Terminal', 'Browser', 'Find file…'])
   })
 
   it('has one icon-only "+" open button in the strip, and no New terminal / New preview buttons', async () => {
@@ -189,14 +189,14 @@ describe('Review dock "+" menu', () => {
 
   it('drops Git in a chat workspace and Plan without a plan, and leads with files', async () => {
     await renderPanel({ mobile: true, plan: null, chatWorkspace: true })
-    expect(rowNames(await openMenu())).toEqual(['Find file…', 'Preview', 'Terminal', 'Scheduled tasks'])
+    expect(rowNames(await openMenu())).toEqual(['Find file…', 'Browser', 'Terminal', 'Scheduled tasks'])
   })
 
   it('lists Goal and Side questions once the session has them', async () => {
     const client = await renderPanel({ goal: GOAL })
     await act(async () => { client.setQueryData(queryKeys.sideQuestions.count('session-1'), { total: 1 }) })
     await screen.findByRole('button', { name: 'Plan' })
-    expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(rowNames(await openMenu())).toEqual(['Git', 'Goal', 'Plan (open)', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Browser', 'Find file…'])
   })
 
   // The phone has no More sheet: terminal, find file and scheduled tasks open
@@ -272,7 +272,7 @@ describe('Review dock "+" menu', () => {
     await renderPanel({ plan: null })
     const launcher = screen.getByRole('group', { name: 'Open in Review panel' })
     const names = within(launcher).getAllByRole('button').map((row) => row.getAttribute('aria-label')?.replace(/ \(.*\)$/, ''))
-    expect(names).toEqual(['Git', 'Tasks', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(names).toEqual(['Git', 'Tasks', 'Scheduled tasks', 'Terminal', 'Browser', 'Find file…'])
     expect(launcher.querySelectorAll('[data-launcher-divider]')).toHaveLength(1)
 
     await userEvent.setup().click(within(launcher).getByRole('button', { name: 'Tasks (Ctrl+T)' }))

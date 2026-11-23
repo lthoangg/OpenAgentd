@@ -85,7 +85,7 @@ describe("app guide contract (appv3/crates/agent/data/builtin_prompts.json app_g
   it("opens a localhost link in Preview", () => {
     const pages = rule("Local pages")
     expect(pages).toContain("`localhost`")
-    expect(pages).toContain("Preview tab")
+    expect(pages).toContain("Browser tab")
     const previewed: unknown[] = []
     renderReply("Open [the app](http://localhost:5173/pricing).", { openPreview: (target) => previewed.push(target) })
     fireEvent.click(screen.getByRole("link"))

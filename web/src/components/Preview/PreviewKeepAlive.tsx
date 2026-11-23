@@ -2,7 +2,7 @@
  * PreviewKeepAlive — frames the agent's preview pages out of sight.
  *
  * The `preview` tool drives a page through its injected script, which runs
- * only while the page is framed directly in the app. With the Preview tab
+ * only while the page is framed directly in the app. With the Browser tab
  * closed (or never opened, `previewOpen: 'click'`) nothing frames it and
  * every page action fails. This component, mounted once at the app root,
  * keeps one hidden frame for each page the agent opened that no
@@ -182,11 +182,11 @@ function HiddenPreviewFrame({ entry }: { entry: AgentPreview }) {
   if (!src) return null
   return (
     <iframe
-      title={`Background preview of ${target.kind === 'url' ? target.url : target.path}`}
+      title={`Background page of ${target.kind === 'url' ? target.url : target.path}`}
       src={src}
       aria-hidden="true"
       tabIndex={-1}
-      // Same sandbox as the Preview tab: the page's own origin, no top navigation.
+      // Same sandbox as the Browser tab: the page's own origin, no top navigation.
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
       data-preview-keep-alive={key}
       style={HIDDEN_FRAME_STYLE}

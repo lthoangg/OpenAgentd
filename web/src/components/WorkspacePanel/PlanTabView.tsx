@@ -20,7 +20,7 @@
  * "Approve and keep going (N turns)".
  *
  * Links and file-named code spans that point into the workspace open in the
- * dock: an HTML attachment (a mockup) in the Preview tab, anything else as a
+ * dock: an HTML attachment (a mockup) in the Browser tab, anything else as a
  * file tab. Images (SVG diagrams) render inline through the media route.
  *
  * Everything from the plan's ``## Appendix`` heading on (implementation
@@ -159,7 +159,7 @@ export interface PlanTabViewProps {
   onClearPlan?: () => void
   /** Open a workspace-relative path as a file tab. */
   onOpenFile?: (path: string) => void
-  /** Open a workspace-relative HTML file in a Preview tab. */
+  /** Open a workspace-relative HTML file in a Browser tab. */
   onOpenPreview?: (path: string) => void
   /** The workspace root, for links written as absolute paths. */
   workspace?: string | null

@@ -1,6 +1,6 @@
 //! Which sites the agent may use, and the card that asks the user.
 //!
-//! The Preview tab of the desktop app shows pages of the public web in a
+//! The Browser tab of the desktop app shows pages of the public web in a
 //! browser profile where the user may be signed in. The user browses any
 //! site there; the agent's `browser` tool reads and acts only on sites the
 //! user allowed. The rules are a default (ask, or allow every site), a list
@@ -250,7 +250,7 @@ pub fn payload(host: &str, url: &str) -> Value {
         "kind": SITE_ACCESS_KIND,
         "site": {"host": host, "url": url},
         "questions": [{
-            "question": format!("Let the agent use **{host}**? It will read and act on this site's pages as you see them in the Preview tab, including pages behind your sign-in."),
+            "question": format!("Let the agent use **{host}**? It will read and act on this site's pages as you see them in the Browser tab, including pages behind your sign-in."),
             "header": "Site access",
             "options": [
                 {"label": ALLOW_ONCE, "description": "For this chat only.", "recommended": false},

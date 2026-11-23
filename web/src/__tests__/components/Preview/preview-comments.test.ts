@@ -139,7 +139,7 @@ describe('preview comments', () => {
     const file = { where: '@designs/landing.html', device: '', items: [] }
     expect(previewTargetForFeedback(url)).toEqual({ kind: 'url', url: 'http://localhost:5173/pricing' })
     expect(previewTargetForFeedback(file)).toEqual({ kind: 'file', path: 'designs/landing.html' })
-    expect(previewTargetForFeedback({ ...url, where: 'the preview' })).toBeNull()
+    expect(previewTargetForFeedback({ ...url, where: 'the page' })).toBeNull()
     expect(feedbackMatchesTarget(url, { kind: 'url', url: 'http://localhost:5173' })).toBe(true)
     expect(feedbackMatchesTarget(url, { kind: 'url', url: 'http://localhost:3000' })).toBe(false)
     expect(feedbackMatchesTarget(file, { kind: 'file', path: 'designs/landing.html' })).toBe(true)

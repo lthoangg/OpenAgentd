@@ -1,5 +1,5 @@
 /**
- * Open the Preview tab when the agent's `preview` tool opens a page.
+ * Open the Browser tab when the agent's `preview` tool opens a page.
  *
  * Settings → General can leave pages to the tool row's Open button
  * (``previewOpen: 'click'``). Only calls that finish while this view is live count: calls already done
@@ -9,7 +9,7 @@
  *
  * Whatever the mode, a page the agent opened is also registered with the
  * keep-alive store, so `PreviewKeepAlive` can keep it driveable while no
- * Preview tab shows it; later `preview` calls refresh its last-use time.
+ * Browser tab shows it; later `preview` calls refresh its last-use time.
  */
 import { useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'

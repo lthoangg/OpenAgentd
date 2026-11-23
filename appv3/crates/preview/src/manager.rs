@@ -72,7 +72,7 @@ pub struct Entry {
     last_active: AtomicU64,
     active: AtomicUsize,
     console: Mutex<ConsoleBuffer>,
-    /// Commands from the agent to the page open in the Preview tab.
+    /// Commands from the agent to the page open in the Browser tab.
     pub agent: AgentChannel,
     /// Ports of device relays that reach this listener through a tunnel:
     /// their pages send `Host: 127.0.0.1:<relay port>`.

@@ -71,8 +71,9 @@ MCP.
   stopped it, as soon as it finishes and after a reload; before, that
   showed only once the row had been opened.
 - **`browser` — show a page, read its console, and use it** `[v3.3.0]` — the agent
-  opens a running local dev server or a workspace HTML file in your Preview
-  tab (it comes forward on desktop, and the tool card has **Open preview**).
+  opens a running local dev server or a workspace HTML file in your Browser
+  tab, called Preview before v3.62.0 (it comes forward on desktop, and the
+  tool card has **Open in Browser**).
   It then reads that page's recent console errors, warnings and logs, newest
   first, and can clear them to see only new output after a fix. It can also
   use the open page: a **snapshot** lists headings, text and controls with
@@ -100,7 +101,7 @@ MCP.
   `preview` calls as before; an agent there that calls `preview` again is
   told to use `browser`.
   A server on this computer is opened by its loopback URL, never the OpenAgentd API port. Everything
-  works only while the page is open in the Preview tab *(since v3.42.0, or
+  works only while the page is open in the Browser tab *(since v3.42.0, or
   loaded out of sight while the desktop app is open)*; there is no headless
   browser and no screenshots.
 - **Hints on wrong tool names and paths** `[v3.28.0]` — calling a tool by a

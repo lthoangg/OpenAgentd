@@ -14,7 +14,7 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   last zoom chosen (`shell_prefs`). Windows and Linux hide the native menu
   bar; the app menu opens from the header's ☰ button or an Alt tap
   (`context_menu::show_app_menu`).
-- `src/browser_view.rs`: public sites in the Preview tab. Each page is a
+- `src/browser_view.rs`: public sites in the Browser tab. Each page is a
   borderless child window of the app window, placed over the tab's page area
   by the page (`browser_view_open`, `browser_view_frame`), in a browser
   profile of its own (macOS: one fixed data store). Its label starts with

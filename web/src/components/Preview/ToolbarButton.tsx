@@ -1,5 +1,5 @@
 /**
- * A tool in a Preview tab's bar: an icon button with a tooltip that says why
+ * A tool in a Browser tab's bar: an icon button with a tooltip that says why
  * it is disabled while it is.
  */
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'

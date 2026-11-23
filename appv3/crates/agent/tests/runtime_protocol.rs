@@ -238,7 +238,7 @@ fn nothing_else_repeats_the_app_guide() {
         "highlighted",
         "raw html",
         "clickable",
-        "opens in the preview",
+        "opens in the browser tab",
     ];
     fn strings<'a>(v: &'a serde_json::Value, path: String, out: &mut Vec<(String, &'a str)>) {
         match v {

@@ -120,7 +120,7 @@ export function MarkdownLink({ children, ...props }: AnchorHTMLAttributes<HTMLAn
   return (
     <a
       {...props}
-      title={props.title ?? (opensFile && fileRef ? refTitle(fileRef) : 'Open in Preview')}
+      title={props.title ?? (opensFile && fileRef ? refTitle(fileRef) : 'Open in the Browser tab')}
       onClick={(event) => {
         event.preventDefault()
         openInDock()

@@ -71,10 +71,10 @@ export function GeneralSettingsPage() {
           <SegmentedChoice label="Detail" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
         </PanelRow>
         <PanelRow
-          label="Open previews"
+          label="Open the Browser tab"
           description="When the agent shows a page."
         >
-          <SegmentedChoice label="Open previews" options={PREVIEW_OPENS} value={previewOpen} onChange={setPreviewOpen} />
+          <SegmentedChoice label="Open the Browser tab" options={PREVIEW_OPENS} value={previewOpen} onChange={setPreviewOpen} />
         </PanelRow>
       </PanelSection>
     </SettingsPage>

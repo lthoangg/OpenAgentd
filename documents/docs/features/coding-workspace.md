@@ -137,13 +137,13 @@ agent against it.
     browser**. The page runs through a proxy on its own loopback port, so it
     cannot read the app's storage or access key, and dev-server hot reload
     keeps working. File previews reload when the workspace files change.
-    **⌘W** / **Ctrl+W** closes the Preview tab, also while the page has focus.
+    **⌘W** / **Ctrl+W** closes the Browser tab, also while the page has focus.
     **Design** (or **⌥C** / **Alt+C**, also while the page has focus) turns on
     an element picker: click an element, write a comment, and a numbered pin
     stays on the page; picking stays on for the next element. Comments can be
     edited in the list. **Send to agent** attaches the comments to the
     composer as one **Design feedback** chip; add your own instruction and
-    send. The chip's **×** puts the comments back in the Preview tab's list.
+    send. The chip's **×** puts the comments back in the Browser tab's list.
     The agent gets each element's selector, text, opening tag and key styles
     and, for React (18 and 19), Vue or Svelte dev builds, 30 lines of its
     source, attached like an `@path#Lx-Ly` mention. React 19 sources come
@@ -171,9 +171,9 @@ agent against it.
     loads again. Hot reload also works for a dev server on
     `https://localhost` with a self-signed certificate `[v3.55.0]`.
     Since `[v3.29.0]` the address bar also opens workspace files from any
-    Preview tab: type a path from the workspace root (`docs/mockup.html`,
+    Browser tab: type a path from the workspace root (`docs/mockup.html`,
     `./docs/mockup.html`) or paste a full path or `file://` link inside the
-    workspace. From a dev-server tab the file opens in its own Preview tab; a
+    workspace. From a dev-server tab the file opens in its own Browser tab; a
     path that is not a workspace file shows an error in place (start with `/`
     for a page on the dev server). The "Nothing is running" page says so.
     Local HTTP(S) links in workspace chat responses open in Preview instead

@@ -219,7 +219,7 @@ describe('the phone navigation stack', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 
-  it('returns to the chat after Preview comments are sent to the agent', async () => {
+  it('returns to the chat after Browser comments are sent to the agent', async () => {
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" phoneStack={{ atSessions: false, onBack: () => {} }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
     expect((await screen.findByTestId('coding-workspace-panel')).dataset.open).toBe('true')

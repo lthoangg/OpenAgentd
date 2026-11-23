@@ -1,6 +1,6 @@
 /**
  * Design feedback taken back out of the composer (its chip's x), waiting for
- * the Preview tab it came from to put the comments back in its list.
+ * the Browser tab it came from to put the comments back in its list.
  *
  * A store rather than a callback because that tab may not be open yet: it
  * picks up its feedback when it mounts. Lost on reload, like the comments.

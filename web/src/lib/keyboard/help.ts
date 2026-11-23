@@ -118,7 +118,7 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
       ],
     },
     {
-      title: 'Preview',
+      title: 'Browser',
       entries: [
         keys('Comment on an element (toggle)', { key: 'C', code: 'KeyC', alt: true }),
         keys('Stop commenting', { key: 'Escape' }),

@@ -1,4 +1,4 @@
-//! Reading a cookie export the user pasted, for the Preview tab's profile.
+//! Reading a cookie export the user pasted, for the Browser tab's profile.
 //!
 //! Some sites refuse to sign in inside an embedded browser. The user can
 //! then export that site's cookies from a browser where they are signed in

@@ -1,7 +1,7 @@
 /**
- * Settings → Browser: which sites the agent may use in the Preview tab
+ * Settings → Browser: which sites the agent may use in the Browser tab
  * (ask for each new one or allow all, a list of allowed sites and a list of
- * blocked ones), and clearing the Preview tab's own browser profile in the
+ * blocked ones), and clearing the Browser tab's own browser profile in the
  * desktop app. The rules are kept by the server; each change saves at once.
  */
 import { useId, useState, type FormEvent } from 'react'
@@ -129,7 +129,7 @@ export function BrowserSettingsPage() {
       title="Browser"
       loading={isLoading}
       error={error}
-      description="Public sites open in the desktop app's Preview tab, in a browser profile of its own: separate from your other browsers, and signed in only where you signed in there."
+      description="Public sites open in the desktop app's Browser tab, in a browser profile of its own: separate from your other browsers, and signed in only where you signed in there."
     >
       <PanelSection title="Agent access" flush>
         <PanelRow label="Sites the agent may use" description="You can always browse any site yourself.">
@@ -145,7 +145,7 @@ export function BrowserSettingsPage() {
 
       <SiteList
         title="Allowed sites"
-        description="The agent uses these without asking, signed in as you are in the Preview tab."
+        description="The agent uses these without asking, signed in as you are in the Browser tab."
         empty="No allowed sites"
         addLabel="Allow a site"
         sites={rules.allowed}
@@ -166,7 +166,7 @@ export function BrowserSettingsPage() {
 
       {browserViewsAvailable() && (
         <PanelSection title="Browsing data" flush>
-          <PanelRow label="Clear browsing data" description="Deletes the cookies and stored data of every site in the Preview tab. You are signed out of all of them.">
+          <PanelRow label="Clear browsing data" description="Deletes the cookies and stored data of every site in the Browser tab. You are signed out of all of them.">
             <Button size="sm" variant="default" className="min-h-9 md:min-h-0" onClick={() => setClearing(true)}>
               Clear…
             </Button>
@@ -177,7 +177,7 @@ export function BrowserSettingsPage() {
         open={clearing}
         onOpenChange={setClearing}
         title="Clear browsing data?"
-        description="Every site in the Preview tab is signed out, and what they stored is deleted. This can't be undone."
+        description="Every site in the Browser tab is signed out, and what they stored is deleted. This can't be undone."
         confirmLabel="Clear"
         onConfirm={async () => {
           try {

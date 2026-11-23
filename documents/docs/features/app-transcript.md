@@ -178,7 +178,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     `.agents/plans/<plan-name>/` (the only place `patch` writes in Plan
     mode), and check them with a look-only `browser` (open, logs, snapshot,
     inspect, scroll, navigate, wait; no click, fill or press). In the Plan
-    tab, a link to an HTML mockup opens it in a Preview tab (a file tab when
+    tab, a link to an HTML mockup opens it in a Browser tab (a file tab when
     previews are unavailable), other workspace links open as file tabs, SVG
     images render inline, and `mermaid` fences render as diagrams.
 - **Transcript: act where you read** `[v3.40.0]`:
@@ -380,7 +380,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   for the whole window with zoom always on (Esc closes it). A diagram that
   can't be drawn shows its code with a one-line reason. (v3.5.0–v3.20.0
   showed `mermaid` fences as plain code.) For richer drawings, an agent can
-  still write an HTML/SVG file and open it in the Preview tab.
+  still write an HTML/SVG file and open it in the Browser tab.
 - **LaTeX math rendering** `[v1.133.0]` — inline math (`$math$` and `\(math\)`),
   display math (`$$math$$` and `\[math\]`), and fenced code blocks (`math`, `katex`)
   render formatted LaTeX mathematics via KaTeX. Distinguishes mathematical

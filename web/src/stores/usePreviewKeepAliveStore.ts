@@ -1,5 +1,5 @@
 /**
- * Which previews the agent opened, and which of them a Preview tab already
+ * Which previews the agent opened, and which of them a Browser tab already
  * shows.
  *
  * The agent's `preview` tool drives a page through the page's own script, and
@@ -163,7 +163,7 @@ export const usePreviewKeepAliveStore = create<PreviewKeepAliveState>((set) => (
   reset: () => set({ agent: {}, tabs: {}, serverPagesVersion: 0 }),
 }))
 
-/** True when a mounted Preview tab shows the same listener as `entry`. */
+/** True when a mounted Browser tab shows the same listener as `entry`. */
 export function isShownInTab(tabs: Record<string, ShownPreview>, entry: Pick<AgentPreview, 'key' | 'previewId'>): boolean {
   for (const tab of Object.values(tabs)) {
     if (entry.previewId && tab.previewId) {

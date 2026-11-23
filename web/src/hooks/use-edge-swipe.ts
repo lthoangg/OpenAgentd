@@ -127,7 +127,7 @@ function canScrollHorizontally(target: EventTarget | null, boundary: EventTarget
     if (el.scrollWidth > el.clientWidth) {
       const { overflowX } = window.getComputedStyle(el)
       // Text fields scroll their own overflowing text without declaring
-      // overflow-x (e.g. a long URL in the Preview address bar).
+      // overflow-x (e.g. a long URL in the Browser address bar).
       const isTextField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
       if (isTextField || overflowX === 'auto' || overflowX === 'scroll') {
         // Finger moving right reveals content to the left (scrollLeft ↓);

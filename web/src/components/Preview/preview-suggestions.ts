@@ -1,5 +1,5 @@
 /**
- * What the Preview address field offers when focused: the addresses
+ * What the Browser address field offers when focused: the addresses
  * previewed last in this workspace, and the workspace's HTML pages.
  */
 

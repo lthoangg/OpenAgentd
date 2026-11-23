@@ -1,5 +1,5 @@
 /**
- * BrowserTabView — a Preview tab that shows a page of the public web.
+ * BrowserTabView — a Browser tab that shows a page of the public web.
  *
  * The page is not in this document: the desktop shell draws it in a native
  * view placed over this tab's page area (`lib/browser-view.ts`), with a
@@ -97,8 +97,8 @@ function SiteUnavailable({ url }: { url: string }) {
     <EmptyState
       icon={Globe}
       title="Public sites open in the desktop app"
-      body="On this device, Preview shows local servers and workspace files. Open this page in your browser instead."
-      action={<Button type="button" size="sm" variant="default" onClick={() => void openExternalUrl(url)}>Open in browser</Button>}
+      body="On this device, the Browser tab shows local servers and workspace files. Open this page in your browser instead."
+      action={<Button type="button" size="sm" variant="default" onClick={() => void openExternalUrl(url)}>Open in your browser</Button>}
     />
   )
 }
@@ -396,7 +396,7 @@ function SiteTab({ workspace, tabId, target, navKey, onSendComments, onOpenTarge
         <ToolbarButton label={designLabel} tooltipSide="top" onClick={toggleDesign} disabled={designDisabled} pressed={mode === 'inspect'}>
           <MousePointerClick size={14} aria-hidden="true" />
         </ToolbarButton>
-        <ToolbarButton label="Open in browser" tooltipSide="top" onClick={() => void openExternalUrl(url)}>
+        <ToolbarButton label="Open in your browser" tooltipSide="top" onClick={() => void openExternalUrl(url)}>
           <ExternalLink size={14} aria-hidden="true" />
         </ToolbarButton>
         <SiteMenu viewId={page.viewId} host={host} />

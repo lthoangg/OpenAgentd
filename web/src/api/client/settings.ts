@@ -51,7 +51,7 @@ export async function updateDeniedPathsSettings(
 }
 
 /**
- * Which sites the agent may use in the Preview tab: what applies to a site
+ * Which sites the agent may use in the Browser tab: what applies to a site
  * in neither list, the sites it may use and the ones it may not. A list
  * entry is a host (`example.com`, which covers `www.` too) or
  * `*.example.com` for its subdomains.

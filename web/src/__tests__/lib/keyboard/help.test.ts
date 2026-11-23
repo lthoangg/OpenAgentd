@@ -23,9 +23,9 @@ describe('formatChord', () => {
 describe('shortcutHelp', () => {
   it('groups the app table and the keys that live in one area', () => {
     const groups = shortcutHelp('macos').map((group) => group.title)
-    expect(groups).toEqual(['App', 'Moving around', 'Chat', 'Review panel', 'Terminal', 'Preview', 'Dialogs and viewers'])
+    expect(groups).toEqual(['App', 'Moving around', 'Chat', 'Review panel', 'Terminal', 'Browser', 'Dialogs and viewers'])
     expect(shortcutHelp('macos', { desktopApp: true }).map((group) => group.title))
-      .toEqual(['App', 'Moving around', 'Chat', 'Review panel', 'Terminal', 'Preview', 'Dialogs and viewers', 'Desktop app', 'From any app (when Global Shortcuts is on)'])
+      .toEqual(['App', 'Moving around', 'Chat', 'Review panel', 'Terminal', 'Browser', 'Dialogs and viewers', 'Desktop app', 'From any app (when Global Shortcuts is on)'])
     expect(find('macos', 'Close tab')?.keys).toEqual(['⌘W'])
     expect(find('macos', 'Open workspace')?.keys).toEqual(['⌘O'])
     // The file finder is "Find file", not "Quick Open"

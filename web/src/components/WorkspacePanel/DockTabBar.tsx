@@ -525,7 +525,7 @@ export function DockTabBar({
         {openItems.length > 0 && (
           <ActionButton
             label="Open in Review panel"
-            tooltip="Open a view, terminal, preview or file"
+            tooltip="Open a view, terminal, browser or file"
             expanded={openMenuAt !== null}
             onClick={(event) => setOpenMenuAt(menuPointBelow(event.currentTarget))}
           >

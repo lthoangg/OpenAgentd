@@ -1,5 +1,5 @@
 /**
- * The chat's side of the Preview tab: a new page from the palette, a page
+ * The chat's side of the Browser tab: a new page from the palette, a page
  * the agent opens (the ``preview`` tool card's Open button, by event, or the
  * tool itself on desktop), and design feedback moving between a Preview
  * tab's comments and the composer.
@@ -33,7 +33,7 @@ export function useChatPreview({ workspace, isMobile, inputRef, setWorkspacePane
     inputRef.current?.focus()
   }, [inputRef, isMobile, setWorkspacePanel])
 
-  // A feedback chip's x sends its comments back to their Preview tab's list,
+  // A feedback chip's x sends its comments back to their Browser tab's list,
   // opening that tab on desktop (it picks them up whenever it next mounts).
   const handleDesignFeedbackRemoved = useCallback((feedback: DesignFeedback) => {
     if (!workspace) return

@@ -1,5 +1,5 @@
 /**
- * What the Preview address bar was asked to show.
+ * What the Browser address bar was asked to show.
  *
  * Besides URLs and paths on the tab's own server, the bar takes workspace
  * files: a path relative to the workspace root (`docs/a.html`,
@@ -96,5 +96,5 @@ export function siteUnavailableMessage(url: string): string {
   } catch {
     // Shown as typed.
   }
-  return `Public sites such as ${host} open in the OpenAgentd desktop app on a Mac. Here, Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files.`
+  return `Public sites such as ${host} open in the OpenAgentd desktop app on a Mac. Here, the Browser tab shows servers on this computer (localhost, 127.0.0.1) and workspace files.`
 }

@@ -547,7 +547,7 @@ describe("InputComposer — design feedback chips", () => {
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     act(() => { ref.current?.addDesignFeedback(feedback) })
-    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Browser comments · 1 comment")).toBeTruthy()
     expect(textarea.value).toBe("")
     expect((screen.getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(false)
 
@@ -557,7 +557,7 @@ describe("InputComposer — design feedback chips", () => {
     const [message, , mentions] = onSubmit.mock.calls[0] as [string, unknown, string[]]
     expect(message).toBe(composeWithDesignFeedback("Please fix", [feedback]))
     expect(mentions).toEqual(["src/Pricing.tsx#L42-L71"])
-    expect(screen.queryByText("Preview comments · 1 comment")).toBeNull()
+    expect(screen.queryByText("Browser comments · 1 comment")).toBeNull()
   })
 
   it("sends feedback alone, and can remove it", () => {
@@ -569,8 +569,8 @@ describe("InputComposer — design feedback chips", () => {
     const other = { ...feedback, where: "http://localhost:5173/about" }
     act(() => { ref.current?.addDesignFeedback(other) })
     fireEvent.click(screen.getAllByRole("button", { name: "Remove design feedback" })[0])
-    expect(screen.getAllByText("Preview comments · 1 comment")).toHaveLength(1)
-    // The removed feedback goes back to its Preview tab rather than away.
+    expect(screen.getAllByText("Browser comments · 1 comment")).toHaveLength(1)
+    // The removed feedback goes back to its Browser tab rather than away.
     expect(onDesignFeedbackRemoved.mock.calls).toEqual([[feedback]])
     fireEvent.keyDown(screen.getByLabelText("Message input"), { key: "Enter" })
     expect(onSubmit.mock.calls[0][0]).toBe(composeWithDesignFeedback("", [other]))
@@ -582,12 +582,12 @@ describe("InputComposer — design feedback chips", () => {
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     act(() => { ref.current?.setValue(composeWithDesignFeedback("Undone text", [feedback])) })
     expect(textarea.value).toBe("Undone text")
-    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Browser comments · 1 comment")).toBeTruthy()
     act(() => { ref.current?.setValue("") })
-    expect(screen.queryByText("Preview comments · 1 comment")).toBeNull()
+    expect(screen.queryByText("Browser comments · 1 comment")).toBeNull()
     act(() => { ref.current?.appendValue(composeWithDesignFeedback("held", [feedback]), { paragraph: true }) })
     expect(textarea.value).toBe("held")
-    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Browser comments · 1 comment")).toBeTruthy()
   })
 })
 
@@ -646,7 +646,7 @@ describe("InputComposer — plan comments chip", () => {
     act(() => { ref.current?.setValue(sent) })
     expect(textarea.value).toBe("Edit me")
     expect(screen.getByText("Plan comments · 1 comment")).toBeTruthy()
-    expect(screen.getByText("Preview comments · 1 comment")).toBeTruthy()
+    expect(screen.getByText("Browser comments · 1 comment")).toBeTruthy()
     fireEvent.keyDown(textarea, { key: "Enter" })
     expect(onSubmit.mock.calls[0][0]).toBe(sent)
   })

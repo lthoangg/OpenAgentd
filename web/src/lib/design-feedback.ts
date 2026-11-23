@@ -1,5 +1,5 @@
 /**
- * Design feedback from the Preview tab, carried inside a chat message.
+ * Design feedback from the Browser tab, carried inside a chat message.
  *
  * The composer holds feedback as a chip; on send it is written into the
  * message as a tagged block the agent reads directly:
@@ -156,10 +156,10 @@ export function designFeedbackMentions(feedback: DesignFeedback): string[] {
   return [...out]
 }
 
-/** ``Preview comments · 3 comments`` */
+/** ``Browser comments · 3 comments`` */
 export function designFeedbackSummary(feedback: DesignFeedback): string {
   const n = feedback.items.length
-  return `Preview comments · ${n} ${n === 1 ? 'comment' : 'comments'}`
+  return `Browser comments · ${n} ${n === 1 ? 'comment' : 'comments'}`
 }
 
 /** ``message`` for plain-text surfaces: each block becomes a one-line summary. */

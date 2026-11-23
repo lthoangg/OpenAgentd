@@ -1,4 +1,4 @@
-/** TanStack Query hooks for the sites the agent may use in the Preview tab. */
+/** TanStack Query hooks for the sites the agent may use in the Browser tab. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getBrowserSites, updateBrowserSites, type BrowserSites } from '@/api/client'

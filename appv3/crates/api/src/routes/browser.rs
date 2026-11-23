@@ -1,4 +1,4 @@
-//! `/api/browser`: the sites the agent may use in the Preview tab.
+//! `/api/browser`: the sites the agent may use in the Browser tab.
 //!
 //! Settings → Browser reads and replaces the rules; the card the agent's
 //! `browser` tool opens adds to them. The rules and their meaning are in

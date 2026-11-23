@@ -1,5 +1,5 @@
 /**
- * Preview tabs' pages. Each stays mounted while its tab is open, so the page
+ * Browser tabs' pages. Each stays mounted while its tab is open, so the page
  * and its unsent comments survive tab switches and moves between panes: one
  * layer over the panes, each page placed over its pane's body, in a fixed
  * order (a moved iframe reloads). A preview listener can serve several tabs

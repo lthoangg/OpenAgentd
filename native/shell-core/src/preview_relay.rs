@@ -3,7 +3,7 @@
 //!
 //! A preview listener binds the *server's* `127.0.0.1`, which a phone or
 //! another computer cannot reach. The relay listens on this device's own
-//! `127.0.0.1:<port>`; the Preview tab frames that origin, and every TCP
+//! `127.0.0.1:<port>`; the Browser tab frames that origin, and every TCP
 //! connection the webview opens becomes one WebSocket to
 //! `<server>/api/preview/{id}/tunnel`, which carries the raw bytes to the
 //! listener. HTTP keep-alive, the inspector's long poll and dev-server
@@ -46,7 +46,7 @@ const READ_CHUNK: usize = 64 * 1024;
 /// The server accepts messages up to 1 MiB; chunks stay far below that.
 const MAX_MESSAGE: usize = 1024 * 1024;
 
-/// Where the Preview tab frames a relayed preview.
+/// Where the Browser tab frames a relayed preview.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RelayInfo {
     pub port: u16,
@@ -232,7 +232,7 @@ async fn bind(preferred: u16) -> Result<TcpListener, String> {
 }
 
 /// In the page a relay serves when it cannot tunnel a connection; the
-/// Preview tab knows the page by the message it posts.
+/// Browser tab knows the page by the message it posts.
 pub const RELAY_ERROR_MARKER: &str = r#"<meta name="openagentd-preview" content="relay-error">"#;
 /// How long a refused connection may take to send its request.
 const REFUSE_READ: Duration = Duration::from_secs(2);
@@ -246,7 +246,7 @@ fn escape_html(text: &str) -> String {
 }
 
 /// The page shown in the frame when a connection cannot be tunnelled. It
-/// posts `reason` to the Preview tab (the same message shape the preview's
+/// posts `reason` to the Browser tab (the same message shape the preview's
 /// own script uses), which shows it with Retry.
 fn error_page(reason: &str) -> String {
     let message = serde_json::json!({

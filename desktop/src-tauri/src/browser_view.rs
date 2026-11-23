@@ -1,7 +1,7 @@
-//! Public sites in the Preview tab.
+//! Public sites in the Browser tab.
 //!
 //! A page from the public web is shown by a borderless child window of the
-//! app window, placed over the Preview tab's page area. It is a window of
+//! app window, placed over the Browser tab's page area. It is a window of
 //! its own, not a second webview in the app window: with two webviews Tauri
 //! stops treating the window as a `WebviewWindow`, which every command of
 //! this shell takes.
@@ -722,7 +722,7 @@ pub async fn browser_view_clear_cookies(app: AppHandle, window: WebviewWindow, i
 }
 
 /// Delete everything the profile holds (cookies, storage, caches): every
-/// site in the Preview tab is signed out. Open pages load again.
+/// site in the Browser tab is signed out. Open pages load again.
 #[tauri::command]
 pub async fn browser_profile_clear(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
     app_window(&window)?;

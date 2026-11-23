@@ -412,7 +412,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     setActionsOpen(true)
   })
 
-  // Design feedback from the Preview tab and comments from the Plan tab show
+  // Design feedback from the Browser tab and comments from the Plan tab show
   // as cards, not raw text; the collapse and mention rendering below only
   // see the typed text.
   const { text: withoutPlan, block: planComments } = splitPlanComments(content)

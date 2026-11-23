@@ -1,8 +1,8 @@
 /**
- * The chat's side of the Preview tab, as the Review panel and the composer
+ * The chat's side of the Browser tab, as the Review panel and the composer
  * see it: the agent (or a tool card) opening a page opens the panel on it,
  * and a design-feedback chip removed from the composer goes back to its
- * Preview tab's comments, opening that tab.
+ * Browser tab's comments, opening that tab.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen } from '@testing-library/react'
@@ -158,7 +158,7 @@ afterEach(() => {
 
 const feedback: DesignFeedback = { where: 'http://localhost:5173/pricing', device: 'Desktop', items: [] }
 
-describe('AgentChatView and the Preview tab', () => {
+describe('AgentChatView and the Browser tab', () => {
   it('runs where previews can be reached', () => {
     expect(previewsAvailable()).toBe(true)
   })
@@ -182,7 +182,7 @@ describe('AgentChatView and the Preview tab', () => {
     expect(screen.queryByTestId('coding-workspace-panel')).toBeNull()
   })
 
-  it('gives a removed feedback chip back to its Preview tab and shows that tab', async () => {
+  it('gives a removed feedback chip back to its Browser tab and shows that tab', async () => {
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
     act(() => { composerProps.onDesignFeedbackRemoved?.(feedback) })
     expect(useReturnedFeedbackStore.getState().items).toEqual([{ workspace: '/repo/project', feedback }])

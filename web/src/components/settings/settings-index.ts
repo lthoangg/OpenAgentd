@@ -30,7 +30,7 @@ export const SETTINGS_INDEX: readonly SettingEntry[] = [
   { section: 'general', label: 'Theme', keywords: ['dark', 'light', 'system', 'color', 'colour', 'mode', 'appearance'] },
   { section: 'general', label: 'Text size', keywords: ['font', 'compact', 'default', 'large', 'bigger', 'smaller', 'zoom', 'type', 'appearance'] },
   { section: 'general', label: 'Detail', keywords: ['simple', 'full', 'reader', 'detailed', 'transcript', 'style', 'thinking', 'tool calls', 'chat layout', 'chat'] },
-  { section: 'general', label: 'Open previews', keywords: ['previews', 'review panel', 'web page', 'browser', 'auto open', 'automatically', 'manually', 'on click', 'when i choose', 'chat'] },
+  { section: 'general', label: 'Open the Browser tab', keywords: ['previews', 'preview', 'review panel', 'web page', 'browser', 'auto open', 'automatically', 'manually', 'on click', 'when i choose', 'chat'] },
   // Desktop
   { section: 'desktop', label: 'Open at login', keywords: ['startup', 'autostart', 'launch', 'boot', 'background', 'sign in', 'login items'] },
   { section: 'desktop', label: 'Agent status in the notch', keywords: ['notch', 'island', 'menu bar', 'macos', 'status'] },

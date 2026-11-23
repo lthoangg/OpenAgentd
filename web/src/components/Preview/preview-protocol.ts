@@ -1,5 +1,5 @@
 /**
- * Messages between the Preview tab and the inspector script the preview
+ * Messages between the Browser tab and the inspector script the preview
  * listener adds to each page (`appv3/crates/preview/assets/inspector.js`).
  *
  * The page runs on its own loopback origin, so every message is checked for

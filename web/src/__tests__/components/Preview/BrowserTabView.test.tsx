@@ -1,5 +1,5 @@
 /**
- * A Preview tab on a page of the public web. The desktop shell (`invoke`,
+ * A Browser tab on a page of the public web. The desktop shell (`invoke`,
  * its events) and the server (`fetch`) are stand-ins; the native view
  * itself is outside what a test can show.
  */
@@ -120,7 +120,7 @@ describe('BrowserTabView', () => {
     platform = { isTauri: false, os: 'macos', isMacOverlay: false, isFullscreen: false }
     renderTab()
     expect(screen.getByText('Public sites open in the desktop app')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in your browser' }))
     expect(openedOutside).toHaveBeenCalledWith(`${ORIGIN}/cart`)
     expect(invoked).toEqual([])
   })
@@ -128,9 +128,9 @@ describe('BrowserTabView', () => {
   it('loads the page in a view, out of sight until its area has a size', async () => {
     const { viewId } = renderTab()
     await waitFor(() => expect(calls('browser_view_open')).toEqual([{ id: viewId, url: `${ORIGIN}/cart`, frame: null }]))
-    expect((screen.getByLabelText('Preview address') as HTMLInputElement).value).toContain('shop.example/cart')
+    expect((screen.getByLabelText('Browser address') as HTMLInputElement).value).toContain('shop.example/cart')
     await emit(viewId, { kind: 'url', url: `${ORIGIN}/checkout` })
-    await waitFor(() => expect((screen.getByLabelText('Preview address') as HTMLInputElement).value).toContain('shop.example/checkout'))
+    await waitFor(() => expect((screen.getByLabelText('Browser address') as HTMLInputElement).value).toContain('shop.example/checkout'))
   })
 
   it('says that a page did not load, and stops offering comments on it', async () => {
@@ -201,7 +201,7 @@ describe('BrowserTabView', () => {
     await pageSays(viewId, { type: 'shortcut', name: 'close-tab' })
     expect(closed).toEqual(['t1'])
 
-    const address = screen.getByLabelText('Preview address')
+    const address = screen.getByLabelText('Browser address')
     fireEvent.change(address, { target: { value: 'docs.example/guide' } })
     fireEvent.submit(address.closest('form') as HTMLFormElement)
     await waitFor(() => expect(targets).toEqual([{ kind: 'url', url: 'https://docs.example/guide' }]))

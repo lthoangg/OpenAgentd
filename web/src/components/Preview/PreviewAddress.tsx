@@ -1,5 +1,5 @@
 /**
- * The Preview tab's address field. At rest it shows the address without
+ * The Browser tab's address field. At rest it shows the address without
  * `http://`; focused, it shows the whole address and suggests the
  * workspace's recent addresses and its HTML pages.
  */
@@ -72,7 +72,7 @@ export function PreviewAddress({ url, phone, loading, recent, files, onSubmit, o
     >
       <input
         ref={inputRef}
-        aria-label="Preview address"
+        aria-label="Browser address"
         aria-autocomplete="list"
         aria-controls={suggestions.length ? listId : undefined}
         aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}

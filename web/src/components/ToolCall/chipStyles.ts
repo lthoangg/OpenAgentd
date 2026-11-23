@@ -1,5 +1,5 @@
 /**
- * A small action chip beside a tool row's header (Open preview, Open plan,
+ * A small action chip beside a tool row's header (Open in Browser, Open plan,
  * View image). 18px of chip on desktop, a 36px target on touch.
  */
 export const TOOL_CHIP_CLASS =

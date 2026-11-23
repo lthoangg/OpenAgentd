@@ -128,7 +128,7 @@ function fromPage(frameWindow: Window, data: Record<string, unknown>, origin = O
 
 /** Type into the address bar and press Enter. */
 function enterAddress(value: string) {
-  const address = screen.getByRole('textbox', { name: 'Preview address' })
+  const address = screen.getByRole('textbox', { name: 'Browser address' })
   fireEvent.focus(address)
   fireEvent.change(address, { target: { value } })
   fireEvent.submit(address.closest('form') as HTMLFormElement)
@@ -169,7 +169,7 @@ describe('PreviewTabView', () => {
     expect(iframe.getAttribute('src')).toBe(`${ORIGIN}/pricing`)
     expect(iframe.getAttribute('sandbox')).not.toContain('allow-top-navigation')
     expect(previewBodies[0]).toEqual({ workspace: WS, url: 'http://localhost:5173/pricing' })
-    const address = screen.getByRole('textbox', { name: 'Preview address' }) as HTMLInputElement
+    const address = screen.getByRole('textbox', { name: 'Browser address' }) as HTMLInputElement
     // At rest the field leaves out http://, which every local page has; focus shows the whole address.
     await waitFor(() => expect(address.value).toBe('localhost:5173/pricing'))
     fireEvent.focus(address)
@@ -195,7 +195,7 @@ describe('PreviewTabView', () => {
     expect(design().disabled).toBe(true)
     fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
     await waitFor(() => expect(design().disabled).toBe(false))
-    expect((screen.getByRole('textbox', { name: 'Preview address' }) as HTMLInputElement).value).toBe('localhost:5173/pricing')
+    expect((screen.getByRole('textbox', { name: 'Browser address' }) as HTMLInputElement).value).toBe('localhost:5173/pricing')
   })
 
   it('collects design comments and sends them to the composer', async () => {
@@ -270,7 +270,7 @@ describe('PreviewTabView', () => {
     fireEvent.keyDown(window, { key: 'ç', code: 'KeyC', altKey: true })
     expect(pressed()).toBe('true')
     // Typing in a field is left alone.
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Preview address' }), { key: 'ç', code: 'KeyC', altKey: true })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Browser address' }), { key: 'ç', code: 'KeyC', altKey: true })
     expect(pressed()).toBe('true')
     // The page forwards the shortcut when focus is inside it.
     fromPage(frameWindow, { type: 'shortcut', name: 'toggle-design' })
@@ -378,7 +378,7 @@ describe('PreviewTabView', () => {
     await renderView()
     fireEvent.click(await screen.findByRole('button', { name: 'Console' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close console' }))
-    expect(screen.queryByRole('region', { name: 'Preview console' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Browser console' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Console' }).getAttribute('aria-pressed')).toBe('false')
   })
 
@@ -464,26 +464,26 @@ describe('PreviewTabView', () => {
     expect(screen.getByRole('button', { name: /^Comment on an element/ }).getAttribute('aria-pressed')).toBe('false')
   })
 
-  it('on a phone, folds Console and Open in browser into a More menu that counts the errors', async () => {
+  it('on a phone, folds Console and Open in your browser into a More menu that counts the errors', async () => {
     isMobile = true
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }] })
 
     expect(screen.queryByRole('button', { name: /^Console/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull()
-    expect(screen.getByRole('textbox', { name: 'Preview address' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open in your browser' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Browser address' })).toBeTruthy()
 
     // The number the desktop's badge shows, not a bare dot.
-    const more = screen.getByRole('button', { name: 'More preview actions' })
+    const more = screen.getByRole('button', { name: 'More browser actions' })
     expect(more.querySelector('[data-console-errors]')?.textContent).toBe('1')
     fireEvent.click(more)
     expect(screen.queryByRole('menuitem', { name: /^Comment/ })).toBeNull()
-    expect(screen.getByRole('menuitem', { name: 'Open in browser' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Open in your browser' })).toBeTruthy()
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Console (1 errors)' }))
     expect(screen.getByText('boom')).toBeTruthy()
 
     // Open, the row says what a tap does now.
-    fireEvent.click(screen.getByRole('button', { name: 'More preview actions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More browser actions' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Hide console' }))
     expect(screen.queryByText('boom')).toBeNull()
   })
@@ -503,7 +503,7 @@ describe('PreviewTabView', () => {
     const line = screen.getByText('Tap an element to comment').closest('[role="status"]') as HTMLElement
     // Above the bar, which is the last thing on a phone's screen.
     expect(line.className).toContain('order-last')
-    expect(line.compareDocumentPosition(screen.getByRole('textbox', { name: 'Preview address' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(line.compareDocumentPosition(screen.getByRole('textbox', { name: 'Browser address' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByText('Tap an element to comment')).toBeNull()
     expect(screen.getByRole('button', { name: 'Comment on an element' }).getAttribute('aria-pressed')).toBe('false')
@@ -647,7 +647,7 @@ describe('PreviewTabView', () => {
   it('on a phone, puts the address bar at the bottom', async () => {
     isMobile = true
     await renderView()
-    const bar = screen.getByRole('textbox', { name: 'Preview address' }).closest('[data-preview-toolbar]')!
+    const bar = screen.getByRole('textbox', { name: 'Browser address' }).closest('[data-preview-toolbar]')!
     expect(bar.getAttribute('data-preview-toolbar')).toBe('bottom')
     expect(bar.className).toContain('order-last')
   })
@@ -657,11 +657,11 @@ describe('PreviewTabView', () => {
     await renderView()
     const controls = [
       screen.getByRole('button', { name: 'Device size' }),
-      screen.getByRole('button', { name: 'More preview actions' }),
+      screen.getByRole('button', { name: 'More browser actions' }),
       screen.getByRole('button', { name: 'Refresh' }),
     ]
     for (const control of controls) expect(control.className).toMatch(/(^|\s)(size|h)-11!?(\s|$)/)
-    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    const address = screen.getByRole('textbox', { name: 'Browser address' })
     expect(address.className).toContain('h-10')
     expect(address.className).toContain('rounded-full')
     expect(address.closest('form')?.className).toContain('basis-full')
@@ -670,7 +670,7 @@ describe('PreviewTabView', () => {
 
   it('has a 32px address field in text-xs, not the 24px 11px one', async () => {
     await renderView()
-    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    const address = screen.getByRole('textbox', { name: 'Browser address' })
     expect(address.className).toMatch(/(^|\s)h-8(\s|$)/)
     expect(address.className).toMatch(/(^|\s)text-xs(\s|$)/)
     expect(address.className).not.toMatch(/text-meta|(^|\s)h-6(\s|$)/)
@@ -678,7 +678,7 @@ describe('PreviewTabView', () => {
 
   it('types the address like a browser bar: no capitals, corrections or spell check, a URL keyboard with Go', async () => {
     await renderView()
-    const address = screen.getByRole('textbox', { name: 'Preview address' })
+    const address = screen.getByRole('textbox', { name: 'Browser address' })
     expect(address.getAttribute('autocapitalize')).toBe('off')
     expect(address.getAttribute('autocorrect')).toBe('off')
     expect(address.getAttribute('spellcheck')).toBe('false')
@@ -708,7 +708,7 @@ describe('PreviewTabView', () => {
     const { iframe } = await renderView()
     fireEvent.load(iframe)
     expect(await screen.findByText(/Comment tools and the console are unavailable on this page/, undefined, { timeout: 2000 })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Back' }).getAttribute('aria-description')).toBe("Can't go back on this page: it did not load the preview script")
+    expect(screen.getByRole('button', { name: 'Back' }).getAttribute('aria-description')).toBe("Can't go back on this page: it did not load the OpenAgentd page script")
     expect(screen.getByRole('button', { name: 'Comment (unavailable on this page)' })).toBeTruthy()
     // The old names are gone from the toolbar.
     expect(screen.queryByRole('button', { name: /Design|Inspect/ })).toBeNull()
@@ -735,14 +735,14 @@ describe('PreviewTabView', () => {
     expect(commands.filter((c) => c.type === 'hello')).toHaveLength(2)
     // Past the first load's grace period and the second's.
     await new Promise((resolve) => setTimeout(resolve, 1000))
-    expect(screen.queryByText(/did not load the preview script/)).toBeNull()
+    expect(screen.queryByText(/did not load the OpenAgentd page script/)).toBeNull()
     expect((screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('says so when a loaded page never answers the inspector', async () => {
     const { iframe } = await renderView()
     fireEvent.load(iframe)
-    expect(await screen.findByText(/did not load the preview script/, undefined, { timeout: 2000 })).toBeTruthy()
+    expect(await screen.findByText(/did not load the OpenAgentd page script/, undefined, { timeout: 2000 })).toBeTruthy()
     expect((screen.getByRole('button', { name: /^Comment/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -820,12 +820,12 @@ describe('PreviewTabView', () => {
       const { onOpenTarget } = await renderView()
       enterAddress('https://example.com/docs')
       const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toContain('Public sites such as example.com open in the OpenAgentd desktop app on a Mac. Here, Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files.')
+      expect(alert.textContent).toContain('Public sites such as example.com open in the OpenAgentd desktop app on a Mac. Here, the Browser tab shows servers on this computer (localhost, 127.0.0.1) and workspace files.')
       expect(onOpenTarget).not.toHaveBeenCalled()
       expect(previewBodies).toHaveLength(1)
       // Nothing to retry: the address was wrong. Editing it clears the message.
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
-      fireEvent.change(screen.getByRole('textbox', { name: 'Preview address' }), { target: { value: 'localhost:3000' } })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Browser address' }), { target: { value: 'localhost:3000' } })
       expect(screen.queryByRole('alert')).toBeNull()
     })
 
@@ -867,7 +867,7 @@ describe('PreviewTabView', () => {
       localStorage.setItem(`oa-preview-recent-urls:${WS}`, JSON.stringify(['http://localhost:3000/admin']))
       workspaceFiles = [{ path: 'docs/mockup.html', mtime: 1 }, { path: 'src/main.tsx', mtime: 1 }, { path: 'index.html', mtime: 1 }]
       const { onOpenTarget } = await renderView()
-      const address = screen.getByRole('textbox', { name: 'Preview address' })
+      const address = screen.getByRole('textbox', { name: 'Browser address' })
       expect(screen.queryByRole('listbox')).toBeNull()
       fireEvent.focus(address)
       const list = await screen.findByRole('listbox', { name: 'Suggested addresses' })
@@ -884,7 +884,7 @@ describe('PreviewTabView', () => {
       localStorage.setItem(`oa-preview-recent-urls:${WS}`, JSON.stringify(['http://localhost:3000/admin']))
       workspaceFiles = [{ path: 'docs/mockup.html', mtime: 1 }, { path: 'index.html', mtime: 1 }]
       const { onOpenTarget } = await renderView()
-      const address = screen.getByRole('textbox', { name: 'Preview address' })
+      const address = screen.getByRole('textbox', { name: 'Browser address' })
       fireEvent.focus(address)
       await screen.findByRole('option', { name: 'index.html' })
       fireEvent.change(address, { target: { value: 'admin' } })
@@ -909,7 +909,7 @@ describe('PreviewTabView', () => {
       isMobile = true
       workspaceFiles = [{ path: 'index.html', mtime: 1 }]
       await renderView()
-      fireEvent.focus(screen.getByRole('textbox', { name: 'Preview address' }))
+      fireEvent.focus(screen.getByRole('textbox', { name: 'Browser address' }))
       const option = await screen.findByRole('option', { name: 'index.html' })
       expect(option.className).toContain('min-h-11')
       expect(screen.getByRole('listbox').className).toContain('bottom-full')
@@ -932,7 +932,7 @@ describe('PreviewTabView', () => {
         <PreviewTabView workspace={WS} tabId="preview:1" target={{ kind: 'url', url: 'http://localhost:5173' }} navKey={0} />
       </QueryClientProvider>,
     )
-    expect(screen.getByText("Preview isn't available in this browser")).toBeTruthy()
+    expect(screen.getByText("The Browser tab isn't available here")).toBeTruthy()
     expect(document.querySelector('iframe')).toBeNull()
     expect(previewBodies).toHaveLength(0)
   })
@@ -953,7 +953,7 @@ describe('PreviewTabView', () => {
     })
     expect(iframe.getAttribute('src')).toBe(`${RELAY_ORIGIN}/pricing`)
     expect(invokeMock).toHaveBeenCalledWith('preview_relay_open', { previewId: 'p1', port: 52011 })
-    const openInBrowser = screen.getByRole('button', { name: /Open in browser/ }) as HTMLButtonElement
+    const openInBrowser = screen.getByRole('button', { name: /Open in your browser/ }) as HTMLButtonElement
     expect(openInBrowser.disabled).toBe(true)
   })
 
@@ -985,7 +985,7 @@ describe('PreviewTabView', () => {
       fromPage(frameWindow, { type: 'relay-error', message: 'The server has no such preview, or is too old to share previews with this device (404). Update the server, then retry.' }, RELAY_ORIGIN)
       expect(screen.getByRole('alert').textContent).toContain('The server has no such preview')
       // The relay's page has no preview script; that is not the news here.
-      expect(screen.queryByText(/did not load the preview script/)).toBeNull()
+      expect(screen.queryByText(/did not load the OpenAgentd page script/)).toBeNull()
 
       const opens = previewBodies.length
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -1054,7 +1054,7 @@ describe('PreviewTabView', () => {
     it('leaves a page without the preview script alone: it could not answer before either', async () => {
       const { iframe } = await renderView()
       await pass(1000)
-      expect(screen.getByText(/did not load the preview script/)).toBeTruthy()
+      expect(screen.getByText(/did not load the OpenAgentd page script/)).toBeTruthy()
       const opens = previewBodies.length
 
       comeBack()

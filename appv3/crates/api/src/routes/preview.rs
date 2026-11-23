@@ -70,7 +70,7 @@ fn preview_json(info: &PreviewInfo, path: &str) -> Value {
         "url": format!("{}{}", info.origin, path),
         "console_errors": errors,
         // What the agent opened here and still uses (`PreviewTarget`), or
-        // null: an app window keeps it loaded while no Preview tab shows it.
+        // null: an app window keeps it loaded while no Browser tab shows it.
         "agent_page": entry.and_then(|e| e.agent_page()),
     })
 }
@@ -116,7 +116,7 @@ async fn list_previews(q: Qs) -> ApiResult<Response> {
     Ok(json(json!({ "previews": previews })))
 }
 
-/// `?keep_agent_page=1` (a Preview tab closing): a listener whose page the
+/// `?keep_agent_page=1` (a Browser tab closing): a listener whose page the
 /// agent still uses stays open, and the answer says so (`{"kept": true}`),
 /// so the app keeps the page loaded out of sight instead.
 async fn close_preview(AxPath(id): AxPath<String>, q: Qs) -> ApiResult<Response> {

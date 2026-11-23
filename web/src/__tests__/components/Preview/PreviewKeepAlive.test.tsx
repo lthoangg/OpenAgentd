@@ -123,7 +123,7 @@ describe('PreviewKeepAlive', () => {
     }
   })
 
-  it('does not frame a preview a Preview tab shows, and drops its copy when a tab mounts', async () => {
+  it('does not frame a preview a Browser tab shows, and drops its copy when a tab mounts', async () => {
     render(<PreviewKeepAlive />)
     await pastStartDelay(() => {
       usePreviewKeepAliveStore.getState().registerAgent(WS, TARGET)

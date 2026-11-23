@@ -22,7 +22,7 @@ Run `make dev` (API :8000 + Vite :5173). Sessions open at
 
 - **Browser tool** (in-app): `browser` with `action: 'open'` on the Vite URL, then
   `snapshot`, `click`, `fill`, `press`, `inspect`, and `logs` for console errors.
-  It acts only while the user has the Preview tab open; a hidden tab reports a
+  It acts only while the user has the Browser tab open; a hidden tab reports a
   0×0 viewport, so layout values are not meaningful then.
 - **browser-skill (`bsk`)**, when available, drives the user's own browser and can
   take screenshots: `bsk session start`, `bsk navigate`, `bsk observe`, `bsk click`,
@@ -45,7 +45,7 @@ web/src/
     InputComposer/          composer: index.tsx, mentions, suggestions, attachments, delivery menu
     FloatingInputComposer.tsx
     WorkspacePanel/         review dock: tab bar, drag reorder (useTabDrag), Git, commits
-    Terminal/  Preview/     terminal tabs, Preview tab and design comments
+    Terminal/  Preview/     terminal tabs, Browser tab and design comments
   stores/                   Zustand (useAgentStore/ with sse-reducer.ts, terminal, UI, file reveal, …)
   queries/                  TanStack Query factories
   api/                      typed client and wire types (api/types.ts)

@@ -648,9 +648,9 @@ mod tests {
     #[test]
     fn only_the_answers_a_card_reads_ride_with_the_call() {
         let inline = [
-            ("browser", "Opening src/a.html in the user's Preview tab (served at http://127.0.0.1:1/a.html)."),
+            ("browser", "Opening src/a.html in the user's Browser tab (served at http://127.0.0.1:1/a.html)."),
             // As stored before `preview` was renamed `browser`.
-            ("preview", "Opening src/a.html in the user's Preview tab (served at http://127.0.0.1:1/a.html)."),
+            ("preview", "Opening src/a.html in the user's Browser tab (served at http://127.0.0.1:1/a.html)."),
             ("workspace", "Sent to 'web' (/r/web) \u{2014} new session 01a00000-0000-7000-8000-000000000001 started."),
             ("send_to_workspace", "Sent to 'web' (/r/web) \u{2014} delivered to session 01a00000-0000-7000-8000-000000000001."),
             ("workspace", crate::queries::questions::PLACEHOLDER_RESULT),

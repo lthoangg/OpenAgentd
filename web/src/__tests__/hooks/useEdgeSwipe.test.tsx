@@ -462,7 +462,7 @@ describe('useEdgeSwipe', () => {
 
     it('yields to a single-line text input whose text overflows', () => {
       // <input> scrolls its text natively without overflow-x: auto (e.g.
-      // a long URL in the Preview tab's address bar).
+      // a long URL in the Browser tab's address bar).
       const onClose = mock(() => undefined)
       function InputHarness() {
         const { handlers } = useEdgeSwipe({

@@ -18,7 +18,7 @@ failed on mobile).
 - `src/private_file.rs`: atomic 0600 writes for secret files.
 - `src/download.rs`: the 100 MB ceiling, base64/`data:`/remote resolution, and
   collision-safe cache filenames.
-- `src/preview_relay.rs`: the loopback relay that lets the Preview tab show
+- `src/preview_relay.rs`: the loopback relay that lets the Browser tab show
   a remote server's preview. It listens on the device's `127.0.0.1` and
   carries each connection over `/api/preview/{id}/tunnel` (a WebSocket with
   the access key in its handshake). Any local process can reach an open
@@ -26,7 +26,7 @@ failed on mobile).
   For a computer of the account (`Via::Account`) the "server" is that
   computer's loopback bridge and the key is the bridge's. A connection the
   relay cannot tunnel gets a small `502` page that posts the reason to the
-  Preview tab (`relay-error`), never a dropped connection.
+  Browser tab (`relay-error`), never a dropped connection.
 
 ## Boundaries
 

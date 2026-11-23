@@ -30,7 +30,7 @@ describe('GeneralSettingsPage — appearance', () => {
     expect(appearance.textContent).not.toContain('Detail')
     const chat = screen.getByRole('heading', { level: 2, name: 'Chat' }).closest('section')!
     expect(chat.textContent).toContain('Detail')
-    expect(chat.textContent).toContain('Open previews')
+    expect(chat.textContent).toContain('Open the Browser tab')
   })
 
   it('sets the text size at once, for the whole app', async () => {
@@ -89,7 +89,7 @@ describe('GeneralSettingsPage — appearance', () => {
     const user = userEvent.setup()
     render(<GeneralSettingsPage />)
 
-    const previews = screen.getByRole('radiogroup', { name: 'Open previews' })
+    const previews = screen.getByRole('radiogroup', { name: 'Open the Browser tab' })
     expect(screen.getByText('When the agent shows a page.')).toBeTruthy()
     expect(screen.getByRole('radio', { name: 'Automatically' })).toHaveAttribute('aria-checked', 'true')
 

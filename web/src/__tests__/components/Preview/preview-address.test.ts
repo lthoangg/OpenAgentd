@@ -34,7 +34,7 @@ describe('parseAddress', () => {
 
   it('says where sites open, for a client that cannot show one', () => {
     expect(siteUnavailableMessage('https://example.com/docs')).toBe(
-      'Public sites such as example.com open in the OpenAgentd desktop app on a Mac. Here, Preview shows servers on this computer (localhost, 127.0.0.1) and workspace files.',
+      'Public sites such as example.com open in the OpenAgentd desktop app on a Mac. Here, the Browser tab shows servers on this computer (localhost, 127.0.0.1) and workspace files.',
     )
     expect(siteUnavailableMessage('not a url')).toContain('such as not a url open')
   })

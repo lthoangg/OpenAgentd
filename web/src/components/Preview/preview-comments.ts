@@ -138,7 +138,7 @@ export function buildDesignFeedback({ comments, workspace, origin, filePath = nu
     ? `${origin}${onePath ?? ''}`
     : filePath
       ? `@${filePath}`
-      : 'the preview'
+      : 'the page'
   return {
     where,
     device,
@@ -221,7 +221,7 @@ export function commentsFromFeedback(feedback: DesignFeedback): { element: Eleme
   }))
 }
 
-/** The Preview tab design feedback was sent from. */
+/** The Browser tab design feedback was sent from. */
 export function previewTargetForFeedback(feedback: DesignFeedback): PreviewTarget | null {
   if (feedback.where.startsWith('@')) return { kind: 'file', path: feedback.where.slice(1) }
   if (/^https?:\/\//.test(feedback.where)) return { kind: 'url', url: feedback.where }

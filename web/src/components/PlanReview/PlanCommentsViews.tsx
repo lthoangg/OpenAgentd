@@ -1,7 +1,7 @@
 /**
  * Plan comments sent from the Plan tab: the removable chip in the composer
  * and the card a sent message shows instead of the raw block. They look like
- * the Preview tab's design feedback (``DesignFeedbackViews``).
+ * the Browser tab's design feedback (``DesignFeedbackViews``).
  */
 import { FileText, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'

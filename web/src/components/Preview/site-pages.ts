@@ -3,7 +3,7 @@
  * native view (`lib/browser-view.ts`).
  *
  * One `SitePage` per workspace and site, shared by whatever shows or needs
- * it in this window: the Preview tab, and the hidden copy that keeps a page
+ * it in this window: the Browser tab, and the hidden copy that keeps a page
  * the agent uses loaded while no tab shows it. It owns the view, and is the
  * link between that view and the server, doing for a site what a framed
  * local page does for itself:
@@ -372,11 +372,11 @@ export class SitePage {
         break
       case 'blocked':
         this.answered()
-        this.set({ notice: `This page tried to open ${event.url.slice(0, 120)}, which Preview does not open.` })
+        this.set({ notice: `This page tried to open ${event.url.slice(0, 120)}, which the Browser tab does not open.` })
         break
       case 'download':
         this.answered()
-        this.set({ loading: false, notice: 'Downloads are not available in Preview yet. Use Open in browser to download this file.' })
+        this.set({ loading: false, notice: 'Downloads are not available in the Browser tab yet. Use Open in your browser to download this file.' })
         break
       case 'page':
         this.noteUrl(event.url)

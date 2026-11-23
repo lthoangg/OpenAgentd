@@ -1,6 +1,6 @@
 /**
  * The blocks a message carries besides its typed text: design feedback from
- * a Preview tab and comments from the Plan tab. The composer holds them as
+ * a Browser tab and comments from the Plan tab. The composer holds them as
  * chips and writes them after the text on send; text set from outside
  * (restores, history, Edit and resend) has them turned back into chips.
  */

@@ -1044,7 +1044,7 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
     assert_eq!(mine["agent_page"], json!({"kind": "file", "path": "designs/landing.html"}));
 
     let id = p["id"].as_str().unwrap();
-    // The user closes the Preview tab while the agent uses the page: it stays.
+    // The user closes the Browser tab while the agent uses the page: it stays.
     let (st, kept) = c.json("DELETE", &format!("/api/preview/{id}?keep_agent_page=1"), None).await;
     assert_eq!((st, kept), (StatusCode::OK, json!({"kept": true})));
     assert!(appv3_preview::global().get(id).is_some());

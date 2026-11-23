@@ -181,7 +181,7 @@ export async function openPreview(workspace: string, target: PreviewTarget): Pro
 }
 
 /**
- * Close a preview's listener. With `keepAgentPage` (a Preview tab closing),
+ * Close a preview's listener. With `keepAgentPage` (a Browser tab closing),
  * the server keeps a listener whose page the agent still uses, and this
  * answers false: the page stays loaded out of sight instead.
  */
@@ -216,7 +216,7 @@ function isPreviewTarget(v: unknown): v is PreviewTarget {
 
 /**
  * The pages the agent wants loaded, whatever session opened them: the
- * server lists them, so a window keeps them driveable while no Preview tab
+ * server lists them, so a window keeps them driveable while no Browser tab
  * shows them and the session is not on screen.
  */
 export async function listAgentPages(): Promise<AgentPage[]> {

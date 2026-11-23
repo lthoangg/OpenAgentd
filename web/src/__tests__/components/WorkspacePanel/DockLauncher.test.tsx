@@ -15,13 +15,13 @@ const everything = { onOpenGit: run, onOpenGoal: run, onOpenPlan: run, onOpenTas
 describe('dockOpenItems', () => {
   it('lists views, then tools', () => {
     expect(dockOpenItems('macos', everything).map((row) => row.label)).toEqual([
-      'Git', 'Goal', 'Plan', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…',
+      'Git', 'Goal', 'Plan', 'Tasks', 'Side questions', 'Scheduled tasks', 'Terminal', 'Browser', 'Find file…',
     ])
   })
 
   it('leads with files, preview and terminal where there is no Git', () => {
     const rows = dockOpenItems('macos', { onOpenTasks: run, onOpenSchedule: run, onOpenTerminal: run, onOpenPreview: run, onOpenFile: run }, new Set(), {}, { toolsFirst: true })
-    expect(rows.map((row) => row.label)).toEqual(['Find file…', 'Preview', 'Terminal', 'Tasks', 'Scheduled tasks'])
+    expect(rows.map((row) => row.label)).toEqual(['Find file…', 'Browser', 'Terminal', 'Tasks', 'Scheduled tasks'])
   })
 
   it('drops a row whose handler is missing', () => {
@@ -39,7 +39,7 @@ describe('DockLauncher on a phone', () => {
     render(<DockLauncher phone items={dockOpenItems('ios', { onOpenSchedule: run, onOpenTerminal: run, onOpenPreview: run, onOpenFile: run }, new Set(), {}, { toolsFirst: true })} />)
     const groups = screen.getAllByRole('group')
     expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual(['Tools', 'Views'])
-    expect(Array.from(groups[0].querySelectorAll('button'), (row) => row.textContent)).toEqual(['Find file', 'Preview', 'Terminal'])
+    expect(Array.from(groups[0].querySelectorAll('button'), (row) => row.textContent)).toEqual(['Find file', 'Browser', 'Terminal'])
     expect(Array.from(groups[1].querySelectorAll('button'), (row) => row.textContent)).toEqual(['Scheduled tasks'])
   })
 })

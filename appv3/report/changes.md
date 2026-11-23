@@ -10,8 +10,9 @@ results. `GET /api/agent/agents` tool lists and model requests carry
 coding workspaces only). Stored tool calls keep `preview`: `result_rides_inline`
 and the web's `canonicalToolName` read both names, an agent file listing
 `preview` is left alone, and a call to `preview` answers
-`Tool 'preview' not found. Did you mean 'browser'?`. The Preview tab,
-`/api/preview` and `/api/browser` are unchanged.
+`Tool 'preview' not found. Did you mean 'browser'?`. `/api/preview`,
+`/api/browser` and the stored dock tab type `preview` are unchanged. The tab
+is now labelled Browser in the UI, and the tool's texts say "Browser tab".
 
 ## Preview takes pages of the public web (v3.62.0)
 

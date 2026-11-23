@@ -476,7 +476,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             className={TOOL_CHIP_CLASS}
           >
             <Globe size={12} aria-hidden="true" />
-            Open preview
+            Open in Browser
           </button>
         )}
         {planLink && (

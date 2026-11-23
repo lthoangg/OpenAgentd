@@ -177,7 +177,7 @@ The app CSP gains `frame-src 'self' http://127.0.0.1:*`. The lead's
 `browser` tool (`preview` before v3.62.0) opens pages, reads the captured console, and drives the open
 page: the inspector long-polls `/__openagentd/agent` on the preview origin
 for commands (snapshot, click, fill, press, scroll, navigate, wait, inspect)
-and posts results back there, so commands fail fast when no Preview tab has
+and posts results back there, so commands fail fast when no Browser tab has
 the page open. `action: "chain"` runs up to 20 such commands from `steps`
 in order in one call, stopping at the first failure. A virtual cursor in
 the inspector's overlay glides to each acted-on element and labels the

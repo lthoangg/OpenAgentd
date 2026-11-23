@@ -99,7 +99,7 @@ const SECTION_DEFS = {
   sessions: { label: 'Sessions', description: 'Names, summaries, goals and history', keywords: ['session titles', 'context', 'goals', 'retention'], icon: MessagesSquare, group: 'work' },
   workspaces: { label: 'Workspaces', description: 'Messages and groups across workspaces', icon: Waypoints, group: 'work' },
   blocked_files: { label: 'Blocked files', description: 'Files and folders agents cannot read or change', keywords: ['denied paths', 'denied', 'deny'], icon: Shield, group: 'work' },
-  browser: { label: 'Browser', description: 'Sites the agent may use in the Preview tab', keywords: ['sites', 'websites', 'web', 'cookies', 'preview'], icon: Globe, group: 'work' },
+  browser: { label: 'Browser', description: 'Sites the agent may use in the Browser tab', keywords: ['sites', 'websites', 'web', 'cookies', 'preview'], icon: Globe, group: 'work' },
   secrets: { label: 'Secrets', description: 'Keys the agent uses without seeing them', keywords: ['api keys', 'tokens', 'env', 'credentials', 'environment variables'], icon: KeyRound, group: 'work' },
   // Devices
   switch_computer: { label: 'Switch computer', description: 'Which computer this app uses, and which devices can connect', keywords: ['computers', 'server', 'connection', 'backend'], icon: Server, group: 'devices' },

@@ -153,7 +153,7 @@ function App() {
           <RouterProvider router={router} />
         </Suspense>
         {!isPhone && <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />}
-        {/* Keeps pages the agent opened driveable while no Preview tab shows them. */}
+        {/* Keeps pages the agent opened driveable while no Browser tab shows them. */}
         <PreviewKeepAlive />
       </>
     )

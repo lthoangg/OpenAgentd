@@ -155,7 +155,7 @@ describe('WorkspacePanel in a folder without Git', () => {
 
     expect(launcherRow('Git')).toBeNull()
     const names = Array.from(document.querySelectorAll('[data-dock-launcher] button'), (row) => row.querySelector('span')?.textContent)
-    expect(names).toEqual(['Find file…', 'Preview', 'Terminal', 'Tasks', 'Scheduled tasks'])
+    expect(names).toEqual(['Find file…', 'Browser', 'Terminal', 'Tasks', 'Scheduled tasks'])
     // Tools lead, so the hairline sits between Terminal and Tasks.
     const divider = document.querySelector('[data-launcher-divider]') as HTMLElement
     expect(divider.previousElementSibling?.textContent).toContain('Terminal')
@@ -173,7 +173,7 @@ describe('WorkspacePanel in a folder without Git', () => {
   it('keeps Changes first in a repository', async () => {
     await renderPanel(false)
     const names = Array.from(document.querySelectorAll('[data-dock-launcher] button'), (row) => row.querySelector('span')?.textContent)
-    expect(names).toEqual(['Git', 'Tasks', 'Scheduled tasks', 'Terminal', 'Preview', 'Find file…'])
+    expect(names).toEqual(['Git', 'Tasks', 'Scheduled tasks', 'Terminal', 'Browser', 'Find file…'])
   })
 })
 

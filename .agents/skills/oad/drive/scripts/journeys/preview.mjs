@@ -1,4 +1,4 @@
-// The agent keeps using a preview page after the user closed the Preview tab
+// The agent keeps using a preview page after the user closed the Browser tab
 // and moved to another session: the page stays loaded out of sight.
 // Feature notes: ../../features/preview.md
 import { writeFileSync } from "node:fs"
@@ -6,14 +6,14 @@ import { writeFileSync } from "node:fs"
 export default async function preview({ page, expect, step, newSessionInDemo, send, run, api, history, sessionId, demo, phone }) {
   const file = `preview-${run}.html`
   writeFileSync(`${demo}/${file}`, `<!doctype html><html><body><button onclick="this.textContent='Clicked ${run}'">Ping ${run}</button></body></html>\n`)
-  const frame = page.frameLocator(`iframe[title="Preview of ${file}"]`)
+  const frame = page.frameLocator(`iframe[title="Browser page of ${file}"]`)
   let first
 
   await step("start a new session in demo", async () => {
     await newSessionInDemo()
   })
 
-  await step("the agent opens a page and the Preview tab shows it", async () => {
+  await step("the agent opens a page and the Browser tab shows it", async () => {
     await send(`drive:browser {"action": "open", "path": "${file}"}`)
     await expect(page.getByText("Stub (chat): the tool finished.")).toBeVisible()
     first = sessionId()
@@ -22,9 +22,9 @@ export default async function preview({ page, expect, step, newSessionInDemo, se
   })
 
   if (!phone) {
-    await step("the user closes the Preview tab", async () => {
-      await page.getByRole("button", { name: `Close Preview ${file}` }).click()
-      await expect(page.locator(`iframe[title="Preview of ${file}"]`)).toHaveCount(0)
+    await step("the user closes the Browser tab", async () => {
+      await page.getByRole("button", { name: `Close Browser ${file}` }).click()
+      await expect(page.locator(`iframe[title="Browser page of ${file}"]`)).toHaveCount(0)
     })
   }
 
@@ -61,8 +61,8 @@ export default async function preview({ page, expect, step, newSessionInDemo, se
       expect(result.content).not.toContain("action 'open' again to load it")
     } else {
       expect(result.content).toContain(`Clicked ${run}`)
-      // The page was used out of sight: no Preview tab came back.
-      await expect(page.locator(`iframe[title="Preview of ${file}"]`)).toHaveCount(0)
+      // The page was used out of sight: no Browser tab came back.
+      await expect(page.locator(`iframe[title="Browser page of ${file}"]`)).toHaveCount(0)
     }
   })
 

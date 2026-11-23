@@ -1,4 +1,4 @@
-//! The Preview tab on a computer of the account, end to end on the phone's
+//! The Browser tab on a computer of the account, end to end on the phone's
 //! side: the preview relay tunnels to the computer's loopback bridge with
 //! the bridge's key, and the bridge carries the WebSocket over a stream of
 //! the account link. The computer here answers as a real server's connector

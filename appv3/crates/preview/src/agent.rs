@@ -1,7 +1,7 @@
 //! Commands from the agent to the page loaded for a preview.
 //!
 //! There is no headless browser: the inspector running in the page (the
-//! Preview tab, or the app's background copy of it) long-polls its own
+//! Browser tab, or the app's background copy of it) long-polls its own
 //! preview origin ([`crate::AGENT_PATH`]) for the next command and posts the
 //! result back. A command therefore runs only while the page is loaded, and
 //! [`AgentChannel::run`] fails fast when no inspector has polled recently;
@@ -58,7 +58,7 @@ impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AgentError::NotConnected => f.write_str(
-                "No page is connected for this preview. It loads in an OpenAgentd window (the Preview tab, or a hidden copy while the tab is closed). Retry in a moment; if it keeps failing, check that the page loads (browser action 'logs').",
+                "The page is not connected yet. It loads in an OpenAgentd window (the Browser tab, or a hidden copy while the tab is closed). Retry in a moment; if it keeps failing, check that the page loads (browser action 'logs').",
             ),
             AgentError::NotPickedUp => f.write_str("The page did not pick up the command. It may be closed or still loading; try again or call browser with action 'open'."),
             AgentError::NoAnswer => f.write_str("The page did not answer, probably because it navigated or reloaded. Call browser with action 'snapshot' to see the current page."),

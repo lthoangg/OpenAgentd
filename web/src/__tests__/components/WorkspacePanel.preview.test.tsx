@@ -88,13 +88,13 @@ const posts = () => requests.filter((r) => r.url.endsWith('/api/preview') && r.m
 describe('Review dock preview tabs', () => {
   it('opens a preview tab for a shell request and navigates it for a later one', async () => {
     const { rerender } = await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
-    const tab = await screen.findByRole('button', { name: 'Preview localhost:5173' })
+    const tab = await screen.findByRole('button', { name: 'Browser localhost:5173' })
     expect(tab.getAttribute('aria-current')).toBe('true')
     await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('src')).toBe(`${ORIGIN}/`))
 
     await rerender({ target: { kind: 'url', url: 'http://localhost:5173/pricing' }, key: 2 })
     await waitFor(() => expect(posts()).toHaveLength(2))
-    expect(screen.getAllByRole('button', { name: 'Preview localhost:5173' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Browser localhost:5173' })).toHaveLength(1)
     await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('src')).toBe(`${ORIGIN}/pricing`))
   })
 
@@ -114,12 +114,12 @@ describe('Review dock preview tabs', () => {
     const frame = document.querySelector('iframe')
     const layer = frame?.closest('[data-dock-preview]')?.getAttribute('data-dock-preview')
     await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
-    await screen.findByRole('button', { name: 'Preview a.html' })
+    await screen.findByRole('button', { name: 'Browser a.html' })
     // Pages sit in one layer in a fixed order: the same node, never re-created.
     expect(document.querySelectorAll('iframe')).toHaveLength(2)
     expect(document.querySelector(`[data-dock-preview="${layer}"] iframe`)).toBe(frame)
     expect(frame?.closest('.hidden')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Preview localhost:5173' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Browser localhost:5173' }))
     expect(frame?.closest('.hidden')).toBeNull()
   })
 
@@ -128,12 +128,12 @@ describe('Review dock preview tabs', () => {
     await waitFor(() => expect(document.querySelector('iframe')).toBeTruthy())
     const frame = document.querySelector('iframe')
     await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
-    await screen.findByRole('button', { name: 'Preview a.html' })
+    await screen.findByRole('button', { name: 'Browser a.html' })
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Preview localhost:5173' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Browser localhost:5173' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Split right' }))
 
-    const moved = screen.getByRole('button', { name: 'Preview localhost:5173' })
+    const moved = screen.getByRole('button', { name: 'Browser localhost:5173' })
     expect(moved.closest('[data-dock-pane]')?.getAttribute('aria-label')).toBe('Pane 2')
     // The same page, on show beside the other one.
     expect(frame?.isConnected).toBe(true)
@@ -149,12 +149,12 @@ describe('Review dock preview tabs', () => {
     await waitFor(() => expect(document.querySelector('iframe')).toBeTruthy())
     const frame = document.querySelector('iframe')!
     await rerender({ target: { kind: 'file', path: 'a.html' }, key: 2 })
-    await screen.findByRole('button', { name: 'Preview a.html' })
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Preview a.html' }))
+    await screen.findByRole('button', { name: 'Browser a.html' })
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Browser a.html' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Split right' }))
     const paneOf = (name: string) => screen.getByRole('button', { name }).closest('[data-dock-pane]')!
     // The new pane has focus; the first page's pane steps back.
-    expect(paneOf('Preview localhost:5173').hasAttribute('data-pane-unfocused')).toBe(true)
+    expect(paneOf('Browser localhost:5173').hasAttribute('data-pane-unfocused')).toBe(true)
 
     Object.defineProperty(document, 'activeElement', { configurable: true, get: () => frame })
     try {
@@ -167,40 +167,40 @@ describe('Review dock preview tabs', () => {
       delete (document as { activeElement?: unknown }).activeElement
     }
 
-    expect(paneOf('Preview localhost:5173').hasAttribute('data-pane-unfocused')).toBe(false)
-    expect(paneOf('Preview a.html').hasAttribute('data-pane-unfocused')).toBe(true)
+    expect(paneOf('Browser localhost:5173').hasAttribute('data-pane-unfocused')).toBe(false)
+    expect(paneOf('Browser a.html').hasAttribute('data-pane-unfocused')).toBe(true)
   })
 
   it('opens the last dev server from Open… → Preview and closes its listener with the tab', async () => {
     localStorage.setItem(`oa-preview-last-url:${WORKSPACE}`, 'http://localhost:3000/app')
     await renderPanel()
     fireEvent.click(screen.getByRole('button', { name: 'Open in Review panel' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }))
-    await screen.findByRole('button', { name: 'Preview localhost:3000' })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Browser' }))
+    await screen.findByRole('button', { name: 'Browser localhost:3000' })
     await waitFor(() => expect(posts()[0]?.body).toEqual({ workspace: WORKSPACE, url: 'http://localhost:3000/app' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close Preview localhost:3000' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Browser localhost:3000' }))
     await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev?keep_agent_page=1'))).toBe(true))
     expect(document.querySelector('iframe')).toBeNull()
   })
 
   it('keeps a shared file listener open until its last tab closes', async () => {
     const { rerender } = await renderPanel({ target: { kind: 'file', path: 'a.html' }, key: 1 })
-    await screen.findByRole('button', { name: 'Preview a.html' })
+    await screen.findByRole('button', { name: 'Browser a.html' })
     await rerender({ target: { kind: 'file', path: 'b.html' }, key: 2 })
-    await screen.findByRole('button', { name: 'Preview b.html' })
+    await screen.findByRole('button', { name: 'Browser b.html' })
     await waitFor(() => expect(posts()).toHaveLength(2))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close Preview b.html' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Browser b.html' }))
     await act(async () => {})
     expect(requests.some((r) => r.method === 'DELETE')).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Close Preview a.html' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Browser a.html' }))
     await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/files?keep_agent_page=1'))).toBe(true))
   })
 
   it('closes the tab when Cmd/Ctrl+W is pressed inside the page', async () => {
     await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
-    await screen.findByRole('button', { name: 'Preview localhost:5173' })
+    await screen.findByRole('button', { name: 'Browser localhost:5173' })
     const frame = await waitFor(() => {
       const el = document.querySelector('iframe')
       if (!el?.getAttribute('src')) throw new Error('no preview frame yet')
@@ -214,7 +214,7 @@ describe('Review dock preview tabs', () => {
         source: frame.contentWindow,
       }))
     })
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Preview localhost:5173' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Browser localhost:5173' })).toBeNull())
     await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev?keep_agent_page=1'))).toBe(true))
   })
 
@@ -222,9 +222,9 @@ describe('Review dock preview tabs', () => {
     keptByAgent = true
     usePreviewKeepAliveStore.getState().registerAgent(WORKSPACE, { kind: 'url', url: 'http://localhost:5173/' })
     await renderPanel({ target: { kind: 'url', url: 'http://localhost:5173/' }, key: 1 })
-    await screen.findByRole('button', { name: 'Preview localhost:5173' })
+    await screen.findByRole('button', { name: 'Browser localhost:5173' })
     await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('src')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Close Preview localhost:5173' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close Browser localhost:5173' }))
     await waitFor(() => expect(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/api/preview/dev?keep_agent_page=1'))).toBe(true))
     await act(async () => {})
     // The server kept the listener, so the agent's entry stays for the hidden copy.

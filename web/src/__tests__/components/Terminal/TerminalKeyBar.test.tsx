@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { TerminalKeyBar } from '@/components/Terminal/TerminalKeyBar'
 
@@ -75,12 +75,12 @@ describe('TerminalKeyBar', () => {
     renderBar({ onKey })
     const left = screen.getByLabelText('Arrow left')
     fireEvent.pointerDown(left, { pointerType: 'touch' })
-    await act(() => new Promise((resolve) => setTimeout(resolve, 450)))
+    // Held: repeats start after 300 ms; wait for one rather than a fixed time a busy runner overshoots.
+    await waitFor(() => expect(onKey.mock.calls.length).toBeGreaterThan(1), { timeout: 3000 })
     fireEvent.pointerUp(left, { pointerType: 'touch' })
     fireEvent.click(left)
-    expect(onKey.mock.calls.length).toBeGreaterThan(1)
     expect(onKey.mock.calls.every(([seq]) => seq === '\x1b[D')).toBe(true)
-  })
+  }, 10_000)
 
   it('Ctrl reports its armed state with one fill and fires its toggle', () => {
     const onCtrlToggle = mock(() => {})

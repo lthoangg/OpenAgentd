@@ -10,7 +10,7 @@
  * NOTE: mock.module must appear before any store import (Bun module registry).
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 import { act, cleanup, render } from "@testing-library/react"
 import type { ContentBlock } from "@/api/types"
 
@@ -440,8 +440,15 @@ describe("AgentView — earlier turns landing above the view", () => {
       await readAt(el, 3000)
       await rest()
 
-      // The first turn comes within two screens: four turns come in.
-      await scrollTo(el, 2400)
+      // The first turn comes within two screens: four turns come in. The
+      // clock stands still, so the fling is still moving when we look, however
+      // slow the machine: past the rest delay, the rest's top-up writes scrollTop.
+      const clock = spyOn(performance, "now").mockReturnValue(performance.now())
+      try {
+        await scrollTo(el, 2400)
+      } finally {
+        clock.mockRestore()
+      }
 
       expect(container.querySelectorAll("[data-block-id]").length).toBe(80 + 4)
       expect(el.scrollTop).toBe(2400)

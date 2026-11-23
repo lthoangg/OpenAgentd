@@ -14,7 +14,7 @@ export default async function preview({ page, expect, step, newSessionInDemo, se
   })
 
   await step("the agent opens a page and the Preview tab shows it", async () => {
-    await send(`drive:preview {"action": "open", "path": "${file}"}`)
+    await send(`drive:browser {"action": "open", "path": "${file}"}`)
     await expect(page.getByText("Stub (chat): the tool finished.")).toBeVisible()
     first = sessionId()
     if (phone) return // a phone opens it only from the tool row (see the feature's Gotchas)
@@ -43,7 +43,7 @@ export default async function preview({ page, expect, step, newSessionInDemo, se
     // The agent runs in the background here: the user is on the other session.
     const form = new FormData()
     form.set("session_id", first)
-    form.set("message", `drive:script await tools.preview({ action: "click", selector: "button" }); return await tools.preview({ action: "snapshot" });`)
+    form.set("message", `drive:script await tools.browser({ action: "click", selector: "button" }); return await tools.browser({ action: "snapshot" });`)
     form.set("interaction_mode", "code")
     form.set("workspace", demo)
     await api("POST", "/agent/chat", form)

@@ -584,7 +584,7 @@ impl Agent {
             // In a turn nobody is watching, `ask_user` refuses and a
             // submitting `plan` only saves, so they run with the others.
             let unattended = state.metadata.lock().unwrap().get(UNATTENDED_META).and_then(Value::as_bool).unwrap_or(false);
-            // `preview` calls on a site the user has not allowed yet open a
+            // `browser` calls on a site the user has not allowed yet open a
             // card, so they pause like a change to confirm. Decided here,
             // before anything runs, and told to the tool, which refuses
             // rather than pause in a call this loop did not plan for.
@@ -593,8 +593,8 @@ impl Agent {
             } else {
                 tc_list
                     .iter()
-                    .filter(|tc| tc.function.name == crate::tools::preview::PREVIEW_TOOL)
-                    .filter(|tc| crate::tools::preview_site::asks_for_site(&tc.function.arguments, base_ctx.session_id.as_deref(), base_ctx.workspace.as_deref()))
+                    .filter(|tc| tc.function.name == crate::tools::browser::BROWSER_TOOL)
+                    .filter(|tc| crate::tools::browser_site::asks_for_site(&tc.function.arguments, base_ctx.session_id.as_deref(), base_ctx.workspace.as_deref()))
                     .map(|tc| tc.id.clone())
                     .collect()
             };

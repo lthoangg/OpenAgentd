@@ -19,13 +19,19 @@ function header(title: string): HTMLElement | undefined {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-tool-label]')).find((node) => node.getAttribute('data-tool-label') === title)
 }
 
-describe('preview tool card', () => {
+describe('browser tool card', () => {
   it('names the page or the console it reads', () => {
-    render(<ToolCall name="preview" args={JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })} />)
-    expect(header('preview: localhost:5173/pricing')).toBeTruthy()
+    render(<ToolCall name="browser" args={JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })} />)
+    expect(header('browser: localhost:5173/pricing')).toBeTruthy()
     cleanup()
-    render(<ToolCall name="preview" args={JSON.stringify({ action: 'logs', level: 'error' })} />)
-    expect(header('preview: Console errors')).toBeTruthy()
+    render(<ToolCall name="browser" args={JSON.stringify({ action: 'logs', level: 'error' })} />)
+    expect(header('browser: Console errors')).toBeTruthy()
+  })
+
+  it('draws a call by its former name, preview, like a browser call', () => {
+    render(<ToolCall name="preview" args={JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })} done result={OPENED} />)
+    expect(header('preview: localhost:5173/pricing')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open preview' })).toBeTruthy()
   })
 
   it('names page actions and offers no Open button for them', () => {
@@ -41,8 +47,8 @@ describe('preview tool card', () => {
       [{ action: 'chain', steps: [{ action: 'fill', ref: 'e1', value: 'x' }, { action: 'click', ref: 'e4' }] }, 'Fill e1 → Click e4'],
     ]
     for (const [args, label] of cases) {
-      render(<ToolCall name="preview" args={JSON.stringify(args)} done result="Clicked <button>. Page is now /." />)
-      expect(header(`preview: ${label}`)).toBeTruthy()
+      render(<ToolCall name="browser" args={JSON.stringify(args)} done result="Clicked <button>. Page is now /." />)
+      expect(header(`browser: ${label}`)).toBeTruthy()
       expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
       cleanup()
     }
@@ -50,8 +56,8 @@ describe('preview tool card', () => {
 
   it('shortens long chains in the header and keeps every step in its title', () => {
     const steps = [{ action: 'fill', ref: 'e1' }, { action: 'fill', ref: 'e2' }, { action: 'click', ref: 'e4' }, { action: 'wait', text: 'Saved' }, { action: 'snapshot' }]
-    render(<ToolCall name="preview" args={JSON.stringify({ action: 'chain', steps })} />)
-    const node = header('preview: Fill e1 → Fill e2 → Click e4 → Wait for "Saved" → Page snapshot')
+    render(<ToolCall name="browser" args={JSON.stringify({ action: 'chain', steps })} />)
+    const node = header('browser: Fill e1 → Fill e2 → Click e4 → Wait for "Saved" → Page snapshot')
     expect(node?.textContent).toContain('Fill e1 → Fill e2 → Click e4 +2 more')
   })
 
@@ -60,18 +66,18 @@ describe('preview tool card', () => {
     const listener = (event: Event) => seen.push((event as CustomEvent).detail)
     window.addEventListener(OPEN_PREVIEW_EVENT, listener)
     const args = JSON.stringify({ action: 'open', url: 'http://localhost:5173/pricing' })
-    const { rerender } = render(<ToolCall name="preview" args={args} />)
+    const { rerender } = render(<ToolCall name="browser" args={args} />)
     expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
-    rerender(<ToolCall name="preview" args={args} done result="The preview needs a project workspace." />)
+    rerender(<ToolCall name="browser" args={args} done result="The browser needs a workspace." />)
     expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
-    rerender(<ToolCall name="preview" args={args} done result={OPENED} />)
+    rerender(<ToolCall name="browser" args={args} done result={OPENED} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open preview' }))
     window.removeEventListener(OPEN_PREVIEW_EVENT, listener)
     expect(seen).toEqual([{ kind: 'url', url: 'http://localhost:5173/pricing' }])
   })
 })
 
-describe('preview tool targets', () => {
+describe('browser tool targets', () => {
   it('reads open calls only', () => {
     expect(previewTargetFromArgs(JSON.stringify({ action: 'open', path: './designs/a.html' }))).toEqual({ kind: 'file', path: 'designs/a.html' })
     expect(previewTargetFromArgs(JSON.stringify({ action: 'logs', url: 'http://localhost:1' }))).toBeNull()
@@ -86,7 +92,7 @@ function previewBlock(id: string, overrides: Partial<ContentBlock> = {}): Conten
     id,
     type: 'tool',
     content: '',
-    toolName: 'preview',
+    toolName: 'browser',
     toolCallId: id,
     toolArgs: JSON.stringify({ action: 'open', url: 'http://localhost:5173/' }),
     toolDone: true,
@@ -140,9 +146,11 @@ describe('usePreviewToolAutoOpen', () => {
     }
   })
 
-  it('selects finished preview calls only', () => {
-    const calls = selectFinishedPreviewCalls({ agentStreams: { a: { currentBlocks: [previewBlock('x'), previewBlock('y', { toolDone: false }), previewBlock('z', { toolName: 'shell' })] } } })
-    expect(calls.map((b) => b.id)).toEqual(['x'])
+  it('selects finished browser calls only, by either name', () => {
+    const calls = selectFinishedPreviewCalls({
+      agentStreams: { a: { currentBlocks: [previewBlock('x'), previewBlock('y', { toolDone: false }), previewBlock('z', { toolName: 'shell' }), previewBlock('old', { toolName: 'preview' })] } },
+    })
+    expect(calls.map((b) => b.id)).toEqual(['x', 'old'])
     expect(selectFinishedPreviewCalls({})).toEqual([])
   })
 })

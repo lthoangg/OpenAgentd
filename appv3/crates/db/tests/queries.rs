@@ -649,7 +649,7 @@ async fn first_history_page_budget_skips_what_display_strips() {
     let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
     let parts = serde_json::json!({"parts": [{"type": "image", "data": "x".repeat(512 * 1024)}]});
     for i in 0..(HISTORY_PAGE_SIZE as usize) {
-        save_message(&pool, &s.id, NewMessage { extra: parts.as_object().cloned(), ..NewMessage::tool(format!("call_{i}"), "preview", "Screenshot taken.") }).await.unwrap();
+        save_message(&pool, &s.id, NewMessage { extra: parts.as_object().cloned(), ..NewMessage::tool(format!("call_{i}"), "browser", "Screenshot taken.") }).await.unwrap();
     }
     assert_eq!(first_history_page(&pool, &s).await.unwrap().rows.len(), HISTORY_PAGE_SIZE as usize);
 }

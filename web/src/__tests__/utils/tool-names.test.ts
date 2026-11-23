@@ -7,10 +7,11 @@ describe('canonicalToolName', () => {
     expect(canonicalToolName('schedule_task')).toBe('schedule')
     expect(canonicalToolName('send_to_workspace')).toBe('workspace')
     expect(canonicalToolName('delegate')).toBe('team')
+    expect(canonicalToolName('preview')).toBe('browser')
   })
 
   it('leaves current and unrelated names alone', () => {
-    for (const name of ['todo', 'schedule', 'workspace', 'team', 'team_manage', 'read', 'mcp']) {
+    for (const name of ['todo', 'schedule', 'workspace', 'team', 'team_manage', 'read', 'mcp', 'browser']) {
       expect(canonicalToolName(name)).toBe(name)
     }
   })

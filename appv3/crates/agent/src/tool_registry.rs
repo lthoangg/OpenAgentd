@@ -34,7 +34,7 @@ pub struct ToolEntry {
     /// Plan mode lets the model call it. Some of these check each call
     /// themselves: `mcp` allows search, its server list and calls to
     /// read-only tools, `patch` writes only plan attachments under
-    /// `.agents/plans/<folder>/`, `preview` only looks (no click, fill or
+    /// `.agents/plans/<folder>/`, `browser` only looks (no click, fill or
     /// press), and `workspace` only lists.
     pub plan_mode: bool,
     pub offer: Offer,
@@ -114,7 +114,8 @@ pub static TOOLS: &[ToolEntry] = &[
         plan_mode: false,
         offer: Offer::Session(|s| if s.is_lead() { some(crate::tools::goal::UpdateGoalTool { session: s.session.clone() }) } else { None }),
     },
-    ToolEntry { name: "preview", plan_mode: true, offer: Offer::Session(|s| if s.is_lead() && s.coding() { some(crate::tools::preview::PreviewTool) } else { None }) },
+    // Chat gets it too: a public site is as useful there as in a project.
+    ToolEntry { name: "browser", plan_mode: true, offer: Offer::Session(|s| if s.is_lead() && !s.workspace.is_empty() { some(crate::tools::browser::BrowserTool) } else { None }) },
     ToolEntry {
         name: "ask_lead",
         plan_mode: false,
@@ -232,7 +233,7 @@ mod tests {
     fn plan_mode_allows_the_tools_it_always_allowed() {
         let mut allowed: Vec<&str> = plan_mode_tools().collect();
         allowed.sort();
-        assert_eq!(allowed, ["ask_user", "glob", "grep", "mcp", "patch", "plan", "preview", "read", "script", "shell", "skill", "team", "web_fetch", "web_search", "workspace"]);
+        assert_eq!(allowed, ["ask_user", "browser", "glob", "grep", "mcp", "patch", "plan", "read", "script", "shell", "skill", "team", "web_fetch", "web_search", "workspace"]);
         assert!(!allowed_in_plan_mode("todo") && !allowed_in_plan_mode("some_custom_tool"));
     }
 

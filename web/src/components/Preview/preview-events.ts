@@ -1,11 +1,17 @@
 /**
- * Asking the chat shell to open a preview tab from anywhere (the `preview`
+ * Asking the chat shell to open a preview tab from anywhere (the `browser`
  * tool card), and reading the tool call's target.
  */
 import type { PreviewTarget } from '@/api/preview'
+import { canonicalToolName } from '@/utils/tool-names'
 
-export const PREVIEW_TOOL = 'preview'
+export const BROWSER_TOOL = 'browser'
 export const OPEN_PREVIEW_EVENT = 'oa:open-preview'
+
+/** Whether `name` is the `browser` tool, or `preview` as older sessions call it. */
+export function isBrowserTool(name: string | undefined): boolean {
+  return canonicalToolName(name ?? '') === BROWSER_TOOL
+}
 
 export function requestOpenPreview(target: PreviewTarget): void {
   window.dispatchEvent(new CustomEvent<PreviewTarget>(OPEN_PREVIEW_EVENT, { detail: target }))

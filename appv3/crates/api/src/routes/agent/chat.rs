@@ -556,18 +556,17 @@ fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, custom: 
             tools.push((n, d));
         }
     }
-    // The session injects `preview` for coding workspaces (see `session.rs`).
+    // The session injects `browser` for a lead with a workspace, Chat's
+    // included (`tool_registry.rs`).
     // `workspace` is injected for leads unless Settings turn it off.
     if appv3_core::runtime_settings::workspace_messages_enabled() && !tools.iter().any(|(x, _)| x == "workspace") {
         if let Some(def) = appv3_tools::contract_definition("workspace") {
             tools.push(tool_desc(&def));
         }
     }
-    if let Some(ws) = workspace.filter(|w| !w.is_empty()) {
-        if settings().workspace_mode(Some(Path::new(ws))) == "coding" && !tools.iter().any(|(x, _)| x == appv3_agent::tools::preview::PREVIEW_TOOL) {
-            use appv3_tools::Tool;
-            tools.push(tool_desc(&appv3_agent::tools::preview::PreviewTool.definition()));
-        }
+    if workspace.is_some_and(|w| !w.is_empty()) && !tools.iter().any(|(x, _)| x == appv3_agent::tools::browser::BROWSER_TOOL) {
+        use appv3_tools::Tool;
+        tools.push(tool_desc(&appv3_agent::tools::browser::BrowserTool.definition()));
     }
     json!({
         "name": agent.name,

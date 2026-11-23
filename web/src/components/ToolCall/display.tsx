@@ -98,8 +98,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── preview: the page it opens, the console it reads, or the page action ──
-  if (name === 'preview') {
+  // ── browser: the page it opens, the console it reads, or the page action ──
+  if (name === 'browser') {
     const action = str(parsed, 'action')
     if (action === 'logs') {
       const label = str(parsed, 'level') === 'error' ? 'Console errors' : 'Console'

@@ -1,6 +1,6 @@
 # Site access for the agent
 
-The agent's `preview` tool can open pages of the public web, which the
+The agent's `browser` tool can open pages of the public web, which the
 desktop app shows in a browser view of its own where the user may be signed
 in. The agent uses a site only after the user allows it.
 
@@ -10,6 +10,8 @@ in. The agent uses a site only after the user allows it.
   **Decline**.
 - Decline holds for the chat: the next call is refused without a card.
 - Always allow saves the site; Settings → Browser lists and removes it.
+- Chat has the tool too: a site saved in a project chat opens there with no
+  card.
 - A client that cannot show a site (a browser, a phone) says where sites
   open, in the Preview tab.
 
@@ -21,8 +23,8 @@ in. The agent uses a site only after the user allows it.
 
 ## Driving it with Playwright
 
-- `drive:preview {"action": "open", "url": "https://<host>/"}` makes the stub
-  call `preview` on a site. The server never fetches the page, so any host
+- `drive:browser {"action": "open", "url": "https://<host>/"}` makes the stub
+  call `browser` on a site. The server never fetches the page, so any host
   works and no network is used.
 - The card is the radio group that holds "Always allow"; **Send** answers.
 - The tool result the model got is the last `tool` message of the last

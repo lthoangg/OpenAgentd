@@ -29,7 +29,7 @@ import { FileRefContext } from '../FileRefLink'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import { AskUser, useShowsConfirmationCard } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
-import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
+import { isBrowserTool, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { PINNED_HEADER, useCloseInPlace } from '@/hooks/useStickyFold'
@@ -258,7 +258,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     [usesDiffView, name, args, result],
   )
   const previewTarget = useMemo(
-    () => (name === PREVIEW_TOOL && done && isPreviewOpenSuccess(result) && previewsAvailable() ? previewTargetFromArgs(args) : null),
+    () => (isBrowserTool(name) && done && isPreviewOpenSuccess(result) && previewsAvailable() ? previewTargetFromArgs(args) : null),
     [name, done, result, args],
   )
   // The session a workspace message reached, so the user can switch to it.

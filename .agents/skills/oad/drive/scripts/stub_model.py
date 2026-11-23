@@ -19,9 +19,9 @@ message:
 - a user message holding ``drive:script <code>``: one ``script`` tool call
   that runs that code, described as ``Drive script`` (only when the request
   offers a ``script`` tool)
-- a user message holding ``drive:preview <JSON arguments>``: one ``preview``
+- a user message holding ``drive:browser <JSON arguments>``: one ``browser``
   tool call with those arguments, e.g. ``{"action": "open", "path": "a.html"}``
-  (only when the request offers a ``preview`` tool)
+  (only when the request offers a ``browser`` tool)
 - a user message holding ``drive:secret <JSON arguments>``: one ``secret``
   tool call with those arguments (only when the request offers ``secret``)
 - a user message holding ``drive:plan <JSON arguments>``: one ``plan`` tool
@@ -60,7 +60,7 @@ from typing import Any
 
 MODEL = "stub"
 # A directive names the tool to call; the rest of its line is the tool's input.
-DIRECTIVE = re.compile(r"drive:(shell|script|preview|secret|plan|read)\s+(.+)")
+DIRECTIVE = re.compile(r"drive:(shell|script|browser|secret|plan|read)\s+(.+)")
 LIMIT = re.compile(r"drive:limit\s+(\d+)")
 LIMITED_KEY = "drive-limited"
 TITLE_MESSAGE = re.compile(r"<message>\s*(.*?)\s*</message>", re.S)
@@ -116,7 +116,7 @@ def plan(protocol: str, body: dict[str, Any]) -> tuple[str, str]:
 
 def tool_arguments(kind: str, value: str) -> str:
     """The JSON arguments of the tool call a directive asks for."""
-    if kind in ("preview", "secret", "plan", "read") or (kind == "shell" and value.lstrip().startswith("{")):
+    if kind in ("browser", "secret", "plan", "read") or (kind == "shell" and value.lstrip().startswith("{")):
         return json.dumps(json.loads(value))
     return json.dumps({"command": value} if kind == "shell" else {"description": "Drive script", "code": value})
 

@@ -1,4 +1,4 @@
-//! The `preview` tool on pages of the public web.
+//! The `browser` tool on pages of the public web.
 //!
 //! A site is not proxied or fetched by this server: the desktop app shows
 //! it in a browser view of its own, with a profile where the user may be
@@ -7,7 +7,7 @@
 //! ([`crate::site_access`]), and each command names the host it was allowed
 //! for, which the app checks against the page it is about to run on.
 
-use super::preview::{AGENT_PAGES_EVENT, PREVIEW_TOOL};
+use super::browser::{AGENT_PAGES_EVENT, BROWSER_TOOL};
 use crate::site_access::{self, Access, SITE_ASK_META};
 use appv3_preview::agent::AgentError;
 use appv3_preview::{global, parse_site_url, parse_url_target, site_host, Backend, Entry, SiteTarget};
@@ -75,9 +75,9 @@ async fn gate(ctx: &ToolContext, host: &str, url: &str) -> Option<ToolResult> {
         Access::Ask if flag(ctx, crate::agent::UNATTENDED_META) => Some(Err(ToolError::exec(format!(
             "The user has not allowed the agent to use {site}, and nobody is here to ask: this turn runs unattended. Say so in your reply; they can allow the site in Settings → Browser."
         )))),
-        Access::Ask if may_ask(ctx) => Some(site_access::ask(ctx, PREVIEW_TOOL, host, url).await),
+        Access::Ask if may_ask(ctx) => Some(site_access::ask(ctx, BROWSER_TOOL, host, url).await),
         Access::Ask => Some(Err(ToolError::exec(format!(
-            "The user has not allowed the agent to use {site} yet. Call preview again, as a call of its own (not from a script), to ask them."
+            "The user has not allowed the agent to use {site} yet. Call browser again, as a call of its own (not from a script), to ask them."
         )))),
     }
 }
@@ -140,12 +140,12 @@ fn likely_page(ws: &str, url: Option<&str>) -> Option<Arc<Entry>> {
         None => None,
     };
     let entries: Vec<Arc<Entry>> = global().list(Some(ws)).into_iter().filter(|e| wanted.as_ref().is_none_or(|site| e.backend == Backend::Site(site.clone()))).collect();
-    super::preview::agents_latest(&entries)
+    super::browser::agents_latest(&entries)
         .or_else(|| entries.iter().filter(|e| e.agent.connected()).max_by_key(|e| e.agent.last_seen()).cloned())
         .or_else(|| entries.iter().all(|e| e.is_site()).then(|| entries.first().cloned()).flatten())
 }
 
-/// Would this `preview` call need the user's say for a site now? The agent
+/// Would this `browser` call need the user's say for a site now? The agent
 /// loop asks before running the calls of a response, and runs such a call
 /// like a question: last, and alone ([`SITE_ASK_META`]).
 pub fn asks_for_site(arguments: &str, session_id: Option<&str>, workspace: Option<&str>) -> bool {

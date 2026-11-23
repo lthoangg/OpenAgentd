@@ -1,6 +1,6 @@
 # Agent preview without the Preview tab
 
-The agent's `preview` tool opens a page and then drives it (snapshot, click,
+The agent's `browser` tool (`preview` before v3.62.0) opens a page and then drives it (snapshot, click,
 fill). The page runs in an app window: the Preview tab, or a hidden copy the
 app keeps loaded while no tab shows it.
 
@@ -22,9 +22,9 @@ app keeps loaded while no tab shows it.
 
 ## Driving it with Playwright
 
-- `drive:preview {"action": "open", "path": "<file>"}` makes the stub call
-  `preview` with those arguments. `drive:script` runs page actions in one
-  call (`tools.preview({ action: "snapshot" })`).
+- `drive:browser {"action": "open", "path": "<file>"}` makes the stub call
+  `browser` with those arguments. `drive:script` runs page actions in one
+  call (`tools.browser({ action: "snapshot" })`).
 - The Preview tab's page is the iframe titled `Preview of <file>`; its close
   button is `Close Preview <file>`.
 - The background agent turn is started through `POST /agent/chat` with the
@@ -38,3 +38,8 @@ app keeps loaded while no tab shows it.
   instead of a click.
 - The hidden copy starts 1.5 s after the server lists the page; the script's
   first page action waits up to 8 s for it.
+- The phone run's step 4 is timing-dependent (failed 2 of 5 runs on
+  2026-11-23): when the phone's page polled less than `STALE_AFTER` (10 s)
+  before the reload, the server still counts it connected and the agent gets
+  "did not pick up the command … call browser with action 'open'" instead of
+  "did not connect". The page is gone either way; only the wording differs.

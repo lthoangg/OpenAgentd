@@ -1,11 +1,11 @@
 //! Session-bound tools: `ask_user`, `team`, the member tools, `skill` and `schedule`.
 
 pub mod ask_user;
+pub mod browser;
+mod browser_args;
+pub mod browser_site;
 pub mod goal;
 pub mod plan;
-pub mod preview;
-mod preview_args;
-pub mod preview_site;
 pub mod script;
 pub mod secret;
 pub mod team;

@@ -116,7 +116,7 @@ pub fn result_rides_inline(tool: &str, content: &str) -> bool {
         // "Started a new plan"), `GoalClaimCard`.
         "ask_user" | "plan" | "submit_plan" | "update_goal" => true,
         // `isPreviewOpenSuccess`: the Open link and auto-open.
-        "preview" => content.starts_with("Opening "),
+        "browser" | "preview" => content.starts_with("Opening "),
         // `parseSendResult`: the link to the session a send reached.
         "workspace" | "send_to_workspace" => text.starts_with("Sent to '") || awaits_answer,
         // A call refused because its server needs sign-in: Sign in at the call.
@@ -648,6 +648,8 @@ mod tests {
     #[test]
     fn only_the_answers_a_card_reads_ride_with_the_call() {
         let inline = [
+            ("browser", "Opening src/a.html in the user's Preview tab (served at http://127.0.0.1:1/a.html)."),
+            // As stored before `preview` was renamed `browser`.
             ("preview", "Opening src/a.html in the user's Preview tab (served at http://127.0.0.1:1/a.html)."),
             ("workspace", "Sent to 'web' (/r/web) \u{2014} new session 01a00000-0000-7000-8000-000000000001 started."),
             ("send_to_workspace", "Sent to 'web' (/r/web) \u{2014} delivered to session 01a00000-0000-7000-8000-000000000001."),
@@ -667,8 +669,8 @@ mod tests {
             assert!(result_rides_inline(name, text), "{name}: {text}");
         }
         let fetched = [
-            ("preview", "Console for http://localhost:5173 (newest first, 0 of 4 entries):\n(no entries)"),
-            ("preview", "Error: No element matches [data-hero-video]."),
+            ("browser", "Console for http://localhost:5173 (newest first, 0 of 4 entries):\n(no entries)"),
+            ("browser", "Error: No element matches [data-hero-video]."),
             ("workspace", "Workspaces you can message (name \u{2014} path):\n- Chat"),
             ("workspace", "The user applied the change. 'openagentd' is now in group x."),
             ("mcp", "1 tool (run one with action='call', server, tool and arguments):"),

@@ -18,7 +18,7 @@ import type { ContentBlock } from '@/api/types'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { usePreviewKeepAliveStore } from '@/stores/usePreviewKeepAliveStore'
-import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs } from '../Preview/preview-events'
+import { isBrowserTool, isPreviewOpenSuccess, previewTargetFromArgs } from '../Preview/preview-events'
 
 /** A call older than this (client clock) is history, not a live open. */
 const LIVE_WINDOW_MS = 10 * 60_000
@@ -26,7 +26,7 @@ const LIVE_WINDOW_MS = 10 * 60_000
 const CONFIRMED_TAIL = 50
 
 function isFinishedPreviewCall(block: ContentBlock): boolean {
-  return block.type === 'tool' && block.toolName === PREVIEW_TOOL && block.toolDone === true && Boolean(block.toolCallId)
+  return block.type === 'tool' && isBrowserTool(block.toolName) && block.toolDone === true && Boolean(block.toolCallId)
 }
 
 type StreamsState = { agentStreams?: Record<string, { blocks?: ContentBlock[]; currentBlocks?: ContentBlock[] }> }

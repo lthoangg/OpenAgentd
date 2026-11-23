@@ -176,7 +176,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   - **Mockups and diagrams in plans** `[v3.21.0]` — while planning, the
     agent can write attachments next to the plan, in
     `.agents/plans/<plan-name>/` (the only place `patch` writes in Plan
-    mode), and check them with a look-only `preview` (open, logs, snapshot,
+    mode), and check them with a look-only `browser` (open, logs, snapshot,
     inspect, scroll, navigate, wait; no click, fill or press). In the Plan
     tab, a link to an HTML mockup opens it in a Preview tab (a file tab when
     previews are unavailable), other workspace links open as file tabs, SVG

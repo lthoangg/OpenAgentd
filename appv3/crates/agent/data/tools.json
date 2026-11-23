@@ -5,7 +5,7 @@
     "read", "grep", "glob", "patch", "shell", "web_search", "web_fetch",
     "generate_image", "generate_video",
     "mcp",
-    "ask_user", "team", "plan", "update_goal", "preview", "ask_lead", "workspace",
+    "ask_user", "team", "plan", "update_goal", "browser", "ask_lead", "workspace",
     "secret"
   ],
   "former_names": {
@@ -13,7 +13,8 @@
     "schedule_task": "schedule",
     "send_to_workspace": "workspace",
     "delegate": "team",
-    "submit_plan": "plan"
+    "submit_plan": "plan",
+    "preview": "browser"
   },
   "retired": ["lsp"]
 }

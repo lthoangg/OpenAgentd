@@ -174,7 +174,7 @@ port or another preview, removes the target's `X-Frame-Options` and
 `frame-ancestors`, and sets its own `frame-ancestors` (loopback pages and
 Tauri webviews). Listeners are capped at 8 and close after 30 minutes idle.
 The app CSP gains `frame-src 'self' http://127.0.0.1:*`. The lead's
-`preview` tool opens pages, reads the captured console, and drives the open
+`browser` tool (`preview` before v3.62.0) opens pages, reads the captured console, and drives the open
 page: the inspector long-polls `/__openagentd/agent` on the preview origin
 for commands (snapshot, click, fill, press, scroll, navigate, wait, inspect)
 and posts results back there, so commands fail fast when no Preview tab has

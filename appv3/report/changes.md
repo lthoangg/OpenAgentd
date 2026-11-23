@@ -2,6 +2,17 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## The `preview` tool is now `browser` (v3.62.0)
+
+The agent tool `preview` is renamed `browser`, with the same arguments and
+results. `GET /api/agent/agents` tool lists and model requests carry
+`browser`, which is now also offered to a lead in the Chat workspace (before:
+coding workspaces only). Stored tool calls keep `preview`: `result_rides_inline`
+and the web's `canonicalToolName` read both names, an agent file listing
+`preview` is left alone, and a call to `preview` answers
+`Tool 'preview' not found. Did you mean 'browser'?`. The Preview tab,
+`/api/preview` and `/api/browser` are unchanged.
+
 ## Preview takes pages of the public web (v3.62.0)
 
 `POST /api/preview` with a `url` on another machine (`https://example.com/docs`;

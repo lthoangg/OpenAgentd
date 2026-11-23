@@ -1,7 +1,7 @@
 //! `/api/browser`: the sites the agent may use in the Preview tab.
 //!
 //! Settings → Browser reads and replaces the rules; the card the agent's
-//! `preview` tool opens adds to them. The rules and their meaning are in
+//! `browser` tool opens adds to them. The rules and their meaning are in
 //! `appv3_agent::site_access`.
 
 use crate::error::{ApiError, ApiResult};

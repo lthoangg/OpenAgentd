@@ -27,10 +27,14 @@ fn serialized_agent_carries_its_thinking_level() {
 }
 
 #[test]
-fn serialized_agent_lists_preview_only_for_coding_workspaces() {
+fn serialized_agent_lists_browser_for_any_workspace_chat_included() {
     let names = |info: &Value| info["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
     let dir = tempfile::tempdir().unwrap();
     let coding = serialize_agent(&agent(None), Some(&dir.path().to_string_lossy()), None);
-    assert!(names(&coding).contains(&"preview".to_string()), "{coding}");
-    assert!(!names(&serialize_agent(&agent(None), None, None)).contains(&"preview".to_string()));
+    assert!(names(&coding).contains(&"browser".to_string()), "{coding}");
+    let chat_root = appv3_core::settings::settings().chat_workspace_root();
+    let chat = serialize_agent(&agent(None), Some(&chat_root.to_string_lossy()), None);
+    assert!(names(&chat).contains(&"browser".to_string()), "{chat}");
+    assert!(!names(&serialize_agent(&agent(None), None, None)).contains(&"browser".to_string()));
+    assert!(!names(&coding).contains(&"preview".to_string()), "the former name is not offered: {coding}");
 }

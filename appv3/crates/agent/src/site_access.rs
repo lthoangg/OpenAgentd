@@ -2,7 +2,7 @@
 //!
 //! The Preview tab of the desktop app shows pages of the public web in a
 //! browser profile where the user may be signed in. The user browses any
-//! site there; the agent's `preview` tool reads and acts only on sites the
+//! site there; the agent's `browser` tool reads and acts only on sites the
 //! user allowed. The rules are a default (ask, or allow every site), a list
 //! of allowed hosts and a list of blocked ones, kept in the user's config
 //! dir. A site the rules do not settle opens a card: **Allow once** (this
@@ -23,7 +23,7 @@ pub const SITE_ACCESS_KIND: &str = "site_access";
 pub const ALLOW_ONCE: &str = "Allow once";
 pub const ALLOW_ALWAYS: &str = "Always allow";
 pub const DECLINE: &str = "Decline";
-/// Turn metadata: ids of the `preview` calls the agent loop runs as calls
+/// Turn metadata: ids of the `browser` calls the agent loop runs as calls
 /// that may pause on this card. Any other call is refused instead, because
 /// a pause the loop did not plan for would lose the call's result.
 pub const SITE_ASK_META: &str = "site_access_calls";
@@ -325,9 +325,9 @@ pub fn host_of(row: &PendingQuestion) -> Option<String> {
 /// The tool result the agent reads after the user answered.
 pub fn result_text(host: &str, decision: &Decision, saved: Option<&Result<String, String>>) -> String {
     match (decision, saved) {
-        (Decision::Once, _) => format!("The user allowed {host} for this chat. Call preview again to continue."),
-        (Decision::Always, Some(Err(why))) => format!("The user allowed {host} for this chat, but it could not be saved for later: {why} Call preview again to continue."),
-        (Decision::Always, _) => format!("The user allowed {host}; it is saved, so they are not asked again. Call preview again to continue."),
+        (Decision::Once, _) => format!("The user allowed {host} for this chat. Call browser again to continue."),
+        (Decision::Always, Some(Err(why))) => format!("The user allowed {host} for this chat, but it could not be saved for later: {why} Call browser again to continue."),
+        (Decision::Always, _) => format!("The user allowed {host}; it is saved, so they are not asked again. Call browser again to continue."),
         (Decision::Decline(None), _) => format!("The user declined: you may not use {host} in this chat."),
         (Decision::Decline(Some(said)), _) => format!("The user did not allow {host} in this chat. They said:\n\n{said}"),
     }

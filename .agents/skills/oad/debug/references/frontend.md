@@ -20,7 +20,7 @@ Run `make dev` (API :8000 + Vite :5173). Sessions open at
 `/telemetry`, `/scheduler`, `/settings`, and `/settings/<section>`
 (`src/router.ts`).
 
-- **Preview tool** (in-app): `preview` with `action: 'open'` on the Vite URL, then
+- **Browser tool** (in-app): `browser` with `action: 'open'` on the Vite URL, then
   `snapshot`, `click`, `fill`, `press`, `inspect`, and `logs` for console errors.
   It acts only while the user has the Preview tab open; a hidden tab reports a
   0×0 viewport, so layout values are not meaningful then.

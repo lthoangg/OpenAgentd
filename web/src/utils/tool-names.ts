@@ -8,6 +8,7 @@ const FORMER_TOOL_NAMES: Record<string, string> = {
   schedule_task: 'schedule',
   send_to_workspace: 'workspace',
   delegate: 'team',
+  preview: 'browser',
 }
 
 /** The current name for `name`, which may be a tool's former name. */

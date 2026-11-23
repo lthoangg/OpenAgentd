@@ -28,7 +28,7 @@ export default async function siteAccess({ page, expect, step, open, newSessionI
   })
 
   await step("the agent opens a site and a card asks the user first", async () => {
-    await send(`drive:preview {"action": "open", "url": "https://www.${declined}/pricing"}`)
+    await send(`drive:browser {"action": "open", "url": "https://www.${declined}/pricing"}`)
     await expect(card).toBeVisible()
     await expect(page.getByText(`Let the agent use ${declined}?`, { exact: false })).toBeVisible()
     await expect(card.getByRole("radio", { name: /^Allow once/ })).toBeVisible()
@@ -46,14 +46,14 @@ export default async function siteAccess({ page, expect, step, open, newSessionI
   })
 
   await step("asking again in the same chat is refused without a card", async () => {
-    await send(`drive:preview {"action": "open", "url": "https://${declined}/"}`)
+    await send(`drive:browser {"action": "open", "url": "https://${declined}/"}`)
     await finished(2)
     expect(lastToolResult()).toContain(`The user declined to let the agent use ${declined} in this chat`)
     await expect(card).toHaveCount(0)
   })
 
   await step("Always allow saves the site", async () => {
-    await send(`drive:preview {"action": "open", "url": "https://${allowed}/guide"}`)
+    await send(`drive:browser {"action": "open", "url": "https://${allowed}/guide"}`)
     await expect(card).toBeVisible()
     await answer("Always allow")
     await finished(3)
@@ -62,7 +62,7 @@ export default async function siteAccess({ page, expect, step, open, newSessionI
   })
 
   await step("the agent opens it with no card; a browser says where sites open", async () => {
-    await send(`drive:preview {"action": "open", "url": "https://${allowed}/guide"}`)
+    await send(`drive:browser {"action": "open", "url": "https://${allowed}/guide"}`)
     await finished(4)
     expect(lastToolResult()).toContain(`Opening https://${allowed}/guide in the user's Preview tab`)
     await expect(card).toHaveCount(0)
@@ -71,6 +71,22 @@ export default async function siteAccess({ page, expect, step, open, newSessionI
     if (phone) return // a phone opens a preview only from the tool row
     await expect(page.getByText("Public sites open in the desktop app")).toBeVisible()
     await expect(page.getByRole("button", { name: "Open in browser" })).toBeVisible()
+  })
+
+  await step("in Chat the agent has browser too, and uses the saved site", async () => {
+    await open("/")
+    // On desktop "/" reopens the last session; New session shows the folder chip.
+    await page.getByRole("button", { name: "New session", exact: true }).first().click()
+    await page.getByRole("button", { name: /^Folder: .*Change folder$/ }).click()
+    await page.getByRole("listbox", { name: "Folders" }).getByRole("option", { name: "Chat", exact: true }).click()
+    await expect(page.getByRole("button", { name: /^Folder: Chat\. Change folder$/ })).toBeVisible()
+    await send(`drive:browser {"action": "open", "url": "https://${allowed}/chat-${id}"}`)
+    await finished(1)
+    expect(lastToolResult()).toContain(`Opening https://${allowed}/chat-${id} in the user's Preview tab`)
+    await expect(card).toHaveCount(0)
+    const offered = modelRequests().at(-1).request.tools.map((t) => t.function.name)
+    expect(offered).toContain("browser")
+    expect(offered).not.toContain("preview")
   })
 
   await step("Settings → Browser lists the site, and removing it is saved", async () => {

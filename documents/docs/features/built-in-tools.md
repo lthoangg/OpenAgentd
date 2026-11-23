@@ -23,7 +23,7 @@ MCP.
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Session goal | `update_goal` (lead agent; claims the goal of a plan approved with Keep going complete or blocked) `[v3.32.0]` |
-| Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
+| Web preview | `browser` (lead agent with a workspace, Chat included; `preview` before v3.62.0) `[v3.3.0]` |
 | Scripted tool calls | `script` (every agent, lead and member) `[v3.57.0]` |
 | Secrets | `secret` (lead agent with a workspace); `shell` takes `secrets` `[v3.59.0]` |
 | Utility | `skill` |
@@ -70,7 +70,7 @@ MCP.
   ("3 calls"), the name it was saved under and whether the time limit
   stopped it, as soon as it finishes and after a reload; before, that
   showed only once the row had been opened.
-- **`preview` — show a page, read its console, and use it** `[v3.3.0]` — the agent
+- **`browser` — show a page, read its console, and use it** `[v3.3.0]` — the agent
   opens a running local dev server or a workspace HTML file in your Preview
   tab (it comes forward on desktop, and the tool card has **Open preview**).
   It then reads that page's recent console errors, warnings and logs, newest
@@ -95,6 +95,10 @@ MCP.
   cookies. In Plan mode it only looks, as on local pages. With several
   pages loaded, an action that names no page goes to the one the agent
   opened or used last.
+  Since v3.62.0 the tool is called `browser` (it was `preview`), and Chat
+  has it too, not only project workspaces. Old sessions show their
+  `preview` calls as before; an agent there that calls `preview` again is
+  told to use `browser`.
   A server on this computer is opened by its loopback URL, never the OpenAgentd API port. Everything
   works only while the page is open in the Preview tab *(since v3.42.0, or
   loaded out of sight while the desktop app is open)*; there is no headless

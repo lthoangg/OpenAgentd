@@ -1,5 +1,8 @@
-//! `preview` — open a page in the user's Preview tab, read its console, and
+//! `browser` — open a page in the user's Preview tab, read its console, and
 //! drive it (snapshot, click, fill, …).
+//!
+//! The tool was called `preview` before v3.62.0; older sessions still hold
+//! calls by that name (`appv3_tools::TOOL_ALIASES`, `data/tools.json`).
 //!
 //! The tool starts (or reuses) the workspace's preview listener; the web UI
 //! sees the call's `tool_end` and loads the page (in the Preview tab, or in
@@ -9,12 +12,12 @@
 //!
 //! A URL on another machine is a site: the desktop app shows it in a browser
 //! view with a profile of its own, where the user may be signed in, so the
-//! agent uses it only once the user allowed the site (`preview_site`).
-//! What a call may say is checked in `preview_args`.
+//! agent uses it only once the user allowed the site (`browser_site`).
+//! What a call may say is checked in `browser_args`.
 
+use super::browser_args::{parse_args, plan_mode_refusal, Args, Target, DEFAULT_LIMIT, MAX_LIMIT, MAX_STEPS, MAX_WAIT_MS, PAGE_ACTIONS};
+use super::browser_site::{self, site_of};
 use super::invalid_args;
-use super::preview_args::{parse_args, plan_mode_refusal, Args, Target, DEFAULT_LIMIT, MAX_LIMIT, MAX_STEPS, MAX_WAIT_MS, PAGE_ACTIONS};
-use super::preview_site::{self, site_of};
 use appv3_preview::{global, parse_url_target, resolve_workspace_file, static_backend, url_path, Backend, Entry};
 use appv3_tools::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -24,7 +27,7 @@ use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-pub const PREVIEW_TOOL: &str = "preview";
+pub const BROWSER_TOOL: &str = "browser";
 const MAX_OUTPUT_CHARS: usize = 8000;
 /// Snapshots and element details are larger than console output.
 const MAX_PAGE_OUTPUT_CHARS: usize = 16000;
@@ -67,10 +70,10 @@ impl Drop for Opening {
     }
 }
 
-pub struct PreviewTool;
+pub struct BrowserTool;
 
 fn workspace(ctx: &ToolContext) -> Result<String, ToolError> {
-    let ws = ctx.workspace.clone().filter(|w| !w.is_empty()).ok_or_else(|| ToolError::exec("The preview needs a project workspace."))?;
+    let ws = ctx.workspace.clone().filter(|w| !w.is_empty()).ok_or_else(|| ToolError::exec("The browser needs a workspace."))?;
     crate::manager::validate_workspace(&ws, true).map_err(ToolError::exec)
 }
 
@@ -111,7 +114,7 @@ fn untrusted_note(entry: &Entry) -> &'static str {
 async fn open(ctx: &ToolContext, ws: &str, target: Target) -> ToolResult {
     if let Target::Url(u) = &target {
         if let Some((site, url)) = site_of(u) {
-            return preview_site::open(ctx, ws, site, url).await;
+            return browser_site::open(ctx, ws, site, url).await;
         }
     }
     let (backend, path, shown, wanted) = match target {
@@ -137,7 +140,7 @@ async fn open(ctx: &ToolContext, ws: &str, target: Target) -> ToolResult {
     crate::broadcaster::publish(AGENT_PAGES_EVENT, json!({"workspace": ws, "preview_id": info.id}));
     let errors = entry.map(|e| e.console_error_count()).unwrap_or(0);
     Ok(ToolOutput::text(format!(
-        "Opening {shown} in the user's Preview tab (served at {}{path}). Console errors captured so far: {errors}. The console is recorded only while the page is loaded; call preview with action 'logs' after it loads.",
+        "Opening {shown} in the user's Preview tab (served at {}{path}). Console errors captured so far: {errors}. The console is recorded only while the page is loaded; call browser with action 'logs' after it loads.",
         info.origin
     )))
 }
@@ -155,7 +158,7 @@ async fn logs(ctx: &ToolContext, ws: &str, target: Option<Target>, errors_only: 
     }
     if entries.is_empty() {
         return Ok(ToolOutput::text(
-            "No preview is open for this workspace. Call preview with action 'open' first; the console is recorded only while the user has the page open in the Preview tab.",
+            "No preview is open for this workspace. Call browser with action 'open' first; the console is recorded only while the user has the page open in the Preview tab.",
         ));
     }
     let path_filter = match &target {
@@ -164,7 +167,7 @@ async fn logs(ctx: &ToolContext, ws: &str, target: Option<Target>, errors_only: 
     };
     // A site's console is part of a page the user must have allowed.
     for e in &entries {
-        if let Err(stop) = preview_site::allowed_host(ctx, e).await {
+        if let Err(stop) = browser_site::allowed_host(ctx, e).await {
             return stop;
         }
     }
@@ -196,9 +199,9 @@ async fn logs(ctx: &ToolContext, ws: &str, target: Option<Target>, errors_only: 
 }
 
 #[async_trait]
-impl Tool for PreviewTool {
+impl Tool for BrowserTool {
     fn name(&self) -> &str {
-        PREVIEW_TOOL
+        BROWSER_TOOL
     }
 
     fn definition(&self) -> Value {
@@ -227,7 +230,7 @@ impl Tool for PreviewTool {
         json!({
             "type": "function",
             "function": {
-                "name": PREVIEW_TOOL,
+                "name": BROWSER_TOOL,
                 "description": "Show a web page in the user's built-in Preview tab, read its browser console, and use the page. action='open' opens a running local dev server (url, e.g. http://localhost:5173/pricing; start it with shell first), an HTML file in the workspace (path), or a page of the public web (url, e.g. https://example.com/docs). A public page opens in the desktop app, in its own browser profile where the user may be signed in; they are asked once per site, so open one only when the task needs it, and never type their passwords. action='logs' returns recent console errors, warnings, and logs, newest first. Page actions run in the page: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'click', 'fill' (value), 'press' (key), 'scroll', and 'inspect' (selector, source file, styles, HTML) take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). action='chain' runs up to 20 page actions (steps) in order in one call, e.g. fill, fill, click, then snapshot to see the result; it stops at the first step that fails. Re-snapshot after the page changes; old refs go stale. OpenAgentd keeps the page loaded in the background while it is open; on a phone it needs the workspace's Preview sheet. No headless browser or screenshots. Ask before submitting forms that change real data.",
                 "parameters": {
                     "type": "object",
@@ -245,7 +248,7 @@ impl Tool for PreviewTool {
 
 /// [`Tool::run`] with the page-connect wait as a parameter (tests shorten it).
 async fn run_with(ctx: &ToolContext, args: Value, connect_wait: Duration) -> ToolResult {
-    let parsed = parse_args(&args).map_err(|e| invalid_args(PREVIEW_TOOL, &e))?;
+    let parsed = parse_args(&args).map_err(|e| invalid_args(BROWSER_TOOL, &e))?;
     let plan_mode = ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan");
     if let Some(refusal) = plan_mode.then(|| plan_mode_refusal(&parsed)).flatten() {
         return Err(ToolError::Execution(refusal));
@@ -299,7 +302,7 @@ async fn pick_page(ws: &str, target: Option<&Target>, connect_wait: Duration) ->
         entries = matching(ws, target)?;
     }
     if entries.is_empty() {
-        return Err(ToolError::exec("No preview is open for this workspace. Call preview with action 'open' first."));
+        return Err(ToolError::exec("No preview is open for this workspace. Call browser with action 'open' first."));
     }
     // Several pages may be loaded at once, and each polls all the time: the
     // agent means the one it opened, not whichever asked last.
@@ -347,7 +350,7 @@ fn not_connected(entries: &[Arc<Entry>], waited: Duration) -> String {
         );
     }
     format!(
-        "The page did not connect within {} s. An OpenAgentd window loads it, out of sight while the Preview tab is closed. Check that {shown} answers (preview action 'logs' shows its console), then retry; opening it again does not help while the page cannot load.",
+        "The page did not connect within {} s. An OpenAgentd window loads it, out of sight while the Preview tab is closed. Check that {shown} answers (browser action 'logs' shows its console), then retry; opening it again does not help while the page cannot load.",
         waited.as_secs_f32().ceil()
     )
 }
@@ -416,12 +419,12 @@ fn step_text(action: &str, result: &Value) -> String {
 
 async fn page(ctx: &ToolContext, ws: &str, target: Option<Target>, command: Value, timeout: Duration, connect_wait: Duration) -> ToolResult {
     let entry = pick_page(ws, target.as_ref(), connect_wait).await?;
-    let site = match preview_site::allowed_host(ctx, &entry).await {
+    let site = match browser_site::allowed_host(ctx, &entry).await {
         Ok(site) => site,
         Err(stop) => return stop,
     };
     let action = action_of(&command).to_string();
-    let result = entry.agent.run(preview_site::for_site(command, site.as_deref()), timeout).await.map_err(|e| ToolError::exec(e.to_string()))?;
+    let result = entry.agent.run(browser_site::for_site(command, site.as_deref()), timeout).await.map_err(|e| ToolError::exec(e.to_string()))?;
     let text = step_text(&action, &result);
     let text = if returns_page_content(&action) { format!("{}\n{text}", untrusted_note(&entry)) } else { text };
     Ok(ToolOutput::text(cap(text, MAX_PAGE_OUTPUT_CHARS)))
@@ -432,7 +435,7 @@ async fn chain(ctx: &ToolContext, ws: &str, target: Option<Target>, steps: Vec<(
     let entry = pick_page(ws, target.as_ref(), connect_wait).await?;
     // Asked once for the chain: a step that leaves the site ends it, since
     // the app runs a command only on the site it names.
-    let site = match preview_site::allowed_host(ctx, &entry).await {
+    let site = match browser_site::allowed_host(ctx, &entry).await {
         Ok(site) => site,
         Err(stop) => return stop,
     };
@@ -444,7 +447,7 @@ async fn chain(ctx: &ToolContext, ws: &str, target: Option<Target>, steps: Vec<(
     for (i, (command, timeout)) in steps.into_iter().enumerate() {
         let n = i + 1;
         let action = action_of(&command).to_string();
-        match entry.agent.run(preview_site::for_site(command, site.as_deref()), timeout).await {
+        match entry.agent.run(browser_site::for_site(command, site.as_deref()), timeout).await {
             Ok(result) => {
                 let text = step_text(&action, &result);
                 // Outlines and element details are multi-line; they start on their own line.
@@ -496,7 +499,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("page.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
-        let t = PreviewTool;
+        let t = BrowserTool;
         let err = t.run(&c, json!({"action": "snapshot"})).await.unwrap_err().to_string();
         assert!(err.contains("No preview is open"), "{err}");
         text(t.run(&c, json!({"action": "open", "path": "page.html"})).await);
@@ -546,7 +549,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("late.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
-        let t = PreviewTool;
+        let t = BrowserTool;
         text(t.run(&c, json!({"action": "open", "path": "late.html"})).await);
         let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
         let entry = global().list(Some(&ws)).pop().unwrap();
@@ -574,7 +577,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("none.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
-        let t = PreviewTool;
+        let t = BrowserTool;
         text(t.run(&c, json!({"action": "open", "path": "none.html"})).await);
         // An app window is open (it reads the global feed), yet the page never polls.
         let _window = crate::broadcaster::broadcaster().attach();
@@ -596,7 +599,7 @@ mod tests {
         std::fs::write(dir.path().join("kept.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
         let mut announced = crate::broadcaster::broadcaster().tap(AGENT_PAGES_EVENT);
-        text(PreviewTool.run(&c, json!({"action": "open", "path": "./kept.html"})).await);
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "./kept.html"})).await);
         let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
         let entry = global().list(Some(&ws)).pop().unwrap();
         assert_eq!(entry.agent_page(), Some(json!({"kind": "file", "path": "kept.html"})));
@@ -620,7 +623,7 @@ mod tests {
             async move { run_with(&c, json!({"action": "snapshot"}), Duration::from_secs(5)).await }
         });
         tokio::time::sleep(Duration::from_millis(100)).await;
-        text(PreviewTool.run(&c, json!({"action": "open", "path": "batch.html"})).await);
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "batch.html"})).await);
         drop(opening);
         let entry = global().list(Some(&ws)).pop().unwrap();
         let (_stop, rx) = tokio::sync::watch::channel(false);
@@ -647,13 +650,13 @@ mod tests {
                 }
             })
         };
-        text(PreviewTool.run(&c, json!({"action": "open", "path": "first.html"})).await);
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "first.html"})).await);
         let first = global().list(Some(&ws)).pop().unwrap();
         let first_page = serve(first.clone(), "first");
         while !first.agent.connected() {
             tokio::task::yield_now().await;
         }
-        text(PreviewTool.run(&c, json!({"action": "open", "url": "http://localhost:59173"})).await);
+        text(BrowserTool.run(&c, json!({"action": "open", "url": "http://localhost:59173"})).await);
         let second = global().list(Some(&ws)).into_iter().find(|e| e.id != first.id).unwrap();
         // The page just opened is the one meant, though it has not loaded yet
         // and another page is polling.
@@ -665,8 +668,8 @@ mod tests {
         let second_page = serve(second.clone(), "second");
         assert!(text(snapshot.await.unwrap()).contains("Page: second"));
         // A call that names a page goes there, and that page is then the latest.
-        assert!(text(PreviewTool.run(&c, json!({"action": "snapshot", "path": "first.html"})).await).contains("Page: first"));
-        assert!(text(PreviewTool.run(&c, json!({"action": "snapshot"})).await).contains("Page: first"));
+        assert!(text(BrowserTool.run(&c, json!({"action": "snapshot", "path": "first.html"})).await).contains("Page: first"));
+        assert!(text(BrowserTool.run(&c, json!({"action": "snapshot"})).await).contains("Page: first"));
         first_page.abort();
         second_page.abort();
         global().close(&first.id);
@@ -678,7 +681,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("form.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
-        let t = PreviewTool;
+        let t = BrowserTool;
         text(t.run(&c, json!({"action": "open", "path": "form.html"})).await);
         let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
         let entry = global().list(Some(&ws)).pop().unwrap();
@@ -723,7 +726,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("landing.html"), "<html></html>").unwrap();
         let c = ctx(dir.path());
-        let t = PreviewTool;
+        let t = BrowserTool;
         assert!(text(t.run(&c, json!({"action": "logs"})).await).starts_with("No preview is open"));
         let opened = text(t.run(&c, json!({"action": "open", "path": "landing.html"})).await);
         assert!(opened.contains("Opening landing.html in the user's Preview tab"), "{opened}");

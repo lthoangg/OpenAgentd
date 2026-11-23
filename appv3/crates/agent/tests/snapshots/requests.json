@@ -691,7 +691,7 @@
       {
         "type": "function",
         "function": {
-          "name": "preview",
+          "name": "browser",
           "description": "Show a web page in the user's built-in Preview tab, read its browser console, and use the page. action='open' opens a running local dev server (url, e.g. http://localhost:5173/pricing; start it with shell first), an HTML file in the workspace (path), or a page of the public web (url, e.g. https://example.com/docs). A public page opens in the desktop app, in its own browser profile where the user may be signed in; they are asked once per site, so open one only when the task needs it, and never type their passwords. action='logs' returns recent console errors, warnings, and logs, newest first. Page actions run in the page: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'click', 'fill' (value), 'press' (key), 'scroll', and 'inspect' (selector, source file, styles, HTML) take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). action='chain' runs up to 20 page actions (steps) in order in one call, e.g. fill, fill, click, then snapshot to see the result; it stops at the first step that fails. Re-snapshot after the page changes; old refs go stale. OpenAgentd keeps the page loaded in the background while it is open; on a phone it needs the workspace's Preview sheet. No headless browser or screenshots. Ask before submitting forms that change real data.",
           "parameters": {
             "type": "object",
@@ -1902,7 +1902,7 @@
       {
         "type": "function",
         "function": {
-          "name": "preview",
+          "name": "browser",
           "description": "Show a web page in the user's built-in Preview tab, read its browser console, and use the page. action='open' opens a running local dev server (url, e.g. http://localhost:5173/pricing; start it with shell first), an HTML file in the workspace (path), or a page of the public web (url, e.g. https://example.com/docs). A public page opens in the desktop app, in its own browser profile where the user may be signed in; they are asked once per site, so open one only when the task needs it, and never type their passwords. action='logs' returns recent console errors, warnings, and logs, newest first. Page actions run in the page: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'click', 'fill' (value), 'press' (key), 'scroll', and 'inspect' (selector, source file, styles, HTML) take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). action='chain' runs up to 20 page actions (steps) in order in one call, e.g. fill, fill, click, then snapshot to see the result; it stops at the first step that fails. Re-snapshot after the page changes; old refs go stale. OpenAgentd keeps the page loaded in the background while it is open; on a phone it needs the workspace's Preview sheet. No headless browser or screenshots. Ask before submitting forms that change real data.",
           "parameters": {
             "type": "object",

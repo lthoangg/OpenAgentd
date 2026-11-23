@@ -145,7 +145,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   while a menu or dialog of the app is over it. A page that cannot be loaded
   (a mistyped address, no connection) says so under the address bar.
   - **The agent uses a site only after you allow it.** The first time the
-    agent's `preview` tool opens a site, or a page it uses moves to another
+    agent's `browser` tool opens a site, or a page it uses moves to another
     site, a card asks: **Allow once** (this chat), **Always allow** (saved)
     or **Decline** (refused for the rest of the chat). A scheduled run, or a
     session nobody is following, is refused with the reason instead of

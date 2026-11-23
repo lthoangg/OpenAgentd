@@ -1934,9 +1934,9 @@ async fn site_access_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     let open = |call: &'static str, host: &'static str| {
         let sid = sid.clone();
         async move {
-            let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "preview", "arguments": "{}"}}]);
+            let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "browser", "arguments": "{}"}}]);
             appv3_db::save_message(pool, &sid, appv3_db::NewMessage { tool_calls: Some(tool_calls), ..appv3_db::NewMessage::assistant(None) }).await.unwrap();
-            let q = appv3_db::create_pending_question_with(pool, &sid, call, "preview", &site_access::payload(host, &format!("https://{host}/"))).await.unwrap();
+            let q = appv3_db::create_pending_question_with(pool, &sid, call, "browser", &site_access::payload(host, &format!("https://{host}/"))).await.unwrap();
             appv3_db::codec::api_uuid(&q.id)
         }
     };
@@ -1962,7 +1962,7 @@ async fn site_access_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     let qid = open("call-site-2", "docs.test").await;
     let (st, v) = answer(qid.clone(), json!({"answers": [["Allow once"]]})).await;
     assert_eq!(st, StatusCode::OK, "{v}");
-    assert_eq!(tool_result(pool, &sid, "call-site-2").await, "The user allowed docs.test for this chat. Call preview again to continue.");
+    assert_eq!(tool_result(pool, &sid, "call-site-2").await, "The user allowed docs.test for this chat. Call browser again to continue.");
     assert_eq!(site_access::decide(Some(&sid), "www.docs.test"), Access::Allowed);
     assert_eq!(site_access::decide(None, "docs.test"), Access::Ask, "another chat asks for itself");
     assert_eq!(saved().await, json!([]));

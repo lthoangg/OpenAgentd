@@ -164,13 +164,13 @@ describe('summarizeWork', () => {
       tool('pl', 'plan'), tool('sp', 'submit_plan'), tool('td', 'todo'), tool('sc', 'schedule'),
       tool('au', 'ask_user'), tool('al', 'ask_lead'),
       tool('tm', 'team'), tool('ws', 'workspace'),
-      tool('pv', 'preview'), tool('pv2', 'preview'),
+      tool('pv', 'browser'), tool('pv2', 'preview'),
       tool('ms', 'mcp', { action: 'search', query: 'issues' }), tool('mc', 'mcp', { action: 'call', server: 'github', tool: 'list' }),
       tool('gi', 'generate_image'), tool('gv', 'generate_video'),
     ]
 
     expect(workSummaryDetail(summarizeWork(blocks))).toBe(
-      '1 read, 1 search, 1 script, 4 plan updates, 2 questions, 2 delegations, 2 preview actions, 1 connector call, 2 generations',
+      '1 read, 1 search, 1 script, 4 plan updates, 2 questions, 2 delegations, 2 browser actions, 1 connector call, 2 generations',
     )
   })
 

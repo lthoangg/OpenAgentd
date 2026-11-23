@@ -426,7 +426,7 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 /// Former names of injected tools, and `lsp`, which no agent gets any more.
 /// Agent files written before the renames still list them; they are skipped
 /// like the injected tools, never pruned from the user's file.
-pub(crate) const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan", "lsp"];
+pub(crate) const FORMER_TOOL_NAMES: &[&str] = &["todo_manage", "schedule_task", "send_to_workspace", "delegate", "submit_plan", "preview", "lsp"];
 
 /// Default tool registry: the tools an agent file can name
 /// (`tool_registry::TOOLS`). MCP tools are reached through the `mcp` tool,

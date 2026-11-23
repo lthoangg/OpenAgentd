@@ -1,4 +1,4 @@
-//! What a `preview` call may say: its arguments, checked and turned into
+//! What a `browser` call may say: its arguments, checked and turned into
 //! the page commands the in-page inspector runs.
 
 use serde_json::{json, Map, Value};
@@ -10,7 +10,7 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const MAX_WAIT_MS: u64 = 10_000;
 pub(super) const PAGE_ACTIONS: [&str; 8] = ["snapshot", "click", "fill", "press", "scroll", "navigate", "wait", "inspect"];
 /// Page actions that can change what the page holds or submit it; Plan mode
-/// keeps `preview` look-only.
+/// keeps `browser` look-only.
 const PLAN_MODE_BLOCKED: [&str; 3] = ["click", "fill", "press"];
 /// Most page actions one `chain` call runs.
 pub(super) const MAX_STEPS: usize = 20;
@@ -59,7 +59,7 @@ pub(super) fn plan_mode_refusal(parsed: &Args) -> Option<String> {
         Args::Page { command, .. } => Some(action(command)).filter(|a| PLAN_MODE_BLOCKED.contains(&a.as_str())),
         Args::Chain { steps, .. } => steps.iter().map(|(c, _)| action(c)).find(|a| PLAN_MODE_BLOCKED.contains(&a.as_str())),
     }?;
-    Some(format!("In Plan mode, preview only looks: open, logs, snapshot, inspect, scroll, navigate, and wait. '{blocked}' is available after the plan is approved."))
+    Some(format!("In Plan mode, browser only looks: open, logs, snapshot, inspect, scroll, navigate, and wait. '{blocked}' is available after the plan is approved."))
 }
 
 pub(super) fn parse_args(args: &Value) -> Result<Args, Vec<String>> {
@@ -267,7 +267,7 @@ mod tests {
             (json!({"action": "chain", "steps": [{"action": "snapshot"}, {"action": "click", "ref": "e2"}]}), "click"),
         ] {
             let text = refusal(bad.clone()).unwrap_or_else(|| panic!("{bad} was allowed"));
-            assert!(text.starts_with("In Plan mode, preview only looks") && text.contains(&format!("'{action}'")), "{text}");
+            assert!(text.starts_with("In Plan mode, browser only looks") && text.contains(&format!("'{action}'")), "{text}");
         }
     }
 }

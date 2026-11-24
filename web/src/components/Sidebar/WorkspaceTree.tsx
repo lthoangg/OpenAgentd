@@ -8,7 +8,7 @@
  * tree's load error, empty state, loading rows and workspace-group filter.
  */
 import type { Dispatch, SetStateAction } from 'react'
-import { ChevronRight, Folder, FolderPlus, GitBranch, Loader2, MessageCircle, MoreHorizontal, Plus, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Folder, FolderPlus, GitBranch, Loader2, MessageCircle, MoreHorizontal, Plus } from 'lucide-react'
 import type { SessionResponse } from '@/api/types'
 import { sessionWorking } from '@/lib/active-sessions'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,7 @@ import { groupColor } from './groupColor'
 import { checkoutCountLabel, orderWorkspacePaths, repositoryCheckouts, sessionActivityTime, sourceWorkspacePaths } from './helpers'
 import { MissingBadge } from './MissingBadge'
 import { SessionStatusMark } from './SessionStatusMark'
+import { SidebarLoadError } from './SidebarLoadError'
 import { TREE_INDENT_PX } from './tree-indent'
 import type { SessionActions } from './useSessionActions'
 import { NO_GROUPS, type WorkspaceTreeState } from './useWorkspaceTree'
@@ -124,26 +125,12 @@ export function WorkspaceTree({
   return (
     <div className="flex flex-1 flex-col pb-2">
       {workspaceTreeFailed && workspaceTree.length === 0 && (
-        <div role="alert" data-sidebar-tree-error="">
-          <EmptyState
-            compact
-            tone="error"
-            icon={TriangleAlert}
-            title="Couldn't load workspaces."
-            className="px-3 py-1.5"
-            action={(
-              <button
-                type="button"
-                className={`${ROW_TEXT_ACTION} -ml-2`}
-                disabled={workspaceTreeRetrying}
-                onClick={() => { void refetchWorkspaceTree() }}
-              >
-                {workspaceTreeRetrying && <Loader2 size={12} className="mr-1 animate-spin" aria-hidden="true" />}
-                {workspaceTreeRetrying ? 'Retrying…' : 'Retry'}
-              </button>
-            )}
-          />
-        </div>
+        <SidebarLoadError
+          title="Couldn't load workspaces."
+          retrying={workspaceTreeRetrying}
+          onRetry={() => { void refetchWorkspaceTree() }}
+          className="px-3 py-1.5"
+        />
       )}
 
       {!workspaceTreePending && !workspaceTreeFailed && visibleWorkspaces.length === 0 && (

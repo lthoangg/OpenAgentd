@@ -1,7 +1,7 @@
 import type React from 'react'
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { MessageCircle, TriangleAlert } from 'lucide-react'
+import { MessageCircle } from 'lucide-react'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { WORKSPACE_SESSION_PAGE_SIZE, nextPageCount } from '@/lib/session-pages'
 import { queryKeys } from '@/queries/keys'
@@ -9,10 +9,10 @@ import { getSession } from '@/api/client/agent'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { Collapsible } from '@/components/ui/collapsible'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ROW_TEXT_ACTION } from '@/components/ui/list-row'
 import type { SessionResponse } from '@/api/types'
 import { sessionActivityTime } from './helpers'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type MenuPoint, type SessionDeleteHandler } from './SessionRow'
+import { SidebarLoadError } from './SidebarLoadError'
 
 export type { MenuPoint } from './SessionRow'
 
@@ -124,20 +124,7 @@ export function WorkspaceSessionList({
       {draftActive && <DraftSessionRow />}
       {!collapsed && sessions.isLoading && <SessionRowsSkeleton />}
       {!collapsed && sessions.isError && workspaceSessions.length === 0 && (
-        <div role="alert">
-          <EmptyState
-            compact
-            tone="error"
-            icon={TriangleAlert}
-            title="Couldn't load sessions."
-            className="px-3 py-1"
-            action={(
-              <button type="button" onClick={() => { void sessions.refetch() }} className={`${ROW_TEXT_ACTION} -ml-2`}>
-                Retry
-              </button>
-            )}
-          />
-        </div>
+        <SidebarLoadError title="Couldn't load sessions." retrying={sessions.isRefetching} onRetry={() => { void sessions.refetch() }} />
       )}
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && !sessions.isError && !draftActive && (
         // The icon sits in the status-mark slot, so the words line up with the titles.

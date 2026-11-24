@@ -406,7 +406,8 @@ fn parse_skill(name: &str, content: &str) -> (String, Option<String>) {
 
 const NAME_RE: &str = r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$";
 
-fn validate_name(n: &str) -> Result<(), String> {
+/// One path part of an agent or skill name.
+pub fn validate_name(n: &str) -> Result<(), String> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     if n.is_empty() || !RE.get_or_init(|| regex::Regex::new(NAME_RE).unwrap()).is_match(n) {
         return Err(format!("Invalid name '{n}'. Use letters, digits, '.', '_', '-' only (1-64 chars, must start with letter/digit)."));

@@ -2,6 +2,15 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## An agent name may not end in a newline (v3.63.0)
+
+The agent routes took a name whose last character was a line break
+(`PUT /api/agents/code%0A`), a leftover of Python's `re.match`, and wrote
+the file `code\n.md`. They now answer 400 `Invalid name …`, as the skill
+routes always did; both use one rule. A file that already has such a name
+still appears in the list; the routes that take its name answer 400 until
+it is renamed on disk.
+
 ## A broken `credentials.yaml` answers 422 everywhere, and says where (v3.63.0)
 
 `GET /api/secrets`, `PUT /api/secrets/{name}` and

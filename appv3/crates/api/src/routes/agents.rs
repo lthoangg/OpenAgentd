@@ -2,7 +2,7 @@
 
 use crate::error::{ApiError, ApiResult};
 use crate::providers::{self as prov, s};
-use crate::routes::library::{discover_runtime_skills, py_strip, write_body};
+use crate::routes::library::{discover_runtime_skills, py_strip, validate_name, write_body};
 use crate::util::*;
 use crate::AppState;
 use appv3_agent::hooks::summarization::resolve_prompt_token_threshold;
@@ -61,20 +61,6 @@ struct Record {
     content: String,
 }
 
-fn name_re() -> &'static regex::Regex {
-    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$").unwrap())
-}
-
-fn validate_name(n: &str) -> Result<(), FsError> {
-    // Python `re.match` with `$` also accepts one trailing "\n".
-    let core = n.strip_suffix('\n').unwrap_or(n);
-    if n.is_empty() || !name_re().is_match(core) {
-        return Err(FsError::Path(format!("Invalid name '{n}'. Use letters, digits, '.', '_', '-' only (1-64 chars, must start with letter/digit).")));
-    }
-    Ok(())
-}
-
 /// `Path(name).parts`.
 fn path_parts(name: &str) -> Vec<String> {
     let mut parts = vec![];
@@ -103,7 +89,7 @@ fn agent_file(name: &str) -> Result<PathBuf, FsError> {
         return Err(FsError::Path("Agent name cannot be empty.".into()));
     }
     for p in &parts {
-        validate_name(p)?;
+        validate_name(p).map_err(FsError::Path)?;
     }
     let root = agents_dir();
     let mut rel = PathBuf::new();
@@ -696,5 +682,14 @@ mod tests {
         assert_eq!(with_md_suffix("code"), "code.md");
         assert!(validate_name("bad name").is_err());
         assert_eq!(path_parts("a//./b"), vec!["a", "b"]);
+    }
+
+    /// A percent-encoded `%0A` reaches the name; the agent's file would be
+    /// `code\n.md`. Skills use the same rule.
+    #[test]
+    fn a_name_may_not_end_in_a_newline() {
+        assert!(matches!(agent_file("code\n"), Err(FsError::Path(m)) if m.starts_with("Invalid name")));
+        assert!(matches!(agent_file("team/code\n"), Err(FsError::Path(_))));
+        assert!(agent_file("team/code").is_ok());
     }
 }

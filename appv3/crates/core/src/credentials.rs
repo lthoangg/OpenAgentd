@@ -160,14 +160,17 @@ impl CredentialsFile {
     }
 
     pub fn parse(text: &str) -> Result<Self, CredentialsError> {
-        let v = crate::pyyaml::safe_load(text).map_err(|e| CredentialsError::Malformed(e.message))?;
+        let v = crate::pyyaml::safe_load(text).map_err(|e| CredentialsError::Malformed(yaml_problem(&e.message)))?;
         if v.is_null() {
             return Ok(Self { version: SCHEMA_VERSION, ..Default::default() });
         }
         if !v.is_object() {
             return Err(CredentialsError::Malformed("the top level must be a mapping".into()));
         }
-        let f: Self = serde_json::from_value(v).map_err(|e| CredentialsError::Malformed(e.to_string()))?;
+        let f: Self = serde_path_to_error::deserialize(v).map_err(|e| {
+            let (place, problem) = (e.path().to_string(), shape_problem(&e.inner().to_string()));
+            CredentialsError::Malformed(if place == "." { problem } else { format!("{place}: {problem}") })
+        })?;
         if f.version > SCHEMA_VERSION {
             return Err(CredentialsError::Malformed(format!("version {} is newer than this OpenAgentd supports ({SCHEMA_VERSION}); upgrade OpenAgentd", f.version)));
         }
@@ -194,6 +197,34 @@ impl CredentialsFile {
         }
         format!("{HEADER}{}", crate::pyyaml::safe_dump(&v))
     }
+}
+
+/// A YAML error as its position only. The parser's own text quotes the line
+/// it stopped on, which in this file can be a key or token; a
+/// [`CredentialsError`] goes to the log and to HTTP answers, so it says where
+/// the file is wrong and repeats nothing from it but key names.
+fn yaml_problem(message: &str) -> String {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"line (\d+), column (\d+)").unwrap());
+    match re.captures(message) {
+        Some(c) => format!("YAML syntax error at line {}, column {}", &c[1], &c[2]),
+        None => "YAML syntax error".into(),
+    }
+}
+
+/// A serde error without the value it quotes (`invalid type: string "sk-…",
+/// expected a sequence`). Only texts known to hold no value pass through.
+fn shape_problem(inner: &str) -> String {
+    if inner.starts_with("invalid type: ") || inner.starts_with("invalid value: ") {
+        return match inner.rsplit_once(", expected ") {
+            Some((_, expected)) => format!("expected {expected}"),
+            None => "has the wrong type".into(),
+        };
+    }
+    if inner.starts_with("missing field ") || inner.ends_with("must be a single value") || inner.ends_with("must be a list of projects") {
+        return inner.to_string();
+    }
+    "has the wrong shape".into()
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -540,6 +571,34 @@ mod tests {
         assert!(matches!(CredentialsFile::parse("providers:\n  openai:\n  - id: a\n  - id: a\n"), Err(CredentialsError::Malformed(_))));
         assert!(matches!(CredentialsFile::parse("version: 99\n"), Err(CredentialsError::Malformed(_))));
         assert_eq!(CredentialsFile::parse("").unwrap().providers.len(), 0);
+    }
+
+    /// The message goes to the log, which the agent may read, and to HTTP
+    /// answers. It says where the file is wrong and repeats none of it.
+    #[test]
+    fn a_malformed_file_error_names_the_place_and_never_a_value() {
+        const SECRET: &str = "sk-live-9f3aXQ";
+        let cases = [
+            // An unclosed quote: the YAML error's own text quotes the line.
+            ("providers:\n  openai:\n  - id: a\n    values:\n      OPENAI_API_KEY: \"SECRET\n", "line 5"),
+            ("secrets:\n  TOKEN: [SECRET\n", "line 2"),
+            ("secrets:\n  TOKEN: *SECRET\n", "line 2"),
+            // Valid YAML of the wrong shape: serde's text quotes the value.
+            ("providers:\n  openai: SECRET\n", "providers.openai"),
+            ("providers:\n  openai:\n  - id: a\n    disabled: SECRET\n", "providers.openai[0].disabled"),
+            ("providers:\n  openai:\n  - id: a\n    values: SECRET\n", "providers.openai[0].values"),
+            ("agent_secrets:\n  GH_TOKEN:\n  - id: s\n    value: [SECRET]\n", "agent_secrets.GH_TOKEN[0].value"),
+            ("version: SECRET\n", "version"),
+            ("secrets: SECRET\n", "secrets"),
+        ];
+        for (text, place) in cases {
+            let e = CredentialsFile::parse(&text.replace("SECRET", SECRET)).unwrap_err().to_string();
+            assert!(!e.contains(SECRET), "{e}");
+            assert!(e.contains(place), "{e:?} should name {place}");
+        }
+        // A nested value under a key that takes one value is named by its key.
+        let e = CredentialsFile::parse("secrets:\n  TOKEN:\n    nested: x\n").unwrap_err().to_string();
+        assert_eq!(e, "credentials.yaml is not valid: secrets: 'TOKEN' must be a single value");
     }
 
     #[test]

@@ -40,6 +40,8 @@ describe('TodosPopover', () => {
     expect(screen.getByRole('dialog', { name: 'Tasks' }).contains(title)).toBe(true)
     expect(title.closest('[class*="h-full"]')).toBeNull()
     expect(screen.queryByRole('list', { name: 'Tasks' })).toBeNull()
+    // Nothing to count yet.
+    expect(screen.queryByText(/done$/)).toBeNull()
   })
 
   it('shows the saved plan row even before there are tasks', () => {
@@ -145,6 +147,30 @@ describe('TodosPopover', () => {
       expect.stringContaining('Completed task'),
       expect.stringContaining('Cancelled task'),
     ])
+  })
+
+  it('keeps the agent\'s order among tasks of one status, and leaves the list it was given alone', () => {
+    const todos: TodoItem[] = [
+      { task_id: 'p1', content: 'First pending', status: 'pending' },
+      { task_id: 'a1', content: 'First active', status: 'in_progress' },
+      { task_id: 'p2', content: 'Second pending', status: 'pending' },
+      { task_id: 'a2', content: 'Second active', status: 'in_progress' },
+    ]
+    render(<TodosPopover open onOpenChange={() => {}} todos={todos} />)
+
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['First active', 'Second active', 'First pending', 'Second pending'])
+    // The list is the query's cached data: sorting it in place would reorder it for everyone.
+    expect(todos.map((todo) => todo.task_id)).toEqual(['p1', 'a1', 'p2', 'a2'])
+  })
+
+  it('gives each status its own icon, and spins only the one in progress', () => {
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
+
+    const rows = screen.getAllByRole('listitem')
+    expect(rows.map((row) => row.getAttribute('data-status'))).toEqual(['in_progress', 'pending', 'completed', 'cancelled'])
+    const icons = rows.map((row) => row.querySelector('svg')!)
+    expect(new Set(icons.map((icon) => icon.innerHTML)).size).toBe(4)
+    expect(icons.map((icon) => icon.classList.contains('animate-spin'))).toEqual([true, false, false, false])
   })
 
   it('strikes through completed and cancelled rows, not pending or in_progress', () => {

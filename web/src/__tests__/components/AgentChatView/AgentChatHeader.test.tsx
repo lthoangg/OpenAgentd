@@ -435,6 +435,29 @@ describe('AgentChatHeader', () => {
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
   })
 
+  it('puts a dot on the Tasks button while a task is in progress, and none otherwise', () => {
+    const dot = () => screen.getByRole('button', { name: 'Tasks' }).querySelector('span.rounded-full.h-1\\.5')
+    const working = renderHeader({
+      isMobile: false,
+      todos: [
+        { task_id: '1', content: 'Plan', status: 'completed' },
+        { task_id: '2', content: 'Build', status: 'in_progress' },
+      ],
+    })
+    expect(dot()).not.toBeNull()
+    working.unmount()
+
+    renderHeader({
+      isMobile: false,
+      todos: [
+        { task_id: '1', content: 'Plan', status: 'completed' },
+        { task_id: '2', content: 'Build', status: 'pending' },
+        { task_id: '3', content: 'Ship', status: 'cancelled' },
+      ],
+    })
+    expect(dot()).toBeNull()
+  })
+
   it('shows the live goal as a ring on the Tasks button, and nothing without one', () => {
     const goalState = { tone: 'wait' as const, text: 'Goal · Needs you · a question' }
     const { unmount } = renderHeader({ isMobile: false, goalState })

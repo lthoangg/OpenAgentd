@@ -51,6 +51,8 @@ Its traps, re-read before trusting a similar analysis:
 2. **Redundant work is only redundant within a run.** Attribute duplicate calls per `run_id`.
 3. **Logged `args=` are cut at 500 chars** (`appv3/crates/tools/src/lib.rs`), so
    strict JSON parsing drops the longest calls (heredocs, inline scripts). Degrade to a regex.
+4. **A call a `script` makes is not context.** Its result goes to the script, never to the
+   model, so the volume table counts it apart (`nested_MB`) from what the model read (`ctx_MB`).
 
 v3 logs no `tool_result_preview` records, so the no-hit columns only fill from v2-era logs.
 

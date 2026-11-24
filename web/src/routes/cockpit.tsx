@@ -2,13 +2,14 @@ import { useCallback, useMemo, useRef, useEffect, useLayoutEffect, useState } fr
 import { Outlet, useLocation, useParams, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentChatView } from '@/components/AgentChatView'
-import { getSession, validateWorkspace } from '@/api/client'
+import { validateWorkspace } from '@/api/client'
 import { isMissingSessionError } from '@/lib/session-errors'
 import { latestTopLevelSession } from '@/components/Sidebar/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
+import { cachedSessionWorkspace, sessionDetailQueryOptions } from '@/queries/session-detail'
 import { formatCheckoutLabel } from '@/utils/checkout-label'
 import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLastWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { startNewSession } from '@/lib/new-session'
@@ -55,28 +56,11 @@ function AgentLayoutBase() {
   const sessionId = atSessions ? kept.sessionId : routeSessionId
   const draftWorkspace = atSessions ? kept.draftWorkspace : routeDraftWorkspace
   const queryClient = useQueryClient()
-  const cachedSessionPages = queryClient.getQueryData<{
-    pages: Array<{
-      data: Array<{
-        id: string
-        workspace?: string | null
-        subagents?: Array<{ id: string; workspace?: string | null }>
-      }>
-    }>
-  }>(queryKeys.session.sessions.infinite())
-  const cachedSession = sessionId
-    ? cachedSessionPages?.pages
-      .flatMap((page) => page.data)
-      .flatMap((session) => [session, ...(session.subagents ?? []).map((sub) => ({ id: sub.id, workspace: sub.workspace ?? session.workspace }))])
-      .find((session) => session.id === sessionId)
-    : undefined
+  const cachedWorkspace = sessionId ? cachedSessionWorkspace(queryClient, sessionId) : null
+  // On a cold open the route already asked for this (`lib/session-prefetch-route.ts`).
   const sessionQuery = useQuery({
-    queryKey: queryKeys.session.sessions.detail(sessionId ?? ''),
-    queryFn: () => getSession(sessionId as string),
-    enabled: Boolean(sessionId) && !cachedSession?.workspace,
-    staleTime: 30_000,
-    // A session the server does not have will not appear on a retry.
-    retry: (failures, error) => !isMissingSessionError(error) && failures < 3,
+    ...sessionDetailQueryOptions(sessionId ?? ''),
+    enabled: Boolean(sessionId) && !cachedWorkspace,
   })
   // The session a draft's first message just created. The router lands on
   // its id before the session list refetch or `getSession` knows it, and a
@@ -85,7 +69,7 @@ function AgentLayoutBase() {
   const [adopted, setAdopted] = useState<{ id: string; workspace: string } | null>(null)
   const adoptedWorkspace = sessionId && adopted?.id === sessionId ? adopted.workspace : null
   const workspace = sessionId
-    ? workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace ?? adoptedWorkspace)
+    ? workspaceFromSession(sessionId, cachedWorkspace ?? sessionQuery.data?.workspace ?? adoptedWorkspace)
     : draftWorkspace
   const chatWorkspace = useChatWorkspace()
   // A worktree reads as its repository plus its name: "openagentd (fix-login)".

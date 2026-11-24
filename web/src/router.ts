@@ -6,6 +6,7 @@ import { SchedulerPage } from './routes/scheduler'
 import { SettingsPage } from './routes/settings'
 import { TelemetryPage } from './routes/telemetry'
 import { RouteErrorPage } from './components/RouteErrorPage'
+import { warmSessionRoute } from './lib/session-prefetch-route'
 
 const rootRoute = createRootRoute({
   component: Root,
@@ -42,6 +43,11 @@ const newSessionRoute = createRoute({
 const sessionRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '$sessionId',
+  // Not on a hovered link's preload: the sidebar decides when a hover is
+  // intent (`lib/session-prefetch-row.ts`).
+  loader: ({ params, cause }) => {
+    if (cause === 'enter') warmSessionRoute(params.sessionId)
+  },
   component: () => null,
 })
 // /sessions: the phone's root screen, the session list with chats pushed

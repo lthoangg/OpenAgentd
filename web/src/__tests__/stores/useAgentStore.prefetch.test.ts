@@ -1,6 +1,7 @@
 /**
- * A sidebar hover prefetches a session's first history page; the next fresh
- * open of that session takes it instead of fetching again.
+ * A sidebar hover, or the route entering a session, prefetches its first
+ * history page; the next fresh open of that session takes it instead of
+ * fetching again.
  */
 import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
 
@@ -18,6 +19,7 @@ const mockSessionHistory = mock(() => Promise.resolve(history("fetched"))) as an
 
 import { useAgentStore } from "@/stores/useAgentStore"
 import {
+  PREFETCH_IN_FLIGHT_MAX_MS,
   PREFETCH_TTL_MS,
   _resetSessionPrefetchForTests,
   forgetPrefetchedHistory,
@@ -42,11 +44,48 @@ describe("session history prefetch", () => {
     expect(takePrefetchedHistory("s1")).toBeNull()
   })
 
-  it("drops a page that is too old", () => {
+  it("drops a page that arrived too long ago", async () => {
     const now = Date.now()
     const clock = spyOn(Date, "now").mockReturnValue(now)
     prefetchSessionHistory("s1")
+    await Promise.resolve()
     clock.mockReturnValue(now + PREFETCH_TTL_MS + 1)
+    expect(takePrefetchedHistory("s1")).toBeNull()
+    clock.mockRestore()
+  })
+
+  it("keeps a page that is still on its way: on a slow link the open would only ask again and wait longer", () => {
+    const now = Date.now()
+    const clock = spyOn(Date, "now").mockReturnValue(now)
+    mockSessionHistory.mockImplementation(() => new Promise(() => {}))
+    prefetchSessionHistory("s1")
+    clock.mockReturnValue(now + PREFETCH_TTL_MS + 1)
+    prefetchSessionHistory("s1")
+    expect(mockSessionHistory).toHaveBeenCalledTimes(1)
+    expect(takePrefetchedHistory("s1")).not.toBeNull()
+    clock.mockRestore()
+  })
+
+  it("counts a page's age from when it arrived, not from when it was asked for", async () => {
+    const now = Date.now()
+    const clock = spyOn(Date, "now").mockReturnValue(now)
+    let arrive: (page: ReturnType<typeof history>) => void = () => {}
+    mockSessionHistory.mockImplementation(() => new Promise((resolve) => { arrive = resolve }))
+    prefetchSessionHistory("s1")
+    clock.mockReturnValue(now + PREFETCH_TTL_MS + 500)
+    arrive(history("slow"))
+    await Promise.resolve()
+    clock.mockReturnValue(now + PREFETCH_TTL_MS + 600)
+    expect(takePrefetchedHistory("s1")).not.toBeNull()
+    clock.mockRestore()
+  })
+
+  it("gives up on a page that never arrives, so a dead request cannot hold an open", () => {
+    const now = Date.now()
+    const clock = spyOn(Date, "now").mockReturnValue(now)
+    mockSessionHistory.mockImplementation(() => new Promise(() => {}))
+    prefetchSessionHistory("s1")
+    clock.mockReturnValue(now + PREFETCH_IN_FLIGHT_MAX_MS + 1)
     expect(takePrefetchedHistory("s1")).toBeNull()
     clock.mockRestore()
   })
@@ -86,5 +125,24 @@ describe("session history prefetch", () => {
 
     await useAgentStore.getState().loadSession("s1")
     expect(useAgentStore.getState().sessionTitle).toBe("fetched")
+  })
+
+  it("installs a page only once the caller's hold is over, and a second load of the visit waits with it", async () => {
+    // The chat that just came on screen paints before its transcript is drawn.
+    let painted!: () => void
+    const hold = new Promise<void>((resolve) => { painted = resolve })
+    prefetchSessionHistory("s1")
+    useAgentStore.setState({ sessionId: "s1", sessionTitle: null, isLoadingHistory: true })
+
+    const opening = useAgentStore.getState().loadSession("s1", null, { holdUntil: hold })
+    // The event feed's catch-up asks for the same session meanwhile.
+    const catchUp = useAgentStore.getState().loadSession("s1", null)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(useAgentStore.getState().sessionTitle).toBeNull()
+
+    painted()
+    await Promise.all([opening, catchUp])
+    expect(useAgentStore.getState().sessionTitle).toBe("fetched")
+    expect(mockSessionHistory).toHaveBeenCalledTimes(1)
   })
 })

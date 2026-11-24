@@ -367,7 +367,13 @@ export interface AgentStoreActions {
    * the new workspace once started the old session in the wrong workspace.
    */
   loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
-  loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
+  /**
+   * `holdUntil`: install the page only after it settles (the request goes
+   * out at once). A chat that just came on screen passes its first paint: a
+   * page already in hand would otherwise be rendered in the frame that draws
+   * the composer and hold it back. Loads that join this one wait with it.
+   */
+  loadSession: (sessionId: string, workspace?: string | null, options?: { holdUntil?: Promise<unknown> }) => Promise<void>
   /**
    * Cheap post-turn reconciliation: adopt canonical rows for just the tail the
    * live stream produced, instead of re-downloading the whole visible page.

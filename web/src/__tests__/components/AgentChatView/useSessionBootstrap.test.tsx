@@ -23,6 +23,9 @@ import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { runOf, isRunLive } from '@/stores/useAgentStore/run-state'
 import { linkOf } from '@/stores/useAgentStore/link-state'
 
+/** The load of a chat that just came on screen waits for its first paint. */
+const FIRST_PAINT_HOLD = { holdUntil: expect.any(Promise) }
+
 function Harness({
   loadSession,
   connectStream,
@@ -150,6 +153,31 @@ describe('useSessionBootstrap opening a session', () => {
     expect(holds[0]).toBe(load)
     await act(async () => { finish() })
   })
+
+  it('holds the transcript of a chat that just came on screen until it has painted once', async () => {
+    const loadSession = mock(async (..._args: unknown[]) => {})
+    useAgentStore.setState({ streamLink: linkOf(false), sessionRun: runOf(false) })
+    render(<Harness loadSession={loadSession} connectStream={() => new AbortController()} />)
+
+    await waitFor(() => expect(loadSession).toHaveBeenCalledTimes(1))
+    const options = loadSession.mock.calls[0]?.[2] as { holdUntil?: Promise<unknown> } | undefined
+    expect(options?.holdUntil).toBeInstanceOf(Promise)
+    // A frame comes, or the wait gives up: it never holds the load for good.
+    await options?.holdUntil
+  })
+
+  it('does not hold a switch to another session: the chat is already on screen', async () => {
+    const loadSession = mock(async (..._args: unknown[]) => {})
+    const connectStream = () => new AbortController()
+    useAgentStore.setState({ streamLink: linkOf(false), sessionRun: runOf(false) })
+    const view = render(<Harness loadSession={loadSession} connectStream={connectStream} />)
+    await waitFor(() => expect(loadSession).toHaveBeenCalledTimes(1))
+
+    loadSession.mockClear()
+    view.rerender(<Harness sessionId="session-2" loadSession={loadSession} connectStream={connectStream} />)
+    await waitFor(() => expect(loadSession).toHaveBeenCalledTimes(1))
+    expect(loadSession.mock.calls[0]).toEqual(['session-2', '/repo/app'])
+  })
 })
 
 describe('useSessionBootstrap foreground resume', () => {
@@ -184,7 +212,7 @@ describe('useSessionBootstrap foreground resume', () => {
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app', FIRST_PAINT_HOLD))
     expect(connectStream).toHaveBeenCalledTimes(1)
 
     loadSession.mockClear()
@@ -244,7 +272,7 @@ describe('useSessionBootstrap foreground resume', () => {
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app', FIRST_PAINT_HOLD))
     expect(connectStream).toHaveBeenCalledTimes(1)
 
     loadSession.mockClear()
@@ -296,7 +324,7 @@ describe('useSessionBootstrap session switch', () => {
       />,
     )
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app'))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app', FIRST_PAINT_HOLD))
     const state = useAgentStore.getState()
     expect(state.sessionId).toBe('session-2')
     expect(isRunLive(state.sessionRun)).toBe(false)
@@ -382,7 +410,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
       />,
     )
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app'))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app', FIRST_PAINT_HOLD))
     await waitFor(() => expect(setValueMock).toHaveBeenCalledWith('the real undone message'))
 
     expect(setValueMock).toHaveBeenCalledWith('the real undone message')
@@ -489,7 +517,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       />,
     )
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app', FIRST_PAINT_HOLD))
     expect(connectStream).toHaveBeenCalledTimes(1)
   })
 

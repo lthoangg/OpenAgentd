@@ -62,3 +62,29 @@ It does not show the native shells (a phone-width Chromium with a slowed CPU
 is not WebKit on an iPhone), the relay, or real model latency.
 
 Run on an idle machine; every step runs one at a time.
+
+## 24 Nov 2026 baseline
+
+`run-all.sh bb9c02b2e` with head at `9a732caaf`, on an Apple M6 (12 cores)
+with Chromium 156 headless; exit 0. Medians, base → head; `phone-4x` is
+402×874 with touch and a 4× slower CPU.
+
+- Backend and web benches: equal within noise (no backend change). Reopen:
+  3 requests, 201,621 bytes, 0 ms idle CPU in 60 s, on both sides.
+
+| Case | Newest turn drawn | History done | Blocked | Requests |
+|---|---|---|---|---|
+| desktop session, 0 ms | 188 → 187 | 118 → 79 | 3 → 4 | 37 → 36 |
+| desktop session, 150 ms | 786 → 313 | 726 → 232 | 4 → 4 | 36 → 38 |
+| desktop session, 400 ms | 1790 → 594 | 1729 → 485 | 5 → 11 | 36 → 37 |
+| desktop return, 150 ms | 814 → 292 | 720 → 209 | 34 → 4 | 36 → 30 |
+| desktop return, 400 ms | 1818 → 577 | 1726 → 465 | 33 → 9 | 36 → 31 |
+| phone-4x session, 0 ms | 637 → 487 | 318 → 172 | 270 → 141 | 32 → 31 |
+| phone-4x session, 400 ms | 1660 → 786 | 1403 → 572 | 264 → 147 | 32 → 33 |
+| phone-4x return, 150 ms | 906 → 535 | 646 → 315 | 268 → 144 | 32 → 27 |
+
+Times in ms. The home screen and desktop typing and streaming are unchanged
+within spread. On phone-4x, the streaming long tasks go from 524 ms to 0,
+the slowest typing frame from 158 to 62 ms, and the transcript draws 2,511
+nodes instead of 7,007. A first open with no saved event position sends one
+or two more requests (backlog), but every landmark is faster.

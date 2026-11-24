@@ -85,6 +85,17 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     session with many short prompts skips measuring prompts too short to fold.
   - On macOS the notch island stops checking the pointer while it is hidden,
     and checks it half as often while the pointer is far away.
+- **Faster session open on a slow connection** `[v3.63.0]`:
+  - Opening a session starts loading its history together with the session
+    itself instead of after it. Over a link that adds 150 ms to each
+    request, the newest turn appears in ~310 ms on a desktop (was ~790 ms)
+    and ~540 ms on a phone (was ~920 ms).
+  - Reopening the app no longer asks again for the lists it has just loaded
+    when the server says nothing was missed: 6 fewer requests on a desktop,
+    5 on a phone.
+  - On a phone, a long session first draws its 16 newest turns and brings
+    earlier ones in as you scroll. It appears ~25% sooner, and streaming
+    a reply no longer blocks the page (was ~0.5 s of long tasks).
 - **Explicit backend connection state** `[v1.68.0, v1.99.8, v1.113.0]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,

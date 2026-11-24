@@ -115,9 +115,6 @@ export function clampSidebarWidth(width: number, viewportWidth: number, context?
   return Math.round(clamp(safe, SIDEBAR_MIN_WIDTH, sidebarMaxWidth(viewportWidth, context)))
 }
 
-/** Desktop center widths below this cannot fit the chat and the dock side by side. */
-export const DOCK_SIDE_BY_SIDE_MIN_CENTER = CHAT_MIN_WIDTH + DOCK_MIN_WIDTH
-
 export function dockMaxWidth(centerWidth: number, input: InputKind = {}): number {
   return Math.max(DOCK_MIN_WIDTH, centerWidth - chatMinWidth(input))
 }

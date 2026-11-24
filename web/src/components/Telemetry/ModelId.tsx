@@ -4,11 +4,6 @@
  */
 import { ModelName } from '@/components/ui/model-name'
 
-export function providerOf(providerModel: string): string | null {
-  const index = providerModel.indexOf(':')
-  return index > 0 ? providerModel.slice(0, index) : null
-}
-
 export function ModelId({ id, className }: { id: string; className?: string }) {
   return <ModelName id={id} className={className} />
 }

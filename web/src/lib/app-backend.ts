@@ -115,9 +115,6 @@ export function deviceLabel(device: { kind: string | null | undefined; fingerpri
   return [deviceKindLabel(device.kind), device.fingerprint].filter(Boolean).join(' · ')
 }
 
-/** `3f9a 21c4` and `3F9A-21C4` are the same fingerprint. */
-export const normalizeFingerprint = (fingerprint: string) => fingerprint.replace(/[\s-]+/g, '').toUpperCase()
-
 /** Hebrew, Arabic and the other right-to-left scripts. */
 const RIGHT_TO_LEFT = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/
 

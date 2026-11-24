@@ -109,10 +109,6 @@ export const SCHEDULER_LINK_SETTLE_MS = 1500
  * (another route, a remount) start from what is on screen.
  */
 let dockRestorePending = true
-/** Tests: let the next mount restore the Review panel again. */
-export function _resetDockRestoreForTests(): void {
-  dockRestorePending = true
-}
 
 export interface UseOverlayStateArgs {
   isMobile: boolean

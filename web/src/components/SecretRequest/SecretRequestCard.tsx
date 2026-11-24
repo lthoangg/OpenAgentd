@@ -16,7 +16,7 @@
  * New values are for this project unless the user picks "All projects".
  */
 import { useId, useState, type ReactNode } from 'react'
-import { ExternalLink, KeyRound } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -261,6 +261,3 @@ function Radio({ name, checked, onChange, children }: { name: string; checked: b
     </label>
   )
 }
-
-/** The transcript's label icon. */
-export const SecretIcon = KeyRound

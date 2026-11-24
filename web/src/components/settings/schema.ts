@@ -81,8 +81,6 @@ export const skillFrontmatterSchema = z.object({
   description: skillDescriptionSchema,
 })
 
-export type SkillFrontmatterParsed = z.infer<typeof skillFrontmatterSchema>
-
 export function validateSkillForm(
   fm: unknown
 ): Record<string, string> | null {
@@ -113,8 +111,6 @@ export const agentFrontmatterSchema = z.object({
   thinking_level: thinkingLevelSchema.nullable().optional(),
   tools: z.array(z.string()).optional(),
 })
-
-export type AgentFrontmatterParsed = z.infer<typeof agentFrontmatterSchema>
 
 /**
  * Full-form validation — returns a map of ``{ field → error message }``

@@ -13,10 +13,6 @@ export function mcpAppResourceUri(block: ContentBlock): string | null {
   return typeof resourceUri === 'string' && resourceUri.length > 0 ? resourceUri : null
 }
 
-export function latestMCPAppResourceBlockIds(blocks: ContentBlock[]): Set<string> {
-  return new Set(latestMCPAppResources(blocks).values())
-}
-
 /** Index finalized app results once; live blocks are applied separately while
  * streaming so each SSE delta does not scan the complete session history. */
 export function latestMCPAppResources(blocks: ContentBlock[]): Map<string, string> {

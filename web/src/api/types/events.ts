@@ -35,19 +35,12 @@ export const SSE_EVENT_TYPES = [
 
 export type SSEEventType = (typeof SSE_EVENT_TYPES)[number]
 
-export interface SSEEvent {
-  type: SSEEventType
-  [key: string]: unknown
-}
-
 /**
  * Events of a `POST /agent/sessions/{sid}/btw` response. Must match
  * `side_question_stream` in `appv3/crates/agent/data/sse_events.json` (enforced by
  * `sse-contract.test.ts`).
  */
 export const SIDE_QUESTION_EVENT_TYPES = ['btw_start', 'btw_delta', 'btw_done', 'btw_error'] as const
-
-export type SideQuestionEventType = (typeof SIDE_QUESTION_EVENT_TYPES)[number]
 
 export type SideQuestionStatus = 'streaming' | 'done' | 'error' | 'stopped'
 

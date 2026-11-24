@@ -28,11 +28,6 @@ import { combine, type AgentFrontmatter } from './frontmatter'
 import { FormFields, ParseErrorBanner } from './AgentForm/FormFields'
 import { parseFormState } from './AgentForm/utils'
 
-export interface AgentFormValue {
-  /** Current raw .md content (frontmatter + body). Always authoritative. */
-  raw: string
-}
-
 interface Props {
   initial: string
   /** Agent name from route, e.g. "code", "explorer", "researcher". */

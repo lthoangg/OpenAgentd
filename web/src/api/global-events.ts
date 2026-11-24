@@ -30,8 +30,6 @@ export const GLOBAL_EVENT_TYPES = [
   'session_stream_end',
 ] as const
 
-export type GlobalEventType = (typeof GLOBAL_EVENT_TYPES)[number]
-
 export interface GlobalEventCallbacks extends SSECallbacks {
   onOpen?: () => void
 }

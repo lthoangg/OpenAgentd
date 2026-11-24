@@ -11,11 +11,6 @@ export const FIELD_LABEL = 'mb-2 block text-xs font-medium text-(--color-text)'
 export const FIELD_HINT = 'mt-2 text-meta leading-relaxed text-(--color-text-muted)'
 export const FIELD_ERROR = 'mt-2 text-meta leading-relaxed text-(--color-error)'
 
-// Inline className for SelectContent — the global default (`bg-popover`)
-// resolves to `--bg-card`, the same surface as this drawer, so the dropdown
-// looks like an outlined frame floating on the same paper. Use the page
-// surface for clear contrast and soften the border.
-export const SELECT_CONTENT_CLASS = 'bg-(--bg-page) border-(--color-border-strong)'
 export const TASK_LONG_PRESS_MS = 520
 export const TASK_LONG_PRESS_MOVE_TOLERANCE = 10
 

@@ -70,8 +70,6 @@ export type McpServerList = {
   project_error?: string | null
 }
 
-export type CreateServerRequest = { name: string; server: ServerBody }
-export type UpdateServerRequest = { server: ServerBody }
 export type ServerDeleteResponse = { name: string }
 export type MCPAppToolCallRequest = {
   session_id: string
@@ -139,12 +137,6 @@ export async function deleteMcpServer(name: string): Promise<ServerDeleteRespons
 export async function restartMcpServer(name: string): Promise<ServerStatus> {
   const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/restart`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/restart`)
-  return res.json()
-}
-
-export async function connectMcpOAuth(name: string): Promise<ServerStatus> {
-  const res = await fetch(`${apiBaseUrl()}/mcp/servers/${encodeURIComponent(name)}/oauth/connect`, { method: 'POST' })
-  if (!res.ok) await parseDetailOrThrow(res, `POST /mcp/servers/${name}/oauth/connect`)
   return res.json()
 }
 

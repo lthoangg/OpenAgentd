@@ -120,19 +120,6 @@ export function Body({ children }: { children: ReactNode }) {
   return <div className="space-y-3 text-xs leading-relaxed text-(--color-text-2)">{children}</div>
 }
 
-/** The guest's offer. Optional, and says so. */
-export function OfferCopy() {
-  return (
-    <>
-      <p className="font-medium text-(--color-text)">Reach your computer from anywhere.</p>
-      <p>
-        Sign in to use your computers from your other devices away from home, and get notified
-        when agents finish. It&apos;s optional: everything else works without an account.
-      </p>
-    </>
-  )
-}
-
 /** What to do on the account page while a sign-in waits. */
 export function SigningInCopy({ url, userCode, fingerprint }: { url: string; userCode: string; fingerprint: string }) {
   return (

@@ -22,15 +22,6 @@ export type MemoryFileResponse = {
   frontmatter: Record<string, string | null> | null
 }
 
-export type MemorySearchResult = {
-  path: string
-  title: string
-}
-
-export type MemorySearchResponse = {
-  results: MemorySearchResult[]
-}
-
 export type MemoryFindingItem = {
   code: string
   path: string
@@ -84,13 +75,6 @@ export async function deleteMemoryFile(
     headers,
   })
   if (!res.ok) await parseDetailOrThrow(res, 'DELETE /agent/memory/file')
-  return res.json()
-}
-
-export async function searchMemory(query: string): Promise<MemorySearchResponse> {
-  const params = new URLSearchParams({ query })
-  const res = await fetch(`${apiBaseUrl()}/agent/memory/search?${params}`)
-  if (!res.ok) await parseDetailOrThrow(res, 'GET /agent/memory/search')
   return res.json()
 }
 

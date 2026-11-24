@@ -27,12 +27,6 @@ export async function createScheduledTask(body: ScheduledTaskCreate): Promise<Sc
   return res.json()
 }
 
-export async function getScheduledTask(slug: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}`)
-  if (!res.ok) await parseDetailOrThrow(res, `GET /scheduler/tasks/${slug}`)
-  return res.json()
-}
-
 export async function updateScheduledTask(slug: string, body: Partial<ScheduledTaskCreate>): Promise<ScheduledTaskResponse> {
   const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}`, {
     method: 'PUT',

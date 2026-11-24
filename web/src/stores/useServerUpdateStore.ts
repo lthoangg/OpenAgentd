@@ -125,8 +125,3 @@ export const useServerUpdateStore = create<ServerUpdateStore>((set, get) => {
     },
   }
 })
-
-/** True while this client is updating the server (it is expected to be away). */
-export function isServerUpdating(phase: ServerUpdatePhase): boolean {
-  return phase.kind === 'updating'
-}

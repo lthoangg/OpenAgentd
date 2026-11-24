@@ -2,6 +2,21 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## A broken `credentials.yaml` answers 422 everywhere, and says where (v3.63.0)
+
+`GET /api/secrets`, `PUT /api/secrets/{name}` and
+`DELETE /api/secrets/{name}/{id}` answered a plain-text
+`500 Internal Server Error` when `credentials.yaml` could not be read or
+written. They now answer 422 with a JSON `detail`, as the provider settings
+and sign-in routes already did.
+
+The `detail` text changed on all of them. It was the YAML or serde error,
+which quotes the line or value it stopped on, so a key in a line broken by
+hand reached the answer and the server log. It now names the place and only
+the place: `credentials.yaml is not valid: YAML syntax error at line 5,
+column 23`, or `credentials.yaml is not valid: providers.openai: expected a
+sequence`. A file that parses is read as before.
+
 ## The `preview` tool is now `browser` (v3.62.0)
 
 The agent tool `preview` is renamed `browser`, with the same arguments and

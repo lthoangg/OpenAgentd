@@ -52,9 +52,13 @@ Single-user trust model. The host is trusted. The operator is the user.
   directory it starts in (a project's `DATABASE_URL` or `API_PORT` no longer
   reach it), not the installed app's file when it runs in development, and a
   `.env` cannot set the mode; the log and `agentd doctor` name skipped files. A
-  malformed store is an error, never read as empty. Agent file tools and shell
-  commands are denied the store, its lock, and the backup. It is plaintext, so
-  shell tools running as the user could still read it outside those checks.
+  malformed store is an error, never read as empty. The error says where the
+  file is wrong (a line and column, or a field such as `providers.openai`) and
+  repeats no value from it, in the log and in Settings alike `[v3.63.0]`;
+  Settings → Secrets shows it as the provider pages do. Agent file tools and
+  shell commands are denied the store, its lock, and the backup. It is
+  plaintext, so shell tools running as the user could still read it outside
+  those checks.
 - **Production and development modes** `[v3.32.0]` — the build picks the mode:
   the installed app and `agentd` (release builds) run in production with the
   `~/.local/share/openagentd`-style dirs, and a source checkout's `cargo run`,

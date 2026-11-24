@@ -178,4 +178,22 @@ async fn secrets_go_in_by_put_only_and_never_come_back_out() {
     assert_eq!(call(&app, "DELETE", &format!("/api/secrets/STRIPE_SECRET_KEY/{a_id}"), None).await.0, StatusCode::OK);
     assert!(appv3_core::agent_secrets::resolve(&appv3_core::credentials::snapshot(), "STRIPE_SECRET_KEY", &a).is_none());
     assert_eq!(call(&app, "DELETE", &format!("/api/secrets/STRIPE_SECRET_KEY/{a_id}"), None).await.0, StatusCode::NOT_FOUND);
+
+    // ── a file broken by hand: every route that reads it gives the same ──
+    // ── answer, which says where it is broken and repeats none of it ─────
+    let path = appv3_core::credentials::path();
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("secrets:\n  HAND_EDIT: \"sk_hand_edit_unclosed_7\n");
+    std::fs::write(&path, &text).unwrap();
+    let detail = json!(format!("credentials.yaml is not valid: YAML syntax error at line {}, column 14", text.lines().count()));
+    for (method, uri, body) in [
+        ("GET", "/api/secrets", None),
+        ("PUT", "/api/secrets/GITHUB_TOKEN", Some(json!({"value": "ghp_another_value_456", "projects": [a.clone()]}))),
+        ("DELETE", "/api/secrets/GITHUB_TOKEN/any", None),
+        ("GET", "/api/settings/providers/openai/credentials", None),
+    ] {
+        let (st, v) = call(&app, method, uri, body).await;
+        assert_eq!((st, &v["detail"]), (StatusCode::UNPROCESSABLE_ENTITY, &detail), "{method} {uri}: {v}");
+    }
+    assert!(!log.text().contains("sk_hand_edit_unclosed_7"), "the broken line's value in the server log");
 }

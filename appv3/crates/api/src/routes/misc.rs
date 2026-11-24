@@ -42,8 +42,7 @@ async fn remove_accounts(id: &str, credential_id: Option<&str>) -> ApiResult<()>
             None => f.remove_oauth_accounts(&pid),
         })
     })
-    .await
-    .map_err(|e| ApiError::unprocessable(e.to_string()))?;
+    .await?;
     if let Some(c) = credential_id {
         if removed == 0 {
             return Err(ApiError::not_found(format!("Credential '{c}' not found for '{id}'.")));
@@ -205,8 +204,7 @@ async fn reserve_account(id: &str, requested: &str) -> ApiResult<(String, bool)>
             Some((cid, true))
         })
     })
-    .await
-    .map_err(|e| ApiError::unprocessable(e.to_string()))?;
+    .await?;
     reserved.ok_or_else(|| ApiError::not_found(format!("Credential '{requested}' not found for '{id}'.")))
 }
 

@@ -103,3 +103,11 @@ impl From<std::io::Error> for ApiError {
         ApiError::internal(e)
     }
 }
+
+/// A credential store that cannot be read or written: 422 with where it is
+/// wrong, from every route (the text holds no value from the file).
+impl From<appv3_core::credentials::CredentialsError> for ApiError {
+    fn from(e: appv3_core::credentials::CredentialsError) -> Self {
+        ApiError::unprocessable(e.to_string())
+    }
+}

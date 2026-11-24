@@ -676,13 +676,9 @@ fn check_value_names(id: &str, values: &[(String, String)]) -> ApiResult<()> {
     Ok(())
 }
 
-fn store_err(e: impl std::fmt::Display) -> ApiError {
-    ApiError::unprocessable(e.to_string())
-}
-
 /// 404 unless the provider has a stored credential `cid`.
 fn ensure_credential(id: &str, cid: &str) -> ApiResult<()> {
-    cred_store::load().map_err(store_err)?;
+    cred_store::load()?;
     if prov::stored_credential_values(id, cid).is_none() {
         return Err(ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")));
     }
@@ -693,7 +689,7 @@ fn ensure_credential(id: &str, cid: &str) -> ApiResult<()> {
 /// overrides for discovery and tests of a single-credential plugin.
 fn credential_overrides(id: &str, credential_id: Option<&str>) -> ApiResult<std::collections::HashMap<String, String>> {
     let Some(cid) = credential_id.filter(|c| !c.is_empty()) else { return Ok(Default::default()) };
-    let f = cred_store::load().map_err(store_err)?;
+    let f = cred_store::load()?;
     let c = f.find(id, cid).ok_or_else(|| ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")))?;
     Ok(c.values.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| (k.clone(), v.clone())).collect())
 }
@@ -796,8 +792,7 @@ async fn save_provider_named(id: String, raw: Bytes) -> ApiResult<Response> {
             Some(c.id.clone())
         })
     })
-    .await
-    .map_err(store_err)?
+    .await?
     .ok_or_else(|| ApiError::not_found(format!("Credential '{requested}' not found for '{id}'.")))?;
     cred_store::clear_cooldown(&id, &cid);
     usage::invalidate_usage(&id, Some(&cid));
@@ -912,7 +907,7 @@ pub fn credentials_json(entry: &Value) -> Value {
 
 async fn list_credentials(AxPath(id): AxPath<String>) -> ApiResult<Response> {
     let entry = &find_or_404(&id)?;
-    cred_store::load().map_err(store_err)?;
+    cred_store::load()?;
     Ok(json(json!({
         "provider": id,
         "credentials": credentials_json(entry),
@@ -931,7 +926,7 @@ async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
     let extra = b.dict_str("extra");
     b.finish(&["label", "api_key", "extra"])?;
     let entry = &find_or_404(&id)?;
-    if prov::is_legacy_plugin(&id) && !cred_store::load().map_err(store_err)?.provider(&id).is_empty() {
+    if prov::is_legacy_plugin(&id) && !cred_store::load()?.provider(&id).is_empty() {
         return Err(ApiError::unprocessable(format!("Provider '{id}' keeps a single credential: update the saved one instead of adding another. Existing credentials are kept.")));
     }
     if s(entry, "kind") == "oauth" && token.is_empty() && extra.is_empty() {
@@ -953,8 +948,7 @@ async fn add_credential(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
             c
         })
     })
-    .await
-    .map_err(store_err)?;
+    .await?;
     let _ = rs::clear_provider_cached_models(&id);
     tracing::info!("provider_credential_added provider={} credential={}", id, c.id);
     let mut meta = credential_meta(entry, &c, false);
@@ -998,8 +992,7 @@ async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Byt
             Some(c.clone())
         })
     })
-    .await
-    .map_err(store_err)?;
+    .await?;
     let c = updated.ok_or_else(|| ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")))?;
     if !token.is_empty() || !extra.is_empty() {
         usage::invalidate_usage(&id, Some(&cid));
@@ -1013,7 +1006,7 @@ async fn update_credential(AxPath((id, cid)): AxPath<(String, String)>, raw: Byt
 async fn delete_credential(AxPath((id, cid)): AxPath<(String, String)>) -> ApiResult<Response> {
     let entry = &find_or_404(&id)?;
     let (pid, c2) = (id.clone(), cid.clone());
-    let removed = blocking(move || cred_store::update(|f| f.remove(&pid, &c2).is_some())).await.map_err(store_err)?;
+    let removed = blocking(move || cred_store::update(|f| f.remove(&pid, &c2).is_some())).await?;
     if !removed {
         return Err(ApiError::not_found(format!("Credential '{cid}' not found for '{id}'.")));
     }
@@ -1047,8 +1040,7 @@ async fn order_credentials(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<
             true
         })
     })
-    .await
-    .map_err(store_err)?;
+    .await?;
     if !ok {
         return Err(ApiError::unprocessable("ids must list every credential of the provider exactly once."));
     }

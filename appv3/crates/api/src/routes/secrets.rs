@@ -22,10 +22,6 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/", get(list)).route("/{name}", put(save)).route("/{name}/{id}", delete(remove))
 }
 
-fn store_err(e: impl std::fmt::Display) -> ApiError {
-    ApiError::internal(e)
-}
-
 /// A project as the client sees it: its key, folder name, and whether the
 /// folder is still there.
 fn project_json(key: &str) -> Value {
@@ -35,7 +31,7 @@ fn project_json(key: &str) -> Value {
 /// Every value, names and projects only. `?workspace=` also returns that
 /// folder's project key, and which names it can use.
 async fn list(Query(q): Query<HashMap<String, String>>) -> ApiResult<Response> {
-    let f = appv3_core::credentials::load().map_err(store_err)?;
+    let f = appv3_core::credentials::load()?;
     let secrets: Vec<Value> = agent_secrets::entries(&f)
         .into_iter()
         .map(|(name, s)| {
@@ -93,13 +89,13 @@ async fn save(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
     let id = o.get("id").and_then(Value::as_str).map(String::from);
     let source = o.get("source").and_then(Value::as_str).filter(|s| matches!(*s, "chat" | "settings")).unwrap_or("settings").to_string();
     let change = Change { id, value, projects, source };
-    let saved = appv3_core::credentials::update(|f| agent_secrets::set(f, &name, change)).map_err(store_err)?.map_err(ApiError::unprocessable)?;
+    let saved = appv3_core::credentials::update(|f| agent_secrets::set(f, &name, change))?.map_err(ApiError::unprocessable)?;
     tracing::info!("agent_secret_saved name={} id={}", name, saved);
     Ok(json(json!({"name": name, "id": saved})))
 }
 
 async fn remove(AxPath((name, id)): AxPath<(String, String)>) -> ApiResult<Response> {
-    let removed = appv3_core::credentials::update(|f| agent_secrets::remove(f, &name, &id)).map_err(store_err)?;
+    let removed = appv3_core::credentials::update(|f| agent_secrets::remove(f, &name, &id))?;
     if !removed {
         return Err(ApiError::not_found(format!("{name} has no saved value '{id}'.")));
     }

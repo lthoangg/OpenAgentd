@@ -125,18 +125,19 @@ export function ModelsPanel({
   }
 
   return (
-    <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/20 overflow-hidden">
-      {/* Collapsed toggle row */}
+    // The last row of the open provider, across the card's full width
+    // (the body's insets are taken back): a hairline above, no frame of its
+    // own (DESIGN.md → Long lists are rows).
+    <div className="-mx-3 -mb-4 border-t border-(--color-border-subtle) md:-mx-4">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
         className={cn(
-          'flex min-h-9 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
+          'flex min-h-9 w-full items-center justify-between gap-2 px-3 py-2.5 text-left md:min-h-0 md:px-4',
           'text-xs md:text-meta text-(--color-text-muted) transition-colors',
-          'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)',
-          expanded && 'border-b border-(--color-border)',
+          'hover:bg-(--bg-key)/50 hover:text-(--color-text)',
+          'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)',
         )}
       >
         <span className="min-w-0 flex-1 space-y-0.5">
@@ -157,7 +158,7 @@ export function ModelsPanel({
 
       {/* Expanded body */}
       <Collapsible open={expanded}>
-        <div className="space-y-2 p-2 sm:p-2.5">
+        <div className="space-y-2 px-3 pt-1.5 pb-3 md:px-4">
           <SearchBar
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}

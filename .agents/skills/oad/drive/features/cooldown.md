@@ -12,6 +12,9 @@ cooldown ends. The limited row then turns ready again by itself.
   down" until the cooldown ends, then drops it while the picker stays open.
 - Settings → Models → the provider: the limited row says "Rate-limited ·
   resets in Ns", then "Ready" when the cooldown ends, without a reload.
+- An open provider is rows in the provider list's one frame: its keys split
+  by a hairline, then "Models · N available" as its last row. The journey
+  opens the models and photographs the page in the light and the dark theme.
 - Picking a cooling account in the picker locks the session to it and tries
   it again at once.
 

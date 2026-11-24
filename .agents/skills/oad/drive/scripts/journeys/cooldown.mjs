@@ -81,4 +81,27 @@ export default async function cooldown({ page, expect, step, phone, api, newSess
     await expect(keyRow(limited)).not.toContainText("Rate-limited", RECOVERY)
     await expect(keyRow(limited)).toContainText("Ready")
   })
+
+  // DESIGN.md → Long lists are rows: the provider list is the one frame. A
+  // text field keeps its own border (the element, or the box right around it).
+  const models = settings.getByRole("button", { name: /^Models · \d+ available/ })
+  const framed = () => settings.locator('[data-provider="router9"]').evaluate((row) => [...row.querySelectorAll("*")].filter((el) => el.classList.contains("border") && !el.matches("input, textarea, select") && !el.querySelector(":scope > input, :scope > textarea")).map((el) => `${el.tagName.toLowerCase()}.${el.getAttribute("class")}`))
+
+  await step("the open provider is rows in one frame: keys, then its models", async () => {
+    await models.click()
+    await expect(settings.getByRole("searchbox", { name: "Filter models…" })).toBeVisible()
+    expect(await framed()).toEqual([])
+    await keys.scrollIntoViewIfNeeded()
+  })
+
+  await step("the same rows in the dark theme", async () => {
+    await page.emulateMedia({ colorScheme: "dark" })
+    await expect(page.locator("html")).toHaveClass(/(^| )dark( |$)/)
+    await models.scrollIntoViewIfNeeded()
+  })
+
+  await step("back to the light theme", async () => {
+    await page.emulateMedia({ colorScheme: "light" })
+    await expect(page.locator("html")).not.toHaveClass(/(^| )dark( |$)/)
+  })
 }

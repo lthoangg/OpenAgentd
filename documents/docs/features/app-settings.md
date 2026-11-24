@@ -148,7 +148,11 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     opens its page, scrolls to it and focuses it. Search works on phones
     too.
   - A provider's accounts are one list under "Tried in this order", with
-    **Use first** to move one to the top.
+    **Use first** to move one to the top. Since `[v3.63.0]` an open
+    provider draws no box of its own inside the provider list: its keys or
+    accounts are rows split by a hairline, and **Models · N available** is
+    the provider's last row, the full width of the list, which opens the
+    models under it. (Each was a bordered box inside the list's border.)
   - **Save** on a key checks it first; when the check fails it says why,
     with **Retry** and **Save anyway**.
   - The backend panel: selecting a server shows its details, **Use**

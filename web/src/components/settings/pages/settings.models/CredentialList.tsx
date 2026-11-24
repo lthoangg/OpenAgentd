@@ -100,7 +100,8 @@ function KeyUsage({ providerId, providerLabel, credentialId, label }: { provider
   )
 }
 
-const LIST_CLASS = 'overflow-hidden rounded-md border border-(--color-border-subtle)'
+// Rows of the open provider, split by a hairline: the provider list around
+// them is the one frame (DESIGN.md → Long lists are rows).
 const ROW_BORDER = 'border-b border-(--color-border-subtle) last:border-b-0'
 
 /**
@@ -124,7 +125,7 @@ function ProfileShell({
   'data-credential-id'?: string
 }) {
   return (
-    <div role="listitem" className={cn(ROW_BORDER, 'px-3 py-3', className)} {...rest}>
+    <div role="listitem" className={cn(ROW_BORDER, 'py-3', className)} {...rest}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-x-2 gap-y-1">{identity}</div>
         {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
@@ -150,7 +151,7 @@ export function ProviderSignInRow({
   onReconnect?: () => void
 }) {
   return (
-    <div role="list" aria-label={`${provider.label} sign-in`} className={LIST_CLASS}>
+    <div role="list" aria-label={`${provider.label} sign-in`}>
       <UsageScope providerId={provider.id} providerLabel={provider.label} label="Provider sign-in" onReconnect={onReconnect} emptyText="No usage details reported.">
         {({ plan, refresh, body }) => (
           <ProfileShell
@@ -511,9 +512,9 @@ export function CredentialList({
           </p>
         </div>
       )}
-      <div className={LIST_CLASS} role="list" aria-label={`${provider.label} ${noun}s`}>
+      <div role="list" aria-label={`${provider.label} ${noun}s`}>
         {envPinned && (
-          <div role="listitem" className={`${ROW_BORDER} px-3 py-3`}>
+          <div role="listitem" className={`${ROW_BORDER} py-3`}>
             {isOauth && perAccountUsage ? (
               // The exported credential has its own usage, read without an account id.
               <UsageScope providerId={provider.id} providerLabel={provider.label} label="From environment" emptyText="No usage details reported.">

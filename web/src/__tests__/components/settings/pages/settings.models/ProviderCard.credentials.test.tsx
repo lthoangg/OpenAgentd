@@ -515,3 +515,24 @@ describe('ProviderCard — several OAuth accounts', () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('codex', 'cred_team', { disabled: true }))
   })
 })
+
+describe('ProviderCard — one frame', () => {
+  // DESIGN.md → Long lists are rows: the provider list is the one frame; an
+  // open provider adds rows and hairlines, not a box of its own.
+  it('draws no frame inside an open provider: keys and models are rows', () => {
+    const { container } = renderCard({ ...openai, cached_models: ['openai:gpt-5.5'] })
+    const row = container.querySelector('[data-provider="openai"]') as HTMLElement
+    expect(within(row).getByRole('list', { name: 'OpenAI keys' })).toBeDefined()
+    expect(within(row).getByRole('button', { name: /^Models/ })).toBeDefined()
+
+    fireEvent.click(within(row).getByRole('button', { name: /^Models/ }))
+    expect(within(row).getByPlaceholderText('Filter models…')).toBeDefined()
+
+    // A text field keeps its own border (the element, or the box right
+    // around it); nothing else draws all four sides.
+    const framed = [...row.querySelectorAll('*')].filter(
+      (el) => el.classList.contains('border') && !el.matches('input, textarea, select') && !el.querySelector(':scope > input, :scope > textarea'),
+    )
+    expect(framed.map((el) => `${el.tagName.toLowerCase()}.${el.getAttribute('class')}`)).toEqual([])
+  })
+})

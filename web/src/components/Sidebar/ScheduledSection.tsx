@@ -6,6 +6,7 @@ import { formatCompactUpcoming } from '@/utils/format'
 import { ROW_ACTION, ROW_TEXT_ACTION, listRowClass } from '@/components/ui/list-row'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SidebarHeading } from './SidebarHeading'
+import { SidebarLoadError } from './SidebarLoadError'
 
 const MAX_ROWS = 5
 
@@ -15,10 +16,11 @@ const MAX_ROWS = 5
  * does not come and go; with no task at all it takes no room (the palette,
  * the Review panel's "+" and the agent create the first one). The heading
  * counts the enabled tasks and has a "+" for a new one; the next few to run
- * are listed, each opening its detail.
+ * are listed, each opening its detail. A list that failed to load is not
+ * known to be empty, so the section says so rather than taking no room.
  */
 export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void }) {
-  const { data, isPending } = useScheduledTasksQuery()
+  const { data, isPending, isError, isRefetching, refetch } = useScheduledTasksQuery()
   const tasks = data?.tasks ?? []
   const enabled = tasks.filter((task) => task.enabled)
   const upcoming = enabled
@@ -32,6 +34,14 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
   }
   const now = new Date()
 
+  if (isError && !data) {
+    return (
+      <section aria-label="Scheduled" className="shrink-0 pb-1.5">
+        <SidebarHeading label="Scheduled" />
+        <SidebarLoadError title="Couldn't load scheduled tasks." retrying={isRefetching} onRetry={() => { void refetch() }} />
+      </section>
+    )
+  }
   if (tasks.length === 0) return null
   return (
     <section aria-label="Scheduled" className="shrink-0 pb-1.5">

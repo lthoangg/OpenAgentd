@@ -388,6 +388,10 @@ export function resetSidebarHarness() {
     if (url.includes('/api/agent/workspace/tree')) {
       return new Response(JSON.stringify(workspaceTreeResponse()))
     }
+    // No scheduled task, as on a new install; a test with tasks answers this itself.
+    if (url.includes('/api/scheduler/tasks')) {
+      return new Response(JSON.stringify({ tasks: [] }))
+    }
     if (url.endsWith('/api/agent/sessions/resolve')) {
       // Resolving a session in a workspace un-hides it.
       fx.hiddenWorkspacePaths.delete('/repo/project')

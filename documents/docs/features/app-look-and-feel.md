@@ -649,7 +649,7 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     turn on (**Access from other devices**), not a server flag.
   - A crash screen's **Copy error details** reads **Could not copy** when
     the clipboard refuses. Before, it did nothing.
-- **One look across the app** `[v3.48.0]`:
+- **One look across the app** `[v3.48.0, updated v3.63.0]`:
   - The same status looks the same everywhere. Needs you is orange and
     Failed is red. Connected and passing checks are green. Running and Done
     are quiet muted text.
@@ -659,3 +659,8 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   - Each kind of control has one form: one close ×, one button style, empty
     states with an action, skeletons while loading, and "Couldn't load X."
     with Retry when loading fails.
+  - A list that failed to load no longer reads as an empty one. With
+    sessions grouped by status or date, or not grouped, the sidebar said
+    "No sessions yet", and its Scheduled section was simply absent. Both
+    now say "Couldn't load sessions." or "Couldn't load scheduled tasks."
+    with Retry `[v3.63.0]`.

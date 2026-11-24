@@ -9,6 +9,12 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   folders." with Retry; Open folder… still works.
 - Opening a workspace from the sidebar when its sessions cannot be read: a
   toast "Couldn't open the last session" with Retry, not a blank draft.
+- The session list grouped by status or date (or not grouped) when the
+  sessions cannot be read: "Couldn't load sessions." with Retry, not "No
+  sessions yet".
+- The sidebar's Scheduled section when the tasks cannot be read:
+  "Couldn't load scheduled tasks." with Retry, not an absent section
+  (desktop only).
 - A folder missing TypeScript tools: one status line, "Install TypeScript
   tools for demo?" with Later and Install, not a dialog.
 - Usage opened on one session: the filter chip shows a skeleton until the
@@ -27,6 +33,10 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
 
 - **Folder picker:** a new session (phone: ✎), the folder chip.
 - **Workspace:** the workspace's row in the sidebar (phone: Sessions).
+- **Sessions in one list:** View options (the filter icon beside the list's
+  heading) → Group by Status, Date or None.
+- **Scheduled:** the section at the foot of the desktop sidebar, there once
+  a task exists.
 - **TypeScript line:** the server announces it when an edit in a folder
   needs the tools it does not have.
 - **Usage on a session:** a turn's footer → its usage, or a
@@ -41,8 +51,10 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
 ## Driving it with Playwright
 
 - Failures are made with `page.route` answering 503 for
-  `/agent/workspace/tree` and `/agent/sessions?…`; the route is removed
-  before the next step.
+  `/agent/workspace/tree`, `/agent/sessions?…` and `/scheduler/tasks`; the
+  route is removed before the next step.
+- View options is a menu of `menuitemradio`s on a desktop and a sheet with a
+  `radio` group on a phone; the journey sets Group by back to Workspace.
 - The confirm is "Delete <group>?" with "Cancel" and "Delete group".
 - The TypeScript line comes from one faked `lsp_install_required` frame on
   `/events/stream` (the route then lets the real stream through).
@@ -61,6 +73,9 @@ confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 1
   "Couldn't load workspaces." with Retry. A phone also reopens the last
   session at `/`: the journey goes Back to Sessions first.
 - The app retries a failed read a few times (about 7 s) before it says so.
+- A phone's Sessions page has no Scheduled section (its toolbar opens the
+  tasks), so the Scheduled steps run on the desktop only. The drive has no
+  task, so Retry ends with no section: an empty list takes no room.
 - The lightbox skeleton is not driven: a text attachment comes with its
   text, so the gallery never waits. `FileLightbox.test.tsx` covers it.
 - A whole-file read has no range, so its header shows no line count once

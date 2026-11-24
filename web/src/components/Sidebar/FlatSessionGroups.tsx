@@ -7,6 +7,7 @@ import { SESSION_PAGE_SIZE, nextPageCount } from '@/lib/session-pages'
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { groupSessionsByDate, groupSessionsByStatus, nestedUnderSender, type SessionGroup } from './helpers'
 import { SessionGroupHeader } from './SessionGroupHeader'
+import { SidebarLoadError } from './SidebarLoadError'
 import { Collapsible } from '@/components/ui/collapsible'
 import { EmptyState } from '@/components/ui/empty-state'
 import { DraftSessionRow, SessionRow, SessionRowsSkeleton, ShowMoreRow, useStableSessionHandlers, type SessionHandlers } from './SessionRow'
@@ -101,7 +102,7 @@ export function FlatSessionGroups({
         </div>
       )}
       {all.isLoading && <SessionRowsSkeleton rows={5} />}
-      {groups.length === 0 && !all.isLoading && !draftWorkspace && (
+      {groups.length === 0 && !all.isLoading && !all.isError && !draftWorkspace && (
         // The icon sits in the status-mark slot, so the words line up with the titles.
         <EmptyState compact icon={MessageCircle} title="No sessions yet" className="px-1.5 py-1" />
       )}
@@ -129,6 +130,15 @@ export function FlatSessionGroups({
             </section>
           )
         })}
+      {/* Under the working sessions, which come from their own request and may have loaded. */}
+      {all.isError && sessions.length === 0 && (
+        <SidebarLoadError
+          title="Couldn't load sessions."
+          retrying={all.isRefetching}
+          onRetry={() => { void all.refetch() }}
+          className="px-1.5 py-1"
+        />
+      )}
       {all.hasNextPage && (
         <ShowMoreRow loading={all.isFetchingNextPage} count={nextPageCount(all.data, SESSION_PAGE_SIZE)} onLoadMore={() => { void all.fetchNextPage() }} />
       )}

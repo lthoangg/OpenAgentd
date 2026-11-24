@@ -1,6 +1,7 @@
 // What a screen says when something fails or is still loading, and the
 // shared confirm and action sheet (DESIGN.md → Rulebook 7, and DESIGN.md → Rulebook 10): a folder
-// list that failed, a workspace whose sessions could not be read, the
+// list that failed, a workspace whose sessions could not be read, the flat
+// session list and the Scheduled section when their lists failed, the
 // TypeScript tools line, a title loading in Usage and in a Read row, deleting a workspace
 // group, the QR scanner's focus, and ✎'s sheet on a phone.
 // Feature notes: ../../features/ui-states.md
@@ -50,6 +51,58 @@ export default async function uiStates({ page, expect, step, open, phone, run, d
     await settled()
     await page.unroute(/\/agent\/sessions\?/)
   })
+
+  /** Group the session list the way View options offers: "Workspace", "Status", "Date" or "None". */
+  const groupSessionsBy = async (label) => {
+    await page.getByRole("complementary").first().getByRole("button", { name: "View options", exact: true }).click()
+    // A sheet with a segmented control on a phone, a menu on a desktop.
+    const choice = phone
+      ? page.getByRole("dialog", { name: "View options" }).getByRole("radio", { name: label, exact: true })
+      : page.getByRole("menu", { name: "View options" }).getByRole("menuitemradio", { name: label, exact: true })
+    await choice.click()
+    await page.keyboard.press("Escape")
+    await expect(choice).toHaveCount(0)
+  }
+
+  const listed = `Listed ${run}`
+  await step("sessions in one list that cannot be read say so, not \"No sessions yet\"", async () => {
+    await seedSession(listed)
+    await home()
+    await groupSessionsBy("Date")
+    await page.route(/\/agent\/sessions\?/, down)
+    // Opened again, as after the app was away: nothing cached to fall back on.
+    await home()
+    const list = page.getByRole("complementary").first()
+    await expect(list.getByText("Couldn't load sessions.")).toBeVisible({ timeout: 20_000 })
+    await expect(list.getByRole("button", { name: "Retry", exact: true })).toBeVisible()
+    await expect(list.getByText("No sessions yet")).toHaveCount(0)
+  })
+
+  await step("Retry lists them", async () => {
+    await page.unroute(/\/agent\/sessions\?/)
+    const list = page.getByRole("complementary").first()
+    await list.getByRole("button", { name: "Retry", exact: true }).click()
+    await expect(list.getByText(listed).first()).toBeVisible()
+    await expect(list.getByText("Couldn't load sessions.")).toHaveCount(0)
+    await groupSessionsBy("Workspace")
+  })
+
+  // A phone's Sessions page has no Scheduled section; its toolbar opens the tasks.
+  if (!phone) {
+    await step("scheduled tasks that cannot be read say so, not an absent section", async () => {
+      await page.route("**/scheduler/tasks*", down)
+      await open("/")
+      const section = page.getByRole("region", { name: "Scheduled" })
+      await expect(section.getByText("Couldn't load scheduled tasks.")).toBeVisible({ timeout: 20_000 })
+      await expect(section.getByRole("button", { name: "Retry", exact: true })).toBeVisible()
+    })
+
+    await step("Retry finds no task, and the section takes no room again", async () => {
+      await page.unroute("**/scheduler/tasks*")
+      await page.getByRole("region", { name: "Scheduled" }).getByRole("button", { name: "Retry", exact: true }).click()
+      await expect(page.getByRole("region", { name: "Scheduled" })).toHaveCount(0)
+    })
+  }
 
   await step("a folder missing TypeScript tools gets one status line, not a dialog", async () => {
     // The server says so on the app's event feed when an edit needs the

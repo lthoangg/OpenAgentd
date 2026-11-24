@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useFakeTimers } from '../../fake-timers'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { SessionResponse } from '@/api/types'
@@ -167,6 +167,58 @@ describe('FlatSessionGroups', () => {
     expect(screen.getByText('No sessions yet').closest('[data-empty-state="compact"]')).toBeTruthy()
     expect(screen.queryByText('No sessions yet.')).toBeNull()
     expect(screen.queryByRole('status', { name: 'Loading sessions' })).toBeNull()
+  })
+
+  describe('when the sessions fail to load', () => {
+    /** A backend that fails the session list until `recover()`, then answers with `page`. */
+    function failingBackend(page: SessionResponse[]) {
+      let failing = true
+      globalThis.fetch = mock(async () => (
+        failing
+          ? new Response('boom', { status: 500 })
+          : new Response(JSON.stringify({ data: page, has_more: false, next_cursor: null }))
+      )) as unknown as typeof fetch
+      return () => { failing = false }
+    }
+
+    function renderUnloaded(groupBy: Exclude<SidebarGroupBy, 'project'>, active: SessionResponse[] = []) {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      queryClient.setQueryData(queryKeys.session.sessions.active(), {
+        pages: [{ data: active, has_more: false, next_cursor: null }],
+        pageParams: [null],
+      })
+      queryClient.setQueryDefaults(queryKeys.session.sessions.active(), { staleTime: Infinity })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <FlatSessionGroups groupBy={groupBy} workspaceName={(path) => path.split('/').pop() ?? path} {...handlers} />
+        </QueryClientProvider>,
+      )
+    }
+
+    it('says so with Retry instead of "No sessions yet", and lists them once it loads', async () => {
+      const recover = failingBackend([session('s-1', 'First', '/repo/web', 0)])
+      renderUnloaded('none')
+
+      expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load sessions.")
+      expect(screen.queryByText('No sessions yet')).toBeNull()
+
+      recover()
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(await screen.findByText('First')).toBeTruthy()
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    })
+
+    it('still says so under the sessions that are running', async () => {
+      failingBackend([])
+      const running = session('s-run', 'Sidebar redesign', '/repo/openagentd', HOUR, { running: true })
+      renderUnloaded('status', [running])
+
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toContain("Couldn't load sessions.")
+      const runningGroup = screen.getByRole('region', { name: 'Running' })
+      expect(within(runningGroup).getByText('Sidebar redesign')).toBeTruthy()
+      expect(runningGroup.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
   })
 
   it('heads every group with the one sidebar heading: sentence case, 32px, a visible chevron', () => {

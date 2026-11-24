@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NEW_SCHEDULED_TASK, useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import { cleanupSidebarHarness, renderSidebarForSessions, resetSidebarHarness } from './harness'
@@ -93,5 +94,37 @@ describe('Sidebar workspace trust flow', () => {
     window.removeEventListener(APP_EVENTS.openScheduler, opened)
     expect(useUIStore.getState().scheduledTaskFocus).toBe(NEW_SCHEDULED_TASK)
     expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  it('says so with Retry when the tasks fail to load, instead of leaving no section', async () => {
+    const user = userEvent.setup()
+    let failing = true
+    globalThis.fetch = mock(async () => (
+      failing
+        ? new Response('boom', { status: 500 })
+        : new Response(JSON.stringify({ tasks: [{
+          id: 'paused', slug: 'paused', name: 'Paused digest', workspace: '/repo/project', schedule_type: 'every', at_datetime: null, every_seconds: 3600,
+          cron_expression: null, timezone: 'UTC', prompt: 'p', session_id: null, max_runs: null, enabled: false,
+          status: 'paused', run_count: 0, last_run_at: null, last_error: null, next_fire_at: null,
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        }] }))
+    )) as unknown as typeof fetch
+    const { ScheduledSection } = await import('@/components/Sidebar/ScheduledSection')
+    // The sidebar's own client retries for seconds before it reports a failure.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ScheduledSection />
+      </QueryClientProvider>,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain("Couldn't load scheduled tasks.")
+    expect(alert.closest('section')?.getAttribute('aria-label')).toBe('Scheduled')
+
+    failing = false
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Scheduled' }).textContent).toContain('Nothing due'))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

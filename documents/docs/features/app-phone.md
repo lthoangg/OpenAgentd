@@ -89,9 +89,12 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     finger's width off the left edge until the next keystroke.
   - A shell call's tooltip shows only its description (the command is
     already on the row), and other tooltips (copy buttons, a prompt's and an
-    answer's actions, session rows) are the system's plain tooltips, so a
-    long transcript renders lighter. *(Since v3.46.0 the row shows the
-    description and the tooltip the command.)*
+    answer's actions, session rows) are plain `title` hints, so a long
+    transcript renders lighter. The app still draws them as its own tooltip
+    on a desktop (see Native tooltips in
+    [look and feel](app-look-and-feel.md)); a touch screen shows none.
+    *(Since v3.46.0 the row shows the description and the tooltip the
+    command.)*
 - **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews.
 - **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
   (Settings or Control Center) while it runs: larger settings scale the text

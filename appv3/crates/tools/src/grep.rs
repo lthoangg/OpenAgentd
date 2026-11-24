@@ -3,6 +3,7 @@
 use crate::args::Args;
 use crate::denied::fnmatch_translate;
 use crate::denied::DeniedPaths;
+use crate::glob::expand_braces;
 pub use crate::ignores::Ignores;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -91,6 +92,12 @@ pub fn skipped_ignored_note(skipped: &[String]) -> String {
     let named = skipped.iter().take(3).map(|d| format!("{d}/")).collect::<Vec<_>>().join(", ");
     let more = if skipped.len() > 3 { format!(" and {} more", skipped.len() - 3) } else { String::new() };
     format!(" (skipped large gitignored directories: {named}{more} — pass one as 'directory' to search inside it)")
+}
+
+/// The `include` filter as one regex over a file name: an fnmatch glob,
+/// with `{a,b}` alternatives expanded as the `glob` tool expands them.
+fn include_regex(include: &str) -> Result<regex::Regex, regex::Error> {
+    regex::Regex::new(&expand_braces(include).iter().map(|p| fnmatch_translate(p)).collect::<Vec<_>>().join("|"))
 }
 
 /// A compiled grep pattern with Python `re.search` semantics per line.
@@ -300,6 +307,8 @@ struct Scan<'a> {
     expired: &'a dyn Fn() -> bool,
     hits: Vec<String>,
     pending: Vec<PathBuf>,
+    /// Files whose name passed `include`, searched or not.
+    named: usize,
     /// Big gitignored directories left out, relative to `root`.
     skipped: Vec<String>,
 }
@@ -361,6 +370,7 @@ impl Scan<'_> {
                 if !self.include.is_match(&f) {
                     continue;
                 }
+                self.named += 1;
                 if gi.is_some_and(|gi| gi.matched(&join(&f), false)) {
                     ignored.push((dir.join(&f), false));
                 } else {
@@ -402,10 +412,12 @@ impl Scan<'_> {
 }
 
 /// What a tree search found: hits in walk order, whether it timed out (the
-/// hits so far are kept), and the big gitignored directories it skipped.
+/// hits so far are kept), how many file names passed the include filter, and
+/// the big gitignored directories it skipped.
 struct TreeHits {
     hits: Vec<String>,
     timed_out: bool,
+    named: usize,
     skipped: Vec<String>,
 }
 
@@ -416,7 +428,7 @@ struct TreeHits {
 /// without walking the rest.
 #[allow(clippy::too_many_arguments)]
 fn search_tree(root: &Path, include: &regex::Regex, gi: &Ignores, denied: &DeniedPaths, m: &Matcher, max: usize, batch: usize, expired: &dyn Fn() -> bool) -> TreeHits {
-    let mut s = Scan { root, include, denied, m, max, batch, expired, hits: vec![], pending: vec![], skipped: vec![] };
+    let mut s = Scan { root, include, denied, m, max, batch, expired, hits: vec![], pending: vec![], named: 0, skipped: vec![] };
     let timed_out = match s.run(gi) {
         Ok(()) => {
             scan_batch(m, &s.pending, denied, max, &mut s.hits);
@@ -425,7 +437,7 @@ fn search_tree(root: &Path, include: &regex::Regex, gi: &Ignores, denied: &Denie
         Err(Stop::Full) => false,
         Err(Stop::TimedOut) => true,
     };
-    TreeHits { hits: s.hits, timed_out, skipped: s.skipped }
+    TreeHits { hits: s.hits, timed_out, named: s.named, skipped: s.skipped }
 }
 
 fn timeout_error() -> ToolError {
@@ -480,20 +492,25 @@ impl Tool for GrepTool {
         if !resolved.exists() {
             return Err(ToolError::Execution(format!("File or directory not found: {}{}", denied.display_path(&resolved), denied.absolute_path_hint(&directory))));
         }
-        let no_match = format!("No matches for pattern '{pattern}' in {} (include={include})", denied.display_path(&resolved));
+        let shown_dir = denied.display_path(&resolved);
+        let no_match = format!("No matches for pattern '{pattern}' in {shown_dir} (include={include})");
+        // A filter that passes no file name (a comma list, a path) searched
+        // nothing; "no matches" alone would read as an answer about the code.
+        let no_files =
+            format!("No matches for pattern '{pattern}' in {shown_dir} (include={include} matched no file name, so nothing was searched; include is one glob over file names, not paths, e.g. '*.rs' or '*.{{ts,tsx}}')");
         let task = tokio::task::spawn_blocking(move || -> Result<TreeHits, ToolError> {
             if resolved.is_file() {
-                return Ok(TreeHits { hits: scan_file(&m, &resolved, &denied.display_path(&resolved), max_results), timed_out: false, skipped: vec![] });
+                return Ok(TreeHits { hits: scan_file(&m, &resolved, &denied.display_path(&resolved), max_results), timed_out: false, named: 1, skipped: vec![] });
             }
             let deadline = Instant::now() + std::time::Duration::from_secs(SCAN_TIMEOUT_S);
             let gi = load_gitignore(&resolved);
-            let inc = regex::Regex::new(&fnmatch_translate(&include)).map_err(ToolError::exec)?;
+            let inc = include_regex(&include).map_err(ToolError::exec)?;
             let batch = (rayon::current_num_threads() * 16).max(16);
             Ok(search_tree(&resolved, &inc, &gi, &denied, &m, max_results, batch, &|| Instant::now() > deadline))
         });
         // The walk keeps its own deadline and returns partial hits; this is
         // only a backstop for a single file that will not finish.
-        let TreeHits { hits, timed_out, skipped } = match tokio::time::timeout(std::time::Duration::from_secs(SCAN_TIMEOUT_S + 5), task).await {
+        let TreeHits { hits, timed_out, named, skipped } = match tokio::time::timeout(std::time::Duration::from_secs(SCAN_TIMEOUT_S + 5), task).await {
             Ok(r) => r.map_err(ToolError::exec)??,
             Err(_) => return Err(timeout_error()),
         };
@@ -501,7 +518,8 @@ impl Tool for GrepTool {
             if timed_out {
                 return Err(timeout_error());
             }
-            return Ok(ToolOutput::Text(no_match + &skipped_ignored_note(&skipped)));
+            let said = if named == 0 { no_files } else { no_match };
+            return Ok(ToolOutput::Text(said + &skipped_ignored_note(&skipped)));
         }
         Ok(ToolOutput::Text(render_hits(hits, timed_out)))
     }
@@ -646,6 +664,39 @@ mod tests {
         assert_eq!(lines_of(&out), vec!["a.txt:1: hit", "b.txt:1: hit", "z.txt:1: hit"], "{out}");
     }
 
+    /// The `include` description gives `*.{ts,tsx}` as an example.
+    #[tokio::test]
+    async fn an_include_with_braces_matches_each_alternative() {
+        let d = tempfile::tempdir().unwrap();
+        for f in ["a.ts", "sub/b.tsx", "c.rs", "d.{ts,tsx}"] {
+            let p = d.path().join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "hit\n").unwrap();
+        }
+        let out = grep(d.path(), serde_json::json!({"pattern": "hit", "include": "*.{ts,tsx}"})).await;
+        assert_eq!(lines_of(&out), vec!["a.ts:1: hit", "b.tsx:1: hit"], "{out}");
+        let out = grep(d.path(), serde_json::json!({"pattern": "hit", "include": "{a,c}.{ts,rs}"})).await;
+        assert_eq!(lines_of(&out), vec!["a.ts:1: hit", "c.rs:1: hit"], "{out}");
+    }
+
+    /// A filter no file name passes (a comma list, a path) must not read as
+    /// "the pattern is not in these files".
+    #[tokio::test]
+    async fn a_filter_that_names_no_file_says_so() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("src")).unwrap();
+        std::fs::write(d.path().join("src/a.ts"), "hit\n").unwrap();
+        std::fs::write(d.path().join("b.tsx"), "hit\n").unwrap();
+        for include in ["a.ts,b.tsx", "src/*.ts"] {
+            let out = grep(d.path(), serde_json::json!({"pattern": "hit", "include": include})).await;
+            assert!(out.starts_with("No matches for pattern 'hit' in . "), "{out}");
+            assert!(out.contains(&format!("(include={include} matched no file name, so nothing was searched")), "{out}");
+        }
+        // The filter found files and the pattern is not in them: no note.
+        let out = grep(d.path(), serde_json::json!({"pattern": "absent", "include": "*.ts"})).await;
+        assert_eq!(out, "No matches for pattern 'absent' in . (include=*.ts)");
+    }
+
     #[tokio::test]
     async fn searches_small_ignored_dirs_and_names_skipped_big_ones() {
         let d = tempfile::tempdir().unwrap();
@@ -694,7 +745,7 @@ mod tests {
 
     fn search(root: &Path, max: usize, batch: usize, expired: &dyn Fn() -> bool) -> (Vec<String>, bool) {
         let denied = DeniedPaths::with(root, None, Some(vec![]), Some(vec![]));
-        let inc = regex::Regex::new(&fnmatch_translate("*")).unwrap();
+        let inc = include_regex("*").unwrap();
         let t = search_tree(root, &inc, &load_gitignore(root), &denied, &compile_pattern("hit").unwrap(), max, batch, expired);
         (t.hits, t.timed_out)
     }

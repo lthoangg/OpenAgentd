@@ -294,7 +294,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0, updated v3.20.0]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0, v3.20.0, updated v3.63.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -322,3 +322,6 @@ MCP.
   root, `.git/info/exclude` and the global excludes file. Files that an editor, terminal or build
   writes into a gitignored folder now refresh Quick Open and open file tabs
   live `[v3.20.0]`.
+  `grep`'s `include` filter understands `{ts,tsx}` braces as `glob` does, and
+  a filter that names no file (a comma list, a path) says nothing was
+  searched instead of answering "No matches" `[v3.63.0]`.

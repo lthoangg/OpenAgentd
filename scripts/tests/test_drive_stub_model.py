@@ -61,6 +61,15 @@ def test_a_user_message_is_echoed_with_the_protocol_named(protocol: str) -> None
     assert stub.plan(protocol, user_turn(protocol, "hello there")) == ("text", f"Stub reply ({protocol}): hello there")
 
 
+def test_a_reply_echoes_200_characters_unless_the_stub_is_started_with_more(monkeypatch: pytest.MonkeyPatch) -> None:
+    long = ("word " * 300).strip()
+    assert stub.plan("chat", user_turn("chat", long)) == ("text", f"Stub reply (chat): {long[:200]}")
+    # `--reply-chars 5000`: a benchmark streams a long answer.
+    assert stub.main_args(["--port", "1", "--reply-chars", "5000"]).reply_chars == 5000
+    monkeypatch.setattr(stub, "REPLY_CHARS", 5000)
+    assert stub.plan("chat", user_turn("chat", long)) == ("text", f"Stub reply (chat): {long}")
+
+
 @pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_the_shell_directive_becomes_a_tool_call_only_when_shell_is_offered(protocol: str) -> None:
     prompt = "please drive:shell echo hi > out.txt"

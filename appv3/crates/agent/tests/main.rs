@@ -24,6 +24,8 @@ mod inflight_shared_session;
 mod lead_eviction_subagents;
 mod mcp_hub_tool;
 mod model_facing_text;
+mod perf_bench;
+mod perf_seed_reopen;
 mod pin_switch;
 mod plan_review;
 mod question_opens_early;

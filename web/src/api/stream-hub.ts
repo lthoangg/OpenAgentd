@@ -314,12 +314,13 @@ export class StreamHub {
     this.deps.openStream(
       this.muxSupported === false ? null : gen,
       {
-        onOpen: () => {
+        onOpen: (resume) => {
           if (this.currentTerm() !== term) return
           term.feed = 'open'
           this.post({ t: 'open', gen })
           for (const sub of this.subs.values()) if (sub.gen === null) sub.gen = gen
-          for (const g of [...this.globals]) g.onOpen?.()
+          // Only this window's consumers read the feed from its first event.
+          for (const g of [...this.globals]) g.onOpen?.(resume)
           this.scheduleSync(term)
         },
         onEvent: (type, data) => {

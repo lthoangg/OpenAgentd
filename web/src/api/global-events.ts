@@ -31,7 +31,13 @@ export const GLOBAL_EVENT_TYPES = [
 ] as const
 
 export interface GlobalEventCallbacks extends SSECallbacks {
-  onOpen?: () => void
+  /**
+   * The feed is open. `resume` says where the stream this listener reads
+   * from its first event resumed: the position it sent (`since`, null for
+   * none). It is absent when the listener joined a stream already open (a
+   * window reading another window's feed), which replayed nothing for it.
+   */
+  onOpen?: (resume?: { since: string | null }) => void
 }
 
 /**
@@ -87,7 +93,7 @@ export function globalEventStream(callbacks: GlobalEventCallbacks, signal?: Abor
   fetch(url, { signal, headers: apiAuthHeaders(url) })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /events/stream failed: ${res.status}`)
-      callbacks.onOpen?.()
+      callbacks.onOpen?.({ since })
       readSSE(res, tracked)
     })
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })

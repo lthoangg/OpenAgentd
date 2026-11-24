@@ -155,6 +155,20 @@ const RULES: Rule[] = [
     allow: {},
   },
   {
+    name: 'z-index-off-scale',
+    why: 'layers are 0-2, 10, 20, 30, 40, 50, 60, 70, 80 and 9999 (DESIGN.md → Stacking); a value between two of them is named there and listed here',
+    pattern: /(?<![\w-])-?z-(?!(?:[012]|[1-8]0|9999)(?![\w-]))\d+(?![\w-])/g,
+    allow: {
+      // 11: the pinned fold header, over in-block controls (10), under a panel's chrome (20).
+      'hooks/useStickyFold.ts': 1,
+      // 25: the desktop drawer's backdrop, over a panel's chrome (20), under the drawer (30).
+      // (Two: the class, and the second line of the JSX comment that explains it.)
+      'components/Sidebar.tsx': 2,
+      // 9998: the dock's drop zone and caret while a tab is carried, under tooltips (9999).
+      'components/WorkspacePanel/dock-tab-styles.ts': 2,
+    },
+  },
+  {
     name: 'hover-only',
     why: 'nothing appears only on hover: show an action at rest (muted) or put it in the More / right-click / long-press menu',
     pattern: /^(?=.*(?<![\w:/-])(?:md:)?opacity-0(?![\w-]))(?=.*group-hover(?:\/[\w-]+)?:opacity-100).*$/g,
@@ -388,6 +402,13 @@ describe('design lint', () => {
     const hits = (text: string) => text.match(PX_SIZE)?.length ?? 0
     expect(hits('w-[120px] phone:h-[31px] before:-inset-y-[7px] bottom-[-4px] max-w-[640px] pr-[19px]')).toBe(6)
     expect(hits('w-30 phone:h-switch-phone-h -inset-y-2.75 max-w-160 max-w-[calc(100%-2rem)] text-[13px] border-[1.5px]')).toBe(0)
+  })
+
+  it('z-index-off-scale catches a number off the scale, under a variant too, and leaves the layers alone', () => {
+    const pattern = RULES.find((rule) => rule.name === 'z-index-off-scale')?.pattern ?? /$^/g
+    const hits = (text: string) => text.match(pattern)?.length ?? 0
+    expect(hits('z-45 md:z-15 -z-5 z-100 z-11 z-9998')).toBe(6)
+    expect(hits('z-0 z-2 z-10 md:z-20 z-80 z-9999 xyz-45 translate-z-3 z-[60] z-(--layer)')).toBe(0)
   })
 
   // A bare ``transition-colors`` (a hover) takes Tailwind's default timing,

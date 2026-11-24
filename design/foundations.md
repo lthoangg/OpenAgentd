@@ -255,12 +255,23 @@ dim the page. The media lightbox is the one darker stage.
 
 ### Stacking
 
-**Stacking** uses a short layer scale: 10 in-block controls, 30 drawer scrims,
-40 drawers and overlay scrims, 50 overlays and dialogs, 60 toasts and floating
-notices (and dialogs opened from them), 70 menus, dropdowns and popovers, 9999
-tooltips. Menus render into `document.body` (`ContextMenu`, `Dropdown`,
-`Popover`), never inside the panel that opened them, whose own layer would cap
-theirs. Write numeric layers as `z-60`, not `z-[60]`.
+**Stacking** uses a short layer scale: 0 to 2 order inside one block (a sticky
+line-number gutter, a sticky group header, the calendar's range ends), 10
+in-block controls, 20 a panel's chrome over its content (find bars, anchored
+comment boxes, the save bar, resize handles, the overlaid dock), 30 drawer
+scrims and the desktop drawer, 40 drawers and overlay scrims, 50 overlays and
+dialogs, 60 toasts and floating notices (and dialogs opened from them), 70
+menus, dropdowns and popovers, 80 what stays above everything in the window (its
+caption buttons, the QR scanner), 9999 tooltips. Menus render into
+`document.body` (`ContextMenu`, `Dropdown`, `Popover`), never inside the panel
+that opened them, whose own layer would cap theirs. Write numeric layers as
+`z-60`, not `z-[60]`.
+
+Three values sit between two layers on purpose, each for one element: 11 the
+pinned fold header (over in-block controls, under a panel's chrome), 25 the
+desktop drawer's backdrop (over a panel's chrome, under the drawer), 9998 the
+dock's drop zone while a tab is carried (under tooltips). `design-lint`
+refuses any other number, and these three outside their own files.
 
 ### One menu at a time
 

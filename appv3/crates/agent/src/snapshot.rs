@@ -791,11 +791,6 @@ pub async fn remove(session_id: &str) {
     LOCKS.lock().unwrap().remove(session_id);
 }
 
-/// Clear a session's lock entry (used by artifact cleanup).
-pub fn forget_lock(session_id: &str) {
-    LOCKS.lock().unwrap().remove(session_id);
-}
-
 /// Snapshot the session workspace (only when queued rows
 /// exist) and promote every queued row, stamping the snapshot on each.
 pub async fn release_queued(pool: &appv3_db::DbPool, session_id: &str) -> anyhow::Result<Vec<appv3_db::SessionMessage>> {

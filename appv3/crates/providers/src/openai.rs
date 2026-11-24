@@ -321,10 +321,6 @@ pub fn convert_messages(messages: &[ChatMessage], dialect: CompletionsDialect) -
     out
 }
 
-pub fn usage_from_openai(u: &Value) -> Usage {
-    usage_from_openai_ext(u, false)
-}
-
 /// `top_level_reasoning`: Copilot also reports `reasoning_tokens` at the top
 /// level of `usage` (checked first).
 pub fn usage_from_openai_ext(u: &Value, top_level_reasoning: bool) -> Usage {
@@ -524,10 +520,6 @@ impl CompletionsHandler {
 }
 
 /// Convert one OpenAI stream chunk JSON to the internal chunk (None = skip).
-pub fn parse_stream_chunk(data: &Value) -> Option<ChatCompletionChunk> {
-    parse_stream_chunk_ext(data, false)
-}
-
 pub fn parse_stream_chunk_ext(data: &Value, copilot_usage: bool) -> Option<ChatCompletionChunk> {
     let id = data.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let created = data.get("created").and_then(|v| v.as_i64()).unwrap_or(0);

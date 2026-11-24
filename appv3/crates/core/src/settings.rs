@@ -239,18 +239,11 @@ impl Settings {
         }
     }
 
-    pub fn is_production(&self) -> bool {
-        self.app_env == "production"
-    }
-
     pub fn runtime_settings_path(&self) -> PathBuf {
         self.config_dir.join("settings.yaml")
     }
     pub fn server_settings_path(&self) -> PathBuf {
         self.config_dir.join("server.yaml")
-    }
-    pub fn denied_paths_path(&self) -> PathBuf {
-        self.config_dir.join("denied_paths.yaml")
     }
     pub fn multimodal_path(&self) -> PathBuf {
         self.config_dir.join("multimodal.yaml")
@@ -352,13 +345,6 @@ pub fn settings() -> &'static Settings {
 pub fn install(s: Settings) -> &'static Settings {
     let _ = SETTINGS.set(s);
     settings()
-}
-
-/// Whether `path` is inside `root` (both canonicalised when possible).
-pub fn path_within(path: &Path, root: &Path) -> bool {
-    let p = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    let r = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    p.starts_with(r)
 }
 
 #[cfg(test)]

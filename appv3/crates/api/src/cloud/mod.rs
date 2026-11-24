@@ -32,7 +32,7 @@ use openagentd_cloud::endpoints::Endpoints;
 use openagentd_cloud::flows::{FlowError, GenesisDraft, Member, Removal, Session};
 use openagentd_cloud::keys::Roles;
 use openagentd_cloud::relay::{self, HostHandler, HostOptions, RelayError, Sessions, TunnelEnd};
-use openagentd_cloud::roster::{self, Chain, Roster};
+use openagentd_cloud::roster::{self, Roster};
 use openagentd_cloud::store::{self as idstore, FileStore, Identity};
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -1116,11 +1116,6 @@ impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
     }
-}
-
-/// Verifies a roster blob after `known` for callers outside this module.
-pub fn verify_after(blob: &str, account: &str, known: &Roster) -> Result<Roster, openagentd_cloud::Error> {
-    roster::verify(blob, account, Some(known), Chain::Skip)
 }
 
 #[cfg(test)]

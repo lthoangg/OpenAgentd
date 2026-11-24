@@ -347,11 +347,6 @@ pub fn clear_model_registry_caches() {
     *REGISTRY.write().unwrap() = None;
 }
 
-/// Install an explicit registry (tests).
-pub fn install_registry(reg: Registry) {
-    *REGISTRY.write().unwrap() = Some((None, Arc::new(reg)));
-}
-
 /// Load models.dev data and refresh the model registry.
 pub async fn refresh_model_registry(force: bool) {
     let s = appv3_core::settings();
@@ -524,27 +519,6 @@ pub fn get_model_transport_full(model_id: Option<&str>) -> Option<(String, Strin
     (matches!(v.as_str(), "default" | "openai") && matches!(f.as_str(), "chat_completions" | "generate_content" | "messages" | "responses")).then_some((v, f))
 }
 
-/// Model metadata as a JSON object.
-pub fn metadata_dict(model_id: Option<&str>) -> Value {
-    let e = get_model_entry(model_id).unwrap_or_else(|| json!({}));
-    let l = get_model_limits(model_id);
-    let c = cost_of(&e);
-    let f = e.get("features").cloned().unwrap_or_else(|| json!({}));
-    json!({
-        "limits": {"context_length": l.context_length, "max_input_tokens": l.max_input_tokens, "max_completion_tokens": l.max_completion_tokens},
-        "thinking": {"levels": get_model_thinking_levels(model_id)},
-        "cost": {"input": c.input, "output": c.output, "cache_read": c.cache_read, "cache_write": c.cache_write},
-        "features": {
-            "tool_call": f.get("tool_call").cloned().unwrap_or(Value::Null),
-            "attachment": f.get("attachment").cloned().unwrap_or(Value::Null),
-            "temperature": f.get("temperature").cloned().unwrap_or(Value::Null),
-            "reasoning": f.get("reasoning").cloned().unwrap_or(Value::Null),
-            "status": f.get("status").cloned().unwrap_or(Value::Null),
-            "release_date": f.get("release_date").cloned().unwrap_or(Value::Null),
-        },
-    })
-}
-
 /// Model capabilities as a JSON object — exact match only.
 pub fn capabilities_dict(model_id: Option<&str>) -> Value {
     let reg = load_model_registry();
@@ -556,10 +530,6 @@ pub fn capabilities_dict(model_id: Option<&str>) -> Value {
         "input": {"vision": b(&i, "vision", false), "document_text": b(&i, "document_text", true), "audio": b(&i, "audio", false), "video": b(&i, "video", false)},
         "output": {"text": b(&o, "text", true), "image": b(&o, "image", false), "audio": b(&o, "audio", false), "video": b(&o, "video", false)},
     })
-}
-
-pub fn supports_vision(model_id: Option<&str>) -> bool {
-    capabilities_dict(model_id)["input"]["vision"].as_bool().unwrap_or(false)
 }
 
 #[cfg(test)]

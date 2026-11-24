@@ -673,10 +673,6 @@ fn agent_secret(name: &str, project: Option<&str>) -> Option<String> {
     hit.map(|s| s.value.clone())
 }
 
-pub fn resolve_env_dict(env: &IndexMap<String, String>) -> IndexMap<String, String> {
-    resolve_env_dict_with(env, true)
-}
-
 pub fn resolve_env_dict_with(env: &IndexMap<String, String>, providers: bool) -> IndexMap<String, String> {
     resolve_env_dict_in(env, providers, None)
 }

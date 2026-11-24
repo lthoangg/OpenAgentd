@@ -3,7 +3,7 @@
 //! rendering). Keep the wire shapes in sync with the web client's types.
 
 use crate::codec::{api_dt, api_uuid, parse_dt, py_isoformat};
-use crate::models::{ChatSession, CodingWorkspace, PendingQuestion, ScheduledTask, SessionMessage};
+use crate::models::{ChatSession, PendingQuestion, ScheduledTask, SessionMessage};
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -478,11 +478,6 @@ pub fn scheduled_task_response(t: &ScheduledTask) -> Value {
         "created_at": api_dt(&t.created_at),
         "updated_at": api_dt(&t.updated_at),
     })
-}
-
-/// Display name for a coding workspace row (`row.name or Path(row.path).name`).
-pub fn workspace_display_name(w: &CodingWorkspace) -> String {
-    w.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| std::path::Path::new(&w.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
 #[cfg(test)]

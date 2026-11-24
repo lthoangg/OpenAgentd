@@ -21,10 +21,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// `OAuthEventSink = Callable[[str, dict], None]`.
 pub type OAuthSink = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
-pub fn noop_sink() -> OAuthSink {
-    Arc::new(|_, _| {})
-}
-
 #[derive(Debug, Clone)]
 pub struct CredentialField {
     pub name: String,
@@ -292,14 +288,6 @@ pub fn random_bytes(n: usize) -> Vec<u8> {
     b
 }
 
-/// `(verifier, challenge)` like `_generate_pkce`.
-pub fn generate_pkce() -> (String, String) {
-    use sha2::Digest;
-    let verifier = b64url(&random_bytes(64));
-    let challenge = b64url(&sha2::Sha256::digest(verifier.as_bytes()));
-    (verifier, challenge)
-}
-
 pub fn pkce_challenge(verifier: &str) -> String {
     use sha2::Digest;
     b64url(&sha2::Sha256::digest(verifier.as_bytes()))
@@ -411,19 +399,6 @@ pub fn py_int(v: Option<&Value>) -> i64 {
         Some(Value::Bool(b)) => i64::from(*b),
         _ => 0,
     }
-}
-
-/// Load a JSON object file (`{}` on any error / non-object).
-pub fn load_json_obj(path: &std::path::Path) -> Map<String, Value> {
-    match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
-        Some(Value::Object(m)) => m,
-        _ => Map::new(),
-    }
-}
-
-/// `json.dump(data, fh)` (Python default separators).
-pub fn save_json_obj(path: &std::path::Path, data: &Map<String, Value>) -> std::io::Result<()> {
-    std::fs::write(path, appv3_core::pyjson::dumps(&Value::Object(data.clone())))
 }
 
 /// Run a future to completion on a private runtime thread — used where v2

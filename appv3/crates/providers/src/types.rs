@@ -258,23 +258,6 @@ impl ChatMessage {
             _ => None,
         }
     }
-
-    /// Text content of a human message.
-    pub fn text_content(&self) -> Option<String> {
-        if let ChatMessage::User { content, parts: Some(parts), .. } = self {
-            if !parts.is_empty() {
-                let texts: Vec<&str> = parts
-                    .iter()
-                    .filter_map(|p| match p {
-                        ContentBlock::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect();
-                return if texts.is_empty() { content.clone() } else { Some(texts.join(" ")) };
-            }
-        }
-        self.content().map(String::from)
-    }
 }
 
 // ── Provider delta (internal streaming format) ──────────────────────────────

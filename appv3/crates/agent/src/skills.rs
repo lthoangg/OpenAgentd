@@ -442,11 +442,6 @@ pub fn discover_skills(workspace: Option<&Path>) -> Vec<SkillInfo> {
     discover_in(&skill_roots(workspace), &plugin_skills(), workspace)
 }
 
-/// `discover_skills(skills_dir)` for one explicit root.
-pub fn discover_skills_in(dir: &Path) -> Vec<SkillInfo> {
-    discover_in(&[dir.to_path_buf()], &[], None)
-}
-
 /// `Path.as_uri()`.
 fn as_uri(p: &Path) -> String {
     let mut out = String::from("file://");

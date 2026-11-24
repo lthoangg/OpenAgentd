@@ -491,11 +491,6 @@ impl LspManager {
         l
     }
 
-    /// Number of cached clients (diagnostic/test helper).
-    pub fn client_count(&self) -> usize {
-        self.clients.lock().unwrap().len()
-    }
-
     fn is_unsupported(&self, lang: &str) -> bool {
         let mut g = self.unsupported.lock().unwrap();
         match g.get(lang) {

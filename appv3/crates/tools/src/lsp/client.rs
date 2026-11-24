@@ -272,7 +272,7 @@ impl LspClient {
             },
         });
         if let Some(opts) = &self.init_options {
-            if !crate::lsp::py_falsy(opts) {
+            if appv3_core::pyjson::truthy(opts) {
                 params["initializationOptions"] = opts.clone();
             }
         }
@@ -529,7 +529,7 @@ fn handle_message(inner: &Arc<Mutex<Inner>>, message: Value) -> Result<(), Strin
             let Value::Object(p) = params else {
                 return Err("'params' object has no attribute 'get'".into());
             };
-            if let Some(Value::String(uri)) = p.get("uri").filter(|u| !crate::lsp::py_falsy(u)) {
+            if let Some(Value::String(uri)) = p.get("uri").filter(|u| appv3_core::pyjson::truthy(u)) {
                 let diags = match p.get("diagnostics") {
                     Some(Value::Array(a)) => a.clone(),
                     _ => vec![],

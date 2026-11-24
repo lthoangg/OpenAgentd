@@ -282,7 +282,7 @@ pub fn team_context(handle: &str, role: &str) -> String {
          - Return your final deliverable in your response text. The lead receives at most {} characters of it, so keep it well under that: lead with the answer, and cite `path:line` instead of pasting large blocks.\n\
          - If you are blocked by ambiguity or need a decision, use `ask_lead`.\n\
          - You do not communicate with other members or the user.",
-        crate::hooks::basic::thousands(MAX_SUBAGENT_OUTPUT_CHARS)
+        appv3_core::pystr::thousands(MAX_SUBAGENT_OUTPUT_CHARS)
     )
 }
 

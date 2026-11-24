@@ -78,17 +78,6 @@ fn cache() -> &'static Mutex<Cache> {
     C.get_or_init(Default::default)
 }
 
-fn py_truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
-
 /// Parse the config with an mtime-keyed cache; `None` when missing/invalid.
 fn load_raw() -> Option<Map<String, Value>> {
     let path = config_path();
@@ -105,7 +94,7 @@ fn load_raw() -> Option<Map<String, Value>> {
     }
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let data = match appv3_core::pyyaml::safe_load(&text) {
-        Ok(v) if !py_truthy(&v) => Value::Object(Map::new()),
+        Ok(v) if !appv3_core::pyjson::truthy(&v) => Value::Object(Map::new()),
         Ok(v) => v,
         Err(e) => {
             tracing::warn!("multimodal_yaml_invalid path={} err={}", path.display(), e);
@@ -228,7 +217,11 @@ pub(crate) fn load_input_image(denied: &crate::DeniedPaths, raw: &str, empty_msg
     }
     let size = std::fs::metadata(&resolved).map(|m| m.len()).unwrap_or(0);
     if size > MAX_INPUT_BYTES {
-        return Err(format!("Error: input image '{raw}' is {} bytes (max {}).", crate::read::fmt_thousands(size as usize), crate::read::fmt_thousands(MAX_INPUT_BYTES as usize)));
+        return Err(format!(
+            "Error: input image '{raw}' is {} bytes (max {}).",
+            appv3_core::pystr::thousands(size as usize),
+            appv3_core::pystr::thousands(MAX_INPUT_BYTES as usize)
+        ));
     }
     let name = resolved.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let bytes = std::fs::read(&resolved).map_err(|e| format!("Error: {e}"))?;

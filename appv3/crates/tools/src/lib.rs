@@ -296,29 +296,7 @@ pub async fn execute(tools: &ToolSet, ctx: &ToolContext, name: &str, raw_args: &
     }
 }
 
-/// Python `repr(str)` (single-quoted unless the string contains `'` only).
-pub fn py_repr_str(s: &str) -> String {
-    let use_double = s.contains('\'') && !s.contains('"');
-    let q = if use_double { '"' } else { '\'' };
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push(q);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == q => {
-                out.push('\\');
-                out.push(c);
-            }
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => out.push_str(&format!("\\x{:02x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push(q);
-    out
-}
+pub use appv3_core::pystr::py_repr_str;
 
 /// Names models reach for that mean one of ours: other harnesses' names,
 /// and our own former names, which older sessions still have in history.

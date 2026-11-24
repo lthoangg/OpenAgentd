@@ -50,17 +50,6 @@ fn internal(e: impl std::fmt::Display) -> ApiError {
     ApiError::internal(e)
 }
 
-fn py_falsy(v: &Value) -> bool {
-    match v {
-        Value::Null => true,
-        Value::Bool(b) => !b,
-        Value::Number(n) => n.as_f64() == Some(0.0),
-        Value::String(s) => s.is_empty(),
-        Value::Array(a) => a.is_empty(),
-        Value::Object(o) => o.is_empty(),
-    }
-}
-
 fn write_yaml(path: &Path, v: &Value) -> std::io::Result<()> {
     let text = appv3_core::pyyaml::safe_dump(v);
     appv3_core::secret_files::write_atomic(path, &text)
@@ -424,7 +413,7 @@ async fn get_multimodal() -> ApiResult<Response> {
     let raw = blocking(|| -> Result<Value, String> {
         let Ok(text) = std::fs::read_to_string(multimodal_path()) else { return Ok(json!({})) };
         match appv3_core::pyyaml::safe_load(&text) {
-            Ok(v) => Ok(if py_falsy(&v) || !v.is_object() { json!({}) } else { v }),
+            Ok(v) => Ok(if !appv3_core::pyjson::truthy(&v) || !v.is_object() { json!({}) } else { v }),
             Err(e) if e.is_yaml_error() => {
                 tracing::warn!("multimodal_yaml_invalid path={} err={}", multimodal_path().display(), e);
                 Ok(json!({}))

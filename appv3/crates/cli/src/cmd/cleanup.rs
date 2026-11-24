@@ -4,6 +4,7 @@
 use crate::cli::CleanupArgs;
 use crate::ui::{self, bold, dim, tilde, Table};
 use anyhow::{Context, Result};
+use appv3_core::pystr::thousands;
 use chrono::{DateTime, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
@@ -306,19 +307,6 @@ pub fn cleanup(args: &CleanupArgs) -> Result<()> {
     Ok(())
 }
 
-/// `62426` → `62,426`.
-fn thousands(n: u64) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
 /// A session folder as `~/…/snapshot/01a04658…`: the UUID cut to 8 chars.
 fn short_path(p: &Path) -> String {
     let n = name(p);
@@ -340,7 +328,7 @@ fn print_result(r: &CleanupResult, days: u32, limit: usize) {
     }
     let total: u64 = r.candidates.iter().map(|c| c.bytes).sum();
     let verb = if r.dry_run { "expire" } else { "removed" };
-    println!("  {} sessions · {} messages {}", bold(&thousands(r.expired_sessions as u64)), bold(&thousands(r.expired_messages.max(0) as u64)), dim(verb));
+    println!("  {} sessions · {} messages {}", bold(&thousands(r.expired_sessions)), bold(&thousands(r.expired_messages.max(0) as usize)), dim(verb));
     if r.candidates.is_empty() {
         println!();
         ui::mark_line(&ui::ok_mark(), "No old files to remove");
@@ -404,10 +392,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn numbers_and_paths_read_short() {
-        assert_eq!(thousands(62426), "62,426");
-        assert_eq!(thousands(999), "999");
-        assert_eq!(thousands(1_000_000), "1,000,000");
+    fn paths_read_short() {
         let p = Path::new("/x/snapshot/01a04658-5218-7498-8788-14a4be521c27");
         assert_eq!(short_path(p), "/x/snapshot/01a04658…");
         assert_eq!(short_path(Path::new("/x/otel/2026-01")), "/x/otel/2026-01");

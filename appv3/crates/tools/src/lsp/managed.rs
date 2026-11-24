@@ -255,7 +255,7 @@ pub fn select_python_tool_wheel(name: &str, version: &str, urls: &[Value]) -> IR
             continue;
         }
         if patterns.iter().any(|p| p.is_match(filename)) {
-            let digest = entry.get("digests").filter(|d| !super::py_falsy(d)).and_then(|d| d.get("sha256")).filter(|d| !super::py_falsy(d));
+            let digest = entry.get("digests").filter(|d| appv3_core::pyjson::truthy(d)).and_then(|d| d.get("sha256")).filter(|d| appv3_core::pyjson::truthy(d));
             let Some(digest) = digest else {
                 return Err(InstallError::Value(format!("wheel missing sha256 digest: {filename}")));
             };

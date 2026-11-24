@@ -61,23 +61,11 @@ fn cache_path(name: &str) -> PathBuf {
     appv3_core::settings().cache_dir.join("mcp-oauth").join(cache_file_name(name))
 }
 
-/// Python truthiness of a JSON value.
-fn py_truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
-
 pub fn has_cached_oauth_tokens(name: &str) -> bool {
     let path = cache_path(name);
     let Ok(text) = std::fs::read_to_string(&path) else { return false };
     let Ok(data) = serde_json::from_str::<Value>(&text) else { return false };
-    data.get("tokens").map(py_truthy).unwrap_or(false)
+    data.get("tokens").map(appv3_core::pyjson::truthy).unwrap_or(false)
 }
 
 /// Remove cached OAuth state (tokens + dynamically registered client).
@@ -510,18 +498,6 @@ struct FileTokenStorage {
     providers: bool,
 }
 
-fn py_type_name(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "NoneType",
-        Value::Bool(_) => "bool",
-        Value::Number(n) if n.is_f64() => "float",
-        Value::Number(_) => "int",
-        Value::String(_) => "str",
-        Value::Array(_) => "list",
-        Value::Object(_) => "dict",
-    }
-}
-
 impl FileTokenStorage {
     fn read(&self) -> Result<Map<String, Value>, McpError> {
         if !self.path.is_file() {
@@ -530,7 +506,7 @@ impl FileTokenStorage {
         let text = std::fs::read_to_string(&self.path).map_err(|e| McpError::Transport("OSError", e.to_string()))?;
         match serde_json::from_str::<Value>(&text) {
             Ok(Value::Object(m)) => Ok(m),
-            Ok(other) => Err(McpError::Transport("AttributeError", format!("'{}' object has no attribute 'get'", py_type_name(&other)))),
+            Ok(other) => Err(McpError::Transport("AttributeError", format!("'{}' object has no attribute 'get'", appv3_core::pyjson::py_type_name(&other)))),
             Err(e) => Err(McpError::Transport("JSONDecodeError", e.to_string())),
         }
     }
@@ -543,7 +519,7 @@ impl FileTokenStorage {
     fn get_tokens(&self) -> Result<Option<Token>, McpError> {
         let data = self.read()?;
         match data.get("tokens") {
-            Some(raw) if py_truthy(raw) => Token::validate(raw).map(Some).map_err(|e| McpError::Transport("ValidationError", e)),
+            Some(raw) if appv3_core::pyjson::truthy(raw) => Token::validate(raw).map(Some).map_err(|e| McpError::Transport("ValidationError", e)),
             _ => Ok(None),
         }
     }
@@ -556,7 +532,7 @@ impl FileTokenStorage {
 
     fn get_client_info(&self) -> Result<Option<Map<String, Value>>, McpError> {
         let data = self.read()?;
-        if let Some(raw) = data.get("client_info").filter(|r| py_truthy(r)) {
+        if let Some(raw) = data.get("client_info").filter(|r| appv3_core::pyjson::truthy(r)) {
             return validate_client_info(raw).map(Some).map_err(|e| McpError::Transport("ValidationError", e));
         }
         let Some(raw_id) = self.oauth.client_id.as_deref().filter(|s| !s.is_empty()) else { return Ok(None) };

@@ -94,21 +94,9 @@ async fn openai_decode(resp: reqwest::Response) -> Result<Vec<u8>, String> {
 
 fn decode_b64_value(v: &Value) -> Result<Vec<u8>, String> {
     let Some(s) = v.as_str() else {
-        return Err(format!("Error: could not decode base64 image payload: argument should be a bytes-like object or ASCII string, not '{}'", py_type(v)));
+        return Err(format!("Error: could not decode base64 image payload: argument should be a bytes-like object or ASCII string, not '{}'", appv3_core::pyjson::py_type_name(v)));
     };
     py_b64decode(s).map_err(|e| format!("Error: could not decode base64 image payload: {e}"))
-}
-
-fn py_type(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "NoneType",
-        Value::Bool(_) => "bool",
-        Value::Number(n) if n.is_f64() => "float",
-        Value::Number(_) => "int",
-        Value::String(_) => "str",
-        Value::Array(_) => "list",
-        Value::Object(_) => "dict",
-    }
 }
 
 pub async fn generate_openai(cfg: &MediaSection, prompt: &str, overrides: Option<&Overrides>) -> Result<Vec<u8>, String> {
@@ -296,9 +284,9 @@ impl CodexSse {
                 let Ok(v) = serde_json::from_str::<Value>(&data) else {
                     continue;
                 };
-                let item = v.get("item").filter(|i| super::py_truthy(i)).cloned().unwrap_or(json!({}));
+                let item = v.get("item").filter(|i| appv3_core::pyjson::truthy(i)).cloned().unwrap_or(json!({}));
                 if item.get("type").and_then(|t| t.as_str()) == Some("image_generation_call") {
-                    if let Some(r) = item.get("result").filter(|r| super::py_truthy(r)) {
+                    if let Some(r) = item.get("result").filter(|r| appv3_core::pyjson::truthy(r)) {
                         self.image_b64 = Some(r.as_str().map(String::from).unwrap_or_else(|| r.to_string()));
                     }
                 }
@@ -439,18 +427,18 @@ async fn gemini_decode(resp: reqwest::Response) -> Result<Vec<u8>, String> {
             return Err(format!("Error: unexpected Gemini response shape: {e}"));
         }
     };
-    let candidates = data.get("candidates").filter(|c| super::py_truthy(c)).cloned().unwrap_or(json!([]));
+    let candidates = data.get("candidates").filter(|c| appv3_core::pyjson::truthy(c)).cloned().unwrap_or(json!([]));
     let Some(first) = candidates.as_array().and_then(|a| a.first()) else {
         return Err("Error: Gemini response had no candidates.".into());
     };
-    let parts = first.get("content").and_then(|c| c.get("parts")).filter(|p| super::py_truthy(p)).and_then(|p| p.as_array()).cloned().unwrap_or_default();
+    let parts = first.get("content").and_then(|c| c.get("parts")).filter(|p| appv3_core::pyjson::truthy(p)).and_then(|p| p.as_array()).cloned().unwrap_or_default();
     let mut text = String::new();
     let mut image: Option<String> = None;
     for part in &parts {
         if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
             text.push_str(t);
         }
-        let Some(inline) = part.get("inline_data").filter(|v| super::py_truthy(v)).or_else(|| part.get("inlineData").filter(|v| super::py_truthy(v))) else {
+        let Some(inline) = part.get("inline_data").filter(|v| appv3_core::pyjson::truthy(v)).or_else(|| part.get("inlineData").filter(|v| appv3_core::pyjson::truthy(v))) else {
             continue;
         };
         let mime = inline.get("mime_type").and_then(|m| m.as_str()).filter(|m| !m.is_empty()).or_else(|| inline.get("mimeType").and_then(|m| m.as_str())).unwrap_or("");
@@ -651,7 +639,11 @@ async fn veo_poll(http: &reqwest::Client, op: &str, key: &str) -> Result<Value, 
         let data = parse_json(&body).map_err(|e| format!("Error: unexpected Veo operation response: {e}"))?;
         if data.get("done") == Some(&Value::Bool(true)) {
             if let Some(err) = data.get("error").filter(|e| e.is_object()) {
-                let msg = err.get("message").filter(|m| super::py_truthy(m)).map(|m| m.as_str().map(String::from).unwrap_or_else(|| py_repr(m))).unwrap_or_else(|| py_repr(err));
+                let msg = err
+                    .get("message")
+                    .filter(|m| appv3_core::pyjson::truthy(m))
+                    .map(|m| m.as_str().map(String::from).unwrap_or_else(|| py_repr(m)))
+                    .unwrap_or_else(|| py_repr(err));
                 return Err(format!("Error: Veo operation failed: {msg}"));
             }
             return Ok(data);

@@ -284,7 +284,7 @@ fn parse_lenient(text: &str, path: Option<&Path>) -> Result<(Map<String, Value>,
         Ok(p) => match p.to_json() {
             Value::Object(m) => Ok((m, body)),
             other => {
-                tracing::warn!("skill_frontmatter_not_mapping type={}", crate::pystr::py_type_name(&other));
+                tracing::warn!("skill_frontmatter_not_mapping type={}", appv3_core::pyjson::py_type_name(&other));
                 Ok((Map::new(), body))
             }
         },

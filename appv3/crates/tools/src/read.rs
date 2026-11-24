@@ -2,6 +2,7 @@
 
 use crate::args::Args;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
+use appv3_core::pystr::thousands;
 use appv3_providers::ContentBlock;
 use async_trait::async_trait;
 use base64::Engine;
@@ -58,18 +59,6 @@ fn py_len(s: &str) -> usize {
     s.chars().count()
 }
 
-pub(crate) fn fmt_thousands(n: usize) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
 pub fn cap_long_lines(text: &str) -> std::borrow::Cow<'_, str> {
     // A line within MAX_LINE_CHARS bytes is within it in chars too, so only
     // longer lines are counted; most files have none and are not copied.
@@ -100,8 +89,8 @@ fn cap_for_context(text: &str, rel: &str) -> String {
     format!(
         "{}\n\n[read output truncated for LLM context: {rel} is {} characters; shown first {}. Use offset and limit to read a smaller line range, or grep to find the lines you need.]",
         preview.trim_end(),
-        fmt_thousands(n),
-        fmt_thousands(MAX_CONTEXT_CHARS)
+        thousands(n),
+        thousands(MAX_CONTEXT_CHARS)
     )
 }
 
@@ -146,7 +135,7 @@ pub fn read_text(resolved: &Path, rel: &str, offset: i64, limit: Option<i64>) ->
     }
     if raw[..raw.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
         let size = f.metadata().map(|m| m.len() as usize).unwrap_or(raw.len());
-        return Ok(format!("[{rel} is a binary file ({} bytes); not shown. Use the shell (for example `file` or `xxd | head`) to inspect it.]", fmt_thousands(size)));
+        return Ok(format!("[{rel} is a binary file ({} bytes); not shown. Use the shell (for example `file` or `xxd | head`) to inspect it.]", thousands(size)));
     }
     let text = decode_text(&raw);
     if offset == 1 && limit.is_none() {
@@ -237,7 +226,7 @@ pub fn handle_document(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolErr
         return Ok(ToolOutput::Parts {
             parts: vec![ContentBlock::text(format!(
                 "[Document: {rel}] ({mt}, {} bytes)\nFile exceeds the {} KB limit for processing.",
-                fmt_thousands(size as usize),
+                thousands(size as usize),
                 MAX_IMAGE_BYTES / 1024
             ))],
             mcp_app: None,
@@ -251,7 +240,7 @@ pub fn handle_document(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolErr
             return Ok(ToolOutput::Parts {
                 parts: vec![ContentBlock::text(format!(
                     "[Document: {rel}] ({mt}, {} bytes)\nThe document is encrypted or password-protected, so its text cannot be extracted.",
-                    fmt_thousands(raw.len())
+                    thousands(raw.len())
                 ))],
                 mcp_app: None,
             });
@@ -277,7 +266,7 @@ pub fn handle_document(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolErr
     Ok(ToolOutput::Parts {
         parts: vec![ContentBlock::text(format!(
             "[Document: {rel}] ({mt}, {} bytes)\nUnable to extract text. File may be corrupted or in an unsupported format.",
-            fmt_thousands(raw.len())
+            thousands(raw.len())
         ))],
         mcp_app: None,
     })
@@ -463,7 +452,7 @@ mod tests {
         let big = "abcdefghi\n".repeat(MAX_CONTEXT_CHARS / 5);
         let out = cap_for_context(&big, "big.txt");
         assert!(out.starts_with("abcdefghi\n"), "{}", &out[..20]);
-        assert!(out.ends_with(&format!("[read output truncated for LLM context: big.txt is {} characters; shown first 50,000. Use offset and limit to read a smaller line range, or grep to find the lines you need.]", fmt_thousands(MAX_CONTEXT_CHARS * 2))));
+        assert!(out.ends_with(&format!("[read output truncated for LLM context: big.txt is {} characters; shown first 50,000. Use offset and limit to read a smaller line range, or grep to find the lines you need.]", thousands(MAX_CONTEXT_CHARS * 2))));
         assert_eq!(cap_for_context("small", "s"), "small");
     }
 

@@ -6,6 +6,7 @@ use crate::events::Envelope;
 use crate::prompts;
 use crate::stream_store::store;
 use crate::util::{head_chars, tail_chars};
+use appv3_core::pystr::thousands;
 use appv3_db::DbPool;
 use appv3_providers::ToolCall;
 use async_trait::async_trait;
@@ -237,19 +238,6 @@ impl Default for ToolResultOffloadHook {
     fn default() -> Self {
         Self { char_threshold: DEFAULT_CHAR_THRESHOLD, preview_chars: DEFAULT_PREVIEW_CHARS }
     }
-}
-
-/// Python `f"{n:,}"`.
-pub fn thousands(n: usize) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
 }
 
 #[async_trait]

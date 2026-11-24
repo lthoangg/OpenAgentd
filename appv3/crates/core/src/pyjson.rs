@@ -1,7 +1,34 @@
 //! Python-compatible JSON text: `json.dumps(value)` defaults (`", "` / `": "`
-//! separators, `ensure_ascii=True`) and Python `repr(float)` numbers.
+//! separators, `ensure_ascii=True`) and Python `repr(float)` numbers. Also
+//! what Python says of a JSON-decoded value: its truthiness and type name.
 
 use serde_json::Value;
+
+/// Python truthiness of a JSON-decoded value: `None`, `False`, zero and
+/// empty strings, lists and dicts are false.
+pub fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64() != Some(0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    }
+}
+
+/// Python `type(v).__name__` of a JSON-decoded value.
+pub fn py_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "NoneType",
+        Value::Bool(_) => "bool",
+        Value::Number(n) if n.is_f64() => "float",
+        Value::Number(_) => "int",
+        Value::String(_) => "str",
+        Value::Array(_) => "list",
+        Value::Object(_) => "dict",
+    }
+}
 
 pub fn dumps(value: &Value) -> String {
     let mut out = String::new();
@@ -202,5 +229,30 @@ mod tests {
         let v = json!({"a": [1, 2.5, "é"], "b": null});
         assert_eq!(dumps(&v), r#"{"a": [1, 2.5, "\u00e9"], "b": null}"#);
         assert_eq!(dumps_compact(&v), r#"{"a":[1,2.5,"\u00e9"],"b":null}"#);
+    }
+
+    #[test]
+    fn truthiness_is_pythons() {
+        for falsy in [json!(null), json!(false), json!(0), json!(0.0), json!(-0.0), json!(""), json!([]), json!({})] {
+            assert!(!truthy(&falsy), "{falsy}");
+        }
+        for truthy_value in [json!(true), json!(1), json!(-1), json!(0.5), json!(u64::MAX), json!(" "), json!("0"), json!([0]), json!({"a": null})] {
+            assert!(truthy(&truthy_value), "{truthy_value}");
+        }
+    }
+
+    /// The copies `truthy` replaced disagreed on a number with no `f64`
+    /// form. There is none unless `serde_json` gains `arbitrary_precision`.
+    #[test]
+    fn every_json_number_has_an_f64_form() {
+        for n in [json!(0), json!(u64::MAX), json!(i64::MIN), json!(1e308), json!(5e-324)] {
+            assert!(n.as_f64().is_some(), "{n}");
+        }
+    }
+
+    #[test]
+    fn type_names_are_pythons() {
+        let names: Vec<_> = [json!(null), json!(true), json!(1), json!(1.0), json!("s"), json!([]), json!({})].iter().map(py_type_name).collect();
+        assert_eq!(names, ["NoneType", "bool", "int", "float", "str", "list", "dict"]);
     }
 }

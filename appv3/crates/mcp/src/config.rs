@@ -117,28 +117,7 @@ fn name_re() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9_-]*$").unwrap())
 }
 
-/// Python `repr(str)` (single quotes unless the text contains one).
-pub fn py_repr_str(s: &str) -> String {
-    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
-    let mut out = String::new();
-    out.push(q);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == q => {
-                out.push('\\');
-                out.push(c);
-            }
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => out.push_str(&format!("\\x{:02x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push(q);
-    out
-}
+pub use appv3_core::pystr::py_repr_str;
 
 /// `validate_server_name`.
 pub fn validate_server_name(name: &str) -> Result<(), String> {

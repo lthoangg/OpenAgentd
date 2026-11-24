@@ -14,6 +14,7 @@ pub mod platform;
 pub mod proctree;
 pub mod pyjson;
 pub mod pymath;
+pub mod pystr;
 pub mod pyyaml;
 pub mod release;
 pub mod runtime_settings;

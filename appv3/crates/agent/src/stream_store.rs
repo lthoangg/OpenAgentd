@@ -12,6 +12,7 @@
 
 use crate::events::{self, Envelope, WireEvent};
 use crate::queue::SubQueue;
+use crate::util::truthy;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -763,17 +764,6 @@ impl StreamStore {
             "usage": s.usage,
             "error": s.error,
         }))
-    }
-}
-
-fn truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
     }
 }
 

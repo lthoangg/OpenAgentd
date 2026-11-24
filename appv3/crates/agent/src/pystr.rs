@@ -27,16 +27,3 @@ pub fn py_str(v: &Value) -> String {
         other => py_repr(other),
     }
 }
-
-/// Python `type(v).__name__` for a JSON-decoded value.
-pub fn py_type_name(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "NoneType",
-        Value::Bool(_) => "bool",
-        Value::Number(n) if n.is_f64() => "float",
-        Value::Number(_) => "int",
-        Value::String(_) => "str",
-        Value::Array(_) => "list",
-        Value::Object(_) => "dict",
-    }
-}

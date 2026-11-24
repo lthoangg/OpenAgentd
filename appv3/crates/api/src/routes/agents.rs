@@ -181,17 +181,6 @@ fn delete_agent_file(name: &str) -> Result<(), FsError> {
 
 // ── parsing & effective config ──────────────────────────────────────────────
 
-fn py_truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
-
 /// A frontmatter exception `_parse_content` lets escape its callers'
 /// `except ValueError` (`KeyError` from `!!bool maybe`, …) → v2 answers 500.
 fn escaping_yaml_error(content: &str) -> Option<String> {
@@ -219,14 +208,14 @@ fn parse_content(content: &str, expected_name: Option<&str>) -> Result<AgentConf
         Err(e) if e.is_yaml_error() => return Err(format!("Invalid YAML frontmatter: {e}")),
         Err(e) => return Err(e.to_string()),
     };
-    if !py_truthy(&raw) {
+    if !appv3_core::pyjson::truthy(&raw) {
         raw = Value::Object(Map::new());
     }
     let Value::Object(mut meta) = raw else { return Err("Frontmatter must be a YAML mapping.".into()) };
     match expected_name.filter(|n| !n.is_empty()) {
         Some(expected) => {
             let stem = path_parts(expected).last().cloned().unwrap_or_default();
-            if let Some(actual) = meta.get("name").filter(|v| py_truthy(v)) {
+            if let Some(actual) = meta.get("name").filter(|v| appv3_core::pyjson::truthy(v)) {
                 let ok = matches!(actual, Value::String(a) if a == expected || *a == stem);
                 if !ok {
                     let shown = match actual {

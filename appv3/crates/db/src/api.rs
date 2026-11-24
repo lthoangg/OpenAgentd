@@ -4,6 +4,7 @@
 
 use crate::codec::{api_dt, api_uuid, parse_dt, py_isoformat};
 use crate::models::{ChatSession, PendingQuestion, ScheduledTask, SessionMessage};
+use appv3_core::pyjson::truthy;
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -414,17 +415,6 @@ impl Serialize for MessageView<'_> {
             m.serialize_entry("attachments", v)?;
         }
         m.end()
-    }
-}
-
-fn truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
     }
 }
 

@@ -570,25 +570,7 @@ async fn accept(st: &HostState, arg: &Value) -> NResult {
 
 pub use appv3_core::which::which;
 
-fn unquote_plus(s: &str) -> String {
-    let s = s.replace('+', " ");
-    let bytes = s.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hexv = |c: u8| (c as char).to_digit(16);
-            if let (Some(h), Some(l)) = (hexv(bytes[i + 1]), hexv(bytes[i + 2])) {
-                out.push((h * 16 + l) as u8);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
+use appv3_core::pystr::unquote_plus;
 
 /// Python `parse_qs(qs)` (blank values dropped), in first-seen key order.
 pub fn parse_qs(qs: &str) -> Vec<(String, String)> {

@@ -276,18 +276,6 @@ fn is_likely_binary(data: &[u8]) -> bool {
     control as f64 / sample.len() as f64 > 0.30
 }
 
-fn fmt_thousands(n: usize) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
-}
-
 fn maybe_truncate_inline(text: &str, cap: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
     if chars.len() <= cap {
@@ -297,7 +285,7 @@ fn maybe_truncate_inline(text: &str, cap: usize) -> String {
     let head: String = chars[..half].iter().collect();
     let tail: String = chars[chars.len() - half..].iter().collect();
     let omitted = chars.len() - 2 * half;
-    format!("{head}\n\n... [Middle truncated — {} chars elided. Use the Read tool for full content.] ...\n\n{tail}", fmt_thousands(omitted))
+    format!("{head}\n\n... [Middle truncated — {} chars elided. Use the Read tool for full content.] ...\n\n{tail}", appv3_core::pystr::thousands(omitted))
 }
 
 /// Latin-1 decode (never fails).
@@ -470,6 +458,5 @@ mod tests {
         assert_eq!(parse_line_ref("a.py#L3"), ("a.py".into(), "a.py#L3".into(), Some(3), Some(3)));
         assert_eq!(parse_line_ref("a.py#L5-L3").2, None);
         assert_eq!(splitlines_keepends("a\r\nb\nc"), vec!["a\r\n", "b\n", "c"]);
-        assert_eq!(fmt_thousands(1234567), "1,234,567");
     }
 }

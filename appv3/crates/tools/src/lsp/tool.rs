@@ -193,7 +193,7 @@ fn normalize_hover_blocks(blocks: &[String]) -> Vec<String> {
 
 fn extract_reference_role(item: &Value) -> Option<String> {
     let o = item.as_object()?;
-    let truthy = |k: &str| o.get(k).map(|v| !super::py_falsy(v)).unwrap_or(false);
+    let truthy = |k: &str| o.get(k).is_some_and(appv3_core::pyjson::truthy);
     if truthy("isDefinition") {
         return Some("definition".into());
     }

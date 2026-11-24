@@ -31,6 +31,7 @@
 //! before spans carried them count as calls but not as samples.
 
 use appv3_agent::hooks::otel::{OUTPUT_TPS_ATTR, TTFT_ATTR, WORKSPACE_ATTR};
+use appv3_core::pyjson::truthy;
 use appv3_core::pymath::py_round;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use indexmap::IndexMap;
@@ -78,18 +79,6 @@ fn py_iso(dt: DateTime<Utc>) -> String {
         dt.format("%Y-%m-%dT%H:%M:%S+00:00").to_string()
     } else {
         dt.format("%Y-%m-%dT%H:%M:%S%.6f+00:00").to_string()
-    }
-}
-
-/// Python-truthiness of a JSON value.
-fn truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
     }
 }
 

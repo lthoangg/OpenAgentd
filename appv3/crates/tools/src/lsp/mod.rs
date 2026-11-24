@@ -28,18 +28,6 @@ pub(crate) fn publish(event: &str, data: Value) {
     }
 }
 
-/// Python truthiness of a JSON value.
-pub(crate) fn py_falsy(v: &Value) -> bool {
-    match v {
-        Value::Null => true,
-        Value::Bool(b) => !b,
-        Value::Number(n) => n.as_f64() == Some(0.0),
-        Value::String(s) => s.is_empty(),
-        Value::Array(a) => a.is_empty(),
-        Value::Object(o) => o.is_empty(),
-    }
-}
-
 /// Python `str()` of a JSON-decoded value.
 pub(crate) fn py_str(v: &Value) -> String {
     match v {

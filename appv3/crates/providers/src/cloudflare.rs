@@ -40,10 +40,7 @@ impl CfSettings {
             .map(|(label, var, _)| format!("its {label} ({var})"))
             .collect();
         if !missing.is_empty() {
-            return Err(ProviderError::Unconfigured(format!(
-                "Cloudflare needs {}. Add it in Settings → Models, or export it.",
-                missing.join(" and ")
-            )));
+            return Err(ProviderError::Unconfigured(format!("Cloudflare needs {}. Add it in Settings → Models, or export it.", missing.join(" and "))));
         }
         Ok(Self { account_id, token })
     }
@@ -56,11 +53,7 @@ impl CfSettings {
     /// Bearer token plus the gateway the request is routed through
     /// (required for Workers AI models, honoured for third-party ones).
     pub fn headers(&self) -> Vec<(String, String)> {
-        vec![
-            ("Authorization".into(), format!("Bearer {}", self.token)),
-            ("Content-Type".into(), "application/json".into()),
-            ("cf-aig-gateway-id".into(), GATEWAY.into()),
-        ]
+        vec![("Authorization".into(), format!("Bearer {}", self.token)), ("Content-Type".into(), "application/json".into()), ("cf-aig-gateway-id".into(), GATEWAY.into())]
     }
 }
 
@@ -79,7 +72,14 @@ fn build_openai(model: &str, model_kwargs: Kwargs, creds: &CredentialStore) -> P
 
 /// Workers AI text-generation model names from a model-search response.
 fn workers_ai_ids(v: &Value) -> Vec<String> {
-    v.get("result").and_then(|r| r.as_array()).into_iter().flatten().filter_map(|m| m.get("name").and_then(|n| n.as_str())).filter(|n| n.starts_with("@cf/")).map(String::from).collect()
+    v.get("result")
+        .and_then(|r| r.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
+        .filter(|n| n.starts_with("@cf/"))
+        .map(String::from)
+        .collect()
 }
 
 /// Third-party model ids the registry knows for `cf` (from the models.dev

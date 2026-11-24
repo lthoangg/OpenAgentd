@@ -515,6 +515,15 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     }
   }, [move, scrollToBottom, setChip])
 
+  // A view too short to scroll never comes to rest by scrolling, so on touch
+  // a session's content appearing counts as a rest once (the transcript
+  // draws its newest turns first and fills from there).
+  useEffect(() => {
+    if (isEmpty || typeof window.matchMedia !== 'function' || !window.matchMedia('(pointer: coarse)').matches) return
+    const timer = setTimeout(() => { if (!touchDownRef.current) onScrollRestRef.current?.() }, SCROLL_REST_MS)
+    return () => clearTimeout(timer)
+  }, [isEmpty, sessionId])
+
   /** Put a returning session back where it was left; false until its anchor renders. */
   const tryRestore = useCallback((): boolean => {
     const pending = pendingRestoreRef.current

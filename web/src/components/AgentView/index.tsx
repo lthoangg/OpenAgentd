@@ -61,6 +61,7 @@ const TURN_RENDER_STEP = 80
  * On touch the reveal is smaller: mounting 80 turns at once cost a long
  * frame the reader saw as a stutter. Mid-fling smaller still, a few a
  * frame, so each fits the runway above the view.
+ * The first window is one step too, for the same stall on open.
  */
 const TOUCH_TURN_RENDER_STEP = 16
 const TOUCH_FLING_RENDER_STEP = 4
@@ -70,7 +71,8 @@ const TOUCH_FLING_RENDER_STEP = 4
  * topped up whenever the scroll rests.
  */
 const RUNWAY_SCREENS = 3
-const turnRenderStep = () => (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? TOUCH_TURN_RENDER_STEP : TURN_RENDER_STEP)
+const isTouch = () => typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+const turnRenderStep = () => (isTouch() ? TOUCH_TURN_RENDER_STEP : TURN_RENDER_STEP)
 const ENTER_EASE = `cubic-bezier(${EASINGS.out.join(', ')})`
 /** Older pages a reload may fetch on its own to reach a prompt (100 rows each). */
 const AUTO_PROMPT_SEEK_PAGES = 2
@@ -193,7 +195,7 @@ export function AgentView({
   jumpToLatestInComposer = false,
   marksScrollEdge = false,
 }: AgentViewProps) {
-  const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
+  const [renderedTurnCount, setRenderedTurnCount] = useState(() => (isTouch() ? TOUCH_TURN_RENDER_STEP : INITIAL_RENDERED_TURNS))
   const storeSessionId = useAgentStore((s) => s.sessionId) ?? undefined
   // A saved session that is still loading only looks empty.
   const isLoadingHistory = useAgentStore((s) => s.isLoadingHistory)

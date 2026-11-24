@@ -83,13 +83,11 @@ pub fn constant_time_eq(a: &str, b: &str) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// Whether `host` names a loopback address.
+/// Whether `host` names a loopback address: `localhost`, or a loopback IP
+/// literal as a socket prints it. Exact on purpose (no brackets, padding or
+/// zone): callers parse their own input first, as [`authority_host`] does.
 pub fn is_loopback_host(host: &str) -> bool {
-    let h = host.trim().trim_start_matches('[').trim_end_matches(']');
-    if h.eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    h.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false)
+    host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Host part of a `Host` header or origin authority (`h`, `h:port`,
@@ -154,6 +152,21 @@ mod tests {
         assert!(is_loopback_host("::1"));
         assert!(is_loopback_host("localhost"));
         assert!(!is_loopback_host("192.168.1.2"));
+    }
+
+    /// The answer is for a host as a socket or `authority_host` gives it.
+    /// Brackets, padding and zones are the caller's to take off, so a
+    /// spelling no caller sends is not quietly accepted.
+    #[test]
+    fn a_loopback_host_is_spelled_exactly() {
+        for h in ["127.0.0.1", "127.8.9.10", "::1", "localhost", "LocalHost"] {
+            assert!(is_loopback_host(h), "{h}");
+        }
+        for h in ["[::1]", " 127.0.0.1 ", "localhost ", "::1%lo0", "192.168.1.2", "0.0.0.0", "::", ""] {
+            assert!(!is_loopback_host(h), "{h:?}");
+        }
+        // A bracketed `Host` is still local: its brackets and port are gone by then.
+        assert!(authority_host("[::1]:8000").is_some_and(is_local_host_name));
     }
 
     #[test]

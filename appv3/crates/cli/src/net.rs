@@ -14,21 +14,15 @@ pub struct ServerAddresses {
     pub lan: Vec<String>,
 }
 
-/// `localhost`, or a loopback IP (an IPv6 zone suffix is allowed).
-pub fn is_loopback_host(host: &str) -> bool {
-    if host.to_lowercase() == "localhost" {
-        return true;
-    }
-    let bare = host.split_once('%').map(|(h, _)| h).unwrap_or(host);
-    match bare.parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V6(v6)) if host.contains('%') => v6.is_loopback(),
-        Ok(ip) if !host.contains('%') => ip.is_loopback(),
-        _ => false,
-    }
-}
-
+/// A server may listen without a key only where this machine alone reaches
+/// it. An IPv6 literal may carry a zone (`::1%lo0`): it names the
+/// interface, not another address.
 pub fn require_loopback_or_auth(host: &str, has_auth: bool) -> Result<()> {
-    if !has_auth && !is_loopback_host(host) {
+    let loopback = match host.split_once('%') {
+        Some((addr, _)) => addr.parse::<std::net::Ipv6Addr>().is_ok_and(|a| a.is_loopback()),
+        None => appv3_core::auth::is_loopback_host(host),
+    };
+    if !has_auth && !loopback {
         bail!("refusing to listen on {host} without authentication; pass --key or configure an access key");
     }
     Ok(())
@@ -190,6 +184,17 @@ mod tests {
     use std::net::TcpListener;
 
     const WAIT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn only_a_loopback_host_starts_without_a_key() {
+        for h in ["127.0.0.1", "localhost", "LOCALHOST", "::1", "::1%lo0"] {
+            assert!(require_loopback_or_auth(h, false).is_ok(), "{h}");
+        }
+        for h in ["0.0.0.0", "::", "192.168.1.2", "example.com", "[::1]", " 127.0.0.1 ", "fe80::1%en0", "127.0.0.1%lo0", "localhost%lo0"] {
+            assert!(require_loopback_or_auth(h, false).is_err(), "{h:?}");
+            assert!(require_loopback_or_auth(h, true).is_ok(), "{h:?}");
+        }
+    }
 
     /// A one-request server: answers with `reply`, then hands back the
     /// request head it saw.

@@ -8,6 +8,8 @@ streams.
 - Opening a folder as a workspace, with the "Let agents work in …?" consent.
 - The composer: message input, Send, the model chip.
 - The slash menu: Return from a phone keyboard picks the highlighted command.
+- A failed action's toast: an undo the server refuses says "Couldn't undo",
+  then the server's reason.
 - The transcript: the prompt bubble, the streamed reply, the turn footer.
 - The session takes a title from its first prompt.
 
@@ -39,3 +41,6 @@ streams.
   line-break input (keyCode 229, no Enter keydown). No Playwright key press
   produces that, so the journey dispatches the input event itself; a real
   device check is still owed (backlog slash-menu-touch-return).
+- `/undo` is not in the slash menu while a turn runs, so the store's "Cannot
+  undo while agents are working" refusal cannot be reached from the menu; the
+  journey fails the request instead (`page.route` on `**/agent/commands`).

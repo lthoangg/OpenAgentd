@@ -163,7 +163,7 @@ describe("team error toast subscriber", () => {
       error: {
         title: "Tool Execution Failed",
         message: "Command execution timed out after 60s",
-        category: "tool",
+        category: "system",
         code: "tool_execution_failed",
       },
     });
@@ -193,36 +193,48 @@ describe("team error toast subscriber", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("infers intelligent toast titles for action and stream failures", () => {
+  it("titles a refused undo and redo by what could not be done, with the reason below", async () => {
     const push = makePush();
     useToastStore.setState({ ...useToastStore.getState(), push });
+    useAgentStore.setState({ sessionId: "s-1", sessionRun: runOf(true) });
 
-    useAgentStore.setState({ error: null });
-    useAgentStore.setState({ error: "Cannot undo while agents are working — /stop first" });
+    await useAgentStore.getState().undoAgent();
+    await useAgentStore.getState().redoAgent();
 
     expect(push).toHaveBeenCalledWith({
       tone: "error",
-      title: "Undo failed",
+      title: "Couldn't undo",
       description: "Cannot undo while agents are working — /stop first",
     });
+    expect(push).toHaveBeenCalledWith({
+      tone: "error",
+      title: "Couldn't redo",
+      description: "Cannot redo while agents are working — /stop first",
+    });
+  });
+
+  it("shows one line when the reason would only repeat the title", () => {
+    const push = makePush();
+    useToastStore.setState({ ...useToastStore.getState(), push });
+
+    useAgentStore.setState({ error: { title: "Couldn't send the message", message: "Couldn't send the message" } });
+
+    expect(push).toHaveBeenCalledWith({ tone: "error", title: "Couldn't send the message" });
   });
 });
 
 describe("inferErrorTitle", () => {
-  it("uses explicit category titles", () => {
+  it("titles the two categories that can arrive without a title", () => {
     expect(inferErrorTitle("something", "provider")).toBe("Provider error");
     expect(inferErrorTitle("something", "network")).toBe("Network error");
-    expect(inferErrorTitle("something", "tool")).toBe("Tool error");
-    expect(inferErrorTitle("something", "user_action")).toBe("Action failed");
-    expect(inferErrorTitle("something", "sandbox")).toBe("Permission denied");
   });
 
   it("infers title from message contents", () => {
     expect(inferErrorTitle("Rate limit hit")).toBe("Rate limit exceeded");
     expect(inferErrorTitle("Invalid API key provided")).toBe("Provider authentication failed");
     expect(inferErrorTitle("Failed to fetch stream")).toBe("Can't reach the server");
-    expect(inferErrorTitle("Cannot undo while working")).toBe("Undo failed");
     expect(inferErrorTitle("Failed to compact session")).toBe("Couldn't summarize earlier messages");
+    expect(inferErrorTitle("boom")).toBe("Agent error");
   });
 });
 

@@ -37,12 +37,10 @@ export function isProviderError(title?: string, message?: string, code?: string,
   )
 }
 
+/** A title for an error that came without one. An action the user took names its own (`actionError`). */
 export function inferErrorTitle(message: string, category?: string): string {
   if (category === 'provider') return 'Provider error'
   if (category === 'network') return 'Network error'
-  if (category === 'tool') return 'Tool error'
-  if (category === 'user_action') return 'Action failed'
-  if (category === 'denied_paths' || category === 'sandbox') return 'Permission denied'
 
   const lower = message.toLowerCase()
   if (lower.includes('rate limit') || lower.includes('429')) return 'Rate limit exceeded'
@@ -65,10 +63,7 @@ export function inferErrorTitle(message: string, category?: string): string {
     // arrives from the server with its own title.
     return "Can't reach the server"
   }
-  if (lower.includes('cannot undo') || lower.includes('failed to undo') || lower.includes("couldn't undo")) return 'Undo failed'
   if (lower.includes('compact') || lower.includes('compaction')) return "Couldn't summarize earlier messages"
-  if (lower.includes('redo')) return 'Redo failed'
-  if (lower.includes('queue') || lower.includes('send message')) return 'Message failed'
   return 'Agent error'
 }
 
@@ -97,7 +92,7 @@ useAgentStore.subscribe((state, prev) => {
     }
 
     const title = customTitle || inferErrorTitle(message, category)
-    useToastStore.getState().push({ tone: 'error', title, description: message })
+    useToastStore.getState().push({ tone: 'error', title, ...(message !== title && { description: message }) })
   }
 })
 

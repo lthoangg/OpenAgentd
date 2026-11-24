@@ -101,7 +101,7 @@ describe('revertToMessage', () => {
 
     expect(await useAgentStore.getState().revertToMessage('m2')).toBeNull()
     expect(postAgentCommand).not.toHaveBeenCalled()
-    expect(String(useAgentStore.getState().error)).toContain('/stop')
+    expect(useAgentStore.getState().error).toEqual({ title: "Couldn't edit the prompt", message: 'Cannot edit while agents are working — /stop first' })
   })
 
   it('stops at the first failed undo', async () => {
@@ -109,7 +109,7 @@ describe('revertToMessage', () => {
 
     expect(await useAgentStore.getState().revertToMessage('m1')).toBeNull()
     expect(postAgentCommand).toHaveBeenCalledTimes(1)
-    expect(useAgentStore.getState().error).toBe('snapshot failed')
+    expect(useAgentStore.getState().error).toEqual({ title: "Couldn't undo", message: 'snapshot failed' })
   })
 
   it('ignores a message that is not a visible prompt', async () => {

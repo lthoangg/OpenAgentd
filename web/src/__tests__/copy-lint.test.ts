@@ -115,11 +115,14 @@ function bare(text: string): string {
   return text.trim().replace(/^(['"`])([\s\S]*)\1$/, '$2').trim()
 }
 
+/** "X failed" that names a state, not an action that failed: a session's status word, a count of failures. */
+const FAILED_STATES = new Set(['Session failed', 'None failed'])
+
 /** Wording with one spelling: each rule names what to write instead. */
 const ONE_SPELLING: { name: string; use: string; matches: (text: string) => boolean }[] = [
   { name: 'failure-opener', use: `"Couldn't …"`, matches: (text) => /\b(?:Could not|Unable to|Failed to)\b/.test(text) },
-  // A toast title of a verb and "failed" ("Save failed"): say what could not be done.
-  { name: 'failure-title', use: `"Couldn't save …" (lib/failure-toast)`, matches: (text) => /^(?:Save|Delete|Create|Reset|Copy|Update|Remove|Rename|Load|Install|Connect) failed\.?$/.test(bare(text)) },
+  // A title of one word and "failed" ("Save failed", "Undo failed"): say what could not be done.
+  { name: 'failure-title', use: `"Couldn't save …" (lib/failure-toast)`, matches: (text) => /^[A-Z][a-z]+ failed\.?$/.test(bare(text)) && !FAILED_STATES.has(bare(text)) },
   { name: 'try-again-button', use: '"Retry"', matches: (text) => bare(text) === 'Try again' },
   { name: 'cannot-be-undone', use: `"This can't be undone."`, matches: (text) => /cannot be undone|\bfor good\b/i.test(text) },
   { name: 'ampersand-send', use: '"Stop and send"', matches: (text) => /Stop (?:&|&amp;) send/.test(text) },
@@ -174,6 +177,7 @@ describe('the scanner', () => {
       "return 'Offline'",
       "const hint = 'Works offline too'",
       "push({ tone: 'error', title: 'Save failed' })",
+      "draft.error = { title: 'Undo failed', message }",
       "const note = 'Session failed'",
     ].join('\n')
     expect(spellingProblems('x.tsx', source).map((line) => line.split(',')[0])).toEqual([
@@ -181,6 +185,7 @@ describe('the scanner', () => {
       'x.tsx: failure-opener',
       'x.tsx: ampersand-send',
       'x.tsx: unreachable',
+      'x.tsx: failure-title',
       'x.tsx: failure-title',
       'x.tsx: try-again-button',
       'x.tsx: cannot-be-undone',

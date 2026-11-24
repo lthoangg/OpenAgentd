@@ -26,6 +26,23 @@ export default async function message({ page, expect, step, newSessionInDemo, se
     expect(asked.map((r) => r.protocol)).toEqual(["chat"])
   })
 
+  await step("an undo the server refuses: the toast says what could not be done, then why", async () => {
+    await page.route("**/agent/commands", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "The server is busy." }) }))
+    const input = page.getByRole("textbox", { name: "Message input" })
+    await input.click()
+    await input.pressSequentially("/undo")
+    await page.getByRole("listbox", { name: "Slash commands" }).getByRole("option", { name: /^\/undo / }).click()
+    const toast = page.getByRole("alert").filter({ hasText: "Couldn't undo" })
+    await expect(toast).toContainText("The server is busy.")
+    await expect(toast).toBeInViewport()
+    await page.unroute("**/agent/commands")
+    // Nothing was undone, on the screen or on the server.
+    await expect(page.getByText(`Stub reply (chat): ${text}`)).toBeVisible()
+    expect((await history(sessionId())).messages.map((m) => m.role)).toEqual(["user", "assistant"])
+    // The photo shows the toast once it has come in.
+    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))))
+  })
+
   await step("a phone keyboard's Return picks the open slash command", async () => {
     const input = page.getByRole("textbox", { name: "Message input" })
     const menu = page.getByRole("listbox", { name: "Slash commands" })

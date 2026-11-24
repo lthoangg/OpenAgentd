@@ -24,7 +24,7 @@ export interface AgentError {
   title?: string
   message: string
   code?: string
-  category?: 'provider' | 'network' | 'tool' | 'user_action' | 'system' | 'denied_paths' | 'sandbox'
+  category?: 'provider' | 'network' | 'system'
   agent?: string
 }
 

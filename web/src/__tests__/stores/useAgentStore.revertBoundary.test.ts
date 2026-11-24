@@ -530,7 +530,7 @@ describe("undoAgent — blocks while team is working (anti-ghost-block guard)", 
     expect(result).toBeUndefined()
     expect(mockPostAgentCommand).not.toHaveBeenCalled()
     const state = useAgentStore.getState()
-    expect(state.error).toMatch(/cannot undo while agents are working/i)
+    expect(state.error).toEqual({ title: "Couldn't undo", message: "Cannot undo while agents are working — /stop first" })
 
     // Stream untouched: no boundary applied, no scratch state cleared.
     const stream = state.agentStreams.lead
@@ -1072,7 +1072,7 @@ describe("redoAgent — restores ONE undone message step", () => {
     const stream = useAgentStore.getState().agentStreams.lead
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
     expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2"])
-    expect(useAgentStore.getState().error).toBe("Couldn't redo: network down")
+    expect(useAgentStore.getState().error).toEqual({ title: "Couldn't redo", message: "network down" })
   })
 
   it("clears local revert state when the server says there is nothing to redo", async () => {
@@ -1255,7 +1255,7 @@ describe("redoAllAgent — restores ALL undone messages back to live tip", () =>
     const stream = useAgentStore.getState().agentStreams.lead
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
     expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2"])
-    expect(useAgentStore.getState().error).toBe("Couldn't redo: network down")
+    expect(useAgentStore.getState().error).toEqual({ title: "Couldn't redo", message: "network down" })
   })
 
   it("clears local revert state when the server says there is nothing to redo", async () => {

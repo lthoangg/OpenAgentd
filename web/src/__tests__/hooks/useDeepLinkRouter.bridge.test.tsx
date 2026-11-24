@@ -113,7 +113,7 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
 
     await act(async () => openUrls?.(['openagentd://auth/callback?provider=codex&code=bad-code']))
     await waitFor(() => {
-      expect(pushToast).toHaveBeenCalledWith({ tone: 'error', title: 'Authentication failed' })
+      expect(pushToast).toHaveBeenCalledWith({ tone: 'error', title: "Couldn't sign in" })
     })
     expect(invalidateQueries).not.toHaveBeenCalled()
   })

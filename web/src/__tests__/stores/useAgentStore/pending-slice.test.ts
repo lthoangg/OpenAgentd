@@ -138,7 +138,7 @@ describe("sendMessage", () => {
     await useAgentStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
 
     const state = useAgentStore.getState()
-    expect(state.error).toBe("Network failure")
+    expect(state.error).toEqual({ title: "Couldn't send the message", message: "Network failure" })
     expect(isRunLive(state.sessionRun)).toBe(false)
   })
 
@@ -146,7 +146,7 @@ describe("sendMessage", () => {
     mockPostAgentChat.mockImplementation(() => Promise.reject("unknown"))
     useAgentStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     await useAgentStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
-    expect(useAgentStore.getState().error).toBe("Couldn't send message")
+    expect(useAgentStore.getState().error).toEqual({ title: "Couldn't send the message", message: "Couldn't send the message" })
   })
 
   it("does not call connectStream when postAgentChat throws", async () => {
@@ -373,7 +373,7 @@ describe("sendMessage: queue behaviour", () => {
     await useAgentStore.getState().sendMessage("queued", undefined, { workspace: "/repo/app" })
 
     expect(useAgentStore.getState()._pendingMessages).toHaveLength(0)
-    expect(useAgentStore.getState().error).toBe("Backend did not return a queued message id")
+    expect(useAgentStore.getState().error).toEqual({ title: "Couldn't send the message", message: "Backend did not return a queued message id" })
   })
 
   it("does NOT queue when only members are working (lead is idle)", async () => {

@@ -380,6 +380,14 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     Settings toasts follow it too ("Save failed", "Delete failed" and the
     like now say **Couldn't save …**, with the server's own text behind
     **Copy details**), and a test refuses a title of a verb and "failed".
+    Since `[v3.63.0]` so do the toasts of what you do in a session: a
+    refused or failed undo, redo, prompt edit, send or cancel of a queued
+    message is headed **Couldn't undo**, **Couldn't redo**, **Couldn't edit
+    the prompt**, **Couldn't send the message** or **Couldn't cancel the
+    queued message** ("Undo failed", "Redo failed", "Message failed" and
+    "Agent error" before), with the reason on the second line, and a failed
+    provider sign-in from a link says **Couldn't sign in**. The test now
+    refuses any title of one word and "failed".
   - **Copying from a menu says Copied** `[v3.62.0]`. Copy path, Copy link
     and the other copy items in the sidebar's and the Review panel's menus
     wrote to the clipboard and showed nothing. They now show a brief

@@ -251,7 +251,7 @@ export function useDeepLinkRouter(): void {
           useToastStore.getState().push({ tone: 'success', title: 'Authentication connected' })
         } else {
           handledOAuthCallbacks.delete(callbackKey)
-          useToastStore.getState().push({ tone: 'error', title: 'Authentication failed' })
+          useToastStore.getState().push({ tone: 'error', title: "Couldn't sign in" })
         }
       } else if (parsed.kind === 'mcp_oauth') {
         if (handledOAuthCallbacks.has(parsed.search)) return

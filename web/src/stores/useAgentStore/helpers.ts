@@ -4,7 +4,16 @@ import { isGoalTurnBlock } from '@/lib/goal'
 import { restartNoteInfo } from '@/lib/restart-note'
 import { createDefaultAgentStream } from './defaults'
 import { setAgentStatus } from './run-state'
-import type { AgentStore, AgentStream, QuestionClosedReason } from './types'
+import type { AgentError, AgentStore, AgentStream, QuestionClosedReason } from './types'
+
+/**
+ * The error of an action the user took that threw: `title` is what could
+ * not be done ("Couldn't undo"), the message is why. When what was thrown
+ * gives no reason, the message is the title and the toast shows one line.
+ */
+export function actionError(title: string, thrown: unknown): AgentError {
+  return { title, message: thrown instanceof Error ? thrown.message : title }
+}
 
 /** Kinds whose live id (``generateBlockId``) differs from the server row's. */
 const ADOPTABLE_KINDS = new Set<ContentBlock['type']>(['thinking', 'text'])

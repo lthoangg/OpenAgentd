@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { cancelQueuedMessage, postAgentChat } from '@/api/client'
-import { revokeBlobUrlsFromBlocks } from './helpers'
+import { actionError, revokeBlobUrlsFromBlocks } from './helpers'
 import { applyQuestionResolution } from './question-state'
 import { applyRun, isRunLive, markRowRunning, setAgentStatus } from './run-state'
 import { isLinkOpen } from './link-state'
@@ -260,7 +260,7 @@ export const createPendingSlice: StateCreator<
         })
       } catch (err) {
         set((draft) => {
-          draft.error = err instanceof Error ? err.message : "Couldn't queue message"
+          draft.error = actionError("Couldn't send the message", err)
         })
         return false
       }
@@ -375,7 +375,7 @@ export const createPendingSlice: StateCreator<
       return true
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : "Couldn't send message"
+        draft.error = actionError("Couldn't send the message", err)
         applyRun(draft, { type: 'end' })
       })
       return false
@@ -401,7 +401,7 @@ export const createPendingSlice: StateCreator<
       return cancelled ? 'cancelled' : 'sent'
     } catch (err) {
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : "Couldn't cancel queued message"
+        draft.error = actionError("Couldn't cancel the queued message", err)
       })
       return 'failed'
     }

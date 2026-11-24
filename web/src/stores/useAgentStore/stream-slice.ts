@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand'
 import { postAgentChat, postAgentCommand, agentStream } from '@/api/client'
 import { restoredPromptText } from '@/lib/goal'
-import { applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
+import { actionError, applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
 import { NO_QUESTION, applyQuestionResolution, openQuestion } from './question-state'
 import { RUN_IDLE, applyRun, isRunLive, markRowStopped, setAgentStatus } from './run-state'
 import { LINK_CLOSED, applyLink, isLinkOpen } from './link-state'
@@ -203,7 +203,7 @@ export const createStreamSlice: StateCreator<
   undoAgent: async ({ restoreDraft = true, keepFiles = false } = {}) => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
-      set((draft) => { draft.error = 'No active session to undo' })
+      set((draft) => { draft.error = { title: "Couldn't undo", message: 'No active session to undo' } })
       return
     }
     // Reverting mid-stream orphans the in-flight assistant tokens
@@ -212,7 +212,7 @@ export const createStreamSlice: StateCreator<
     // backend precondition in AgentSession.handle_undo.
     if (isRunLive(get().sessionRun)) {
       set((draft) => {
-        draft.error = 'Cannot undo while agents are working — /stop first'
+        draft.error = { title: "Couldn't undo", message: 'Cannot undo while agents are working — /stop first' }
       })
       return
     }
@@ -246,7 +246,7 @@ export const createStreamSlice: StateCreator<
     } catch (err) {
       if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
-        draft.error = err instanceof Error ? err.message : "Couldn't undo"
+        draft.error = actionError("Couldn't undo", err)
       })
       return undefined
     }
@@ -262,7 +262,7 @@ export const createStreamSlice: StateCreator<
     const target = blocks[index]
     if (!target || !isDirectUserBlock(target)) return null
     if (isRunLive(get().sessionRun)) {
-      set((draft) => { draft.error = 'Cannot edit while agents are working — /stop first' })
+      set((draft) => { draft.error = { title: "Couldn't edit the prompt", message: 'Cannot edit while agents are working — /stop first' } })
       return null
     }
     // The server only steps back one prompt (or compaction) per undo, so walk
@@ -301,12 +301,12 @@ export const createStreamSlice: StateCreator<
   redoAgent: async () => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
-      set((draft) => { draft.error = 'No active session to redo' })
+      set((draft) => { draft.error = { title: "Couldn't redo", message: 'No active session to redo' } })
       return undefined
     }
     if (isRunLive(get().sessionRun)) {
       set((draft) => {
-        draft.error = 'Cannot redo while agents are working — /stop first'
+        draft.error = { title: "Couldn't redo", message: 'Cannot redo while agents are working — /stop first' }
       })
       return undefined
     }
@@ -343,7 +343,7 @@ export const createStreamSlice: StateCreator<
         })
       } else {
         set((draft) => {
-          draft.error = `Couldn't redo: ${message}`
+          draft.error = { title: "Couldn't redo", message }
         })
       }
       return undefined
@@ -353,12 +353,12 @@ export const createStreamSlice: StateCreator<
   redoAllAgent: async () => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
-      set((draft) => { draft.error = 'No active session to redo' })
+      set((draft) => { draft.error = { title: "Couldn't redo", message: 'No active session to redo' } })
       return
     }
     if (isRunLive(get().sessionRun)) {
       set((draft) => {
-        draft.error = 'Cannot redo while agents are working — /stop first'
+        draft.error = { title: "Couldn't redo", message: 'Cannot redo while agents are working — /stop first' }
       })
       return
     }
@@ -389,7 +389,7 @@ export const createStreamSlice: StateCreator<
         })
       } else {
         set((draft) => {
-          draft.error = `Couldn't redo: ${message}`
+          draft.error = { title: "Couldn't redo", message }
         })
       }
       return undefined

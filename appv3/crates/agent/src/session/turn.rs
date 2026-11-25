@@ -226,7 +226,11 @@ impl AgentSession {
                     self.spawn_turn(TurnOptions { question_resume: true, ..Default::default() });
                     activated = true;
                 } else if exit.may_activate_queue(self.cancel.is_set(), !sid.is_empty()) {
+                    let reported = self.report_before_follow_up(&sid).await;
                     activated = self.activate_queued_user_messages(&sid).await;
+                    if reported && !activated {
+                        self.reported_to_lead.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
                 }
                 if !activated {
                     self.transition(Transition::Finish);
@@ -454,6 +458,19 @@ impl AgentSession {
         }
         Ok(())
     }
+    /// A member whose lead queued a follow-up while it worked reports this
+    /// turn's answer before the follow-up's turn starts. That turn starts in
+    /// place of this one's close, which is where a member reports, so the
+    /// lead used to get only the reply to its follow-up. True when it reported.
+    async fn report_before_follow_up(&self, session_id: &str) -> bool {
+        let Some(lead) = &self.parent_session_id else { return false };
+        if !db::has_queued_user_messages(&self.pool, session_id).await.unwrap_or(false) {
+            return false;
+        }
+        crate::subagents::report::on_subagent_turn_completed(lead, session_id, "completed", &self.workspace(), &self.name(), &self.pool, self.cancel.is_set(), None).await;
+        true
+    }
+
     /// `idle_compaction` marks a background compaction turn on the event, so
     /// clients do not flag the session as having something new to read.
     /// `goal_id`: the turn worked on that goal, so its notification names
@@ -485,9 +502,20 @@ impl AgentSession {
                 }
             }
             Some(lead) => {
-                let error = if status == "error" { self.last_error_info() } else { None };
-                crate::subagents::report::on_subagent_turn_completed(lead, session_id, status, &self.workspace(), &self.name(), &self.pool, self.cancel.is_set(), error.as_ref())
+                if !self.reported_to_lead.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    let error = if status == "error" { self.last_error_info() } else { None };
+                    crate::subagents::report::on_subagent_turn_completed(
+                        lead,
+                        session_id,
+                        status,
+                        &self.workspace(),
+                        &self.name(),
+                        &self.pool,
+                        self.cancel.is_set(),
+                        error.as_ref(),
+                    )
                     .await;
+                }
             }
         }
         let mut payload = json!({"session_id": session_id, "status": status});

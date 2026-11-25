@@ -171,6 +171,9 @@ pub struct AgentSession {
     /// The question (on-disk id) whose answer the turn that asked it already
     /// continued with; that answer's own resume call must start nothing.
     continued_question: Mutex<Option<String>>,
+    /// A member's turn already reported to its lead before a queued follow-up
+    /// that then did not start; its close must not report it again.
+    reported_to_lead: AtomicBool,
     last_error: Mutex<Option<String>>,
     /// The last failed turn's `format_agent_error` (message, title, code,
     /// category), which a member's failure report hands to its lead.
@@ -261,6 +264,7 @@ impl AgentSession {
             turn_suspension: Mutex::new(Suspension::None),
             question_gate: tokio::sync::Mutex::new(()),
             continued_question: Mutex::new(None),
+            reported_to_lead: AtomicBool::new(false),
             last_error: Mutex::new(None),
             last_error_info: Mutex::new(None),
             pending_interaction_mode: Mutex::new(None),

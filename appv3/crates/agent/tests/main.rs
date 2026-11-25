@@ -56,6 +56,7 @@ mod stop_dismisses_question;
 mod subagent_ask_lead_answer;
 mod subagent_failure_report;
 mod subagent_follow_up_busy;
+mod subagent_follow_up_report;
 mod subagent_from_lead;
 mod subagent_interrupt;
 mod subagent_restart_resume;

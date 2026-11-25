@@ -70,22 +70,50 @@ fn build_openai(model: &str, model_kwargs: Kwargs, creds: &CredentialStore) -> P
     Ok(p)
 }
 
-/// Workers AI text-generation model names from a model-search response.
-fn workers_ai_ids(v: &Value) -> Vec<String> {
+/// What models.dev says about tool calling for `cf:<model>`: `None` when the
+/// registry has no entry or no `tool_call` flag.
+fn registry_tool_call(reg: &crate::registry::Registry, model: &str) -> Option<bool> {
+    reg.get(&format!("cf:{model}")).and_then(|e| e.get("features")).and_then(|f| f.get("tool_call")).and_then(|v| v.as_bool())
+}
+
+/// Whether a model-search result can drive an agent (call tools). Cloudflare
+/// lists `function_calling` among a model's `properties` only when it is
+/// supported, so a properties list without it means no tools. A result with
+/// no properties at all says nothing: models.dev decides, and a model neither
+/// knows is kept.
+fn workers_ai_model_calls_tools(m: &Value, model: &str, reg: &crate::registry::Registry) -> bool {
+    match m.get("properties").and_then(|p| p.as_array()) {
+        Some(props) => props.iter().any(|p| {
+            let on = match p.get("value") {
+                Some(Value::Bool(b)) => *b,
+                Some(Value::String(s)) => s == "true",
+                _ => false,
+            };
+            p.get("property_id").and_then(|i| i.as_str()) == Some("function_calling") && on
+        }),
+        None => registry_tool_call(reg, model) != Some(false),
+    }
+}
+
+/// Workers AI text-generation model names from a model-search response,
+/// keeping only models that call tools (Clairic, Llama Guard and chat-only
+/// models share the "Text Generation" task but cannot run an agent).
+fn workers_ai_ids(v: &Value, reg: &crate::registry::Registry) -> Vec<String> {
     v.get("result")
         .and_then(|r| r.as_array())
         .into_iter()
         .flatten()
-        .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
-        .filter(|n| n.starts_with("@cf/"))
-        .map(String::from)
+        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(|n| (m, n)))
+        .filter(|(m, n)| n.starts_with("@cf/") && workers_ai_model_calls_tools(m, n, reg))
+        .map(|(_, n)| n.to_string())
         .collect()
 }
 
 /// Third-party model ids the registry knows for `cf` (from the models.dev
-/// `cloudflare-ai-gateway` list): every `cf:` key that is not a Workers AI one.
+/// `cloudflare-ai-gateway` list): every `cf:` key that is not a Workers AI
+/// one, except models models.dev marks as unable to call tools.
 fn gateway_ids(reg: &crate::registry::Registry) -> Vec<String> {
-    reg.keys().filter_map(|k| k.strip_prefix("cf:")).filter(|m| !m.starts_with("@cf/")).map(String::from).collect()
+    reg.keys().filter_map(|k| k.strip_prefix("cf:")).filter(|m| !m.starts_with("@cf/") && registry_tool_call(reg, m) != Some(false)).map(String::from).collect()
 }
 
 /// Workers AI models first, then third-party ones; sorted within each, no duplicates.
@@ -118,7 +146,8 @@ pub async fn discover_models(creds: &CredentialStore) -> Result<Vec<String>, Str
         return Err(crate::plugin::http_status_message(st, &url));
     }
     let v: Value = r.json().await.map_err(|e| e.to_string())?;
-    Ok(merge_model_ids(workers_ai_ids(&v), gateway_ids(&crate::registry::load_model_registry())))
+    let reg = crate::registry::load_model_registry();
+    Ok(merge_model_ids(workers_ai_ids(&v, &reg), gateway_ids(&reg)))
 }
 
 /// A store that reads exactly `values` for the two Cloudflare settings
@@ -189,7 +218,57 @@ mod tests {
         for k in ["cf:openai/gpt-4.1", "cf:anthropic/claude-sonnet-4.6", "cf:@cf/qwen/qwq-32b", "openai:gpt-4.1"] {
             reg.insert(k.into(), json!({}));
         }
-        let ids = merge_model_ids(workers_ai_ids(&search), gateway_ids(&reg));
+        let ids = merge_model_ids(workers_ai_ids(&search, &reg), gateway_ids(&reg));
         assert_eq!(ids, ["@cf/deepseek-ai/deepseek-v4.1-flash-1017", "@cf/qwen/qwq-32b", "anthropic/claude-sonnet-4.6", "openai/gpt-4.1"]);
+    }
+
+    /// Trimmed from a real `/ai/models/search?task=Text Generation` response:
+    /// Cloudflare lists `function_calling` only for models that support it.
+    fn live_search() -> Value {
+        let fc = json!({"property_id": "function_calling", "value": "true"});
+        let ctx = json!({"property_id": "context_window", "value": "65536"});
+        json!({"success": true, "result": [
+            {"name": "@cf/deepseek-ai/deepseek-v4.1-flash-1017", "properties": [ctx, fc]},
+            {"name": "@cf/openai/gpt-oss-120b", "properties": [fc, ctx]},
+            {"name": "@cf/cloudflare/clairic-flash", "properties": [ctx, {"property_id": "vision", "value": "true"}]},
+            {"name": "@cf/cloudflare/clef", "properties": [ctx, {"property_id": "info", "value": "https://x"}]},
+            {"name": "@cf/meta/llama-guard-3-8b", "properties": [ctx, {"property_id": "lora", "value": "true"}]},
+            {"name": "@cf/meta/llama-3.2-11b-vision-instruct", "properties": [ctx]},
+            {"name": "@cf/qwen/qwen2.5-coder-32b-instruct", "properties": [ctx]},
+            {"name": "@cf/aisingapore/gemma-sea-lion-v4-27b-it", "properties": [ctx]},
+            {"name": "@cf/x/flag-off", "properties": [{"property_id": "function_calling", "value": "false"}]}
+        ]})
+    }
+
+    #[test]
+    fn cloudflare_function_calling_property_decides_workers_ai_models() {
+        // models.dev claiming tools cannot resurrect a model Cloudflare lists without them.
+        let mut reg = crate::registry::Registry::new();
+        reg.insert("cf:@cf/cloudflare/clairic-flash".into(), json!({"features": {"tool_call": true}}));
+        let ids = workers_ai_ids(&live_search(), &reg);
+        assert_eq!(ids, ["@cf/deepseek-ai/deepseek-v4.1-flash-1017", "@cf/openai/gpt-oss-120b"]);
+    }
+
+    #[test]
+    fn without_cloudflare_properties_models_dev_decides_and_unknown_is_kept() {
+        let search = json!({"result": [
+            {"name": "@cf/cloudflare/clairic-flash"}, {"name": "@cf/meta/llama-guard-3-8b"}, {"name": "@cf/zai-org/glm-4.7-flash"}, {"name": "@cf/new/unknown-model"}
+        ]});
+        let mut reg = crate::registry::Registry::new();
+        reg.insert("cf:@cf/cloudflare/clairic-flash".into(), json!({"features": {"tool_call": false}}));
+        reg.insert("cf:@cf/meta/llama-guard-3-8b".into(), json!({"features": {"tool_call": false}}));
+        reg.insert("cf:@cf/zai-org/glm-4.7-flash".into(), json!({"features": {"tool_call": true}}));
+        assert_eq!(workers_ai_ids(&search, &reg), ["@cf/zai-org/glm-4.7-flash", "@cf/new/unknown-model"]);
+    }
+
+    #[test]
+    fn gateway_models_without_tool_calling_are_hidden() {
+        let mut reg = crate::registry::Registry::new();
+        reg.insert("cf:openai/gpt-4.1".into(), json!({"features": {"tool_call": true}}));
+        reg.insert("cf:openai/text-only".into(), json!({"features": {"tool_call": false}}));
+        reg.insert("cf:anthropic/unknown".into(), json!({}));
+        let mut ids = gateway_ids(&reg);
+        ids.sort();
+        assert_eq!(ids, ["anthropic/unknown", "openai/gpt-4.1"]);
     }
 }

@@ -67,7 +67,10 @@ agnostic by design.
   (`openai/gpt-4.1`, `anthropic/claude-sonnet-4.6`) and are billed through
   Cloudflare Unified Billing, so the account needs credits for them. The
   model list has the account's Workers AI text models plus the third-party
-  models models.dev lists for AI Gateway. The Settings card asks for two
+  models models.dev lists for AI Gateway, keeping only models that can call
+  tools `[v3.63.1]`: Cloudflare's function-calling mark decides for Workers
+  AI, so typed extractors (Clairic, Clef), Llama Guard and chat-only models
+  are left out. The Settings card asks for two
   values, the Account ID and an API token, and under each says where to get
   it, with a link to the dashboard's Workers AI → Use REST API page. The
   token needs **Account → Workers AI → Read**; one with only AI Gateway

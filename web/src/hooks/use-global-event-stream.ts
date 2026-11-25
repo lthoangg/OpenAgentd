@@ -353,6 +353,23 @@ async function handleEvent(
     return true
   }
 
+  if (type === 'command_status') {
+    // A background shell command started or ended. No turn starts or ends
+    // with it, so this is what moves the line under the transcript and the
+    // row's "working" state (a session waits for some commands).
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    if (!sessionId) return false
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.waiting(sessionId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    // An idle session keeps the report of a command it did not wait for as
+    // a row no turn announces; a running turn streams it.
+    const store = useAgentStore.getState()
+    if (event.ended === true && store.sessionId === sessionId && !isRunLive(store.sessionRun)) {
+      void store.reconcileTurnTail(sessionId, store._workspace)
+    }
+    return true
+  }
+
   if (type === 'workspace_files_changed') {
     // Something outside the agent (editor, terminal, git) changed a watched
     // workspace. The server reports the resolved path plus every spelling the

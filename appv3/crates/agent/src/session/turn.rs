@@ -384,6 +384,11 @@ impl AgentSession {
         let mut meta = Map::new();
         meta.insert("session_id".into(), json!(sid));
         meta.insert("interaction_mode".into(), json!(interaction));
+        // A lead is told when its background commands end; a member's turn
+        // end is its report, so its commands only keep a log.
+        if is_lead {
+            meta.insert(appv3_tools::jobs::REPORTS_META.into(), json!(true));
+        }
         // Where this turn's prompts begin, for `ask_user` (see [`agent_only_since`]).
         if let Some((_, seq)) = self.turn_floor.lock().unwrap().as_ref().filter(|(s, _)| *s == sid) {
             meta.insert(TURN_FLOOR_META.into(), json!(seq));

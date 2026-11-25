@@ -1,5 +1,5 @@
-import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteData } from '@tanstack/react-query'
-import { listSessions, deleteSession, updateSessionTitle, listSubagents, listWaiting, setSessionPinned } from '@/api/client'
+import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteData, type QueryClient } from '@tanstack/react-query'
+import { listSessions, deleteSession, updateSessionTitle, listSubagents, listWaiting, setSessionPinned, stopCommand } from '@/api/client'
 import type { SessionPageResponse, SessionResponse, WaitingItem } from '@/api/types'
 import { queryKeys } from './keys'
 import { applyOptimisticTitle, applySessionRename } from './session-rename'
@@ -324,12 +324,29 @@ export function sessionWaitingQuery(sessionId: string | null | undefined) {
 }
 
 /**
- * The awaited sessions worth showing: running or stopped on the person. An
- * idle one owes no work in progress, so the line, its list and the Goal
- * tab's count all leave it out.
+ * The waiting items worth showing: sessions running or stopped on the
+ * person, and background commands (always running). An idle session owes
+ * no work in progress, so the line, its list and the Goal tab's count all
+ * leave it out.
  */
 export function activeWaiting(items: readonly WaitingItem[] | undefined): WaitingItem[] {
   return (items ?? []).filter((item) => item.state !== 'idle')
+}
+
+/**
+ * Stop one of a session's background commands by its number, then read the
+ * waiting list again (a command that had already ended is simply gone).
+ * `client` is for a caller rendered outside the app's provider.
+ */
+export function useStopCommand(sessionId: string | null | undefined, client?: QueryClient) {
+  const queryClient = useQueryClient(client)
+  return useMutation(
+    {
+      mutationFn: (number: number) => stopCommand(sessionId ?? '', number),
+      onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.session.waiting(sessionId ?? '') }),
+    },
+    queryClient,
+  )
 }
 
 export function useSessionWaitingQuery(sessionId: string | null | undefined, enabled = true) {

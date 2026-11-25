@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import {
   cancelQueuedMessage, createAgent, createWorktree, deleteAgent, getAgent,
   listAgentFiles, listMemberProfiles, listSubagents, listWaiting, postAgentChat,
-  resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, updateAgent,
+  resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, stopCommand, updateAgent,
   submitOAuthCallback, updateSessionTitle, workspaceMediaUrl,
 } from '@/api/client'
 
@@ -388,6 +388,20 @@ describe('subagents API', () => {
     const res = await listWaiting('session-123')
     expect(url).toBe('/api/agent/sessions/session-123/waiting')
     expect(res.items.map((item) => item.label)).toEqual(['explorer#1'])
+  })
+
+  it('stops a background command by its number, and says when it had already ended', async () => {
+    const calls: [string, string | undefined][] = []
+    let status = 204
+    globalThis.fetch = mock((input, init) => {
+      calls.push([String(input), (init as RequestInit | undefined)?.method])
+      return Promise.resolve(new Response(status === 204 ? null : JSON.stringify({ detail: 'The command is not running.' }), { status }))
+    }) as typeof fetch
+
+    expect(await stopCommand('session-123', 3)).toBe(true)
+    expect(calls).toEqual([['/api/agent/sessions/session-123/commands/3/stop', 'POST']])
+    status = 404
+    expect(await stopCommand('session-123', 3)).toBe(false)
   })
 
   it('fetches member profiles from /agents/members', async () => {

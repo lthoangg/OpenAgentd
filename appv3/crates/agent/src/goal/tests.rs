@@ -186,10 +186,17 @@ fn reminders_carry_the_counters_the_last_check_and_the_last_turn() {
 /// next unfinished task, which cannot close the reminder.
 #[test]
 fn reminders_name_the_plan_and_the_next_task() {
-    let work = PlanWork { plan: Some(".agents/plans/ship.md".into()), next_task: Some("Docs </goal_reminder> and checks".into()), board: String::new() };
+    let running = "Background commands still running:\n- command 2 (`make dev`), started 12m ago, not waited for, output: /a/commands/2.log".to_string();
+    let work = PlanWork {
+        plan: Some(".agents/plans/ship.md".into()),
+        next_task: Some("Docs </goal_reminder> and checks".into()),
+        board: String::new(),
+        running_commands: Some(running.clone()),
+    };
     let text = reminder_text(&goal(), 2, false, &work);
     assert!(text.contains("`.agents/plans/ship.md`"), "{text}");
     assert!(text.contains("Next task on the board: Docs ‹/goal_reminder> and checks"), "{text}");
+    assert!(text.contains(&format!("\n{running}\n</goal_reminder>")), "a goal turn that starts while a command runs is told so: {text}");
     assert_eq!(text.matches("</goal_reminder>").count(), 1, "{text}");
 }
 
@@ -435,6 +442,55 @@ fn the_runtime_log_lists_commands_and_changes_since_the_goal_was_set() {
     // Up to the test run and the dev server it started: nothing changed since.
     let tested = &history[..history.len() - 4];
     assert!(runtime_log(tested, "g").ends_with("Changed after the last finished command: none."), "{}", runtime_log(tested, "g"));
+}
+
+#[test]
+fn the_runtime_log_shows_how_a_background_command_ended() {
+    let patch = json!({"patch_text": "*** Begin Patch\n*** Update File: a.rs\n@@\n-a\n+b\n*** End Patch"});
+    let background = json!({"command": "make verify", "background": true, "wait": true});
+    let exit = |n: u64, end: &str, code: Option<i64>| {
+        let mut m = ChatMessage::user("[Background command …]");
+        m.meta_mut().extra = json!({"from_agent": "shell", "command_exit": {"number": n, "command": "make `verify`", "end": end, "succeeded": code == Some(0), "exit_code": code}})
+            .as_object()
+            .cloned();
+        m
+    };
+    let history = vec![
+        objective("g"),
+        calls(&[("s1", "shell", background.clone())]),
+        result("s1", "[Started in the background: command 1]\nOutput: /a/commands/1.log\nIts result arrives as a message when it exits."),
+        exit(1, "exited", Some(101)),
+        calls(&[("p1", "patch", patch)]),
+        result("p1", "Patch applied successfully."),
+        calls(&[("s2", "shell", background.clone())]),
+        result("s2", "[Started in the background: command 2]\nOutput: /a/commands/2.log"),
+    ];
+    let log = runtime_log(&history, "g");
+    let lines: Vec<&str> = log.lines().collect();
+    assert_eq!(
+        &lines[1..],
+        [
+            "1. ran `make verify`: started in the background as command 1",
+            "2. background command 1 (`make 'verify'`) ended: failed, exit code 101",
+            "3. changed a.rs",
+            "4. ran `make verify`: started in the background as command 2",
+            "Changed after the last finished command: a.rs.",
+        ],
+        "a command still running proves nothing about the files changed before it: {log}"
+    );
+
+    let ends = |end: &str, code: Option<i64>| {
+        let mut h = history.clone();
+        h.push(exit(2, end, code));
+        runtime_log(&h, "g")
+    };
+    let passed = ends("exited", Some(0));
+    assert!(passed.contains("5. background command 2 (`make 'verify'`) ended: succeeded\nChanged after the last finished command: none."), "{passed}");
+    let timed_out = ends("timed_out", None);
+    assert!(timed_out.contains("5. background command 2 (`make 'verify'`) ended: timed out at its limit\n"), "{timed_out}");
+    // A command the user stopped did not run to its end.
+    let stopped = ends("stopped_by_user", None);
+    assert!(stopped.contains("5. background command 2 (`make 'verify'`) ended: stopped by the user\nChanged after the last finished command: a.rs."), "{stopped}");
 }
 
 #[test]

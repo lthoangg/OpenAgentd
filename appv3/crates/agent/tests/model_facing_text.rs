@@ -186,7 +186,10 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 90 when `browser` was regrouped (open, read, act, chain) and
 /// told the model when to use it and when `web_fetch` is enough, so it does
 /// not open a public site, and ask the user, only to read a page's text.
-const LEAD_ALWAYS_ON_CHARS: usize = 46_274;
+/// Raised by 441 for `shell`'s `wait` argument and the line that a
+/// background command saves its output and reports its exit: without it a
+/// model keeps polling (`sleep 45; tail log`), one request per poll.
+const LEAD_ALWAYS_ON_CHARS: usize = 46_715;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {
@@ -228,6 +231,9 @@ async fn shell_and_team_text_steer_away_from_common_waste() {
     };
     let shell = describe("shell").expect("a lead gets shell");
     assert!(shell.contains("use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits"), "{shell}");
+    // Without this line a model blocks in the foreground until the time
+    // limit, or loops on `sleep N; tail log` while a background command runs.
+    assert!(shell.contains("a message tells you when it exits, so do not poll with sleep"), "{shell}");
     assert!(!shell.contains("do NOT"), "calm wording, not shouting: {shell}");
     let team = describe("team").unwrap_or_else(appv3_agent::tools::team::delegate_description);
     assert!(

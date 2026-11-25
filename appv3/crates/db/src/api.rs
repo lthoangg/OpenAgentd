@@ -133,6 +133,8 @@ pub fn result_rides_inline(tool: &str, content: &str) -> bool {
             let first = first.to_ascii_lowercase();
             ["error:", "[failed", "[error", "[timed out"].iter().any(|p| first.starts_with(p))
         }
+        // `parseBackgroundStart`: a closed row says "started · command 3".
+        "shell" => text.starts_with("[Started in the background: command "),
         _ => false,
     }
 }
@@ -649,6 +651,10 @@ mod tests {
             ("team_send", "Message delivered to subagent 'worker#4'. It is working."),
             ("delegate", "Subagent 'researcher#2' dispatched with task: Research X"),
             ("patch", "Error: Could not find scope in src/a.rs"),
+            (
+                "shell",
+                "[Started in the background: command 3]\nOutput: /d/sessions/s/commands/3.log\nIts result arrives as a message when it exits. To end it early: kill -- -48211",
+            ),
         ];
         for (name, text) in inline {
             assert!(result_rides_inline(name, text), "{name}: {text}");
@@ -668,6 +674,9 @@ mod tests {
             ("todo", "Created task_1"),
             ("schedule", "Scheduled tasks (2):"),
             ("read", "[1-2/2]\na\nb"),
+            ("shell", "[Succeeded]\n[Started in the background: command 3]"),
+            // As stored before background commands had numbers.
+            ("shell", "PID: 4242"),
         ];
         for (name, text) in fetched {
             assert!(!result_rides_inline(name, text), "{name}: {text}");

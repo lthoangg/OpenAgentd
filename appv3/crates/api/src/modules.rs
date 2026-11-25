@@ -77,6 +77,25 @@ const BUILTIN: &[Spec] = &[
         }),
         stop: Some(|| Box::pin(async { appv3_mcp::mcp_manager().stop().await })),
     },
+    // Background `shell` commands end with the server, after the turns and
+    // members that could start one; the next start tells their sessions
+    // (`restart_resume`).
+    Spec {
+        id: "commands",
+        deps: &[],
+        critical: false,
+        start: Some(|_| {
+            Box::pin(async {
+                appv3_agent::background_commands::install();
+                Ok(())
+            })
+        }),
+        stop: Some(|| {
+            Box::pin(async {
+                appv3_agent::background_commands::stop_all().await;
+            })
+        }),
+    },
     // A lead's Stop only signals its members; their last saves must land
     // before the database closes.
     Spec { id: "subagents", deps: &[], critical: false, start: None, stop: Some(|| Box::pin(appv3_agent::subagents::stop_all_members(Duration::from_secs(5)))) },
@@ -226,7 +245,10 @@ const BUILTIN: &[Spec] = &[
                 // answer one.
                 tokio::spawn(async move {
                     appv3_agent::workspace_messages::restore_outstanding(&pool).await;
-                    appv3_agent::restart_resume::resume_after_restart(&pool).await
+                    appv3_agent::restart_resume::resume_after_restart(&pool).await;
+                    // After the cut-off turns are continued, so a session
+                    // reads the note in the turn that goes on.
+                    appv3_agent::background_commands::report_cut_off(&pool).await;
                 });
                 Ok(())
             })
@@ -297,7 +319,7 @@ mod tests {
     #[tokio::test]
     async fn builtin_modules_stop_in_the_servers_shutdown_order() {
         let (_, stops) = run_recorded().await;
-        assert_eq!(stops, ["cloud", "model_registry", "terminal", "preview", "scheduler", "snapshots", "sessions", "subagents", "mcp", "lsp", "otel"]);
+        assert_eq!(stops, ["cloud", "model_registry", "terminal", "preview", "scheduler", "snapshots", "sessions", "subagents", "commands", "mcp", "lsp", "otel"]);
     }
 
     #[tokio::test]

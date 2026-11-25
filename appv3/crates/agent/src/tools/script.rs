@@ -239,7 +239,7 @@ fn render(outcome: &ScriptOutcome, calls: &[CallRecord], elapsed: Duration, save
         out.push_str("\nerror: ");
         out.push_str(e);
         if outcome.timed_out {
-            out.push_str(". The limit keeps the prompt cache warm. Split the work into smaller scripts, or run long commands with shell background=true and check on them later.");
+            out.push_str(". The limit keeps the prompt cache warm. Split the work into smaller scripts, or run long commands with shell background=true and wait=true: their result arrives as a message.");
         }
     }
     if let Some(s) = saved {

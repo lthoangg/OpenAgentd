@@ -719,6 +719,36 @@ describe('handleGlobalEvent', () => {
     }
   })
 
+  it('rereads what a session waits for, and its row, when a background command starts or ends', async () => {
+    // No turn starts or ends with it, so nothing else says the row's
+    // "working" state or the line under the transcript changed.
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [], pageParams: [] })
+    const handled = await handleGlobalEvent(client, 'command_status', { session_id: 'lead-1', running: 1, waited: 1, ended: false }, 1, () => 1)
+    expect(handled).toBe(true)
+    expect(client.getQueryState(queryKeys.session.waiting('lead-1'))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.session.sessions.infinite())?.isInvalidated).toBe(true)
+  })
+
+  it('reads the report of a command that ended while the open session is idle', async () => {
+    // A command the session did not wait for leaves its report as a row no
+    // turn announces.
+    const reconcileTurnTail = mock(async () => {})
+    const realReconcile = useAgentStore.getState().reconcileTurnTail
+    useAgentStore.setState({ sessionId: 'lead-1', _workspace: '/workspace', reconcileTurnTail })
+    try {
+      const client = new QueryClient()
+      await handleGlobalEvent(client, 'command_status', { session_id: 'lead-1', running: 1, waited: 0, ended: false }, 1, () => 1)
+      await handleGlobalEvent(client, 'command_status', { session_id: 'other', running: 0, waited: 0, ended: true }, 1, () => 1)
+      expect(reconcileTurnTail).not.toHaveBeenCalled()
+      await handleGlobalEvent(client, 'command_status', { session_id: 'lead-1', running: 0, waited: 0, ended: true }, 1, () => 1)
+      expect(reconcileTurnTail).toHaveBeenCalledWith('lead-1', '/workspace')
+    } finally {
+      useAgentStore.setState({ reconcileTurnTail: realReconcile })
+    }
+  })
+
   it('appends subagent and invalidates queries on subagent_spawned', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-1'), { live_members: [] })

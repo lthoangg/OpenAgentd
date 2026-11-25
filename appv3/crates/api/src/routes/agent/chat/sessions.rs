@@ -373,6 +373,8 @@ async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> {
         appv3_agent::subagents::remove_subagent(sid);
         appv3_agent::subagents::cleanup_lead_session(sid);
         appv3_agent::side_question::stop_session(sid);
+        // Its background commands end with it, before their logs go.
+        appv3_agent::background_commands::stop_for_deleted_session(sid).await;
         // A deleted session answers nobody: its senders stop waiting on it.
         appv3_agent::workspace_messages::forget_outstanding_target(sid);
     }
@@ -439,11 +441,14 @@ pub(super) async fn session_subagents(State(st): State<AppState>, AxPath(raw): A
 }
 
 /// What a session whose turn ended still waits for (v3 addition): its
-/// subagents still running, then the sessions in other workspaces that owe
-/// it a reply. The same work `background_work` reports as one flag, as rows
-/// a person can open. `state` is `working`, `needs_input` (stopped on a
-/// question or a plan review) or `idle` (not running: stopped, failed, or
-/// not started yet).
+/// subagents still running, the sessions in other workspaces that owe it a
+/// reply, then its background `shell` commands still running. The same work
+/// `background_work` reports as one flag, as rows a person can open. `state`
+/// is `working`, `needs_input` (stopped on a question or a plan review) or
+/// `idle` (not running: stopped, failed, or not started yet). A command row
+/// (`kind: "command"`) carries its `number`, and `waited: false` for one the
+/// session does not wait for (a server): listed so it can be seen and
+/// stopped, but not counted in `background_work`.
 pub(super) async fn session_waiting(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
     let sid = path_uuid("session_id", &raw)?;
     let members = appv3_agent::subagents::working_members(&sid);
@@ -472,5 +477,21 @@ pub(super) async fn session_waiting(State(st): State<AppState>, AxPath(raw): AxP
             items.push(json!({"kind": "session", "session_id": id, "title": title(id), "label": label, "workspace": r.workspace, "state": state}));
         }
     }
+    items.extend(appv3_agent::background_commands::running(&sid).iter().map(|c| {
+        let title = Some(appv3_agent::background_commands::shown(&c.description)).filter(|d| !d.is_empty());
+        json!({"kind": "command", "session_id": sid, "number": c.number, "title": title, "label": appv3_agent::background_commands::shown(&c.command), "workspace": "", "state": "working", "waited": c.wait, "started_at": c.started_at})
+    }));
     Ok(json(json!({"items": items})))
+}
+
+/// `POST /sessions/{id}/commands/{number}/stop` (v3 addition): the user
+/// stops one background command from the session's waiting list. The agent
+/// is told it was stopped.
+pub(super) async fn stop_command(AxPath((raw, number)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let number: u64 = number.parse().map_err(|_| ApiError::unprocessable("Invalid command number."))?;
+    if !appv3_agent::background_commands::stop(&sid, number).await {
+        return Err(ApiError::not_found("The command is not running."));
+    }
+    Ok(no_content())
 }

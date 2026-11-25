@@ -476,8 +476,13 @@ async fn interrupt_agent_with(session: &AgentSession, session_id: Option<&str>, 
     let effective = session_id.map(String::from).or_else(|| Some(session.session_id())).filter(|s| !s.is_empty());
     session.dismiss_pending_question("dismissed", effective.as_deref()).await;
     let mut names = vec![];
-    if session.is_busy() {
-        names.push(session.name());
+    // A session whose turn ended can still wait for a background command;
+    // Stop ends that too.
+    let waits = effective.as_deref().is_some_and(crate::background_commands::has_waited);
+    if session.is_busy() || waits {
+        if session.is_busy() {
+            names.push(session.name());
+        }
         if keep_goal {
             session.handle_stop_keeping_goal().await;
         } else {

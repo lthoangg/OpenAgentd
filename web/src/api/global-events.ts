@@ -16,6 +16,8 @@ export const GLOBAL_EVENT_TYPES = [
   'desktop_notification',
   'subagent_spawned',
   'subagent_status',
+  // A background shell command of a session started or ended.
+  'command_status',
   'workspace_files_changed',
   'config_changed',
   'mcp_status_changed',

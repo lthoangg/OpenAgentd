@@ -30,11 +30,14 @@ import { PINNED_HEADER, useStickyFold } from '@/hooks/useStickyFold'
 import { subscribeLiveClock } from '../ToolCall'
 import { getToolDisplay } from '../ToolCall/display'
 import { isAgentReport } from '@/utils/turns'
+import { commandExit, commandOutcome } from '@/utils/command-report'
 import { summarizeWork, workSummaryDetail } from './segments'
 
 /** What a running step is doing, as its tool row names it. */
 function stepLabel(block: ContentBlock): string {
   if (block.type === 'thinking') return 'Thinking'
+  const exit = commandExit(block.extra)
+  if (exit) return `Command ${exit.number} ${commandOutcome(exit).text}`
   if (isAgentReport(block)) return `Report from ${String(block.extra?.from_agent)}`
   const name = block.toolName ?? ''
   const display = getToolDisplay(name, block.toolArgs)

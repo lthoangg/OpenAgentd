@@ -17,6 +17,7 @@ import { extractSleepPrefix } from '@/utils/format'
 import { fromLead } from '@/utils/lead-messages'
 import { MarkdownBlock } from '@/utils/markdown'
 import { replyFrom, sentFrom } from '@/utils/workspace-messages'
+import { commandExit } from '@/utils/command-report'
 import { CompactionDivider } from '../CompactionDivider'
 import { Thinking } from '../Thinking'
 import { ToolCall } from '../ToolCall'
@@ -26,6 +27,7 @@ import { isBareExhausted, isProviderErrorBlock, providerErrorDetails, switchedAc
 import { QuotaWaitNotice, quotaWaitFromBlock } from './QuotaWaitNotice'
 import { RestartDivider } from './RestartDivider'
 import { RetryNotice } from './RetryNotice'
+import { CommandReport } from './CommandReport'
 import { UserBubble, type OpenSessionHandler } from './UserBubble'
 
 // MCP app results (and the MCP SDK they need) are rare: kept out of the
@@ -68,6 +70,9 @@ export const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, s
       if (goalTurn) return <GoalTurnDivider info={goalTurn} />
       const restart = restartNoteInfo(block)
       if (restart) return <RestartDivider info={restart} />
+      // A background command's end report: drawn as a terminal result, not as prose.
+      const exit = commandExit(block.extra)
+      if (exit) return <CommandReport exit={exit} content={block.content} timestamp={block.timestamp} />
       // The lead's message to this subagent: its prefix is the chip's job, and
       // Edit would rewind the subagent, which the lead directs.
       const lead = fromAgent ? null : fromLead(block.extra, block.content, leadSessionId)

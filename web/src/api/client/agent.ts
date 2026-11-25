@@ -1,4 +1,4 @@
-// size-ceiling: 872 — 63 request functions: group them by resource into modules
+// size-ceiling: 861 — 62 request functions: group them by resource into modules
 /**
  * OpenAgentd API client — agent sessions, workspace, and files.
  */
@@ -45,7 +45,6 @@ import type {
   SessionSort,
   MemberProfile,
   SubagentsResponse,
-  WaitingResponse,
   SideQuestionEvent,
   SideQuestionListResponse,
   SessionGoal,
@@ -639,16 +638,6 @@ export async function setSessionPinned(id: string, pinned: boolean): Promise<Ses
 export async function listSubagents(sessionId: string): Promise<SubagentsResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/subagents`)
   if (!res.ok) await parseDetailOrThrow(res, 'listSubagents')
-  return res.json()
-}
-
-/**
- * What a session whose turn ended still waits for: its subagents still
- * running, and the sessions in other workspaces that owe it a reply.
- */
-export async function listWaiting(sessionId: string): Promise<WaitingResponse> {
-  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/waiting`)
-  if (!res.ok) await parseDetailOrThrow(res, 'listWaiting')
   return res.json()
 }
 

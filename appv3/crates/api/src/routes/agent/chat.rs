@@ -21,7 +21,7 @@ use axum::Router;
 use bytes::Bytes;
 use history::{agent_history, tool_call_arguments, tool_result};
 use serde_json::{json, Value};
-use sessions::{delete_session_route, list_sessions, resolve_session, save_run_settings, session_detail, session_subagents, session_waiting, update_session};
+use sessions::{delete_session_route, list_sessions, resolve_session, save_run_settings, session_detail, session_subagents, session_waiting, stop_command, update_session};
 use std::path::{Path, PathBuf};
 use workspaces::{browse_workspace, register_session_workspace, relocate_workspace, update_visibility, validate_workspace, workspace_tree};
 
@@ -46,6 +46,7 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
         .route("/sessions/{session_id}/waiting", get(session_waiting))
+        .route("/sessions/{session_id}/commands/{number}/stop", post(stop_command))
         .route("/{session_id}/history", get(agent_history))
         .route("/{session_id}/tool-results/{tool_call_id}", get(tool_result))
         .route("/{session_id}/tool-calls/{tool_call_id}/arguments", get(tool_call_arguments))

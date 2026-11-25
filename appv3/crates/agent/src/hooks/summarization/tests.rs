@@ -256,6 +256,40 @@ fn summariser_request(provider: &MockProvider, call: usize) -> Vec<ChatMessage> 
     provider.calls.lock().unwrap()[call].0.clone()
 }
 
+/// The summary records what the agent said it started; only the runtime
+/// knows what still runs.
+#[cfg(unix)]
+#[tokio::test]
+async fn compaction_lists_the_background_commands_still_running_after_the_summary() {
+    use appv3_tools::jobs;
+    let dir = tempfile::tempdir().unwrap();
+    let mut cmd = tokio::process::Command::new("sleep");
+    cmd.arg("30").stdin(std::process::Stdio::null()).process_group(0);
+    let spec = jobs::Start { session_id: "s-compact", dir: dir.path().join(jobs::DIR), command: "make dev", description: "", wait: false, reports: true, limit: None };
+    let job = jobs::start(cmd, spec).unwrap();
+    let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary one."), MockProvider::text("Summary two.")]));
+    let hook = hook_with(provider, 0);
+    let ctx = RunContext { session_id: Some("s-compact".into()), ..ctx() };
+    let mut state = AgentState::new(vec![ChatMessage::user("Start the server."), ChatMessage::assistant("Started.")], String::new());
+    assert!(hook.summarise(&ctx, &mut state, "sys").await);
+
+    let notes = |state: &AgentState| state.messages.iter().enumerate().filter(|(_, m)| extra_truthy(m, BACKGROUND_COMMANDS_KEY)).map(|(i, m)| (i, m.clone())).collect::<Vec<_>>();
+    let first = notes(&state);
+    assert_eq!(first.len(), 1);
+    let (at, note) = &first[0];
+    assert_eq!(*at, summary_index(&state) + 1, "the note is read after the summary");
+    assert_eq!((note.meta().kind.as_str(), note.meta().pinned, extra_truthy(note, "hidden_from_user")), ("note", false, true));
+    let text = note.content().unwrap();
+    assert!(text.starts_with("<background_commands>\n") && text.contains("- command 1 (`make dev`), started ") && text.contains(&job.log_path.display().to_string()), "{text}");
+
+    // Once it has ended, the next compaction writes no note, and the old one is summarised away.
+    assert!(jobs::stop("s-compact", job.number, jobs::End::SessionDeleted).await);
+    state.messages.push(ChatMessage::user("Go on."));
+    state.messages.push(ChatMessage::assistant("Done."));
+    assert!(hook.summarise(&ctx, &mut state, "sys").await);
+    assert!(notes(&state).iter().all(|(_, m)| m.meta().exclude_from_context), "a stale note stayed in context");
+}
+
 /// Coding workspaces keep no assistant message verbatim, so without the
 /// note the approved plan only survived as summary bullets and the agent
 /// drifted off it after compaction.

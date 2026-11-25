@@ -7,6 +7,7 @@
 //! its own process, so tests that set environment variables stay isolated.
 //! Run one file's tests with `cargo nextest run -p appv3-agent <file_stem>::`.
 
+mod background_commands;
 mod bench_turn;
 mod bundled_skill_references;
 mod cancel_running_tool;

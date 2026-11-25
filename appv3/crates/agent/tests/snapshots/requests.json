@@ -349,7 +349,7 @@
         "type": "function",
         "function": {
           "name": "shell",
-          "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: <ENV>",
+          "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower: its output goes to a log and a message tells you when it exits, so do not poll with sleep. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: <ENV>",
           "parameters": {
             "type": "object",
             "properties": {
@@ -376,7 +376,12 @@
               },
               "background": {
                 "default": false,
-                "description": "For long-lived processes and any command that may exceed 270s; returns the PID and discards output, so redirect output to a log file to read later. Stay in the foreground when you need the result within 270s.",
+                "description": "For long-lived processes and any command that may exceed 270s; returns at once with the command's number and its log file (no redirect needed). Stay in the foreground when you need the result within 270s.",
+                "type": "boolean"
+              },
+              "wait": {
+                "default": false,
+                "description": "With background=true: true for a command that ends by itself and whose result you need (a build, tests, a CI watch). Its exit code and last lines arrive as a message that starts your next turn, and a goal waits for it; it is ended after 2 hours. false for a server or watcher that keeps running.",
                 "type": "boolean"
               },
               "secrets": {
@@ -1151,7 +1156,7 @@
         "type": "function",
         "function": {
           "name": "shell",
-          "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: <ENV>",
+          "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower: its output goes to a log and a message tells you when it exits, so do not poll with sleep. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: <ENV>",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1178,7 +1183,12 @@
               },
               "background": {
                 "default": false,
-                "description": "For long-lived processes and any command that may exceed 270s; returns the PID and discards output, so redirect output to a log file to read later. Stay in the foreground when you need the result within 270s.",
+                "description": "For long-lived processes and any command that may exceed 270s; returns at once with the command's number and its log file (no redirect needed). Stay in the foreground when you need the result within 270s.",
+                "type": "boolean"
+              },
+              "wait": {
+                "default": false,
+                "description": "With background=true: true for a command that ends by itself and whose result you need (a build, tests, a CI watch). Its exit code and last lines arrive as a message that starts your next turn, and a goal waits for it; it is ended after 2 hours. false for a server or watcher that keeps running.",
                 "type": "boolean"
               },
               "secrets": {
@@ -1562,7 +1572,7 @@
         "type": "function",
         "function": {
           "name": "shell",
-          "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: <ENV>",
+          "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags (--no-pager, -y, -q) and never start pagers or prompts. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower: its output goes to a log and a message tells you when it exits, so do not poll with sleep. For files, use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits: their output is exact and costs less context. Environment: <ENV>",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1589,7 +1599,12 @@
               },
               "background": {
                 "default": false,
-                "description": "For long-lived processes and any command that may exceed 270s; returns the PID and discards output, so redirect output to a log file to read later. Stay in the foreground when you need the result within 270s.",
+                "description": "For long-lived processes and any command that may exceed 270s; returns at once with the command's number and its log file (no redirect needed). Stay in the foreground when you need the result within 270s.",
+                "type": "boolean"
+              },
+              "wait": {
+                "default": false,
+                "description": "With background=true: true for a command that ends by itself and whose result you need (a build, tests, a CI watch). Its exit code and last lines arrive as a message that starts your next turn, and a goal waits for it; it is ended after 2 hours. false for a server or watcher that keeps running.",
                 "type": "boolean"
               },
               "secrets": {

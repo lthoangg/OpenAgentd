@@ -833,19 +833,32 @@ impl AgentSession {
     }
 
     async fn handle_stop_with(&self, keep_goal: bool) -> bool {
+        let sid = self.session_id();
         // A turn task still running is stopped even if the state already
         // reads idle, or nothing could ever reach it.
         if !self.is_busy() && self.active_task_done() {
-            return false;
+            // No turn runs, but a background command the session waits for
+            // would start one when it ends: Stop ends it, and pauses the
+            // goal that waited for it.
+            if self.parent_session_id.is_some() || crate::background_commands::stop_waited(&sid).await == 0 {
+                return false;
+            }
+            if !keep_goal {
+                self.pause_goal_on_stop(&sid).await;
+            }
+            return true;
         }
         self.cancel.set();
         self.hard_cancel.set();
         if self.parent_session_id.is_none() {
-            Box::pin(crate::subagents::stop_all_subagents(&self.session_id())).await;
+            Box::pin(crate::subagents::stop_all_subagents(&sid)).await;
+            // Their results would start the turn the user just stopped.
+            // Commands the session does not wait for (servers) keep running.
+            crate::background_commands::stop_waited(&sid).await;
             if keep_goal {
-                self.drop_goal_reminders_on_stop(&self.session_id()).await;
+                self.drop_goal_reminders_on_stop(&sid).await;
             } else {
-                self.pause_goal_on_stop(&self.session_id()).await;
+                self.pause_goal_on_stop(&sid).await;
             }
         }
         self.dismiss_pending_question("dismissed", None).await;

@@ -1,6 +1,7 @@
 import type { SessionGoal } from '@/api/types'
 import type { GoalSessionState } from '@/lib/goal'
-import { activeWaiting, useSessionWaitingQuery } from '@/queries/useSessionsQuery'
+import { countWaiting } from '@/lib/waiting'
+import { useSessionWaitingQuery } from '@/queries/useSessionsQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { isRunLive } from '@/stores/useAgentStore/run-state'
 import { openQuestion } from '@/stores/useAgentStore/question-state'
@@ -15,10 +16,11 @@ export function useGoalSessionState(sessionId: string | null, goal: SessionGoal 
   const planReview = useAgentStore((s) => openQuestion(s)?.kind === 'plan_review')
   const planMode = useAgentStore((s) => (s.sessionPendingInteractionMode ?? s.sessionInteractionMode) === 'plan')
   const queuedMessages = useAgentStore((s) => s._pendingMessages?.length ?? 0)
-  // Only an active goal between turns waits: on its subagents, and on
-  // sessions in other workspaces that owe it a reply (the same list as the
-  // "Waiting for" line in the transcript, idle ones left out).
+  // Only an active goal between turns waits: on its subagents, on sessions
+  // in other workspaces that owe it a reply, and on background commands it
+  // waits for (the same counts as the "Waiting for" line in the transcript:
+  // idle sessions and servers left out).
   const { data: waiting } = useSessionWaitingQuery(sessionId, goal?.status === 'active' && !running)
-  const sessionsAwaited = activeWaiting(waiting?.items).length
-  return { running, waitingForUser, planReview, planMode, queuedMessages, sessionsAwaited }
+  const { sessions: sessionsAwaited, commands: commandsAwaited } = countWaiting(waiting?.items)
+  return { running, waitingForUser, planReview, planMode, queuedMessages, sessionsAwaited, commandsAwaited }
 }

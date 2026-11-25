@@ -36,6 +36,7 @@
     "desktop_notification",
     "subagent_spawned",
     "subagent_status",
+    "command_status",
     "workspace_files_changed",
     "config_changed",
     "mcp_status_changed",

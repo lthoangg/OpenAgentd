@@ -252,16 +252,18 @@ pub fn working_members(lead: &str) -> Vec<(String, String)> {
 }
 
 /// Whether a lead whose turn ended still has work coming back to it: a
-/// subagent still running, or a reply another workspace still owes it.
-/// Either starts another lead turn, so the lead is not finished yet.
+/// subagent still running, a reply another workspace still owes it, or a
+/// background command it waits for. Each starts another lead turn, so the
+/// lead is not finished yet.
 pub fn has_pending_work(lead: &str) -> bool {
-    has_working_subagents(lead) || crate::workspace_messages::has_outstanding_replies(lead)
+    has_working_subagents(lead) || crate::workspace_messages::has_outstanding_replies(lead) || crate::background_commands::has_waited(lead)
 }
 
 /// Every session [`has_pending_work`], as API ids.
 pub fn sessions_with_pending_work() -> HashSet<String> {
     let mut ids = leads_with_working_subagents();
     ids.extend(crate::workspace_messages::sessions_with_outstanding_replies());
+    ids.extend(crate::background_commands::sessions_waiting());
     ids
 }
 

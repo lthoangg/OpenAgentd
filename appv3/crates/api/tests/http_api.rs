@@ -561,6 +561,8 @@ async fn http_api_end_to_end() {
     plan_review_flow(&c, &pool, &ws).await;
     linked_sessions_flow(&c, &pool).await;
     waiting_flow(&c, &pool).await;
+    #[cfg(unix)]
+    background_commands_flow(&c, &pool).await;
     confirm_change_flow(&c, &pool, &ws).await;
     site_access_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
@@ -1730,6 +1732,53 @@ async fn waiting_flow(c: &Client, pool: &appv3_db::DbPool) {
 
     let (st, _) = c.json("GET", "/api/agent/sessions/not-a-uuid/waiting", None).await;
     assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+/// Background `shell` commands on a session (v3 addition): the waiting list
+/// names each one still running, the row is flagged only for one the session
+/// waits for, one can be stopped by its number, and deleting the session
+/// ends the rest.
+#[cfg(unix)]
+async fn background_commands_flow(c: &Client, pool: &appv3_db::DbPool) {
+    use appv3_tools::jobs;
+    let lead = appv3_db::create_session(pool, appv3_db::NewSession { workspace: "/r/commands".into(), title: Some("Build".into()), ..Default::default() }).await.unwrap();
+    let sid = appv3_db::codec::api_uuid(&lead.id);
+    let dir = appv3_core::settings::settings().data_dir.join("sessions").join(&sid).join(jobs::DIR);
+    let start = |command: &'static str, description: &'static str, wait: bool| {
+        let mut cmd = tokio::process::Command::new("sh"); // posix-only: this flow is unix-only
+        cmd.args(["-c", command]).stdin(std::process::Stdio::null()).process_group(0);
+        jobs::start(cmd, jobs::Start { session_id: &sid, dir: dir.clone(), command, description, wait, reports: true, limit: None }).unwrap()
+    };
+    let server = start("sleep 600", "", false);
+    let build = start("sleep 601", "run the build", true);
+    let uri = format!("/api/agent/sessions/{sid}/waiting");
+
+    let (st, v) = c.json("GET", &uri, None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let item = |job: &jobs::Job, title: Value| json!({"kind": "command", "session_id": sid, "number": job.number, "title": title, "label": job.command, "workspace": "", "state": "working", "waited": job.wait, "started_at": job.started_at});
+    assert_eq!(v, json!({"items": [item(&server, Value::Null), item(&build, json!("run the build"))]}), "{v}");
+    let active = || async {
+        c.json("GET", "/api/agent/sessions?active=true", None).await.1["data"].as_array().unwrap().iter().any(|r| r["id"] == json!(sid) && r["background_work"] == json!(true))
+    };
+    assert!(active().await, "a session that waits for a command is on the active list");
+
+    // Stop one by its number; a number that is not running is a 404.
+    let stop = |n: u64| format!("/api/agent/sessions/{sid}/commands/{n}/stop");
+    let (st, _) = c.json("POST", &stop(build.number), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (st, v) = c.json("POST", &stop(build.number), None).await;
+    assert_eq!((st, v), (StatusCode::NOT_FOUND, json!({"detail": "The command is not running."})));
+    let (st, _) = c.json("POST", &format!("/api/agent/sessions/{sid}/commands/abc/stop"), None).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    let (_, v) = c.json("GET", &uri, None).await;
+    assert_eq!(v, json!({"items": [item(&server, Value::Null)]}), "{v}");
+    assert!(!active().await, "a server alone does not keep a session on the active list");
+
+    // Deleting the session ends what is left.
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    assert!(jobs::running(&sid).is_empty(), "a deleted session left a command running");
+    assert!(!dir.exists(), "the session's logs outlived it");
 }
 
 /// Plan routes and plan-review answers on a Plan-mode session in `ws`.

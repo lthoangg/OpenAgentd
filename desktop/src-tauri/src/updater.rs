@@ -18,10 +18,10 @@ use crate::shutdown_sidecar_now;
 ///
 /// The React card owns a 6h schedule, but it lives in component refs
 /// (`UpdateCard.tsx`) that reseed to "now" on every mount — so every new
-/// window, reload and foreground event fired another check. Production
-/// logs showed 5-10 unauthenticated GitHub requests per hour against that
-/// 6h policy, including a double-fire in the same second at startup
-/// (Rust's own check racing the React one).
+/// window, reload and foreground event fired another check: several
+/// unauthenticated GitHub requests per hour against that 6h policy,
+/// including a double-fire in the same second at startup (Rust's own check
+/// racing the React one).
 ///
 /// User-initiated checks ("Check for Updates…", Settings, "Try again")
 /// pass `silent=false` and always run — the user explicitly asked.

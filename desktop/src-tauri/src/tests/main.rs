@@ -256,7 +256,7 @@ fn first_run_sidecar_handshake_allows_cold_security_scans() {
 //
 // `UpdateCard.tsx` keeps its 6h schedule in component refs that reseed to
 // "now" on every mount, so each window/reload/foreground event fired a
-// fresh check — production logs showed 5-10 GitHub requests per hour.
+// fresh check: several GitHub requests per hour.
 // This gate is the process-wide backstop.
 
 const ONE_HOUR: i64 = 60 * 60;

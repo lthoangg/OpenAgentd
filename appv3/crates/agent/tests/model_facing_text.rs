@@ -173,7 +173,7 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// test now counts every base tool from the registry.
 /// Raised by 518 for the coding prompt to say when `script` beats direct
 /// calls (and to stop reading "use a script only for…" as a ban on it):
-/// leads made 0.2% of their calls with it while shell made 47%.
+/// leads hardly ever called it and reached for shell instead.
 /// Raised by 1817 for the `secret` tool (ask for keys by name, never see
 /// them), `shell`'s `secrets` argument, and the runtime protocol's line that
 /// sends the agent to them instead of asking for a key in chat or reading

@@ -18,8 +18,8 @@ records, so the no-hit columns only fill from older v2 logs.
 Four traps this encodes, learned by falling into them:
 
 1. **Never divide errors by calls across different windows.** ``tool_error``
-   records survive longer than ``tool_start`` records, which once produced a
-   "grep fails 44% of the time" reading for a bug fixed weeks earlier. The
+   records survive longer than ``tool_start`` records, so a bug fixed weeks
+   earlier can read as a tool that still fails much of the time. The
    FIXED-OR-LIVE section exists to catch that: it prints each tool's error dates
    so a historical problem cannot pose as a live one.
 2. **Redundant work is only redundant within a run.** Counting identical calls
@@ -27,10 +27,10 @@ Four traps this encodes, learned by falling into them:
    into fake waste, so duplicates are attributed per ``run_id``.
 3. **Logged arguments are truncated at 500 chars** (``tool_start`` in
    ``appv3/crates/tools/src/lib.rs``), so
-   ``json.loads`` on them fails for 16% of shell calls — and precisely the long
-   ones (heredocs, inline python). Dropping the unparseable ones inflated
-   "shell is used to read files" to 78%, because short ``cat``/``head`` calls
-   always parse. Never parse those args strictly; degrade to a regex.
+   ``json.loads`` on them fails for precisely the long shell calls (heredocs,
+   inline python). Dropping the unparseable ones inflates "shell is used to
+   read files", because short ``cat``/``head`` calls always parse. Never parse
+   those args strictly; degrade to a regex.
 4. **A call a ``script`` makes is not context.** It has its own span, but its
    result goes to the script, never to the model, and is not offloaded.
    Summing every span's result counts, as "into context", output that never
@@ -180,7 +180,7 @@ def shell_command(raw: str) -> str:
     """Recover the command from possibly-truncated logged args.
 
     Logged args are cut at 500 chars, so strict JSON parsing loses the longest
-    16% of commands. Fall back to slicing after the ``"command":`` key.
+    commands. Fall back to slicing after the ``"command":`` key.
     """
     try:
         parsed = json.loads(raw)

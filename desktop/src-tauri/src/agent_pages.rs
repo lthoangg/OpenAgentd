@@ -298,7 +298,10 @@ fn build(app: &AppHandle, id: &str, src: &str) -> tauri::Result<()> {
         // The agent uses the page while nothing shows it: the engine would
         // otherwise slow or stop the page's timers.
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
-        .on_navigation(navigation_allowed);
+        .on_navigation(navigation_allowed)
+        // Nobody sees this page: it opens no window and saves no file.
+        .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny)
+        .on_download(|_webview, _event| false);
     #[cfg(target_os = "macos")]
     let builder = builder.transparent(true);
     // Elsewhere hidden as browser views are (unverified: whether the engine

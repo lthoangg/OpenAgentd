@@ -107,31 +107,40 @@ def shell_lookup(command: str) -> tuple[bool, list[str], list[str]]:
 
 
 class Step:
-    __slots__ = ("calls", "tokens", "at", "model", "lookup", "kind", "gap")
+    __slots__ = ("calls", "tokens", "at", "model", "lookup", "kind", "gap", "cost")
 
-    def __init__(self, calls, tokens, at, model):
+    def __init__(self, calls, tokens, at, model, cost=0.0):
         self.calls = calls  # [name, args, result, result_len]
         self.tokens, self.at, self.model = tokens or 0, at or 0.0, model or "?"
+        self.cost = cost or 0.0  # the provider's estimated price of this model call, in USD
         self.lookup = False
         self.kind = ""
         self.gap = None  # seconds until the next model reply
 
 
+def role_of(parent: str | None, agent: str | None) -> str:
+    """``main agent``, or a subagent's profile: ``explorer#3`` is an ``explorer``."""
+    if not parent:
+        return "main agent"
+    return re.sub(r"#\d+$", "", agent or "") or "subagent"
+
+
 def load(con: sqlite3.Connection, days: int):
-    """Yield ``(session_id, is_subagent, [Step | 'user' | 'summary'])`` in order."""
+    """Yield ``(session_id, role, [Step | 'user' | 'summary'])`` in order."""
     rows = con.execute(
         "select m.session_id, m.role, m.kind, m.tool_calls, m.tool_call_id, substr(m.content, 1, 30000), length(m.content),"
         " json_extract(m.extra, '$.usage.input'), julianday(m.created_at) * 86400.0, json_extract(m.extra, '$.model'),"
-        " (select c.parent_session_id is not null from chat_sessions c where c.id = m.session_id)"
-        " from session_messages m where m.created_at > datetime('now', ?) order by m.session_id, m.seq, m.id",
+        " c.parent_session_id, c.agent_name, json_extract(m.extra, '$.usage.cost.estimated_usd')"
+        " from session_messages m left join chat_sessions c on c.id = m.session_id"
+        " where m.created_at > datetime('now', ?) order by m.session_id, m.seq, m.id",
         (f"-{days} days",),
     )
-    session, sub, items, by_id, last = None, False, [], {}, None
-    for sid, role, kind, tool_calls, call_id, content, length, tokens, at, model, is_sub in rows:
+    session, owner, items, by_id, last = None, "", [], {}, None
+    for sid, role, kind, tool_calls, call_id, content, length, tokens, at, model, parent, agent, cost in rows:
         if sid != session:
             if items:
-                yield session, sub, items
-            session, sub, items, by_id, last = sid, bool(is_sub), [], {}, None
+                yield session, owner, items
+            session, owner, items, by_id, last = sid, role_of(parent, agent), [], {}, None
         if role == "assistant" and kind == "chat" and last is not None and at and 0 < at - last.at < 900:
             last.gap = at - last.at
         if role == "user" or kind == "summary" or role == "assistant":
@@ -156,12 +165,12 @@ def load(con: sqlite3.Connection, days: int):
                 calls.append(entry)
                 by_id[call.get("id")] = entry
             if calls:
-                last = Step(calls, tokens, at, model)
+                last = Step(calls, tokens, at, model, cost)
                 items.append(last)
         elif role == "tool" and call_id in by_id:
             by_id[call_id][2], by_id[call_id][3] = content or "", length or 0
     if items:
-        yield session, sub, items
+        yield session, owner, items
 
 
 def median(values: list[float]) -> float:
@@ -193,6 +202,12 @@ def main() -> None:
     opened_from: Counter[str] = Counter()
     long_by_owner: Counter[str] = Counter()
     tokens_by_owner: Counter[str] = Counter()
+    cost_by_owner: Counter[str] = Counter()
+    lookup_cost_by_owner: Counter[str] = Counter()
+    reads_by_owner: Counter[str] = Counter()
+    whole_reads_by_owner: Counter[str] = Counter()
+    run5_steps: Counter[str] = Counter()
+    run5_cost: Counter[str] = Counter()
     before_match: list[int] = []
     after_match: list[int] = []
     calls_per_step: Counter[str] = Counter()
@@ -216,8 +231,7 @@ def main() -> None:
     shell_flags: Counter[str] = Counter()
     samples: dict[str, list[str]] = defaultdict(list)
 
-    for sid, is_sub, items in load(con, a.days):
-        owner = "subagents" if is_sub else "main agents"
+    for sid, owner, items in load(con, a.days):
         run = []  # the current chain of lookup steps
         seen: dict[tuple, tuple[str, int]] = {}
         prev: Step | None = None
@@ -233,6 +247,9 @@ def main() -> None:
                         chain_models[s.model] += 1
                 if n >= 10:
                     long_by_owner[owner] += n
+                if n >= 5:
+                    run5_steps[owner] += n
+                    run5_cost[owner] += sum(s.cost for s in run)
             run.clear()
 
         for item in items:
@@ -248,6 +265,7 @@ def main() -> None:
             step: Step = item
             steps += 1
             by_owner[owner] += 1
+            cost_by_owner[owner] += step.cost
             tokens_all += step.tokens
             n = len(step.calls)
             calls_per_step["1" if n == 1 else "2" if n == 2 else "3-5" if n <= 5 else "6+"] += 1
@@ -316,8 +334,11 @@ def main() -> None:
                 read_total += 1
                 path = str(args.get("path", ""))
                 offset, limit = number(args.get("offset"), 1) or 1, number(args.get("limit"))
+                reads_by_owner[owner] += 1
                 if limit:
                     read_windowed += 1
+                elif offset == 1:
+                    whole_reads_by_owner[owner] += 1
                 header = HEADER.match(result)
                 if header:
                     sliced[(sid, norm(path))].append((int(header[1]), int(header[2]), int(header[3])))
@@ -398,6 +419,7 @@ def main() -> None:
             if step.lookup:
                 lookup_steps += 1
                 lookup_by_owner[owner] += 1
+                lookup_cost_by_owner[owner] += step.cost
                 by_kind[step.kind] += 1
                 tokens_lookup += step.tokens
                 tokens_by_owner[owner] += step.tokens
@@ -432,14 +454,22 @@ def main() -> None:
     print(f"  lookup-only steps {lookup_steps:,} ({pct(lookup_steps, steps)} of steps); with a single call {single_lookup:,} ({pct(single_lookup, lookup_steps)})")
     for kind, n in by_kind.most_common():
         print(f"      {kind:<8}{n:>7,}   single call {single_by_kind[kind]:>6,} ({pct(single_by_kind[kind], n)})")
+    print(f"  context re-read by lookup-only steps: {tokens_lookup / 1e6:,.0f}M of {tokens_all / 1e6:,.0f}M input tokens ({pct(tokens_lookup, tokens_all)})")
+    print(f"  from a lookup-only step to the next model reply: median {median(gaps_lookup):.1f} s, total {sum(gaps_lookup) / 3600:,.1f} h over {len(gaps_lookup):,} steps")
+
+    print("\n--- By role (main agent, or the subagent profile) ---")
+    print("  cost is the provider's estimate; for a subscription it is a measure of quota, not a bill")
+    header = f"  {'role':<12}{'steps':>8}{'lookup':>8}{'$/lookup':>10}{'$ lookup':>10}{'$ all':>9}{'in 5+ row':>11}{'$ 5+ row':>10}{'reads':>8}{'whole':>7}"
+    print(header)
     for owner, n in by_owner.most_common():
         looked = lookup_by_owner[owner]
         print(
-            f"      {owner:<12} {looked:>7,} of {n:>7,} steps are lookup-only ({pct(looked, n)}),"
-            f" {tokens_by_owner[owner] / max(looked, 1) / 1000:,.0f}k input tokens each, {long_by_owner[owner]:,} of them in chains of 10+"
+            f"  {owner:<12}{n:>8,}{pct(looked, n):>8}{lookup_cost_by_owner[owner] / max(looked, 1):>10.3f}"
+            f"{lookup_cost_by_owner[owner]:>10,.0f}{cost_by_owner[owner]:>9,.0f}{run5_steps[owner]:>11,}{run5_cost[owner]:>10,.0f}"
+            f"{reads_by_owner[owner]:>8,}{pct(whole_reads_by_owner[owner], reads_by_owner[owner]):>7}"
         )
-    print(f"  context re-read by lookup-only steps: {tokens_lookup / 1e6:,.0f}M of {tokens_all / 1e6:,.0f}M input tokens ({pct(tokens_lookup, tokens_all)})")
-    print(f"  from a lookup-only step to the next model reply: median {median(gaps_lookup):.1f} s, total {sum(gaps_lookup) / 3600:,.1f} h over {len(gaps_lookup):,} steps")
+    print("  lookup: share of steps that only read, search or list. in 5+ row: lookup-only steps in a row of 5 or more.")
+    print("  whole: reads of a whole file (no offset or limit).")
 
     print("\n--- Chains of consecutive lookup-only steps ---")
     total_chain_steps = sum(chain_steps.values())

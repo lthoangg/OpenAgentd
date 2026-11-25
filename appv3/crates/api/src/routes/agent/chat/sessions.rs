@@ -375,6 +375,8 @@ async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> {
         appv3_agent::side_question::stop_session(sid);
         // Its background commands end with it, before their logs go.
         appv3_agent::background_commands::stop_for_deleted_session(sid).await;
+        // Its browser pages stop running out of sight, unless another session uses them.
+        appv3_agent::tools::browser::release_session(sid);
         // A deleted session answers nobody: its senders stop waiting on it.
         appv3_agent::workspace_messages::forget_outstanding_target(sid);
     }

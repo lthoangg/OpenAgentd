@@ -39,6 +39,8 @@ pub(super) enum Args {
         target: Option<Target>,
         steps: Vec<(Value, Duration)>,
     },
+    /// Let go of the page at `target` (every page this session holds without one).
+    Close(Option<Target>),
 }
 
 fn str_arg(args: &Value, key: &str) -> Result<Option<String>, String> {
@@ -55,7 +57,8 @@ fn str_arg(args: &Value, key: &str) -> Result<Option<String>, String> {
 pub(super) fn plan_mode_refusal(parsed: &Args) -> Option<String> {
     let action = |c: &Value| c.get("action").and_then(Value::as_str).unwrap_or_default().to_string();
     let blocked = match parsed {
-        Args::Open(_) | Args::Logs { .. } => None,
+        // Closing only stops keeping a page loaded out of sight.
+        Args::Open(_) | Args::Logs { .. } | Args::Close(_) => None,
         Args::Page { command, .. } => Some(action(command)).filter(|a| PLAN_MODE_BLOCKED.contains(&a.as_str())),
         Args::Chain { steps, .. } => steps.iter().map(|(c, _)| action(c)).find(|a| PLAN_MODE_BLOCKED.contains(&a.as_str())),
     }?;
@@ -90,9 +93,10 @@ pub(super) fn parse_args(args: &Value) -> Result<Args, Vec<String>> {
             Ok(Args::Logs { target, errors_only, limit, clear })
         }
         None => Err(vec!["action: Field required".into()]),
+        Some("close") => Ok(Args::Close(target)),
         Some("chain") => chain_steps(args).map(|steps| Args::Chain { target, steps }),
         Some(action) if PAGE_ACTIONS.contains(&action) => page_command(action, args).map(|(command, timeout)| Args::Page { target, command, timeout }),
-        _ => Err(vec![format!("action: Input should be 'open', 'logs', 'chain', or one of {}", PAGE_ACTIONS.join(", "))]),
+        _ => Err(vec![format!("action: Input should be 'open', 'close', 'logs', 'chain', or one of {}", PAGE_ACTIONS.join(", "))]),
     }
 }
 

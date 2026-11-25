@@ -112,7 +112,7 @@ pub(super) async fn open(ctx: &ToolContext, ws: &str, site: SiteTarget, url: Str
     let info = global().ensure(ws, Backend::Site(site), None).await.map_err(ToolError::exec)?;
     let entry = global().get(&info.id);
     if let Some(e) = &entry {
-        e.agent_opened(json!({"kind": "url", "url": url}));
+        e.agent_opened(&super::browser::holder(ctx), json!({"kind": "url", "url": url}));
         // A page that is already loaded is sent there now: the app loads a
         // page it learns about, but leaves one it already shows where it is.
         if e.agent.connected() {

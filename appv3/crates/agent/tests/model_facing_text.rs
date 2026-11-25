@@ -197,7 +197,10 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// explorer (more than about five files the lead will not edit) and when the
 /// lead reads itself: a lookup step on the lead's model costs many times one
 /// on an explorer's, and the older, vaguer rule did not move it.
-const LEAD_ALWAYS_ON_CHARS: usize = 47_201;
+/// Raised by 95 for `browser`'s `close` action and when an unused page
+/// closes: without them a page the agent is done with keeps running out of
+/// sight until it lapses, and a model cannot tell a closed page will reopen.
+const LEAD_ALWAYS_ON_CHARS: usize = 47_296;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

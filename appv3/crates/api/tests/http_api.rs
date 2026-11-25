@@ -1040,7 +1040,7 @@ async fn preview_routes(c: &Client, root: &std::path::Path) {
     assert!(list["previews"].as_array().unwrap().iter().any(|x| x["id"] == p["id"]), "{list}");
     assert!(list["previews"].as_array().unwrap().iter().all(|x| x["agent_page"].is_null()), "the user opened it, not the agent: {list}");
     // What the agent opened is listed, so any app window can keep it loaded.
-    appv3_preview::global().get(p["id"].as_str().unwrap()).unwrap().agent_opened(json!({"kind": "file", "path": "designs/landing.html"}));
+    appv3_preview::global().get(p["id"].as_str().unwrap()).unwrap().agent_opened("s1", json!({"kind": "file", "path": "designs/landing.html"}));
     let (_, list) = c.json("GET", "/api/preview", None).await;
     let mine = list["previews"].as_array().unwrap().iter().find(|x| x["id"] == p["id"]).cloned().unwrap();
     assert_eq!(mine["agent_page"], json!({"kind": "file", "path": "designs/landing.html"}));

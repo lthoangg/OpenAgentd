@@ -704,7 +704,7 @@
         "type": "function",
         "function": {
           "name": "browser",
-          "description": "Use a page in the user's Browser tab: open, read, and act on it, and read its console. Use it to check a web UI you built or changed, or to do something on a website for the user; to only read a public page's text, use web_fetch.\nOpen: action='open' with url (a local dev server you started with shell, e.g. http://localhost:5173/pricing, or a public page, e.g. https://example.com/docs) or path (a workspace HTML file). A public page opens in the desktop app's own browser profile, where the user may be signed in. The user is asked once per site, so open one only when the task needs it, and never type the user's passwords.\nRead: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'inspect' returns an element's selector, source file, styles, and HTML; 'logs' returns console errors, warnings, and logs, newest first.\nAct: 'click', 'fill' (value), 'press' (key), and 'scroll' take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). Refs go stale when the page changes: snapshot again before using them.\nChain: 'chain' runs up to 20 of these (steps) in one call, stopping at the first failure, e.g. fill, fill, click, snapshot.\nThe page runs in an OpenAgentd window, out of sight while the tab is closed; on a phone the workspace's Browser sheet must be open. No headless browser or screenshots. Ask before submitting a form that changes real data.",
+          "description": "Use a page in the user's Browser tab: open, read, and act on it, and read its console. Use it to check a web UI you built or changed, or to do something on a website for the user; to only read a public page's text, use web_fetch.\nOpen: action='open' with url (a local dev server you started with shell, e.g. http://localhost:5173/pricing, or a public page, e.g. https://example.com/docs) or path (a workspace HTML file). A public page opens in the desktop app's own browser profile, where the user may be signed in. The user is asked once per site, so open one only when the task needs it, and never type the user's passwords.\nRead: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'inspect' returns an element's selector, source file, styles, and HTML; 'logs' returns console errors, warnings, and logs, newest first.\nAct: 'click', 'fill' (value), 'press' (key), and 'scroll' take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). Refs go stale when the page changes: snapshot again before using them.\nChain: 'chain' runs up to 20 of these (steps) in one call, stopping at the first failure, e.g. fill, fill, click, snapshot.\nOut of sight, the page runs in the desktop app or an app window. Call 'close' when done (no url or path: all your pages); unused pages close after 15 minutes, and an action reopens one. No screenshots. Ask before submitting a form that changes real data.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -712,6 +712,7 @@
                 "type": "string",
                 "enum": [
                   "open",
+                  "close",
                   "logs",
                   "chain",
                   "snapshot",
@@ -723,17 +724,17 @@
                   "wait",
                   "inspect"
                 ],
-                "description": "'open' loads a page in the Browser tab; 'logs' reads its console; 'chain' runs several page actions; the rest act on the open page."
+                "description": "'open' loads a page in the Browser tab; 'close' stops running it out of sight; 'logs' reads its console; 'chain' runs several page actions; the rest act on the open page."
               },
               "url": {
                 "type": "string",
                 "default": null,
-                "description": "Local dev server URL (localhost, 127.0.0.1, or ::1), or a public page's http(s) URL. For page actions and logs, picks which open page to use; defaults to the one you used last."
+                "description": "Local dev server URL (localhost, 127.0.0.1, or ::1), or a public page's http(s) URL. For page actions, logs and close, picks which open page to use; defaults to the one you used last."
               },
               "path": {
                 "type": "string",
                 "default": null,
-                "description": "Workspace-relative HTML file to open instead of a URL (or, for page actions and logs, to pick that file's page)."
+                "description": "Workspace-relative HTML file to open instead of a URL (or, for page actions, logs and close, to pick that file's page)."
               },
               "level": {
                 "type": "string",
@@ -1932,7 +1933,7 @@
         "type": "function",
         "function": {
           "name": "browser",
-          "description": "Use a page in the user's Browser tab: open, read, and act on it, and read its console. Use it to check a web UI you built or changed, or to do something on a website for the user; to only read a public page's text, use web_fetch.\nOpen: action='open' with url (a local dev server you started with shell, e.g. http://localhost:5173/pricing, or a public page, e.g. https://example.com/docs) or path (a workspace HTML file). A public page opens in the desktop app's own browser profile, where the user may be signed in. The user is asked once per site, so open one only when the task needs it, and never type the user's passwords.\nRead: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'inspect' returns an element's selector, source file, styles, and HTML; 'logs' returns console errors, warnings, and logs, newest first.\nAct: 'click', 'fill' (value), 'press' (key), and 'scroll' take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). Refs go stale when the page changes: snapshot again before using them.\nChain: 'chain' runs up to 20 of these (steps) in one call, stopping at the first failure, e.g. fill, fill, click, snapshot.\nThe page runs in an OpenAgentd window, out of sight while the tab is closed; on a phone the workspace's Browser sheet must be open. No headless browser or screenshots. Ask before submitting a form that changes real data.",
+          "description": "Use a page in the user's Browser tab: open, read, and act on it, and read its console. Use it to check a web UI you built or changed, or to do something on a website for the user; to only read a public page's text, use web_fetch.\nOpen: action='open' with url (a local dev server you started with shell, e.g. http://localhost:5173/pricing, or a public page, e.g. https://example.com/docs) or path (a workspace HTML file). A public page opens in the desktop app's own browser profile, where the user may be signed in. The user is asked once per site, so open one only when the task needs it, and never type the user's passwords.\nRead: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'inspect' returns an element's selector, source file, styles, and HTML; 'logs' returns console errors, warnings, and logs, newest first.\nAct: 'click', 'fill' (value), 'press' (key), and 'scroll' take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). Refs go stale when the page changes: snapshot again before using them.\nChain: 'chain' runs up to 20 of these (steps) in one call, stopping at the first failure, e.g. fill, fill, click, snapshot.\nOut of sight, the page runs in the desktop app or an app window. Call 'close' when done (no url or path: all your pages); unused pages close after 15 minutes, and an action reopens one. No screenshots. Ask before submitting a form that changes real data.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1940,6 +1941,7 @@
                 "type": "string",
                 "enum": [
                   "open",
+                  "close",
                   "logs",
                   "chain",
                   "snapshot",
@@ -1951,17 +1953,17 @@
                   "wait",
                   "inspect"
                 ],
-                "description": "'open' loads a page in the Browser tab; 'logs' reads its console; 'chain' runs several page actions; the rest act on the open page."
+                "description": "'open' loads a page in the Browser tab; 'close' stops running it out of sight; 'logs' reads its console; 'chain' runs several page actions; the rest act on the open page."
               },
               "url": {
                 "type": "string",
                 "default": null,
-                "description": "Local dev server URL (localhost, 127.0.0.1, or ::1), or a public page's http(s) URL. For page actions and logs, picks which open page to use; defaults to the one you used last."
+                "description": "Local dev server URL (localhost, 127.0.0.1, or ::1), or a public page's http(s) URL. For page actions, logs and close, picks which open page to use; defaults to the one you used last."
               },
               "path": {
                 "type": "string",
                 "default": null,
-                "description": "Workspace-relative HTML file to open instead of a URL (or, for page actions and logs, to pick that file's page)."
+                "description": "Workspace-relative HTML file to open instead of a URL (or, for page actions, logs and close, to pick that file's page)."
               },
               "level": {
                 "type": "string",

@@ -5,7 +5,7 @@ use crate::console::{ConsoleBuffer, ConsoleEntry};
 use crate::target::Backend;
 use appv3_tools::denied::DeniedPaths;
 use serde::Serialize;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -23,6 +23,8 @@ pub const MAX_TUNNELS: usize = 32;
 /// A page the agent opened stays wanted (an app window keeps it loaded out
 /// of sight) until the agent has not used it for this long.
 pub const AGENT_PAGE_TTL_SECS: u64 = 15 * 60;
+/// How often lapsed holds on agent pages are looked for.
+const SWEEP_EVERY_SECS: u64 = 5;
 /// Counts the agent's opens and uses of pages, so the latest can be told.
 static AGENT_ORDER: AtomicU64 = AtomicU64::new(1);
 
@@ -79,15 +81,23 @@ pub struct Entry {
     alias_ports: Mutex<VecDeque<u16>>,
     tunnels: AtomicUsize,
     stop: watch::Sender<bool>,
-    /// What the agent opened here (`{"kind": "url", "url"}` or
-    /// `{"kind": "file", "path"}`, the web's `PreviewTarget`) and when it
-    /// last used the page.
-    agent_page: Mutex<Option<(serde_json::Value, u64)>>,
+    /// What the agent opened here and which sessions use it.
+    agent_page: Mutex<AgentPage>,
     /// Its place among the pages the agent opened or used ([`AGENT_ORDER`]);
     /// 0 for a page the agent never touched.
     agent_order: AtomicU64,
     /// A site's page address, as the app that shows it last reported.
     page_url: Mutex<Option<String>>,
+}
+
+/// The page the agent opened in a preview and the sessions holding it.
+#[derive(Default)]
+struct AgentPage {
+    /// What the agent opened (`{"kind": "url", "url"}` or `{"kind": "file",
+    /// "path"}`, the web's `PreviewTarget`).
+    target: Option<serde_json::Value>,
+    /// Each session using the page, with when it last did.
+    holds: HashMap<String, u64>,
 }
 
 /// Marks a request or WebSocket as in flight; the preview is not idle while
@@ -208,18 +218,66 @@ impl Entry {
         self.console.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
-    /// The agent opened `target` here: any app window may load it out of sight.
-    pub fn agent_opened(&self, target: serde_json::Value) {
-        *self.agent_page.lock().unwrap_or_else(|e| e.into_inner()) = Some((target, now_secs()));
+    fn page(&self) -> std::sync::MutexGuard<'_, AgentPage> {
+        self.agent_page.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[cfg(test)]
+    fn set_hold_at(&self, session: &str, at: u64) {
+        self.page().holds.insert(session.to_string(), at);
+    }
+
+    /// `session` opened `target` here: any app window may load it out of sight.
+    pub fn agent_opened(&self, session: &str, target: serde_json::Value) {
+        let mut page = self.page();
+        page.target = Some(target);
+        page.holds.insert(session.to_string(), now_secs());
         self.agent_order.store(AGENT_ORDER.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
     }
 
-    /// The agent used the page (any page action): it stays wanted longer.
-    pub fn agent_used(&self) {
-        if let Some(page) = self.agent_page.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
-            page.1 = now_secs();
+    /// `session` used the page (any page action): it holds it, for longer.
+    /// A page the agent never opened (only the user's tab) gains no hold.
+    pub fn agent_used(&self, session: &str) {
+        let mut page = self.page();
+        if page.target.is_some() {
+            page.holds.insert(session.to_string(), now_secs());
             self.agent_order.store(AGENT_ORDER.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
         }
+    }
+
+    /// `session` lets go of the page.
+    pub fn agent_release(&self, session: &str) -> Release {
+        let now = now_secs();
+        let mut page = self.page();
+        let held = page.holds.remove(session).is_some_and(|at| fresh(at, now));
+        match (held, page.holds.values().any(|at| fresh(*at, now))) {
+            (false, _) => Release::NotHeld,
+            (true, true) => Release::Kept,
+            (true, false) => {
+                page.holds.clear();
+                Release::Dropped
+            }
+        }
+    }
+
+    /// Whether `session` holds the page.
+    pub fn held_by(&self, session: &str) -> bool {
+        self.page().holds.get(session).is_some_and(|at| fresh(*at, now_secs()))
+    }
+
+    /// What the agent last opened here, held or not: a later action can
+    /// ask for it again.
+    pub fn agent_target(&self) -> Option<serde_json::Value> {
+        self.page().target.clone()
+    }
+
+    /// Drop the holds unused past [`AGENT_PAGE_TTL_SECS`] at `now`; `true`
+    /// when that took the last one.
+    fn expire_holds(&self, now: u64) -> bool {
+        let mut page = self.page();
+        let before = page.holds.len();
+        page.holds.retain(|_, at| fresh(*at, now));
+        before > 0 && page.holds.is_empty()
     }
 
     /// Larger for the page the agent opened or used later; 0 for one it did
@@ -233,8 +291,26 @@ impl Entry {
 
     /// The page the agent wants kept loaded, unless unused past [`AGENT_PAGE_TTL_SECS`].
     pub fn agent_page(&self) -> Option<serde_json::Value> {
-        self.agent_page.lock().unwrap_or_else(|e| e.into_inner()).as_ref().filter(|(_, at)| now_secs().saturating_sub(*at) < AGENT_PAGE_TTL_SECS).map(|(t, _)| t.clone())
+        let page = self.page();
+        let now = now_secs();
+        page.holds.values().any(|at| fresh(*at, now)).then(|| page.target.clone()).flatten()
     }
+}
+
+/// A hold last used at `at` still counts at `now`.
+fn fresh(at: u64, now: u64) -> bool {
+    now.saturating_sub(at) < AGENT_PAGE_TTL_SECS
+}
+
+/// What [`Entry::agent_release`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Release {
+    /// The session did not hold the page.
+    NotHeld,
+    /// Another session still holds it.
+    Kept,
+    /// That was the last hold: no app should keep the page loaded now.
+    Dropped,
 }
 
 #[derive(Default)]
@@ -242,7 +318,11 @@ pub struct Manager {
     entries: Mutex<Vec<Arc<Entry>>>,
     blocked_ports: Mutex<Vec<u16>>,
     reaper_started: AtomicBool,
+    /// Told about each page the sweep took the last hold of.
+    on_dropped: OnceLock<DroppedHook>,
 }
+
+type DroppedHook = Box<dyn Fn(&Entry) + Send + Sync>;
 
 static GLOBAL: OnceLock<Manager> = OnceLock::new();
 
@@ -321,7 +401,7 @@ impl Manager {
             alias_ports: Mutex::new(VecDeque::new()),
             tunnels: AtomicUsize::new(0),
             stop,
-            agent_page: Mutex::new(None),
+            agent_page: Mutex::new(AgentPage::default()),
             agent_order: AtomicU64::new(0),
             page_url: Mutex::new(None),
         });
@@ -347,9 +427,16 @@ impl Manager {
         }
         if reaper && !self.reaper_started.swap(true, Ordering::SeqCst) {
             tokio::spawn(async move {
+                // Lapsed holds are announced within seconds, so the app
+                // closes the page's hidden copy; idle listeners can wait.
+                let mut tick = 0u64;
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                    self.reap(now_secs(), IDLE_SECS);
+                    tick = tick.wrapping_add(1);
+                    tokio::time::sleep(std::time::Duration::from_secs(SWEEP_EVERY_SECS)).await;
+                    self.sweep_and_announce(now_secs());
+                    if tick.is_multiple_of(60 / SWEEP_EVERY_SECS) {
+                        self.reap(now_secs(), IDLE_SECS);
+                    }
                 }
             });
         }
@@ -376,6 +463,40 @@ impl Manager {
         tracing::info!("preview_closed id={} port={}", e.id, e.port);
         e.close();
         true
+    }
+
+    /// `session` lets go of every page it holds (its session was deleted).
+    /// Returns the pages no session holds any more.
+    pub fn release_session(&self, session: &str) -> Vec<Arc<Entry>> {
+        self.list(None).into_iter().filter(|e| e.agent_release(session) == Release::Dropped).collect()
+    }
+
+    /// Drop holds unused past [`AGENT_PAGE_TTL_SECS`] at `now`. Returns the
+    /// pages that lost their last hold.
+    fn sweep_holds(&self, now: u64) -> Vec<Arc<Entry>> {
+        self.lock().iter().filter(|e| e.expire_holds(now)).cloned().collect()
+    }
+
+    /// Call `f` for each page the sweep takes the last hold of. Only the
+    /// first call sets it.
+    pub fn on_agent_page_dropped(&self, f: impl Fn(&Entry) + Send + Sync + 'static) {
+        let _ = self.on_dropped.set(Box::new(f));
+    }
+
+    /// [`Self::sweep_holds`], telling the hook about each page it dropped.
+    fn sweep_and_announce(&self, now: u64) {
+        for e in self.sweep_holds(now) {
+            tracing::info!("preview_agent_page_lapsed id={}", e.id);
+            self.announce_dropped(&e);
+        }
+    }
+
+    /// Tell the hook (see [`Self::on_agent_page_dropped`]) that no session
+    /// holds `entry` any more.
+    pub fn announce_dropped(&self, entry: &Entry) {
+        if let Some(hook) = self.on_dropped.get() {
+            hook(entry);
+        }
     }
 
     /// Close previews with no connection and no activity for `idle_secs`.
@@ -512,6 +633,105 @@ mod tests {
         assert!(e.reserve_tunnel().is_none());
         drop(slots);
         assert!(e.reserve_tunnel().is_some());
+        m.shutdown();
+    }
+
+    fn page(path: &str) -> serde_json::Value {
+        serde_json::json!({"kind": "file", "path": path})
+    }
+
+    #[tokio::test]
+    async fn a_page_stays_wanted_until_the_last_session_lets_go() {
+        let m = leak();
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        let e = m.get(&a.id).unwrap();
+        assert_eq!(e.agent_release("s1"), Release::NotHeld, "nobody held it yet");
+        e.agent_opened("s1", page("a.html"));
+        e.agent_used("s2");
+        assert!(e.held_by("s1") && e.held_by("s2"));
+        assert!(!e.held_by("s3"));
+
+        assert_eq!(e.agent_release("s1"), Release::Kept);
+        assert!(!e.held_by("s1"));
+        assert_eq!(e.agent_page(), Some(page("a.html")), "s2 still uses it");
+        assert_eq!(e.agent_release("s1"), Release::NotHeld);
+
+        assert_eq!(e.agent_release("s2"), Release::Dropped);
+        assert_eq!(e.agent_page(), None);
+        assert_eq!(e.agent_order(), 0, "a page no session holds is not the agent's latest");
+        m.shutdown();
+    }
+
+    #[tokio::test]
+    async fn using_a_page_nobody_opened_holds_nothing() {
+        let m = leak();
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        let e = m.get(&a.id).unwrap();
+        e.agent_used("s1");
+        assert!(!e.held_by("s1"));
+        assert_eq!(e.agent_page(), None);
+        m.shutdown();
+    }
+
+    #[tokio::test]
+    async fn the_sweep_drops_holds_unused_past_the_ttl() {
+        let m = leak();
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        let b = m.ensure_inner("/w", upstream("http://localhost:3000"), None, false).await.unwrap();
+        let (ea, eb) = (m.get(&a.id).unwrap(), m.get(&b.id).unwrap());
+        ea.agent_opened("s1", page("a.html"));
+        eb.agent_opened("s1", page("b.html"));
+        let now = now_secs();
+        assert!(m.sweep_holds(now).is_empty(), "nothing has lapsed yet");
+
+        let later = now + AGENT_PAGE_TTL_SECS + 1;
+        let dropped: Vec<String> = m.sweep_holds(later).iter().map(|e| e.id.clone()).collect();
+        assert_eq!(dropped.len(), 2, "{dropped:?}");
+        assert!(!ea.held_by("s1"));
+        assert!(m.sweep_holds(later).is_empty(), "each page is reported once");
+        m.shutdown();
+    }
+
+    #[tokio::test]
+    async fn the_sweep_keeps_a_page_another_session_used_lately() {
+        let m = leak();
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        let e = m.get(&a.id).unwrap();
+        e.agent_opened("old", page("a.html"));
+        e.set_hold_at("old", now_secs().saturating_sub(AGENT_PAGE_TTL_SECS + 5));
+        e.agent_used("new");
+        assert!(m.sweep_holds(now_secs()).is_empty());
+        assert!(!e.held_by("old"));
+        assert!(e.held_by("new"));
+        m.shutdown();
+    }
+
+    #[tokio::test]
+    async fn a_deleted_session_lets_go_of_all_its_pages() {
+        let m = leak();
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        let b = m.ensure_inner("/w", upstream("http://localhost:3000"), None, false).await.unwrap();
+        let (ea, eb) = (m.get(&a.id).unwrap(), m.get(&b.id).unwrap());
+        ea.agent_opened("gone", page("a.html"));
+        eb.agent_opened("gone", page("b.html"));
+        eb.agent_used("other");
+        let dropped: Vec<String> = m.release_session("gone").iter().map(|e| e.id.clone()).collect();
+        assert_eq!(dropped, vec![a.id.clone()], "b is still another session's");
+        assert_eq!(ea.agent_page(), None);
+        assert!(eb.held_by("other") && !eb.held_by("gone"));
+        m.shutdown();
+    }
+
+    #[tokio::test]
+    async fn the_sweep_tells_whoever_listens() {
+        let m = leak();
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = seen.clone();
+        m.on_agent_page_dropped(move |e: &Entry| sink.lock().unwrap().push(e.id.clone()));
+        let a = m.ensure_inner("/w", upstream("http://localhost:5173"), None, false).await.unwrap();
+        m.get(&a.id).unwrap().agent_opened("s1", page("a.html"));
+        m.sweep_and_announce(now_secs() + AGENT_PAGE_TTL_SECS + 1);
+        assert_eq!(*seen.lock().unwrap(), vec![a.id.clone()]);
         m.shutdown();
     }
 }

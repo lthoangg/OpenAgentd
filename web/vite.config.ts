@@ -96,6 +96,8 @@ export default defineConfig({
         pet: path.resolve(import.meta.dirname, "pet.html"),
         // Where a connector's sign-in comes back to in a browser on another device.
         "oauth-done": path.resolve(import.meta.dirname, "oauth-done.html"),
+        // The desktop app's hidden window for an agent's page (no app window open).
+        "agent-page": path.resolve(import.meta.dirname, "agent-page.html"),
       },
       output: {
         // Rolldown-native chunk groups (the deprecated function-form

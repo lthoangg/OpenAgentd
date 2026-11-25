@@ -193,7 +193,11 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// cut at `max_results` says how many more lines match: without the first a
 /// model spends a second request reading the file at the match, and without
 /// the second it cannot tell a full result from a cut one.
-const LEAD_ALWAYS_ON_CHARS: usize = 47_006;
+/// Raised by 195 for the Delegating rule to say when reading goes to an
+/// explorer (more than about five files the lead will not edit) and when the
+/// lead reads itself: a lookup step on the lead's model costs many times one
+/// on an explorer's, and the older, vaguer rule did not move it.
+const LEAD_ALWAYS_ON_CHARS: usize = 47_201;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

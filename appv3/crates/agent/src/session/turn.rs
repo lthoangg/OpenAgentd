@@ -356,6 +356,8 @@ impl AgentSession {
             if let Some(t) = build_title_generation_hook(provider_for_hooks.clone(), self.pool.clone(), credential.as_deref()) {
                 hooks.push(Arc::new(t));
             }
+            // Outside the result offload, so a long result keeps the note in view.
+            hooks.push(Arc::new(crate::hooks::reading::DelegateReadingHook::default()));
         } else if let Some(lead) = &self.parent_session_id {
             hooks.push(Arc::new(crate::subagents::stall::MemberStallHook::new(lead, &name, self.pool.clone())));
         }

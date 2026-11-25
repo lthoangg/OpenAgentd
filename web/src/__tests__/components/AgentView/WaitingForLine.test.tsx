@@ -18,6 +18,9 @@ const WORKER: WaitingItem = { kind: 'subagent', session_id: 'sub-1', title: 'Por
 const EXPLORER: WaitingItem = { kind: 'subagent', session_id: 'sub-2', title: 'Map the retry paths', label: 'explorer#1', workspace: '', state: 'working' }
 const CLOUD: WaitingItem = { kind: 'session', session_id: 'other-1', title: 'Add the offer route', label: 'agentd-cloud', workspace: '/r/agentd-cloud', state: 'needs_input' }
 const IDLE: WaitingItem = { kind: 'subagent', session_id: 'sub-3', title: 'Finished the audit', label: 'explorer#2', workspace: '', state: 'idle' }
+const startedAgo = (seconds: number) => Math.floor(Date.now() / 1000) - seconds
+const BUILD: WaitingItem = { kind: 'command', session_id: 'lead-1', number: 3, title: 'Run the backend check', label: 'make verify-v3', workspace: '', state: 'working', waited: true, started_at: startedAgo(134) }
+const SERVER: WaitingItem = { kind: 'command', session_id: 'lead-1', number: 2, title: null, label: 'make dev', workspace: '', state: 'working', waited: false, started_at: startedAgo(720) }
 
 function renderLine(items: WaitingItem[] | undefined, sessionId = 'lead-1') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
@@ -112,5 +115,49 @@ describe('WaitingForLine', () => {
     renderLine([{ ...CLOUD, title: null, state: 'working' }])
     fireEvent.click(line()!)
     expect(screen.getByRole('button', { name: /Untitled session/ }).textContent).toBe('Untitled sessionagentd-cloudRunning')
+  })
+
+  it('counts a background command the session waits for beside its sessions', () => {
+    renderLine([WORKER, BUILD, SERVER])
+    expect(line()?.textContent).toBe('Waiting for 1 session and 1 command')
+  })
+
+  it('does not say it waits for a server: it only says it runs', () => {
+    renderLine([SERVER])
+    expect(line()).toBeNull()
+    const running = screen.getByRole('button', { name: /^1 command running/ })
+    // No live dot: nothing is coming back.
+    expect(running.querySelector('.animate-pulse')).toBeNull()
+    fireEvent.click(running)
+    expect(screen.getByRole('dialog', { name: 'Running commands' }).textContent).toMatch(/^make devCommand 2 · \d\d:\d\d · keeps runningStop$/)
+  })
+
+  it('lists a command by what the agent called it, with how long it has run', () => {
+    renderLine([BUILD, SERVER])
+    fireEvent.click(line()!)
+    const rows = Array.from(list()!.querySelectorAll('li')).map((row) => row.textContent)
+    expect(rows[0]).toMatch(/^Run the backend checkCommand 3 · 02:1\dRunningStop$/)
+    expect(rows[1]).toMatch(/^make devCommand 2 · 12:0\d · keeps runningStop$/)
+  })
+
+  it('stops a command from its row and reads the list again', async () => {
+    const requests: string[] = []
+    const realFetch = globalThis.fetch
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(`${init?.method ?? 'GET'} ${String(input)}`)
+      const body = String(input).endsWith('/waiting') ? JSON.stringify({ items: [SERVER] }) : null
+      return Promise.resolve(new Response(body, { status: body ? 200 : 204 }))
+    }) as typeof fetch
+    try {
+      renderLine([BUILD, SERVER])
+      fireEvent.click(line()!)
+      fireEvent.click(screen.getByRole('button', { name: 'Stop command 3' }))
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop command 3' })).toBeNull())
+      expect(requests).toEqual(['POST /api/agent/sessions/lead-1/commands/3/stop', 'GET /api/agent/sessions/lead-1/waiting'])
+      // Only the server is left, so the line no longer says it waits.
+      expect(screen.getByRole('button', { name: /^1 command running/ })).toBeTruthy()
+    } finally {
+      globalThis.fetch = realFetch
+    }
   })
 })

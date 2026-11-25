@@ -18,6 +18,7 @@
 use super::browser_args::{parse_args, plan_mode_refusal, Args, Target, DEFAULT_LIMIT, MAX_LIMIT, MAX_STEPS, MAX_WAIT_MS, PAGE_ACTIONS};
 use super::browser_site::{self, site_of};
 use super::invalid_args;
+use appv3_preview::Release;
 use appv3_preview::{global, parse_url_target, resolve_workspace_file, static_backend, url_path, Backend, Entry};
 use appv3_tools::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -71,6 +72,24 @@ impl Drop for Opening {
 }
 
 pub struct BrowserTool;
+
+/// Who holds the pages this call opens or uses: its session, in the form
+/// session deletion uses (no session, as in tests: one shared holder).
+pub(super) fn holder(ctx: &ToolContext) -> String {
+    ctx.session_id.as_deref().map(appv3_db::codec::api_uuid).unwrap_or_default()
+}
+
+/// Tell app windows (and the desktop app) to re-read which pages to keep
+/// loaded: one was opened, or no session holds it any more.
+pub(super) fn announce(entry: &Entry) {
+    crate::broadcaster::publish(AGENT_PAGES_EVENT, json!({"workspace": entry.workspace, "preview_id": entry.id}));
+}
+
+/// The server's sweep announces pages whose last hold lapsed.
+fn follow_lapsed_pages() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| global().on_agent_page_dropped(announce));
+}
 
 fn workspace(ctx: &ToolContext) -> Result<String, ToolError> {
     let ws = ctx.workspace.clone().filter(|w| !w.is_empty()).ok_or_else(|| ToolError::exec("The browser needs a workspace."))?;
@@ -133,7 +152,7 @@ async fn open(ctx: &ToolContext, ws: &str, target: Target) -> ToolResult {
     let info = global().ensure(ws, backend, None).await.map_err(ToolError::exec)?;
     let entry = global().get(&info.id);
     if let Some(e) = &entry {
-        e.agent_opened(wanted);
+        e.agent_opened(&holder(ctx), wanted);
     }
     // Any app window loads the page now, without waiting for this call to
     // end or for its session to be on screen.
@@ -206,9 +225,9 @@ impl Tool for BrowserTool {
 
     fn definition(&self) -> Value {
         let mut properties = json!({
-            "action": {"type": "string", "enum": ["open", "logs", "chain", "snapshot", "click", "fill", "press", "scroll", "navigate", "wait", "inspect"], "description": "'open' loads a page in the Browser tab; 'logs' reads its console; 'chain' runs several page actions; the rest act on the open page."},
-            "url": {"type": "string", "default": null, "description": "Local dev server URL (localhost, 127.0.0.1, or ::1), or a public page's http(s) URL. For page actions and logs, picks which open page to use; defaults to the one you used last."},
-            "path": {"type": "string", "default": null, "description": "Workspace-relative HTML file to open instead of a URL (or, for page actions and logs, to pick that file's page)."},
+            "action": {"type": "string", "enum": ["open", "close", "logs", "chain", "snapshot", "click", "fill", "press", "scroll", "navigate", "wait", "inspect"], "description": "'open' loads a page in the Browser tab; 'close' stops running it out of sight; 'logs' reads its console; 'chain' runs several page actions; the rest act on the open page."},
+            "url": {"type": "string", "default": null, "description": "Local dev server URL (localhost, 127.0.0.1, or ::1), or a public page's http(s) URL. For page actions, logs and close, picks which open page to use; defaults to the one you used last."},
+            "path": {"type": "string", "default": null, "description": "Workspace-relative HTML file to open instead of a URL (or, for page actions, logs and close, to pick that file's page)."},
             "level": {"type": "string", "enum": ["error", "all"], "default": "all", "description": "[logs] 'error' returns only errors."},
             "limit": {"type": "integer", "default": DEFAULT_LIMIT, "minimum": 1, "maximum": MAX_LIMIT, "description": "[logs] Most entries to return per page."},
             "clear": {"type": "boolean", "default": false, "description": "[logs] Clear the console buffer after reading, so the next call shows only new entries."}
@@ -231,7 +250,7 @@ impl Tool for BrowserTool {
             "type": "function",
             "function": {
                 "name": BROWSER_TOOL,
-                "description": "Use a page in the user's Browser tab: open, read, and act on it, and read its console. Use it to check a web UI you built or changed, or to do something on a website for the user; to only read a public page's text, use web_fetch.\nOpen: action='open' with url (a local dev server you started with shell, e.g. http://localhost:5173/pricing, or a public page, e.g. https://example.com/docs) or path (a workspace HTML file). A public page opens in the desktop app's own browser profile, where the user may be signed in. The user is asked once per site, so open one only when the task needs it, and never type the user's passwords.\nRead: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'inspect' returns an element's selector, source file, styles, and HTML; 'logs' returns console errors, warnings, and logs, newest first.\nAct: 'click', 'fill' (value), 'press' (key), and 'scroll' take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). Refs go stale when the page changes: snapshot again before using them.\nChain: 'chain' runs up to 20 of these (steps) in one call, stopping at the first failure, e.g. fill, fill, click, snapshot.\nThe page runs in an OpenAgentd window, out of sight while the tab is closed; on a phone the workspace's Browser sheet must be open. No headless browser or screenshots. Ask before submitting a form that changes real data.",
+                "description": "Use a page in the user's Browser tab: open, read, and act on it, and read its console. Use it to check a web UI you built or changed, or to do something on a website for the user; to only read a public page's text, use web_fetch.\nOpen: action='open' with url (a local dev server you started with shell, e.g. http://localhost:5173/pricing, or a public page, e.g. https://example.com/docs) or path (a workspace HTML file). A public page opens in the desktop app's own browser profile, where the user may be signed in. The user is asked once per site, so open one only when the task needs it, and never type the user's passwords.\nRead: 'snapshot' returns a text outline of the page with refs (e1, e2, …) on links, buttons, and fields; 'inspect' returns an element's selector, source file, styles, and HTML; 'logs' returns console errors, warnings, and logs, newest first.\nAct: 'click', 'fill' (value), 'press' (key), and 'scroll' take a ref from the latest snapshot or a CSS selector; 'navigate' takes to (a path, or back, forward, reload); 'wait' waits for text or a selector (gone=true waits for it to disappear). Refs go stale when the page changes: snapshot again before using them.\nChain: 'chain' runs up to 20 of these (steps) in one call, stopping at the first failure, e.g. fill, fill, click, snapshot.\nOut of sight, the page runs in the desktop app or an app window. Call 'close' when done (no url or path: all your pages); unused pages close after 15 minutes, and an action reopens one. No screenshots. Ask before submitting a form that changes real data.",
                 "parameters": {
                     "type": "object",
                     "properties": properties,
@@ -249,6 +268,7 @@ impl Tool for BrowserTool {
 /// [`Tool::run`] with the page-connect wait as a parameter (tests shorten it).
 async fn run_with(ctx: &ToolContext, args: Value, connect_wait: Duration) -> ToolResult {
     let parsed = parse_args(&args).map_err(|e| invalid_args(BROWSER_TOOL, &e))?;
+    follow_lapsed_pages();
     let plan_mode = ctx.metadata.lock().unwrap().get("interaction_mode").and_then(Value::as_str) == Some("plan");
     if let Some(refusal) = plan_mode.then(|| plan_mode_refusal(&parsed)).flatten() {
         return Err(ToolError::Execution(refusal));
@@ -262,6 +282,56 @@ async fn run_with(ctx: &ToolContext, args: Value, connect_wait: Duration) -> Too
         Args::Logs { target, errors_only, limit, clear } => logs(ctx, &ws, target, errors_only, limit, clear).await,
         Args::Page { target, command, timeout } => page(ctx, &ws, target, command, timeout, connect_wait).await,
         Args::Chain { target, steps } => chain(ctx, &ws, target, steps, connect_wait).await,
+        Args::Close(target) => close(ctx, &ws, target),
+    }
+}
+
+/// Let go of the page at `target`, or of every page this session holds.
+fn close(ctx: &ToolContext, ws: &str, target: Option<Target>) -> ToolResult {
+    let me = holder(ctx);
+    let held: Vec<Arc<Entry>> = matching(ws, target.as_ref())?.into_iter().filter(|e| e.held_by(&me)).collect();
+    if held.is_empty() {
+        return Ok(ToolOutput::text(match &target {
+            Some(Target::Url(t) | Target::Path(t)) => format!("This session has no page open at {t}."),
+            None => "This session has no page open.".to_string(),
+        }));
+    }
+    let (mut closed, mut kept) = (vec![], vec![]);
+    for e in held {
+        let name = e.agent_page().as_ref().map(target_name).unwrap_or_else(|| describe(&e));
+        match e.agent_release(&me) {
+            Release::Dropped => {
+                announce(&e);
+                closed.push(name);
+            }
+            Release::Kept => kept.push(name),
+            Release::NotHeld => {}
+        }
+    }
+    let mut out = vec![];
+    match closed.as_slice() {
+        [] => {}
+        [one] => out.push(format!("Closed {one}: it no longer runs out of sight. If the user has it open in the Browser tab, it stays there.")),
+        many => out.push(format!("Closed {} pages: {}. They no longer run out of sight; one the user has open in the Browser tab stays there.", many.len(), many.join(", "))),
+    }
+    match kept.as_slice() {
+        [] => {}
+        [one] => out.push(format!("Closed {one} for this session. Another session still uses it, so it stays loaded.")),
+        many => out.push(format!("Closed {} for this session. Another session still uses them, so they stay loaded.", many.join(", "))),
+    }
+    Ok(ToolOutput::text(out.join(" ")))
+}
+
+/// How a page the agent opened is named back to it: the address or file it gave.
+fn target_name(target: &Value) -> String {
+    target.get("url").or_else(|| target.get("path")).and_then(Value::as_str).unwrap_or_default().to_string()
+}
+
+/// A deleted session lets go of its pages; app windows close the copies
+/// nobody else uses.
+pub fn release_session(session_id: &str) {
+    for e in global().release_session(&appv3_db::codec::api_uuid(session_id)) {
+        announce(&e);
     }
 }
 
@@ -294,7 +364,7 @@ pub(super) fn agents_latest(entries: &[Arc<Entry>]) -> Option<Arc<Entry>> {
 /// the workspace's without one): the one the agent opened or used last,
 /// else the one whose page polled most recently. Waits up to `connect_wait`
 /// for its page to connect.
-async fn pick_page(ws: &str, target: Option<&Target>, connect_wait: Duration) -> Result<Arc<Entry>, ToolError> {
+async fn pick_page(ws: &str, holder: &str, target: Option<&Target>, connect_wait: Duration) -> Result<Arc<Entry>, ToolError> {
     let deadline = tokio::time::Instant::now() + connect_wait;
     let mut entries = matching(ws, target)?;
     while entries.is_empty() && Opening::running(ws) && tokio::time::Instant::now() < deadline {
@@ -303,6 +373,14 @@ async fn pick_page(ws: &str, target: Option<&Target>, connect_wait: Duration) ->
     }
     if entries.is_empty() {
         return Err(ToolError::exec("No page is open in the browser for this workspace. Call browser with action 'open' first."));
+    }
+    // A page the agent closed, or left unused until it lapsed, is loaded
+    // nowhere now: ask for it again rather than wait for nothing.
+    if agents_latest(&entries).is_none() && !entries.iter().any(|e| e.agent.connected()) {
+        if let Some((e, t)) = entries.iter().find_map(|e| e.agent_target().map(|t| (e, t))) {
+            e.agent_opened(holder, t);
+            announce(e);
+        }
     }
     // Several pages may be loaded at once, and each polls all the time: the
     // agent means the one it opened, not whichever asked last.
@@ -313,7 +391,7 @@ async fn pick_page(ws: &str, target: Option<&Target>, connect_wait: Duration) ->
         if !entry.agent.connected() {
             return Err(ToolError::exec(not_connected(&[entry], connect_wait)));
         }
-        entry.agent_used();
+        entry.agent_used(holder);
         return Ok(entry);
     }
     let best = |entries: &[Arc<Entry>]| entries.iter().filter(|e| e.agent.connected()).max_by_key(|e| e.agent.last_seen()).cloned();
@@ -322,7 +400,7 @@ async fn pick_page(ws: &str, target: Option<&Target>, connect_wait: Duration) ->
         futures::future::select_all(entries.iter().map(|e| Box::pin(e.agent.wait_connected(left)))).await;
     }
     let entry = best(&entries).ok_or_else(|| ToolError::exec(not_connected(&entries, connect_wait)))?;
-    entry.agent_used();
+    entry.agent_used(holder);
     Ok(entry)
 }
 
@@ -339,20 +417,34 @@ fn matching(ws: &str, target: Option<&Target>) -> Result<Vec<Arc<Entry>>, ToolEr
 
 /// Why no page answered: no app window to load it, or a page that does not load.
 fn not_connected(entries: &[Arc<Entry>], waited: Duration) -> String {
-    if crate::broadcaster::broadcaster().subscriber_count() == 0 {
-        return "No OpenAgentd window is open to load this page: pages run inside the app, not in a headless browser. Ask the user to open OpenAgentd on this computer (the Browser tab can stay closed), then retry.".to_string();
+    let followed = crate::broadcaster::broadcaster().subscriber_count() > 0;
+    why_not_connected(entries, waited, appv3_core::auth::is_desktop_session(), followed)
+}
+
+/// [`not_connected`] for a server the desktop app started or not (`desktop`),
+/// with an app window or the desktop app reading its events or not (`followed`).
+fn why_not_connected(entries: &[Arc<Entry>], waited: Duration, desktop: bool, followed: bool) -> String {
+    let secs = waited.as_secs_f32().ceil();
+    match (desktop, followed) {
+        (false, false) => {
+            return "This server runs without the OpenAgentd desktop app, so no hidden window can load the page. Ask the user to open the Browser tab in an OpenAgentd window, or to run the desktop app on this computer, then retry.".to_string();
+        }
+        // The desktop app follows the server it started, windows open or not.
+        (true, false) => {
+            return "The OpenAgentd desktop app is not connected to this server yet, so nothing loads the page. Retry in a few seconds; if it keeps failing, ask the user to reopen the desktop app.".to_string();
+        }
+        _ => {}
     }
     let shown = entries.first().map(|e| describe(e)).unwrap_or_default();
     if entries.iter().all(|e| e.is_site()) {
-        return format!(
-            "The page did not connect within {} s. A page of the public web loads in the OpenAgentd desktop app on a Mac; a phone or a browser cannot show {shown}. Ask the user to open the desktop app, then retry.",
-            waited.as_secs_f32().ceil()
-        );
+        return format!("The page did not connect within {secs} s. A page of the public web loads in the OpenAgentd desktop app on a Mac; a phone or a browser cannot show {shown}. Ask the user to open the desktop app, then retry.");
     }
-    format!(
-        "The page did not connect within {} s. An OpenAgentd window loads it, out of sight while the Browser tab is closed. Check that {shown} answers (browser action 'logs' shows its console), then retry; opening it again does not help while the page cannot load.",
-        waited.as_secs_f32().ceil()
-    )
+    let loader = if desktop {
+        "The OpenAgentd desktop app loads it out of sight while the Browser tab is closed."
+    } else {
+        "This server runs without the OpenAgentd desktop app, so only an open OpenAgentd window or the Browser tab loads it."
+    };
+    format!("The page did not connect within {secs} s. {loader} Check that {shown} answers (browser action 'logs' shows its console), then retry; opening it again does not help while the page cannot load.")
 }
 
 fn cap(mut text: String, max: usize) -> String {
@@ -418,7 +510,7 @@ fn step_text(action: &str, result: &Value) -> String {
 }
 
 async fn page(ctx: &ToolContext, ws: &str, target: Option<Target>, command: Value, timeout: Duration, connect_wait: Duration) -> ToolResult {
-    let entry = pick_page(ws, target.as_ref(), connect_wait).await?;
+    let entry = pick_page(ws, &holder(ctx), target.as_ref(), connect_wait).await?;
     let site = match browser_site::allowed_host(ctx, &entry).await {
         Ok(site) => site,
         Err(stop) => return stop,
@@ -432,7 +524,7 @@ async fn page(ctx: &ToolContext, ws: &str, target: Option<Target>, command: Valu
 
 /// Run `steps` in order on one preview, stopping at the first that fails.
 async fn chain(ctx: &ToolContext, ws: &str, target: Option<Target>, steps: Vec<(Value, Duration)>, connect_wait: Duration) -> ToolResult {
-    let entry = pick_page(ws, target.as_ref(), connect_wait).await?;
+    let entry = pick_page(ws, &holder(ctx), target.as_ref(), connect_wait).await?;
     // Asked once for the chain: a step that leaves the site ends it, since
     // the app runs a command only on the site it names.
     let site = match browser_site::allowed_host(ctx, &entry).await {
@@ -492,6 +584,159 @@ mod tests {
         }
     }
 
+    fn ctx_as(ws: &Path, session: &str) -> ToolContext {
+        ToolContext { session_id: Some(session.into()), ..ctx(ws) }
+    }
+
+    #[tokio::test]
+    async fn a_page_nothing_loads_is_explained_by_who_could_load_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = workspace_of(dir.path());
+        let info = global().ensure(&ws, static_backend(Path::new(&ws)), None).await.unwrap();
+        let entries = vec![global().get(&info.id).unwrap()];
+        let wait = Duration::from_secs(8);
+
+        let standalone = why_not_connected(&entries, wait, false, false);
+        assert_eq!(standalone, "This server runs without the OpenAgentd desktop app, so no hidden window can load the page. Ask the user to open the Browser tab in an OpenAgentd window, or to run the desktop app on this computer, then retry.");
+        let standalone_followed = why_not_connected(&entries, wait, false, true);
+        assert!(
+            standalone_followed.starts_with(
+                "The page did not connect within 8 s. This server runs without the OpenAgentd desktop app, so only an open OpenAgentd window or the Browser tab loads it."
+            ),
+            "{standalone_followed}"
+        );
+        let desktop = why_not_connected(&entries, wait, true, true);
+        assert!(
+            desktop.starts_with(
+                "The page did not connect within 8 s. The OpenAgentd desktop app loads it out of sight while the Browser tab is closed. Check that workspace files answers"
+            ),
+            "{desktop}"
+        );
+        let desktop_starting = why_not_connected(&entries, wait, true, false);
+        assert!(desktop_starting.starts_with("The OpenAgentd desktop app is not connected to this server yet"), "{desktop_starting}");
+        global().close(&info.id);
+    }
+
+    fn workspace_of(dir: &Path) -> String {
+        crate::manager::validate_workspace(&dir.to_string_lossy(), true).unwrap()
+    }
+
+    /// Whether the feed told app windows about `id` (other tests' pages are
+    /// announced on the same feed).
+    fn announced(feed: &mut tokio::sync::mpsc::UnboundedReceiver<Value>, id: &str) -> bool {
+        std::iter::from_fn(|| feed.try_recv().ok()).any(|e| e["preview_id"] == json!(id))
+    }
+
+    #[tokio::test]
+    async fn close_lets_go_of_the_page_and_tells_the_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.html"), "<html></html>").unwrap();
+        let c = ctx_as(dir.path(), "close-one");
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "a.html"})).await);
+        let entry = global().list(Some(&workspace_of(dir.path()))).pop().unwrap();
+        let mut feed = crate::broadcaster::broadcaster().tap(AGENT_PAGES_EVENT);
+
+        let out = text(BrowserTool.run(&c, json!({"action": "close", "path": "a.html"})).await);
+        assert_eq!(out, "Closed a.html: it no longer runs out of sight. If the user has it open in the Browser tab, it stays there.");
+        assert_eq!(entry.agent_page(), None);
+        assert!(announced(&mut feed, &entry.id), "app windows drop their copy");
+
+        let again = text(BrowserTool.run(&c, json!({"action": "close", "path": "a.html"})).await);
+        assert_eq!(again, "This session has no page open at a.html.");
+        global().close(&entry.id);
+    }
+
+    #[tokio::test]
+    async fn close_without_a_page_lets_go_of_every_page_of_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.html"), "<html></html>").unwrap();
+        let c = ctx_as(dir.path(), "close-all");
+        assert_eq!(text(BrowserTool.run(&c, json!({"action": "close"})).await), "This session has no page open.");
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "a.html"})).await);
+        text(BrowserTool.run(&c, json!({"action": "open", "url": "http://localhost:59174/app"})).await);
+        let entries = global().list(Some(&workspace_of(dir.path())));
+        assert_eq!(entries.len(), 2);
+
+        let out = text(BrowserTool.run(&c, json!({"action": "close"})).await);
+        assert!(out.starts_with("Closed 2 pages: ") && out.contains("a.html") && out.contains("http://localhost:59174/app"), "{out}");
+        assert!(entries.iter().all(|e| e.agent_page().is_none()));
+        for e in entries {
+            global().close(&e.id);
+        }
+    }
+
+    #[tokio::test]
+    async fn close_keeps_a_page_another_session_uses() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.html"), "<html></html>").unwrap();
+        let (mine, theirs) = (ctx_as(dir.path(), "close-mine"), ctx_as(dir.path(), "close-theirs"));
+        text(BrowserTool.run(&mine, json!({"action": "open", "path": "a.html"})).await);
+        text(BrowserTool.run(&theirs, json!({"action": "open", "path": "a.html"})).await);
+        let entry = global().list(Some(&workspace_of(dir.path()))).pop().unwrap();
+
+        let out = text(BrowserTool.run(&mine, json!({"action": "close", "path": "a.html"})).await);
+        assert_eq!(out, "Closed a.html for this session. Another session still uses it, so it stays loaded.");
+        assert!(entry.agent_page().is_some());
+        assert!(entry.held_by("close-theirs") && !entry.held_by("close-mine"));
+        global().close(&entry.id);
+    }
+
+    #[tokio::test]
+    async fn a_deleted_session_lets_go_of_its_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.html"), "<html></html>").unwrap();
+        let c = ctx_as(dir.path(), "deleted-session");
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "a.html"})).await);
+        let entry = global().list(Some(&workspace_of(dir.path()))).pop().unwrap();
+        let mut feed = crate::broadcaster::broadcaster().tap(AGENT_PAGES_EVENT);
+
+        release_session("deleted-session");
+        assert_eq!(entry.agent_page(), None);
+        assert!(announced(&mut feed, &entry.id));
+        global().close(&entry.id);
+    }
+
+    #[tokio::test]
+    async fn a_lapsed_page_is_announced_to_the_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.html"), "<html></html>").unwrap();
+        text(BrowserTool.run(&ctx_as(dir.path(), "lapsed"), json!({"action": "open", "path": "a.html"})).await);
+        let entry = global().list(Some(&workspace_of(dir.path()))).pop().unwrap();
+        let mut feed = crate::broadcaster::broadcaster().tap(AGENT_PAGES_EVENT);
+        // What the server's sweep does with a page whose last hold lapsed.
+        global().announce_dropped(&entry);
+        assert!(announced(&mut feed, &entry.id));
+        global().close(&entry.id);
+    }
+
+    /// After `close` no hidden copy loads the page; a later action must ask
+    /// for one again instead of waiting for a page nothing loads.
+    #[tokio::test]
+    async fn a_page_action_after_close_loads_the_page_again() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.html"), "<html></html>").unwrap();
+        let c = ctx_as(dir.path(), "reopen");
+        text(BrowserTool.run(&c, json!({"action": "open", "path": "a.html"})).await);
+        let entry = global().list(Some(&workspace_of(dir.path()))).pop().unwrap();
+        text(BrowserTool.run(&c, json!({"action": "close"})).await);
+        // An app window loads the page only once it is told to.
+        let mut feed = crate::broadcaster::broadcaster().tap(AGENT_PAGES_EVENT);
+        let window = {
+            let entry = entry.clone();
+            tokio::spawn(async move {
+                while feed.recv().await.is_some_and(|e| e["preview_id"] != json!(entry.id)) {}
+                let (_stop, rx) = tokio::sync::watch::channel(false);
+                let cmd = entry.agent.next(Duration::from_secs(5), rx).await.unwrap();
+                entry.agent.resolve(serde_json::from_value(json!({"id": cmd.id, "ok": true, "result": {"text": "Page: /a.html"}})).unwrap());
+            })
+        };
+        let out = text(run_with(&c, json!({"action": "snapshot"}), Duration::from_secs(5)).await);
+        assert!(out.contains("Page: /a.html"), "{out}");
+        assert!(entry.held_by("reopen"));
+        window.await.unwrap();
+        global().close(&entry.id);
+    }
+
     #[tokio::test]
     async fn runs_page_actions_in_the_open_preview() {
         // Needs no app window attached to the global feed.
@@ -504,7 +749,7 @@ mod tests {
         assert!(err.contains("No page is open"), "{err}");
         text(t.run(&c, json!({"action": "open", "path": "page.html"})).await);
         let err = run_with(&c, json!({"action": "snapshot"}), Duration::from_millis(50)).await.unwrap_err().to_string();
-        assert!(err.starts_with("No OpenAgentd window is open to load this page"), "{err}");
+        assert!(err.starts_with("This server runs without the OpenAgentd desktop app"), "{err}");
 
         let ws = crate::manager::validate_workspace(&dir.path().to_string_lossy(), true).unwrap();
         let entry = global().list(Some(&ws)).pop().unwrap();

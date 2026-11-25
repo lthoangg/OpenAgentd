@@ -2,6 +2,7 @@
 //! (stream store, event broadcaster, session manager, agent service).
 
 pub mod agent;
+pub mod background_commands;
 pub mod broadcaster;
 pub mod checkpointer;
 pub mod confirm;

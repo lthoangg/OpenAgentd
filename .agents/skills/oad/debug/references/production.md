@@ -40,6 +40,7 @@ python3 .agents/skills/oad/debug/scripts/analyze_logs.py --days 7   # WARNING+ g
 python3 .agents/skills/oad/debug/scripts/query_otel.py --days 7     # span, turn, chat, and tool totals; error spans
 python3 .agents/skills/oad/debug/scripts/tool_usage.py --days 7     # per-tool volume, latency, errors, shell intent
 python3 .agents/skills/oad/debug/scripts/tool_followups.py --days 7 # bad results by class + the reasoning/next call after each
+python3 .agents/skills/oad/debug/scripts/round_trips.py --days 14   # model calls that only look things up, and what follows a read or grep
 ```
 
 `tool_usage.py` joins spans to `tool_start` / `tool_error` log records by call id.
@@ -51,6 +52,8 @@ Its traps, re-read before trusting a similar analysis:
 2. **Redundant work is only redundant within a run.** Attribute duplicate calls per `run_id`.
 3. **Logged `args=` are cut at 500 chars** (`appv3/crates/tools/src/lib.rs`), so
    strict JSON parsing drops the longest calls (heredocs, inline scripts). Degrade to a regex.
+4. **A call a `script` makes is not context.** Its result goes to the script, never to the
+   model, so the volume table counts it apart (`nested_MB`) from what the model read (`ctx_MB`).
 
 v3 logs no `tool_result_preview` records, so the no-hit columns only fill from v2-era logs.
 

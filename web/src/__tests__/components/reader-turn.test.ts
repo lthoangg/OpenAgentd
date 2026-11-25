@@ -73,6 +73,26 @@ describe('readerSegments — what folds behind the work summary', () => {
     expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
   })
 
+  it('keeps the answer when a background command ends after it and no turn follows', () => {
+    const exit = (id: string): ContentBlock => ({ id, type: 'user', content: '[Background command 1 succeeded after 9s]', extra: { from_agent: 'shell', command_exit: { number: 1 } } })
+    const cutOff: ContentBlock = { id: 'x1', type: 'user', content: '[OpenAgentd restarted …]', extra: { from_agent: 'shell', commands_cut_off: [2] } }
+
+    // A server the agent does not wait for exits while the session is idle.
+    expect(readerSegments([tool('s1', 'shell'), text('a1', 'The server is up.'), exit('e1'), cutOff], settled)).toEqual([
+      { kind: 'work', indices: [0] },
+      { kind: 'block', index: 1 },
+      { kind: 'block', index: 2 },
+      { kind: 'block', index: 3 },
+    ])
+    // A report the agent went on to answer is work behind that answer.
+    expect(readerSegments([tool('s1', 'shell'), text('n1', 'The build is running.'), exit('e1'), text('a1', 'It passed.')], settled)).toEqual([
+      { kind: 'work', indices: [0, 1, 2] },
+      { kind: 'block', index: 3 },
+    ])
+    // A subagent's report always starts a turn, so it folds as before.
+    expect(readerSegments([tool('d1', 'team'), text('n1'), report('r1')], settled)).toEqual([{ kind: 'work', indices: [0, 1, 2] }])
+  })
+
   it("keeps a goal's outcome out of the fold: a claim being checked, achieved, blocked, or one that paused the goal", () => {
     const outcomes = [
       goalClaim('checking', undefined),

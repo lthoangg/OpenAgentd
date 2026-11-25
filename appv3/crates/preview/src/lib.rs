@@ -29,7 +29,7 @@ pub mod target;
 pub mod tunnel;
 mod ws;
 
-pub use manager::{global, static_backend, Entry, Manager, PreviewError, PreviewInfo, TunnelSlot, IDLE_SECS, MAX_ALIAS_PORTS, MAX_PREVIEWS, MAX_TUNNELS};
+pub use manager::{global, static_backend, Entry, Manager, PreviewError, PreviewInfo, Release, TunnelSlot, IDLE_SECS, MAX_ALIAS_PORTS, MAX_PREVIEWS, MAX_TUNNELS};
 pub use static_files::{resolve_workspace_file, url_path};
 pub use target::{parse_site_url, parse_url_target, site_host, Backend, SiteTarget, TargetError, UrlTarget};
 

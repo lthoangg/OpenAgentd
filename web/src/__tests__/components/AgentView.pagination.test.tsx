@@ -11,7 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
-import { act, cleanup, render } from "@testing-library/react"
+import { act, cleanup, render, waitFor } from "@testing-library/react"
 import type { ContentBlock } from "@/api/types"
 
 // ── Store mock ────────────────────────────────────────────────────────────────
@@ -421,17 +421,39 @@ describe("AgentView — earlier turns landing above the view", () => {
     /** Long enough for the scroll to count as at rest, and for its frames to run. */
     const rest = () => act(async () => { await new Promise((r) => setTimeout(r, 400)) })
 
+    it("draws only the newest turns first: a phone mounting a whole page stalled its first frame", async () => {
+      const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
+      // The reader is at the end of a transcript taller than the view.
+      setScrollProps(getScrollEl(container), { scrollTop: 4500, scrollHeight: 5000, clientHeight: 500 })
+      await rest()
+      // 90 turn items, the newest 16 drawn: u37 to u44.
+      expect(container.querySelectorAll("[data-block-id]").length).toBe(16)
+      expect(container.querySelector('[data-block-id="u37"]')).not.toBeNull()
+      expect(container.querySelector('[data-block-id="u36"]')).toBeNull()
+    })
+
+    it("brings in earlier turns when the newest ones leave nothing to scroll up to", async () => {
+      storeState.hasMore = false
+      const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
+      // Short turns: everything drawn fits, so the reader cannot scroll.
+      const el = getScrollEl(container)
+      setScrollProps(el, { scrollTop: 0, scrollHeight: 500, clientHeight: 500 })
+      // The view is held where it was, so the turns that came in sit above it.
+      await waitFor(() => expect(container.querySelector('[data-block-id="u36"]')).not.toBeNull())
+      expect(el.scrollTop).toBeGreaterThan(0)
+    })
+
     it("at rest, keeps a runway above the turns without moving them", async () => {
       const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
       const el = getScrollEl(container)
       await readAt(el, 3000)
-      const before = firstTop(container, "u5")
+      const before = firstTop(container, "u40")
 
       await rest()
 
       expect(runwayOf(container)).toBe("1500px")
       expect(el.scrollTop).toBe(4500)
-      expect(firstTop(container, "u5")).toBe(before)
+      expect(firstTop(container, "u40")).toBe(before)
     })
 
     it("mid-fling, earlier turns fill the runway and scrollTop is never written", async () => {
@@ -450,7 +472,7 @@ describe("AgentView — earlier turns landing above the view", () => {
         clock.mockRestore()
       }
 
-      expect(container.querySelectorAll("[data-block-id]").length).toBe(80 + 4)
+      expect(container.querySelectorAll("[data-block-id]").length).toBe(16 + 4)
       expect(el.scrollTop).toBe(2400)
       expect(runwayOf(container)).toBe("1100px")
     })
@@ -461,12 +483,13 @@ describe("AgentView — earlier turns landing above the view", () => {
 
       await readAt(el, 600)
 
-      expect(container.querySelectorAll("[data-block-id]").length).toBe(80)
+      expect(container.querySelectorAll("[data-block-id]").length).toBe(16)
       expect(el.scrollTop).toBe(600)
     })
 
     it("with nothing more to come, the runway folds away at rest", async () => {
-      const { container } = render(<AgentView blocks={makeTurns(30)} currentBlocks={[]} isWorking={false} />)
+      // Every turn drawn (16 items, one touch window): only the server's pages are left.
+      const { container } = render(<AgentView blocks={makeTurns(8)} currentBlocks={[]} isWorking={false} />)
       const el = getScrollEl(container)
       await readAt(el, 3000)
       await rest()

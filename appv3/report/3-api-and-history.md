@@ -265,7 +265,8 @@ credential or database format changes.
   only for "Opening …"; `workspace` only for "Sent to '…'" or the
   confirmation placeholder, `mcp` only for that placeholder; `team`,
   `team_*` and `delegate` only when the first line names the subagent;
-  `patch` only when it failed. `todo` and `schedule` output is always left
+  `patch` only when it failed; `shell` only for
+  "[Started in the background: command …" (v3.63.0). `todo` and `schedule` output is always left
   out. Such a row has no
   `content` and carries `result_omitted: true` and `result_bytes`;
   `tool_end` sends `result: null` with the same two keys in `metadata`.

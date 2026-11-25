@@ -100,11 +100,11 @@ function world(options: { putTimeoutMs?: number } = {}) {
 }
 
 function global(hub: StreamHub) {
-  const log = { opens: 0, errors: 0, dones: 0, parseErrors: 0, events: [] as string[] }
+  const log = { opens: 0, errors: 0, dones: 0, parseErrors: 0, events: [] as string[], resumes: [] as unknown[] }
   const controller = new AbortController()
   hub.subscribeGlobal(
     {
-      onOpen: () => { log.opens++ },
+      onOpen: (resume) => { log.opens++; log.resumes.push(resume) },
       onEvent: (type) => { log.events.push(type) },
       onError: () => { log.errors++ },
       onDone: () => { log.dones++ },
@@ -160,6 +160,23 @@ describe('StreamHub: global events', () => {
     expect(early.log.opens).toBe(1)
     expect(other.log.opens).toBe(1)
     expect(w.feeds).toHaveLength(1)
+  })
+
+  it('passes where the feed resumed from only to the window that opened it', async () => {
+    // The feed's replay reaches the leader from its own open; a follower and
+    // a consumer that comes after the open did not see it from the start.
+    const w = world()
+    const leader = global(w.makeWindow())
+    const follower = global(w.makeWindow())
+    await settle()
+    w.feeds[0].callbacks.onOpen?.({ since: 'b00t-4' })
+    await settle()
+    const late = global(w.makeWindow())
+    await settle()
+
+    expect(leader.log.resumes).toEqual([{ since: 'b00t-4' }])
+    expect(follower.log.resumes).toEqual([undefined])
+    expect(late.log.resumes).toEqual([undefined])
   })
 
   it('does not reopen the feed when its own consumer reconnects', async () => {

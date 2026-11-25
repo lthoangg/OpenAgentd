@@ -51,6 +51,18 @@ function expectPlainArg(header: HTMLElement, arg: string) {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — shell display", () => {
+  it("shows a background call as started, with its command number, not as output or a failure", () => {
+    const args = JSON.stringify({ command: "make verify-v3", background: true, wait: true })
+    const result = "[Started in the background: command 3]\nOutput: /data/sessions/s1/commands/3.log\nIts result arrives as a message when it exits."
+    render(<ToolCall name="shell" args={args} done result={result} />)
+    const row = document.querySelector("[data-tool-label]") as HTMLElement
+    expect(row.textContent).toContain("started · command 3")
+    // Opened, the status line is not repeated as terminal output.
+    fireEvent.click(screen.getByRole("button", { name: "Expand shell details" }))
+    expect(document.body.textContent).toContain("Output: /data/sessions/s1/commands/3.log")
+    expect(document.body.textContent).not.toContain("[Started in the background")
+  })
+
   it("pins its header while the details are open, so a long result closes from anywhere", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done result={"[Succeeded]\nok"} />)

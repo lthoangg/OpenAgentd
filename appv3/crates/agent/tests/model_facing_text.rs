@@ -173,7 +173,7 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// test now counts every base tool from the registry.
 /// Raised by 518 for the coding prompt to say when `script` beats direct
 /// calls (and to stop reading "use a script only for…" as a ban on it):
-/// leads made 0.2% of their calls with it while shell made 47%.
+/// leads hardly ever called it and reached for shell instead.
 /// Raised by 1817 for the `secret` tool (ask for keys by name, never see
 /// them), `shell`'s `secrets` argument, and the runtime protocol's line that
 /// sends the agent to them instead of asking for a key in chat or reading
@@ -186,7 +186,21 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 90 when `browser` was regrouped (open, read, act, chain) and
 /// told the model when to use it and when `web_fetch` is enough, so it does
 /// not open a public site, and ask the user, only to read a page's text.
-const LEAD_ALWAYS_ON_CHARS: usize = 46_274;
+/// Raised by 441 for `shell`'s `wait` argument and the line that a
+/// background command saves its output and reports its exit: without it a
+/// model keeps polling (`sleep 45; tail log`), one request per poll.
+/// Raised by 291 for `grep`'s `context` argument and the line that a result
+/// cut at `max_results` says how many more lines match: without the first a
+/// model spends a second request reading the file at the match, and without
+/// the second it cannot tell a full result from a cut one.
+/// Raised by 195 for the Delegating rule to say when reading goes to an
+/// explorer (more than about five files the lead will not edit) and when the
+/// lead reads itself: a lookup step on the lead's model costs many times one
+/// on an explorer's, and the older, vaguer rule did not move it.
+/// Raised by 95 for `browser`'s `close` action and when an unused page
+/// closes: without them a page the agent is done with keeps running out of
+/// sight until it lapses, and a model cannot tell a closed page will reopen.
+const LEAD_ALWAYS_ON_CHARS: usize = 47_296;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {
@@ -228,6 +242,9 @@ async fn shell_and_team_text_steer_away_from_common_waste() {
     };
     let shell = describe("shell").expect("a lead gets shell");
     assert!(shell.contains("use read, grep, glob and patch rather than cat, sed -n, rg, find or scripted edits"), "{shell}");
+    // Without this line a model blocks in the foreground until the time
+    // limit, or loops on `sleep N; tail log` while a background command runs.
+    assert!(shell.contains("a message tells you when it exits, so do not poll with sleep"), "{shell}");
     assert!(!shell.contains("do NOT"), "calm wording, not shouting: {shell}");
     let team = describe("team").unwrap_or_else(appv3_agent::tools::team::delegate_description);
     assert!(

@@ -447,6 +447,24 @@ fn carry_plan(state: &mut AgentState, summary_at: usize, note: Option<String>) -
     true
 }
 
+/// `extra` key of the note [`carry_commands`] writes.
+pub const BACKGROUND_COMMANDS_KEY: &str = "background_commands";
+
+/// Place `note` (the background commands still running) right after the
+/// newest summary. It is not pinned: the next compaction summarises it and
+/// writes a fresh one for what still runs then.
+fn carry_commands(state: &mut AgentState, note: Option<String>) -> bool {
+    let (Some(note), Some(summary_at)) = (note, state.messages.iter().rposition(|m| m.meta().is_summary())) else {
+        return false;
+    };
+    let mut extra = Map::new();
+    extra.insert("hidden_from_user".into(), json!(true));
+    extra.insert(BACKGROUND_COMMANDS_KEY.into(), json!(true));
+    let meta = MessageMeta { kind: "note".into(), extra: Some(extra), ..Default::default() };
+    state.messages.insert(summary_at + 1, ChatMessage::User { content: Some(note), parts: None, meta });
+    true
+}
+
 impl SummarizationHook {
     /// Effective trigger for the next model call.
     fn threshold(&self) -> i64 {
@@ -753,6 +771,7 @@ impl SummarizationHook {
         }
         state.messages.insert(first_kept, ChatMessage::User { content: Some(text.clone()), parts: None, meta });
         let plan_carried = carry_plan(state, first_kept, plan_note);
+        carry_commands(state, ctx.session_id.as_deref().and_then(crate::background_commands::carry_note));
         *self.at_last_summary.lock().unwrap() = state.messages.len();
         span.set_attr("summarization.summary_length", text.chars().count());
         span.set_attr("summarization.kept", eligible.len() - to_summarise.len());

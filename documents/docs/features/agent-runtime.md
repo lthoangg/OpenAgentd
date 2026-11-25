@@ -36,6 +36,17 @@ executes tools, manages its task list, and inspects workspace repositories.
   of "Subagent turn failed with error." One that can't reach its model (out of quota,
   or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
   Stopped subagents show as `stopped` rather than `error`.
+  From `[v3.63.0]` a follow-up sent while the subagent works no longer swallows
+  its report: the lead receives the task's report first, then the reply to the
+  follow-up.
+- **Reading goes to an explorer** `[v3.63.0]` — when understanding something
+  takes more than about five files the lead will not edit, the lead sends an
+  explorer one precise question instead of reading them on its own, costlier
+  model; files it will edit or needs verbatim it still reads itself. Explorers
+  read the lines around a match rather than whole files. After 8 model steps in
+  a row that only read, search or list, the lead gets a note, once per turn,
+  that an explorer can take the rest. Nothing is forced, and subagents never
+  see the note.
 - **Finished subagents leave memory** `[v3.56.0]` — a subagent whose turn completed
   is unloaded 5 minutes after its report reached the lead; before, it stayed loaded
   until its lead was deleted. `team(action='list')` and the app still show it as
@@ -96,6 +107,38 @@ executes tools, manages its task list, and inspects workspace repositories.
   a popover again, so the transcript stays put, and a phone keeps the sheet. Idle
   sessions are left out: the line, the list and the Goal tab count only sessions
   that are running or need you.
+  From `[v3.63.0]` it counts the background commands the session waits for too
+  ("Waiting for 2 sessions and 1 command"), and reads "1 command running" when
+  only a server is left. Each command in the list has **Stop**.
+- **Background commands report back** `[v3.63.0]` — a `shell` command the agent
+  starts in the background gets a number and a log of its output under the
+  session's data (the newest 10 MB is kept). When it exits, the agent gets a
+  message with its exit code, how long it ran and its last 40 lines, so it no
+  longer polls with `sleep` and `tail`. The transcript shows the message as the
+  command, its exit code and the end of its output. In Simple detail a result
+  the agent went on to answer folds with that turn's work ("1 command, 1
+  report"); one no turn followed (a server exited, or you stopped it) shows
+  after the last answer, which stays in place. A command's text is shown with
+  stored secrets masked, in the list, the message and the notes alike.
+  - The agent marks a command whose result it needs (a build, a test run) with
+    `wait`. The session then counts as working until it ends: an idle session
+    starts its next turn on the result, a goal holds its next turn, the sidebar
+    keeps the session on its active list, and "Done" is not sent before it. A
+    waited command still running after 2 hours is ended and reported as timed out.
+  - A command without `wait` (a dev server) never starts a turn. If it exits
+    while the agent works, the agent reads that before its next step; otherwise
+    at the start of its next turn.
+  - **Stop** on the turn ends the commands the session waits for, without a
+    message, and leaves servers running. **Stop** on a command in the list ends
+    that one and tells the agent. Deleting the session ends all its commands.
+  - Quitting or restarting OpenAgentd ends the commands it started. On the next
+    start each session is told which were cut off; one that waited for a
+    command starts a turn on that note.
+  - The goal check's record shows how a background command ended ("background
+    command 3 ended: failed, exit code 101"), a goal's reminder lists the
+    commands still running, and so does a note after compaction.
+  - A subagent's background command gets the number and the log, but no
+    message: a subagent's turn end is its report.
 - **Cross-workspace messages** `[v3.9.0, updated v3.35.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
   that shares a workspace group (see **Workspace groups** below) with its own (a related
@@ -338,8 +381,10 @@ executes tools, manages its task list, and inspects workspace repositories.
   events it carried.
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
   cancels the agent, in-flight model/tool work, direct shell
-  commands, and session-owned background shell processes before the request
-  returns. Queued and late mailbox work cannot restart the stopped turn.
+  commands, and the background commands the session waits for before the request
+  returns (from `[v3.63.0]`; before, v3 left every background command running).
+  A background command the session does not wait for, such as a dev server,
+  keeps running. Queued and late mailbox work cannot restart the stopped turn.
   A tool that was still running keeps the output it had streamed, followed by
   "Cancelled by user after N seconds.", both in its card and in what the
   agent sees next turn `[v3.0.0]`.

@@ -7,6 +7,7 @@
 //! its own process, so tests that set environment variables stay isolated.
 //! Run one file's tests with `cargo nextest run -p appv3-agent <file_stem>::`.
 
+mod background_commands;
 mod bench_turn;
 mod bundled_skill_references;
 mod cancel_running_tool;
@@ -24,6 +25,8 @@ mod inflight_shared_session;
 mod lead_eviction_subagents;
 mod mcp_hub_tool;
 mod model_facing_text;
+mod perf_bench;
+mod perf_seed_reopen;
 mod pin_switch;
 mod plan_review;
 mod question_opens_early;
@@ -53,6 +56,7 @@ mod stop_dismisses_question;
 mod subagent_ask_lead_answer;
 mod subagent_failure_report;
 mod subagent_follow_up_busy;
+mod subagent_follow_up_report;
 mod subagent_from_lead;
 mod subagent_interrupt;
 mod subagent_restart_resume;

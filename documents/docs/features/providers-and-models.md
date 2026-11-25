@@ -26,7 +26,7 @@ agnostic by design.
 | Grok Build | `grok:grok-4.7` | `agentd auth grok` `[v1.112.0]` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
-| Cloudflare (Workers AI + AI Gateway) | `cf:@cf/deepseek-ai/deepseek-v4.1-flash-1017` · `cf:openai/gpt-4.1` | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Account → Workers AI → Read) `[v3.62.0]` |
+| Cloudflare (Workers AI + AI Gateway) | `cf:@cf/deepseek-ai/deepseek-v4.1-flash-1017` · `cf:openai/gpt-4.1` | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Account → Workers AI → Read) `[v3.63.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-4.1` | `agentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `agentd auth codex` |
@@ -57,7 +57,7 @@ agnostic by design.
   match, the newest tool-calling model is used. Models the user chose are
   never replaced. `POST /api/settings/default-model` also accepts
   `{"provider": "<id>"}` to apply the same choice.
-- **Cloudflare Workers AI and AI Gateway** `[v3.62.0]` — the `cf` provider
+- **Cloudflare Workers AI and AI Gateway** `[v3.63.0]` — the `cf` provider
   sends every model through Cloudflare's REST API
   (`api.cloudflare.com/client/v4/accounts/{account}/ai/v1`, chat
   completions) and routes it through the account's `default` AI Gateway,

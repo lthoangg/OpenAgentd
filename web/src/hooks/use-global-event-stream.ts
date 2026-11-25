@@ -353,6 +353,23 @@ async function handleEvent(
     return true
   }
 
+  if (type === 'command_status') {
+    // A background shell command started or ended. No turn starts or ends
+    // with it, so this is what moves the line under the transcript and the
+    // row's "working" state (a session waits for some commands).
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    if (!sessionId) return false
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.waiting(sessionId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    // An idle session keeps the report of a command it did not wait for as
+    // a row no turn announces; a running turn streams it.
+    const store = useAgentStore.getState()
+    if (event.ended === true && store.sessionId === sessionId && !isRunLive(store.sessionRun)) {
+      void store.reconcileTurnTail(sessionId, store._workspace)
+    }
+    return true
+  }
+
   if (type === 'workspace_files_changed') {
     // Something outside the agent (editor, terminal, git) changed a watched
     // workspace. The server reports the resolved path plus every spelling the
@@ -535,6 +552,9 @@ export function useGlobalEventStream(): void {
     // later ones wait for ``settleTimer`` so a flapping link stays quiet.
     let everOpened = false
     let settleTimer: ReturnType<typeof setTimeout> | null = null
+    // The first connection reopened the feed from a saved position: its
+    // `stream_resume` decides whether the startup gap needs a resync.
+    let awaitingResume: number | null = null
     const clearSettleTimer = () => {
       if (settleTimer) {
         clearTimeout(settleTimer)
@@ -564,8 +584,9 @@ export function useGlobalEventStream(): void {
       controller?.abort()
       controller = new AbortController()
       opened = false
+      awaitingResume = null
       sharedGlobalEventStream({
-        onOpen: () => {
+        onOpen: (resume) => {
           if (disposed || generation !== connectionGeneration) return
           opened = true
           resetGlobalReplay()
@@ -574,6 +595,23 @@ export function useGlobalEventStream(): void {
           // stayed up — never merely because the response opened.
           if (!everOpened) {
             everOpened = true
+            // Events published between this page's first requests and the
+            // feed opening reached neither. Reopened from a position the
+            // server still has, the feed replays them, and their handlers
+            // update what they touched: nothing needs fetching twice. Any
+            // other open (no saved position, a stream another window opened)
+            // refetches everything, as does a server that cannot replay
+            // (`stream_resume` says `resync`) or does not say.
+            if (resume?.since) {
+              awaitingResume = generation
+              settleTimer = setTimeout(() => {
+                settleTimer = null
+                if (disposed || generation !== connectionGeneration || awaitingResume !== generation) return
+                awaitingResume = null
+                resync(generation)
+              }, GLOBAL_RECONNECT_SETTLE_MS)
+              return
+            }
             resync(generation)
             return
           }
@@ -585,6 +623,12 @@ export function useGlobalEventStream(): void {
           }, GLOBAL_RECONNECT_SETTLE_MS)
         },
         onEvent: (type, data) => {
+          if (type === 'stream_resume' && awaitingResume === generation && generation === connectionGeneration) {
+            awaitingResume = null
+            clearSettleTimer()
+            const served = typeof data === 'object' && data !== null && (data as { resync?: unknown }).resync === false
+            if (!served) resync(generation)
+          }
           void handleGlobalEvent(queryClient, type, data, generation, () => connectionGeneration)
             .then((valid) => { if (valid && generation === connectionGeneration) attempts = 0 })
         },

@@ -5,6 +5,11 @@
  * A report only sits inside a turn in reader mode, where ``partitionTurns``
  * folds it into the work it arrived after.
  *
+ * A background command's end that nothing follows is not work behind an
+ * answer: no turn started on it (a server the agent does not wait for
+ * exited, or the user stopped it), so the answer before it stays the answer
+ * and the end shows after it. Once the agent goes on, it folds.
+ *
  * Narration is any text with more work after it, so the answer is the text
  * after the last work. While a turn runs, text that gets followed by
  * another call moves into the fold, as it turns out to be narration.
@@ -23,6 +28,7 @@
  */
 import type { ContentBlock } from '@/api/types'
 import { isGoalOutcome, UPDATE_GOAL_TOOL } from '@/lib/goal'
+import { isShellNote } from '@/utils/command-report'
 import { isAgentReport } from '@/utils/turns'
 import { canonicalToolName, isPlanSubmission, opensConfirmation } from '@/utils/tool-names'
 
@@ -82,8 +88,11 @@ export function toolRunSegments(blocks: readonly ContentBlock[], awaitsUser: Awa
 
 /** A turn's blocks as reader mode shows them: work folds (one per compaction span), the rest in order. */
 export function readerSegments(blocks: readonly ContentBlock[], awaitsUser: AwaitsUser): ReaderSegment[] {
+  // Messages from ``shell`` that end the turn: shown, not folded.
+  let end = blocks.length
+  while (end > 0 && isShellNote(blocks[end - 1])) end--
   let lastWork = -1
-  for (let i = blocks.length - 1; i >= 0 && lastWork < 0; i--) if (isWork(blocks[i], awaitsUser)) lastWork = i
+  for (let i = end - 1; i >= 0 && lastWork < 0; i--) if (isWork(blocks[i], awaitsUser)) lastWork = i
   if (lastWork < 0) return blocks.map((_, index) => ({ kind: 'block', index }))
 
   const segments: ReaderSegment[] = []
@@ -92,7 +101,7 @@ export function readerSegments(blocks: readonly ContentBlock[], awaitsUser: Awai
     const block = blocks[index]
     // A compaction ends the work before it; later steps fold behind a row of their own.
     if (block.type === 'compaction') work = null
-    if (!isWork(block, awaitsUser) && !(block.type === 'text' && index < lastWork)) {
+    if (index >= end || (!isWork(block, awaitsUser) && !(block.type === 'text' && index < lastWork))) {
       segments.push({ kind: 'block', index })
       continue
     }

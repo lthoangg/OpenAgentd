@@ -1,4 +1,4 @@
-// size-ceiling: 2509 — holds settings, geometry and the server feed: give each its own module
+// size-ceiling: 2512 — holds settings, geometry and the server feed: give each its own module
 //! Agent status island in the MacBook notch (macOS).
 //!
 //! A borderless black webview (`web/island.html`) sits over the notch, or
@@ -1703,6 +1703,7 @@ async fn follow_server(app: AppHandle, server: ServerId) {
         };
         if let Err(e) = follow(&app, &client, &server, &base, token.as_deref(), &mut failures, &mut memo).await {
             failures = failures.saturating_add(1);
+            crate::agent_pages::feed_changed(&server, None);
             let rejected = e.downcast_ref::<AuthRejected>().is_some();
             let watch = if rejected { WatchState::KeyRejected } else { WatchState::Reconnecting };
             edit_feeds(&app, |feeds| {
@@ -1760,6 +1761,7 @@ async fn follow(
     // Which computer this is: one reached at two addresses is followed once.
     crate::servers::learn_identity(server, crate::servers::server_fingerprint(client, base, token).await);
     refresh(app, client, server, base, token, memo).await?;
+    crate::agent_pages::feed_changed(server, None);
     log::info!("island: {} {base}", if *failures > 0 { "reconnected to" } else { "following" });
     *failures = 0;
 
@@ -1781,6 +1783,7 @@ async fn follow(
                         if event.event == "desktop_notification" {
                             crate::pet::on_feed_notification(app, server, &event.data);
                         }
+                        crate::agent_pages::feed_changed(server, Some(&event.event));
                         if memo.note(&event) {
                             refresh_at.get_or_insert(last_bytes + REFRESH_DEBOUNCE);
                         }

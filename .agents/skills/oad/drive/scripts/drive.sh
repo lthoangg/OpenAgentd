@@ -21,6 +21,10 @@ API_PORT=${API_PORT:-8791}
 WEB_PORT=${WEB_PORT:-5191}
 MODEL_PORT=${MODEL_PORT:-8792}
 EVIDENCE_ROOT=${EVIDENCE_ROOT:-$ROOT/.openagentd/drive}
+# DRIVE_PROFILE=release runs an optimized backend (scripts/perf measures against one).
+DRIVE_PROFILE=${DRIVE_PROFILE:-debug}
+case "$DRIVE_PROFILE" in debug|release) ;; *) echo "[drive] DRIVE_PROFILE must be debug or release" >&2; exit 1 ;; esac
+AGENTD="$ROOT/appv3/target/$DRIVE_PROFILE/agentd"
 API="http://127.0.0.1:$API_PORT/api"
 WEB="http://localhost:$WEB_PORT"
 
@@ -81,15 +85,19 @@ cmd_up() {
     git -c user.name=drive -c user.email=drive@example.test commit -q -m "start"
   )
 
-  log "building backend"
-  cargo build -q --manifest-path "$ROOT/appv3/Cargo.toml" -p appv3-cli
+  log "building backend ($DRIVE_PROFILE)"
+  local release_flag=""
+  [[ "$DRIVE_PROFILE" == release ]] && release_flag=--release
+  cargo build -q --manifest-path "$ROOT/appv3/Cargo.toml" -p appv3-cli $release_flag
 
   # The Anthropic stub thinks, so the run picker has levels to offer it;
   # Ollama's stays without, a model the picker picks in one step.
   printf 'anthropic:stub:\n  thinking:\n    levels: [low, medium, high]\n' >"$DRIVE_DIR/config/model_registry.yaml"
 
   log "starting model stub on :$MODEL_PORT"
-  python3 "$HERE/stub_model.py" --port "$MODEL_PORT" --log "$DRIVE_DIR/model.jsonl" >"$DRIVE_DIR/model.log" 2>&1 &
+  # DRIVE_STUB_ARGS: more words for the stub, e.g. "--reply-chars 20000".
+  # shellcheck disable=SC2086
+  python3 "$HERE/stub_model.py" --port "$MODEL_PORT" --log "$DRIVE_DIR/model.jsonl" ${DRIVE_STUB_ARGS:-} >"$DRIVE_DIR/model.log" 2>&1 &
   echo $! >"$DRIVE_DIR/model.pid"
   wait_for "model stub" "http://127.0.0.1:$MODEL_PORT/v1/models" model
 
@@ -106,7 +114,7 @@ cmd_up() {
       ${DRIVE_SERVER_ENV:-} \
       OLLAMA_BASE_URL="http://127.0.0.1:$MODEL_PORT/v1" \
       ANTHROPIC_BASE_URL="http://127.0.0.1:$MODEL_PORT" ANTHROPIC_API_KEY="drive-stub-not-a-key" \
-      "$ROOT/appv3/target/debug/agentd" server serve --port "$API_PORT"
+      "$AGENTD" server serve --port "$API_PORT"
   ) >"$DRIVE_DIR/api.log" 2>&1 &
   echo $! >"$DRIVE_DIR/api.pid"
   wait_for "backend" "$API/health/ready" api
@@ -175,7 +183,7 @@ sys.exit(1 if bad or not mods else 0)'
 build_is_current() {
   local pid
   pid=$(alive api) || return 1
-  [[ ! "$ROOT/appv3/target/debug/agentd" -nt "$DRIVE_DIR/api.pid" ]]
+  [[ ! "$AGENTD" -nt "$DRIVE_DIR/api.pid" ]]
 }
 
 cmd_run() {

@@ -36,6 +36,7 @@ import { shellResumed } from '@/lib/shell-resume'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
 import { topBlockingLayer } from '@/lib/keyboard/layers'
 import { createPersistedDraftMap } from '@/lib/persisted-drafts'
+import { nextPaint } from '@/lib/next-paint'
 import type { InputComposerHandle } from '../InputComposer'
 import type { MessageAttachment } from '@/api/types'
 
@@ -65,7 +66,7 @@ export interface UseSessionBootstrapArgs {
   navigate: ReturnType<typeof useNavigate>
   connectStream: (options?: { holdUntil?: Promise<unknown> }) => AbortController
   loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
-  loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
+  loadSession: (sessionId: string, workspace?: string | null, options?: { holdUntil?: Promise<unknown> }) => Promise<void>
   /** Foreground resume of a running turn from the rows since the last sync (see the store action). */
   catchUpLiveTurn: (sessionId: string, workspace: string | null) => Promise<'attach' | 'reload' | 'stale'>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
@@ -103,10 +104,15 @@ export function useSessionBootstrap({
 }: UseSessionBootstrapArgs): UseSessionBootstrapResult {
   const abortRef = useRef<AbortController | null>(null)
   const resumeInFlightRef = useRef(false)
+  // Whether the chat was on screen at the init effect's previous run: it is
+  // only drawn once the session's folder is known.
+  const hadWorkspaceRef = useRef(false)
 
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
   useEffect(() => {
+    const chatJustAppeared = hasWorkspace && !hadWorkspaceRef.current
+    hadWorkspaceRef.current = hasWorkspace
     // The route's session, not the store's: the store still holds the
     // previous chat until `beginResolvedSession` below runs.
     if (hasWorkspace) loadAgentStatus(agentWorkspace, undefined, sessionId ?? null)
@@ -156,7 +162,14 @@ export function useSessionBootstrap({
     // blocks once they apply (`_alignLiveWithHistory`).
     let cancelled = false
     ;(async () => {
-      const history = consumeResolvedSessionReady(sessionId, agentWorkspace) ? null : loadSession(sessionId, agentWorkspace)
+      // The route fetches this session's history while its folder is being
+      // looked up (`lib/session-prefetch-route.ts`), so the page can be in
+      // hand before the chat has been drawn once. Installed then, the whole
+      // transcript renders in the frame that brings the composer on screen
+      // and holds it back: the chat paints first. The request is not held.
+      const history = consumeResolvedSessionReady(sessionId, agentWorkspace)
+        ? null
+        : chatJustAppeared ? loadSession(sessionId, agentWorkspace, { holdUntil: nextPaint() }) : loadSession(sessionId, agentWorkspace)
       const controller = connectStream(history ? { holdUntil: history } : undefined)
       if (controller) abortRef.current = controller
       if (history) await history

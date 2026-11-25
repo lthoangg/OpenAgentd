@@ -1,6 +1,7 @@
 //! The `shell` tool and its runtime.
 
 use crate::args::Args;
+use crate::jobs;
 use crate::shell_env;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
@@ -20,7 +21,7 @@ pub const DEFAULT_TIMEOUT_SECONDS: u64 = 120;
 /// that re-pays the whole prompt. Anything slower must run with
 /// `background=true`. Applies to every provider.
 pub const MAX_TIMEOUT_SECONDS: u64 = 270;
-const POST_KILL_WAIT: Duration = Duration::from_secs(5);
+pub(crate) const POST_KILL_WAIT: Duration = Duration::from_secs(5);
 #[cfg(unix)]
 const TERM_GRACE: Duration = Duration::from_secs(2);
 const OUTPUT_MAX_LINES: usize = 300;
@@ -368,7 +369,43 @@ async fn kill_group(pid: u32, _sig: ()) {
     let _ = appv3_core::proctree::hide_window(&mut tokio::process::Command::new("taskkill")).args(["/PID", &pid.to_string(), "/T", "/F"]).status().await;
 }
 
-fn format_exit_code(code: Option<i32>, signal: Option<i32>) -> String {
+/// End the process group of `child`: SIGTERM, then SIGKILL after
+/// [`TERM_GRACE`] so a command can clean up first. Returns its exit status
+/// when it is gone within [`POST_KILL_WAIT`].
+pub(crate) async fn terminate(pid: u32, child: &mut tokio::process::Child) -> Option<std::process::ExitStatus> {
+    #[cfg(unix)]
+    {
+        kill_group(pid, nix::sys::signal::Signal::SIGTERM).await;
+        if tokio::time::timeout(TERM_GRACE, child.wait()).await.is_err() {
+            kill_group(pid, nix::sys::signal::Signal::SIGKILL).await;
+        }
+    }
+    #[cfg(not(unix))]
+    kill_group(pid, ()).await;
+    tokio::time::timeout(POST_KILL_WAIT, child.wait()).await.ok().and_then(|r| r.ok())
+}
+
+/// A status's exit code and, on Unix, the signal that ended it. A command
+/// whose status was never read counts as exit code 0.
+pub(crate) fn exit_parts(status: Option<std::process::ExitStatus>) -> (Option<i32>, Option<i32>) {
+    let Some(s) = status else { return (Some(0), None) };
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        (s.code(), s.signal())
+    }
+    #[cfg(not(unix))]
+    {
+        (s.code(), None)
+    }
+}
+
+/// The start of `command`, for a log line.
+pub(crate) fn clip(command: &str) -> String {
+    command.chars().take(200).collect()
+}
+
+pub fn format_exit_code(code: Option<i32>, signal: Option<i32>) -> String {
     if let Some(s) = signal {
         let name = match s {
             1 => "SIGHUP",
@@ -488,6 +525,7 @@ impl Tool for ShellTool {
         let workdir = a.opt_str(&["workdir", "cwd", "dir"]);
         let timeout_s = a.opt_int(&["timeout_seconds"], Some(1), None).map(|n| n as u64).unwrap_or(DEFAULT_TIMEOUT_SECONDS).min(MAX_TIMEOUT_SECONDS);
         let background = a.bool_or(&["background"], false);
+        let wait = a.bool_or(&["wait"], false);
         let secret_names = shell_env::secret_names(a.raw(&["secrets"]));
         a.finish()?;
         let secret_names = secret_names.map_err(|e| ToolError::Argument(format!("Invalid arguments for tool 'shell': secrets: {e}")))?;
@@ -513,7 +551,7 @@ impl Tool for ShellTool {
         tracing::info!(
             "shell_execute_start shell={} command={} cwd={} timeout={} background={}{}",
             shell_name_of(&shell_bin),
-            command.chars().take(200).collect::<String>(),
+            clip(&command),
             cwd.display(),
             timeout_s,
             background,
@@ -540,16 +578,20 @@ impl Tool for ShellTool {
         #[cfg(unix)]
         cmd.process_group(0);
         if background {
-            cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-            let child = cmd.spawn().map_err(|e| ToolError::Execution(format!("Command execution failed: {e}")))?;
-            let pid = child.id().unwrap_or(0);
-            tracing::info!("shell_background_started pid={} command={}", pid, command.chars().take(200).collect::<String>());
-            // detach: reap in background
-            tokio::spawn(async move {
-                let mut c = child;
-                let _ = c.wait().await;
-            });
-            return Ok(ToolOutput::Text(format!("PID: {pid}")));
+            // Only a session that is told of the end can wait for it.
+            let reports = ctx.metadata.lock().unwrap().get(jobs::REPORTS_META).is_some_and(|v| v == &Value::Bool(true));
+            let wait = wait && reports;
+            let spec = jobs::Start {
+                session_id: ctx.session_id.as_deref().unwrap_or(""),
+                dir: ctx.artifacts_dir().join(jobs::DIR),
+                command: &command,
+                description: &description,
+                wait,
+                reports,
+                limit: wait.then_some(jobs::WAIT_LIMIT),
+            };
+            let job = jobs::start(cmd, spec).map_err(|e| ToolError::Execution(format!("Command execution failed: {e}")))?;
+            return Ok(ToolOutput::Text(jobs::started_text(&job)));
         }
         // stdout+stderr merged via a single pipe
         let (reader, writer) = os_pipe::pipe().map_err(|e| ToolError::Execution(format!("Command execution failed: {e}")))?;
@@ -626,35 +668,13 @@ impl Tool for ShellTool {
         {
             Ok((_out, st)) => st.ok(),
             Err(_) => {
-                #[cfg(unix)]
-                {
-                    kill_group(pid, nix::sys::signal::Signal::SIGTERM).await;
-                    if tokio::time::timeout(TERM_GRACE, child.wait()).await.is_err() {
-                        kill_group(pid, nix::sys::signal::Signal::SIGKILL).await;
-                    }
-                }
-                #[cfg(not(unix))]
-                kill_group(pid, ()).await;
                 aborted = true;
-                tokio::time::timeout(POST_KILL_WAIT, child.wait()).await.ok().and_then(|r| r.ok())
+                terminate(pid, &mut child).await
             }
         };
         drop(live);
         group_guard.armed = false;
-        let (code, signal) = match status {
-            Some(s) => {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::process::ExitStatusExt;
-                    (s.code(), s.signal())
-                }
-                #[cfg(not(unix))]
-                {
-                    (s.code(), None)
-                }
-            }
-            None => (Some(0), None),
-        };
+        let (code, signal) = exit_parts(status);
         let mut col = collector.lock().unwrap();
         tracing::info!("shell_execute_complete exit_code={:?} output_bytes={}{}", code, col.total, desc_tag);
         let ok = code == Some(0) && signal.is_none();
@@ -696,7 +716,7 @@ fn timeout_hint(timeout_s: u64) -> String {
         )
     } else {
         format!(
-            "{MAX_TIMEOUT_SECONDS}s is the foreground ceiling. Rerun it with background=true, redirecting output to a log file (e.g. `cmd > /tmp/out.log 2>&1`), then check the log later."
+            "{MAX_TIMEOUT_SECONDS}s is the foreground ceiling. Rerun it with background=true and wait=true: its result arrives as a message when it exits, and its output is saved to a log you can read meanwhile."
         )
     };
     format!("\n\n<shell_metadata>\nCommand timed out after {timeout_s}s. {advice}\n</shell_metadata>")
@@ -709,7 +729,7 @@ fn unsafe_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
 }
 
 #[cfg(windows)]
-fn unsafe_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
+pub(crate) fn unsafe_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
     use std::os::windows::io::{FromRawHandle, IntoRawHandle};
     unsafe { std::fs::File::from_raw_handle(r.into_raw_handle()) }
 }

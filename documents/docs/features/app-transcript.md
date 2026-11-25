@@ -351,7 +351,9 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
     the sidebar button does from the left.
 - **`shell` tool output handling** — Stop terminates active foreground
   shell process groups; background commands started with `background=true` return
-  the spawned PID. Raw ANSI/CSI/OSC escape
+  the command's number and the log its output is saved to, and report back
+  when they exit `[v3.63.0]` (before: the spawned PID, with output discarded).
+  A background call's row reads "started · command 3". Raw ANSI/CSI/OSC escape
   sequences (colors, cursor movement, hyperlinks) from color-forcing CLIs are
   stripped from foreground results and live streamed output before reaching
   the LLM or the UI `[v1.120.0]`. Foreground output memory is bounded, with

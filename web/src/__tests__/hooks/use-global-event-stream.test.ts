@@ -8,7 +8,7 @@ const sendDesktopNotification = mock(async () => ({ status: 'sent', message: 'se
 mock.module('@/lib/desktop-notifications', () => ({ sendDesktopNotification }))
 const haptic = mock((..._args: unknown[]) => {})
 mock.module('@/lib/haptics', () => ({ haptic, outcomeHapticFeedback: () => {} }))
-type GlobalCallbacks = { onOpen?: () => void; onEvent?: (type: string, data: unknown) => void }
+type GlobalCallbacks = { onOpen?: (resume?: { since: string | null }) => void; onEvent?: (type: string, data: unknown) => void }
 let globalCallbacks: GlobalCallbacks | null = null
 let globalSignals: AbortSignal[] = []
 const globalEventStream = mock((...args: unknown[]) => {
@@ -20,7 +20,7 @@ const reportSessionSeen = mock((..._args: unknown[]) => {})
 let attention = true
 mock.module('@/api/client/session-seen', () => ({ reportSessionSeen, pageHasAttention: () => attention }))
 
-import { GlobalEventStream, handleGlobalEvent, invalidateGlobalEventQueries, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
+import { GLOBAL_RECONNECT_SETTLE_MS, GlobalEventStream, handleGlobalEvent, invalidateGlobalEventQueries, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
@@ -140,6 +140,76 @@ it('reconciles the active session whenever the global connection opens', async (
 
   await waitFor(() => expect(loadSession).toHaveBeenCalledWith('current', null))
   expect(connectStream).toHaveBeenCalledTimes(1)
+})
+
+/**
+ * The first open of the feed refetched every list and the open session at
+ * once, because events may have fallen between the first requests and the
+ * feed opening. Reopened from a position the server still has, those
+ * events are replayed instead, and nothing needs fetching twice.
+ */
+describe('the first open of the feed', () => {
+  function mount() {
+    const client = new QueryClient()
+    const invalidated: unknown[] = []
+    const invalidate = client.invalidateQueries.bind(client)
+    client.invalidateQueries = ((filters, options) => {
+      invalidated.push(filters?.queryKey)
+      return invalidate(filters, options)
+    }) as typeof client.invalidateQueries
+    const loadSession = mock(async () => {})
+    useAgentStore.setState({ sessionId: 'current', loadSession })
+    render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))
+    const refetchedLists = () => invalidated.some((key) => JSON.stringify(key) === JSON.stringify(queryKeys.session.sessions.all()))
+    return { loadSession, refetchedLists }
+  }
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+  it('fetches nothing again when the server replays from the position it was opened at', async () => {
+    const { loadSession, refetchedLists } = mount()
+    globalCallbacks?.onOpen?.({ since: 'b00t-4' })
+    globalCallbacks?.onEvent?.('stream_resume', { replay: 2, resync: false })
+    await pause()
+    expect(refetchedLists()).toBe(false)
+    expect(loadSession).not.toHaveBeenCalled()
+  })
+
+  it('refetches when the server cannot replay from that position', async () => {
+    const { loadSession, refetchedLists } = mount()
+    globalCallbacks?.onOpen?.({ since: 'b00t-4' })
+    globalCallbacks?.onEvent?.('stream_resume', { replay: 0, resync: true })
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('current', null))
+    expect(refetchedLists()).toBe(true)
+  })
+
+  it('refetches at once when the feed had no position to resume from', async () => {
+    const { loadSession, refetchedLists } = mount()
+    globalCallbacks?.onOpen?.({ since: null })
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('current', null))
+    expect(refetchedLists()).toBe(true)
+  })
+
+  it('refetches when the server never says where the feed resumed', async () => {
+    const realSetTimeout = globalThis.setTimeout
+    const waits: Array<{ callback: () => void; delay: number }> = []
+    globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+      waits.push({ callback, delay: delay ?? 0 })
+      return waits.length as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    let mounted: ReturnType<typeof mount>
+    try {
+      mounted = mount()
+      globalCallbacks?.onOpen?.({ since: 'b00t-4' })
+    } finally {
+      globalThis.setTimeout = realSetTimeout
+    }
+    expect(mounted.refetchedLists()).toBe(false)
+    const wait = waits.find(({ delay }) => delay === GLOBAL_RECONNECT_SETTLE_MS)
+    expect(wait).toBeDefined()
+    wait?.callback()
+    expect(mounted.refetchedLists()).toBe(true)
+    await waitFor(() => expect(mounted.loadSession).toHaveBeenCalledTimes(1))
+  })
 })
 
 /** The health dot follows the global connection instead of a fast poll. */
@@ -646,6 +716,36 @@ describe('handleGlobalEvent', () => {
       client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [] })
       await handleGlobalEvent(client, type, { session_id: 'other-1', workspace: '/r/infra' }, 1, () => 1)
       expect(client.getQueryState(queryKeys.session.waiting('lead-1'))?.isInvalidated).toBe(true)
+    }
+  })
+
+  it('rereads what a session waits for, and its row, when a background command starts or ends', async () => {
+    // No turn starts or ends with it, so nothing else says the row's
+    // "working" state or the line under the transcript changed.
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.waiting('lead-1'), { items: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [], pageParams: [] })
+    const handled = await handleGlobalEvent(client, 'command_status', { session_id: 'lead-1', running: 1, waited: 1, ended: false }, 1, () => 1)
+    expect(handled).toBe(true)
+    expect(client.getQueryState(queryKeys.session.waiting('lead-1'))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.session.sessions.infinite())?.isInvalidated).toBe(true)
+  })
+
+  it('reads the report of a command that ended while the open session is idle', async () => {
+    // A command the session did not wait for leaves its report as a row no
+    // turn announces.
+    const reconcileTurnTail = mock(async () => {})
+    const realReconcile = useAgentStore.getState().reconcileTurnTail
+    useAgentStore.setState({ sessionId: 'lead-1', _workspace: '/workspace', reconcileTurnTail })
+    try {
+      const client = new QueryClient()
+      await handleGlobalEvent(client, 'command_status', { session_id: 'lead-1', running: 1, waited: 0, ended: false }, 1, () => 1)
+      await handleGlobalEvent(client, 'command_status', { session_id: 'other', running: 0, waited: 0, ended: true }, 1, () => 1)
+      expect(reconcileTurnTail).not.toHaveBeenCalled()
+      await handleGlobalEvent(client, 'command_status', { session_id: 'lead-1', running: 0, waited: 0, ended: true }, 1, () => 1)
+      expect(reconcileTurnTail).toHaveBeenCalledWith('lead-1', '/workspace')
+    } finally {
+      useAgentStore.setState({ reconcileTurnTail: realReconcile })
     }
   })
 

@@ -61,6 +61,15 @@ def test_a_user_message_is_echoed_with_the_protocol_named(protocol: str) -> None
     assert stub.plan(protocol, user_turn(protocol, "hello there")) == ("text", f"Stub reply ({protocol}): hello there")
 
 
+def test_a_reply_echoes_200_characters_unless_the_stub_is_started_with_more(monkeypatch: pytest.MonkeyPatch) -> None:
+    long = ("word " * 300).strip()
+    assert stub.plan("chat", user_turn("chat", long)) == ("text", f"Stub reply (chat): {long[:200]}")
+    # `--reply-chars 5000`: a benchmark streams a long answer.
+    assert stub.main_args(["--port", "1", "--reply-chars", "5000"]).reply_chars == 5000
+    monkeypatch.setattr(stub, "REPLY_CHARS", 5000)
+    assert stub.plan("chat", user_turn("chat", long)) == ("text", f"Stub reply (chat): {long}")
+
+
 @pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_the_shell_directive_becomes_a_tool_call_only_when_shell_is_offered(protocol: str) -> None:
     prompt = "please drive:shell echo hi > out.txt"
@@ -93,6 +102,24 @@ READ_TOOL = {
     "chat": {"type": "function", "function": {"name": "read"}},
     "responses": {"type": "function", "name": "read"},
     "messages": {"name": "read", "input_schema": {}},
+}
+
+
+@pytest.mark.parametrize("protocol", PROTOCOLS)
+def test_the_grep_directive_becomes_a_grep_call_with_its_arguments(server: str, protocol: str) -> None:
+    prompt = 'drive:grep {"pattern": "needle", "context": 2}'
+    body = user_turn(protocol, prompt)
+    body["tools"] = body["tools"] + [GREP_TOOL[protocol]]
+    assert stub.plan(protocol, body) == ("grep", '{"pattern": "needle", "context": 2}')
+    assert stub.plan(protocol, user_turn(protocol, prompt))[0] == "text"
+    events = stream_events(post(server + PATHS[protocol], body))
+    assert tool_call(protocol, events) == ("grep", {"pattern": "needle", "context": 2})
+
+
+GREP_TOOL = {
+    "chat": {"type": "function", "function": {"name": "grep"}},
+    "responses": {"type": "function", "name": "grep"},
+    "messages": {"name": "grep", "input_schema": {}},
 }
 
 

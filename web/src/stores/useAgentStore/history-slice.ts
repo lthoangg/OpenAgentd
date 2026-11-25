@@ -100,7 +100,7 @@ export const createHistorySlice: StateCreator<
   _syncedThrough: null,
   _loadingOlder: false,
 
-  loadSession: async (sessionId: string, workspace?: string | null) => loadSessionOnce(get, set, sessionId, workspace),
+  loadSession: async (sessionId, workspace, options) => loadSessionOnce(get, set, sessionId, workspace, options),
 
   _alignLiveWithHistory: () => {
     const streams = Object.values(get().agentStreams)

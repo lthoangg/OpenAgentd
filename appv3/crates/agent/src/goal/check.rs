@@ -168,7 +168,9 @@ struct Step {
     changed: Vec<String>,
 }
 
-/// A shell call's outcome from its result, and whether it ran to an end.
+/// A shell call's outcome from its result, and whether it ran to an end. A
+/// background call only started its command; how that ended is a later
+/// step ([`command_exit_step`]).
 fn shell_outcome(result: Option<&str>, background: bool) -> (String, bool) {
     let Some(r) = result else { return ("no result yet".into(), false) };
     let first = r.lines().next().unwrap_or("").trim();
@@ -176,7 +178,9 @@ fn shell_outcome(result: Option<&str>, background: bool) -> (String, bool) {
         return (format!("did not run ({})", crate::util::head_chars(first, 160)), false);
     }
     if background {
-        return ("started in the background".into(), false);
+        let number =
+            first.strip_prefix("[Started in the background: command ").and_then(|s| s.strip_suffix(']')).filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+        return (number.map_or("started in the background".into(), |n| format!("started in the background as command {n}")), false);
     }
     let bracketed = |prefix: &str| first.strip_prefix(prefix).and_then(|s| s.strip_suffix(']')).map(str::to_string);
     if first == "[Succeeded]" {
@@ -190,11 +194,36 @@ fn shell_outcome(result: Option<&str>, background: bool) -> (String, bool) {
     }
 }
 
+/// One entry of the goal's part the runtime log reads.
+enum Ran<'a> {
+    Call(&'a ToolCall),
+    /// The `command_exit` of a background command's end report.
+    CommandExit(&'a Value),
+}
+
+/// The log step for a background command's end report (the `command_exit`
+/// of its row): how it ended, as the runtime recorded it.
+fn command_exit_step(exit: &Value) -> Step {
+    let number = exit.get("number").and_then(Value::as_u64).unwrap_or(0);
+    let command = exit.get("command").and_then(Value::as_str).unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ").replace('`', "'");
+    let cut = crate::util::head_chars(&command, LOG_COMMAND_CHARS);
+    let command = if cut.len() < command.len() { format!("{cut}…") } else { command.clone() };
+    let code = |k: &str| exit.get(k).and_then(Value::as_i64).map(|c| c as i32);
+    let (outcome, finished) = match exit.get("end").and_then(Value::as_str).unwrap_or("") {
+        "timed_out" => ("timed out at its limit".to_string(), true),
+        "stopped_by_user" => ("stopped by the user".to_string(), false),
+        _ if exit.get("succeeded").and_then(Value::as_bool).unwrap_or(false) => ("succeeded".to_string(), true),
+        _ => (format!("failed, exit code {}", appv3_tools::shell::format_exit_code(code("exit_code"), code("signal"))), true),
+    };
+    Step { line: format!("background command {number} (`{command}`) ended: {outcome}"), finished, changed: vec![] }
+}
+
 /// What the runtime saw the goal's work do, oldest first: each `shell`
-/// command with its outcome and each applied `patch`, then the files changed
-/// after the last command that ran to an end. The check reads it beside the
-/// agent's claimed evidence, so a claim cannot cite a run that failed, never
-/// happened, or came before later edits. Fenced for the check message.
+/// command with its outcome, each background command's end, and each applied
+/// `patch`, then the files changed after the last command that ran to an
+/// end. The check reads it beside the agent's claimed evidence, so a claim
+/// cannot cite a run that failed, never happened, or came before later
+/// edits. Fenced for the check message.
 pub(super) fn runtime_log(history: &[ChatMessage], goal_id: &str) -> String {
     let part = goal_part(history, goal_id);
     let results: HashMap<&str, &str> = part
@@ -205,7 +234,21 @@ pub(super) fn runtime_log(history: &[ChatMessage], goal_id: &str) -> String {
         })
         .collect();
     let mut steps = Vec::new();
-    for call in tool_calls(part) {
+    let ran = part.iter().flat_map(|m| -> Vec<Ran> {
+        match m {
+            ChatMessage::Assistant(a) => a.tool_calls.iter().flatten().map(Ran::Call).collect(),
+            ChatMessage::User { .. } => m.meta().extra.as_ref().and_then(|e| e.get(crate::background_commands::EXIT_KEY)).map(Ran::CommandExit).into_iter().collect(),
+            _ => vec![],
+        }
+    });
+    for entry in ran {
+        let call = match entry {
+            Ran::Call(call) => call,
+            Ran::CommandExit(exit) => {
+                steps.push(command_exit_step(exit));
+                continue;
+            }
+        };
         let args: Value = serde_json::from_str(&call.function.arguments).unwrap_or(Value::Null);
         let result = results.get(call.id.as_str()).copied();
         match call.function.name.as_str() {

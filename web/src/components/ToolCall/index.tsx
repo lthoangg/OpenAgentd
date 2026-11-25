@@ -53,7 +53,7 @@ import { mcpSignInServer } from './mcpSignIn'
 import { McpSignInChips } from './McpSignInChips'
 import { getDiffStats } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
-import { parseShellOutcome } from './summary'
+import { parseBackgroundStart, parseShellOutcome } from './summary'
 import { useToolArguments, useToolResult } from './useToolResult'
 import { toolFileTargets } from './fileTargets'
 import { formatMetaDuration } from '@/components/ui/meta-row'
@@ -299,7 +299,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // The `[Succeeded]` / `[Failed — exit code 1]` status line is protocol, not
   // output: the row's exit chip carries it.
   const shellParsed = isShell ? parseShellOutcome(shownResult) : null
-  const shellBody = shellParsed ? shellParsed.body || null : isShell ? shownResult || null : null
+  // A background call only started its command; how that ended arrives
+  // later, as a report of its own.
+  const shellStarted = isShell && !shellParsed ? parseBackgroundStart(shownResult) : null
+  const shellStatus = shellParsed ?? shellStarted
+  const shellBody = shellStatus ? shellStatus.body || null : isShell ? shownResult || null : null
   const shellOutput = shellBody ?? shownLiveOutput
 
   useEffect(() => {
@@ -458,6 +462,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           {state === 'running' ? (
             <span className="oa-shimmer shrink-0">running…</span>
           ) : null}
+          {shellStarted && <span className="shrink-0 text-(--color-text-muted)">started · command {shellStarted.number}</span>}
           {teamMember && <TeamMemberChip handle={teamMember} />}
           {sentSession && (
             <RowLinkChip onOpen={openSentSession} title={`Switch to the session in ${sentSession.workspace}`}>

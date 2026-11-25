@@ -108,11 +108,15 @@ function loadSessionKey(generation: number, sessionId: string, workspace?: strin
   return `${generation}\u0000${sessionId}\u0000${workspace ?? ''}`
 }
 
+/** See `loadSession` in `types.ts`. */
+type LoadSessionOptions = Parameters<AgentStore['loadSession']>[2]
+
 async function loadSessionImpl(
   get: () => AgentStore,
   set: (fn: (draft: AgentStore) => void) => void,
   sessionId: string,
   workspace?: string | null,
+  options?: LoadSessionOptions,
 ): Promise<void> {
   const gen = get()._sessionGeneration
   const settingsVersion = get()._sessionSettingsVersion
@@ -137,6 +141,7 @@ async function loadSessionImpl(
   try {
     const liveNames = get().liveAgentNames
     const history = await (prefetched?.promise.catch(() => sessionHistory(sessionId)) ?? sessionHistory(sessionId))
+    if (options?.holdUntil) await options.holdUntil.catch(() => {})
 
     if (get()._sessionGeneration !== gen) return
 
@@ -406,6 +411,7 @@ export function loadSessionOnce(
   set: StoreSet,
   sessionId: string,
   workspace?: string | null,
+  options?: LoadSessionOptions,
 ): Promise<void> {
   // Coalesce concurrent calls for the same session into one in-flight
   // fetch. A foreground/visibility resume (useSessionBootstrap) and the
@@ -424,7 +430,7 @@ export function loadSessionOnce(
   const inflightKey = loadSessionKey(get()._sessionGeneration, sessionId, workspace)
   const existing = inflightLoadSession.get(inflightKey)
   if (existing) return existing
-  const promise = loadSessionImpl(get, set, sessionId, workspace).finally(() => {
+  const promise = loadSessionImpl(get, set, sessionId, workspace, options).finally(() => {
     if (inflightLoadSession.get(inflightKey) === promise) inflightLoadSession.delete(inflightKey)
   })
   inflightLoadSession.set(inflightKey, promise)

@@ -124,11 +124,15 @@ pub struct PlanWork {
     pub next_task: Option<String>,
     /// The task board, one task per line; empty without tasks.
     pub board: String,
+    /// What a reminder says about the session's background commands still
+    /// running; `None` when none is.
+    pub running_commands: Option<String>,
 }
 
-/// The plan and task board of `session_id`, read from its artifacts.
+/// The plan and task board of `session_id`, read from its artifacts, and its
+/// background commands still running.
 pub fn plan_work(session_id: &str) -> PlanWork {
-    plan_work_in(&denied::session_artifacts_dir(Some(session_id)))
+    PlanWork { running_commands: crate::background_commands::reminder_line(session_id), ..plan_work_in(&denied::session_artifacts_dir(Some(session_id))) }
 }
 
 /// [`plan_work`] for the session whose artifacts dir is `dir`.
@@ -139,7 +143,7 @@ fn plan_work_in(dir: &std::path::Path) -> PlanWork {
     let with = |s: &str| items.iter().find(|i| i["status"].as_str() == Some(s));
     let next_task = with("in_progress").or_else(|| with("pending")).and_then(|i| i["content"].as_str()).map(String::from);
     let board = if items.is_empty() { String::new() } else { todo::format_items(&items) };
-    PlanWork { plan, next_task, board }
+    PlanWork { plan, next_task, board, running_commands: None }
 }
 
 /// The message that starts continuation turn `turn`.
@@ -158,6 +162,9 @@ pub fn reminder_text(goal: &SessionGoal, turn: i64, resumed: bool, work: &PlanWo
     }
     if let Some(t) = &work.next_task {
         line(&crate::prompts::s("goal_reminder_next_task").replace("{task}", &fence(t, &REMINDER_TAGS)));
+    }
+    if let Some(c) = &work.running_commands {
+        line(c);
     }
     if let Some(r) = goal.detail.as_deref().filter(|_| goal.rejected_claims > 0) {
         line(&crate::prompts::s("goal_reminder_last_check").replace("{reason}", &fence(r, &REMINDER_TAGS)));

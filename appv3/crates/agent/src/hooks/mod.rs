@@ -9,6 +9,7 @@ pub mod basic;
 pub mod lsp;
 pub mod otel;
 pub mod publisher;
+pub mod reading;
 pub mod summarization;
 pub mod title;
 

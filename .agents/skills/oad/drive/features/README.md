@@ -16,6 +16,8 @@ view; find code paths in the source when you need them.
 | [Review panel](review.md) | `review` | A file the agent changed shows in Git with its diff, and matches `git diff` on disk |
 | [Terminal](terminal.md) | `terminal` | A command typed in the panel's terminal runs in the session's workspace; on a phone, the key bar and the touch gestures |
 | [Script tool row](script.md) | `script` | A `script` call's nested tool calls run; its row shows the code, the calls and the result, and is the same after a reload |
+| [Search result card](search.md) | `search` | A `grep` call with context shows the match with the lines around it and counts matches; one cut at its limit says how many more there are and where, also after a reload |
+| [Background commands](background-commands.md) | `background-commands` | A waited background command shows under the transcript, its result brings the agent back with no polling request, and its report shows the exit code and output; a server only "runs" and is stopped from its row |
 | [Settings](settings.md) | `settings` | Search lands on the setting it names; a changed setting applies and survives a reload |
 | [Seen on a screen](notify-seen.md) | `notify-seen` | A session on screen is reported seen when it opens and when its turn's notification arrives |
 | [Connectors](connectors.md) | `connectors`, `connectors-remote` | Context7 turns on from the gallery and an agent calls it in a session; Connect opens Notion's sign-in, Cancel ends it; `oauth-done.html` refuses a stale code. From another device, Linear's sign-in returns through the callback page, which waits for Continue, to `oauth-done.html` and the server's token exchange |

@@ -113,7 +113,10 @@ Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keep
     message also carries a `<runtime_log>`: the runtime's own record,
     from the goal's part of the history (after its rules note), of
     each `shell` command with its outcome (`succeeded`, `failed, exit code
-    N`, `timed out`, `started in the background`, `no result yet`) and each
+    N`, `timed out`, `started in the background as command N`, `no result
+    yet`), each background command's end from its report row (`background
+    command N (…) ended: succeeded`, `failed, exit code N`, `timed out at
+    its limit`, `stopped by the user`) and each
     applied `patch` with its files, the last 40 steps, then the files
     changed after the last command that ran to an end, and a
     `<task_board>` with the session's tasks; unfinished tasks count as

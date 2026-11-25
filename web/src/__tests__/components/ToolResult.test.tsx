@@ -156,6 +156,49 @@ describe("ToolResult — file list tools", () => {
 
 })
 
+describe("ToolResult — grep matches", () => {
+  const withContext = [
+    "src/a.ts-2- // before",
+    "src/a.ts:3: const a = 1",
+    "src/a.ts-4- // after",
+    "--",
+    "src/b.ts:9: const b = 2",
+  ].join("\n")
+
+  it("counts matches, not the lines around them", () => {
+    render(<ToolResult toolName="grep" result={withContext} />)
+    expect(screen.getByText("2 matches")).toBeTruthy()
+    expect(screen.queryByText(/entries/)).toBeNull()
+  })
+
+  it("says 1 match for a single one", () => {
+    render(<ToolResult toolName="grep" result="src/a.ts:3: const a = 1" />)
+    expect(screen.getByText("1 match")).toBeTruthy()
+  })
+
+  it("marks the lines around a match apart from the match", () => {
+    render(<ToolResult toolName="grep" result={withContext} />)
+    const kinds = screen.getAllByRole("listitem").map((item) => item.getAttribute("data-line"))
+    expect(kinds).toEqual(["context", "match", "context", "gap", "match"])
+    expect(screen.getByText("src/a.ts-2- // before")).toBeTruthy()
+    expect(screen.queryByText("--")).toBeNull()
+  })
+
+  it("shows the note about matches left out under the list", () => {
+    const note = "1 of 40 matching lines shown. The other 39 are in src/b.ts. Narrow the pattern, directory or include, or raise max_results."
+    render(<ToolResult toolName="grep" result={`src/a.ts:3: hit\n\n[${note}]`} />)
+    expect(screen.getByText("1 match")).toBeTruthy()
+    expect(screen.getByText(note)).toBeTruthy()
+    expect(screen.getAllByRole("listitem")).toHaveLength(1)
+  })
+
+  it("keeps a search that found nothing as plain text", () => {
+    render(<ToolResult toolName="grep" result="No matches for pattern 'x' in . (include=*)" />)
+    expect(screen.getByText("No matches for pattern 'x' in . (include=*)")).toBeTruthy()
+    expect(screen.queryByText(/match(es)?$/)).toBeNull()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // read renderer
 // ---------------------------------------------------------------------------

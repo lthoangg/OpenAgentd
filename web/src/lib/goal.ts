@@ -5,6 +5,7 @@
  */
 import type { ContentBlock, GoalPauseReason, SessionGoal } from '@/api/types'
 import { isRestartNoteExtra } from '@/lib/restart-note'
+import { awaitedText } from '@/lib/waiting'
 
 /** Matches ``appv3_agent::tools::goal::UPDATE_GOAL_TOOL``. */
 export const UPDATE_GOAL_TOOL = 'update_goal'
@@ -108,6 +109,8 @@ export interface GoalSessionState {
   queuedMessages: number
   /** Subagents still working and other workspaces' sessions that owe a reply; their reports wake the session. */
   sessionsAwaited: number
+  /** Background commands the session waits for; their results wake it too. */
+  commandsAwaited?: number
 }
 
 export interface GoalNow {
@@ -139,8 +142,11 @@ export function goalNow(goal: SessionGoal | null | undefined, s: GoalSessionStat
   if (s.planReview) return { tone: 'wait', text: 'Needs you · a plan to review', note: 'The goal goes on once you review the plan.' }
   if (s.running) return { tone: 'active', text: `Working · turn ${goalTurnNumber(goal, true)}/${goal.max_turns}`, note: queued }
   if (s.planMode) return { tone: 'wait', text: 'Waiting for Code mode', note: 'The goal starts its next turn when the session switches to Code mode.' }
-  if (s.sessionsAwaited > 0) {
-    return { tone: 'active', text: `Waiting for ${plural(s.sessionsAwaited, 'session')}`, note: 'Their reports start the next turn.' }
+  const commands = s.commandsAwaited ?? 0
+  const awaited = awaitedText({ sessions: s.sessionsAwaited, commands, servers: 0, needYou: 0 })
+  if (awaited) {
+    const note = s.sessionsAwaited > 0 ? 'Their reports start the next turn.' : commands === 1 ? 'Its result starts the next turn.' : 'Their results start the next turn.'
+    return { tone: 'active', text: `Waiting for ${awaited}`, note }
   }
   return { tone: 'active', text: 'Starting the next turn', note: queued }
 }

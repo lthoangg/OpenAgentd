@@ -15,11 +15,11 @@ Plain stdlib json: this script joins spans to logs by tool-call id and
 classifies shell commands by regex. v3 logs no ``tool_result_preview``
 records, so the no-hit columns only fill from older v2 logs.
 
-Three traps this encodes, learned by falling into them:
+Four traps this encodes, learned by falling into them:
 
 1. **Never divide errors by calls across different windows.** ``tool_error``
-   records survive longer than ``tool_start`` records, which once produced a
-   "grep fails 44% of the time" reading for a bug fixed weeks earlier. The
+   records survive longer than ``tool_start`` records, so a bug fixed weeks
+   earlier can read as a tool that still fails much of the time. The
    FIXED-OR-LIVE section exists to catch that: it prints each tool's error dates
    so a historical problem cannot pose as a live one.
 2. **Redundant work is only redundant within a run.** Counting identical calls
@@ -27,10 +27,15 @@ Three traps this encodes, learned by falling into them:
    into fake waste, so duplicates are attributed per ``run_id``.
 3. **Logged arguments are truncated at 500 chars** (``tool_start`` in
    ``appv3/crates/tools/src/lib.rs``), so
-   ``json.loads`` on them fails for 16% of shell calls — and precisely the long
-   ones (heredocs, inline python). Dropping the unparseable ones inflated
-   "shell is used to read files" to 78%, because short ``cat``/``head`` calls
-   always parse. Never parse those args strictly; degrade to a regex.
+   ``json.loads`` on them fails for precisely the long shell calls (heredocs,
+   inline python). Dropping the unparseable ones inflates "shell is used to
+   read files", because short ``cat``/``head`` calls always parse. Never parse
+   those args strictly; degrade to a regex.
+4. **A call a ``script`` makes is not context.** It has its own span, but its
+   result goes to the script, never to the model, and is not offloaded.
+   Summing every span's result counts, as "into context", output that never
+   reached a model. A span whose parent is a tool span is counted apart
+   (``nested_MB``).
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ import argparse
 import json
 import re
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -131,7 +137,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def pct(values: list[float], p: int) -> float:
+def pct(values: Sequence[float], p: int) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
@@ -174,7 +180,7 @@ def shell_command(raw: str) -> str:
     """Recover the command from possibly-truncated logged args.
 
     Logged args are cut at 500 chars, so strict JSON parsing loses the longest
-    16% of commands. Fall back to slicing after the ``"command":`` key.
+    commands. Fall back to slicing after the ``"command":`` key.
     """
     try:
         parsed = json.loads(raw)
@@ -218,6 +224,86 @@ def classify_shell(command: str) -> str:
     return "other"
 
 
+class SpanStats:
+    """Per-tool volume from ``execute_tool`` spans in the window."""
+
+    def __init__(self) -> None:
+        self.calls: Counter[str] = Counter()
+        self.durations: dict[str, list[float]] = {}
+        # Result sizes (characters) of calls the model made, and of calls a
+        # tool made (a ``script``): only the first reach a model.
+        self.direct: dict[str, list[int]] = {}
+        self.nested: dict[str, list[int]] = {}
+        self.run_of_call: dict[str, str] = {}
+        self.runs: set[str] = set()
+
+    def context_chars(self) -> int:
+        return sum(sum(sizes) for sizes in self.direct.values())
+
+    def nested_chars(self) -> int:
+        return sum(sum(sizes) for sizes in self.nested.values())
+
+
+def span_stats(paths: list[Path], cutoff: datetime) -> SpanStats:
+    stats = SpanStats()
+    # Every tool span's id, whatever its age: a call in the window may belong
+    # to a script that started before it, and a child is written before its
+    # parent (a span is written when it ends).
+    tool_span_ids: set[str] = set()
+    in_window: list[dict] = []
+    for path in paths:
+        with path.open(errors="ignore") as handle:
+            for line in handle:
+                try:
+                    span = json.loads(line)
+                except Exception:
+                    continue
+                if not span.get("name", "").startswith("execute_tool"):
+                    continue
+                tool_span_ids.add(span.get("span_id"))
+                if datetime.fromtimestamp(span["start_time"] / 1e9, timezone.utc) >= cutoff:
+                    in_window.append(span)
+    for span in in_window:
+        attrs = span.get("attributes", {})
+        tool = attrs.get("gen_ai.tool.name", "?")
+        stats.calls[tool] += 1
+        stats.durations.setdefault(tool, []).append(span.get("duration_ms") or 0.0)
+        if isinstance(attrs.get("tool.result.length"), int):
+            sizes = stats.nested if span.get("parent_id") in tool_span_ids else stats.direct
+            sizes.setdefault(tool, []).append(attrs["tool.result.length"])
+        run = attrs.get("run_id")
+        if run:
+            stats.runs.add(run)
+            if attrs.get("gen_ai.tool.call.id"):
+                stats.run_of_call[attrs["gen_ai.tool.call.id"]] = run
+    return stats
+
+
+def print_volume(stats: SpanStats, top: int) -> None:
+    total = sum(stats.calls.values())
+    print(f"\n--- Volume & cost ({total} calls, {len(stats.runs)} runs) ---")
+    print("res_* and ctx_MB: results the model read; nested_MB: results a script's own calls returned to it")
+    header = (
+        f"{'tool':24}{'calls':>7}{'share':>7}{'p50ms':>8}{'p95ms':>9}"
+        f"{'max_s':>8}{'res_p50':>9}{'res_p95':>9}{'ctx_MB':>8}{'nested_MB':>11}"
+    )
+    print(header)
+    print("-" * len(header))
+    for tool, n in stats.calls.most_common(top):
+        durations = stats.durations[tool]
+        direct = stats.direct.get(tool, [])
+        print(
+            f"{tool:24}{n:>7}{100 * n / total:>6.1f}%{pct(durations, 50):>8.0f}"
+            f"{pct(durations, 95):>9.0f}{max(durations) / 1000:>8.1f}"
+            f"{pct(direct, 50):>9.0f}{pct(direct, 95):>9.0f}"
+            f"{sum(direct) / 1e6:>8.1f}{sum(stats.nested.get(tool, [])) / 1e6:>11.1f}"
+        )
+    print(
+        f"\ntotal tool output into context: {stats.context_chars() / 1e6:.1f} MB"
+        f" ({stats.nested_chars() / 1e6:.1f} MB more went to scripts that called tools, not to a model)"
+    )
+
+
 def main() -> None:
     args = parse_args()
     cutoff = datetime.now(timezone.utc) - timedelta(days=args.days)
@@ -227,60 +313,12 @@ def main() -> None:
     )
 
     # ── spans: volume, latency, result size ─────────────────────────────────
-    calls: Counter[str] = Counter()
-    durations: dict[str, list[float]] = defaultdict(list)
-    sizes: dict[str, list[int]] = defaultdict(list)
-    run_of_call: dict[str, str] = {}
-    runs: set[str] = set()
-
-    for path in iter_span_files():
-        with path.open(errors="ignore") as handle:
-            for line in handle:
-                try:
-                    span = json.loads(line)
-                except Exception:
-                    continue
-                if not span.get("name", "").startswith("execute_tool"):
-                    continue
-                if (
-                    datetime.fromtimestamp(span["start_time"] / 1e9, timezone.utc)
-                    < cutoff
-                ):
-                    continue
-                attrs = span.get("attributes", {})
-                tool = attrs.get("gen_ai.tool.name", "?")
-                calls[tool] += 1
-                durations[tool].append(span.get("duration_ms") or 0.0)
-                if isinstance(attrs.get("tool.result.length"), int):
-                    sizes[tool].append(attrs["tool.result.length"])
-                run = attrs.get("run_id")
-                if run:
-                    runs.add(run)
-                    if attrs.get("gen_ai.tool.call.id"):
-                        run_of_call[attrs["gen_ai.tool.call.id"]] = run
-
-    total = sum(calls.values())
-    if not total:
+    stats = span_stats(list(iter_span_files()), cutoff)
+    run_of_call = stats.run_of_call
+    if not stats.calls:
         print("No tool spans in window.")
         return
-
-    print(f"\n--- Volume & cost ({total} calls, {len(runs)} runs) ---")
-    header = (
-        f"{'tool':24}{'calls':>7}{'share':>7}{'p50ms':>8}{'p95ms':>9}"
-        f"{'max_s':>8}{'res_p50':>9}{'res_p95':>9}{'MB':>7}"
-    )
-    print(header)
-    print("-" * len(header))
-    for tool, n in calls.most_common(args.top):
-        print(
-            f"{tool:24}{n:>7}{100 * n / total:>6.1f}%{pct(durations[tool], 50):>8.0f}"
-            f"{pct(durations[tool], 95):>9.0f}{max(durations[tool]) / 1000:>8.1f}"
-            f"{pct(sizes[tool], 50):>9.0f}{pct(sizes[tool], 95):>9.0f}"
-            f"{sum(sizes[tool]) / 1e6:>7.1f}"
-        )
-    print(
-        f"\ntotal tool output into context: {sum(sum(v) for v in sizes.values()) / 1e6:.1f} MB"
-    )
+    print_volume(stats, args.top)
 
     # ── logs: outcomes, arguments, error history ────────────────────────────
     log_calls: Counter[str] = Counter()

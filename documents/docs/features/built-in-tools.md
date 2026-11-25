@@ -13,7 +13,7 @@ MCP.
 | Category | Tools |
 |---|---|
 | Filesystem | `read` (files + directory listings), `patch` (create/edit/delete/move), `glob`, `grep` |
-| Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`; read-only in Plan mode `[v2.17.0]`) |
+| Shell | `shell` (supports `background=true` `[v2.0.0]`, which saves the output to a log and reports the exit, with `wait` for a result the session waits for `[v3.63.0]`; read-only in Plan mode `[v2.17.0]`) |
 | Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule` (reminders + self-scheduling agentic loops; `schedule_task` before v3.30.0) `[v1.70.0]`; `update` changes a task's schedule, prompt, run limit or paused state in place, keeping its slug and run count `[v3.33.0]` |
@@ -101,9 +101,22 @@ MCP.
   `preview` calls as before; an agent there that calls `preview` again is
   told to use `browser`.
   A server on this computer is opened by its loopback URL, never the OpenAgentd API port. Everything
-  works only while the page is open in the Browser tab *(since v3.42.0, or
-  loaded out of sight while the desktop app is open)*; there is no headless
-  browser and no screenshots.
+  works only while the page is loaded: in the Browser tab, out of sight in
+  an open app window *(since v3.42.0)*, or, with every app window closed, in
+  a hidden window of the desktop app `[v3.63.0]`. So the agent can drive a
+  page while the app sits in the tray, and when you work from your phone or
+  a browser on another computer, as long as the desktop app runs on the
+  computer with the server. That needs something else to keep the app
+  running once its windows are closed: on a Mac the menu bar status and the
+  notch island do, on Windows the desktop pet; on Linux closing the last
+  window still quits the app. A server started without the desktop app says
+  so when no window can load the page. There are no screenshots.
+  **Closing pages** `[v3.63.0]`: the agent closes a page with `close` when
+  it is done with it (no page named: every page its session opened). A page
+  also closes 15 minutes after its last use, within seconds of that, and
+  when its session is deleted. Each session holds its own pages, so a page
+  another session still uses stays loaded, and a Browser tab you have open
+  keeps showing it. An action on a closed page loads it again.
 - **Hints on wrong tool names and paths** `[v3.28.0]` — calling a tool by a
   name from another harness (such as `bash`) answers "Did you mean …?" and
   lists the available tools. A missing absolute path such as `/DESIGN.md` that
@@ -325,3 +338,11 @@ MCP.
   `grep`'s `include` filter understands `{ts,tsx}` braces as `glob` does, and
   a filter that names no file (a comma list, a path) says nothing was
   searched instead of answering "No matches" `[v3.63.0]`.
+- **Search answers in one step** `[v3.63.0]` — `grep` takes `context` (0 to
+  50 lines), so a search returns the lines around each match and the agent
+  no longer opens the file at that spot in a second call. A result cut at
+  `max_results` ends with a note: how many lines match in all and which files
+  hold the rest, so a full result is no longer mistaken for a complete one.
+  The search card in the transcript counts matches, shows the lines around
+  them in a quieter colour with a rule between groups, and shows the note
+  under the list.

@@ -109,4 +109,22 @@ mod key_tests {
         }
         assert!(checked >= 25, "the scan found only {checked} keys: it no longer matches how prompts::s is called");
     }
+
+    /// The lead's own reading costs many times an explorer's per model call,
+    /// so the Delegating rule names when to hand reading off and when not.
+    #[test]
+    fn the_lead_hands_reading_it_will_not_edit_to_an_explorer() {
+        let prompt = coding_prompt();
+        assert!(prompt.contains("more than about five files you will not edit"), "{prompt}");
+        assert!(prompt.contains("send an explorer one precise question and the answer format"), "{prompt}");
+        assert!(prompt.contains("Read files yourself when you will edit them or need their exact text"), "{prompt}");
+    }
+
+    /// Whole-file reads fill an explorer's context call after call.
+    #[test]
+    fn an_explorer_reads_the_lines_it_needs() {
+        let explorer = member_profiles()["explorer"]["prompt"].as_str().unwrap();
+        assert!(explorer.contains("`grep` with `context`, or `read` with `offset` and `limit` around a match"), "{explorer}");
+        assert!(explorer.contains("Read a whole file only when the question is about all of it."), "{explorer}");
+    }
 }

@@ -21,12 +21,19 @@ function sseResponse(text: string): Response {
 }
 
 function open(clientId?: string): Promise<Array<[string, unknown, string | undefined]>> {
+  return openWithResume(clientId).then(({ events }) => events)
+}
+
+/** The events, and what `onOpen` said the feed resumed from. */
+function openWithResume(clientId?: string): Promise<{ events: Array<[string, unknown, string | undefined]>; resume: unknown }> {
   const events: Array<[string, unknown, string | undefined]> = []
+  let resume: unknown = 'not opened'
   return new Promise((resolve) => {
     globalEventStream({
+      onOpen: (info) => { resume = info },
       onEvent: (type, data, id) => { events.push([type, data, id]) },
-      onDone: () => resolve(events),
-      onError: () => resolve(events),
+      onDone: () => resolve({ events, resume }),
+      onError: () => resolve({ events, resume }),
     }, undefined, clientId)
   })
 }
@@ -76,5 +83,12 @@ describe('resuming the global feed', () => {
     body = ''
     await open()
     expect(urls[0]).toBe('http://192.168.1.20:4082/api/events/stream')
+  })
+
+  it('tells the listener which position it asked to resume from', async () => {
+    body = ''
+    expect((await openWithResume()).resume).toEqual({ since: null })
+    localStorage.setItem('oa-global-stream-cursor:http://192.168.1.20:4082/api', 'b00t-12')
+    expect((await openWithResume()).resume).toEqual({ since: 'b00t-12' })
   })
 })

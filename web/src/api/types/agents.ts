@@ -88,18 +88,32 @@ export interface SubagentsResponse {
   subagents?: LiveSubagent[]
 }
 
-/** One session a finished turn still waits for (`GET /agent/sessions/{id}/waiting`). */
+/**
+ * One thing a finished turn still waits for, or that it left running
+ * (`GET /agent/sessions/{id}/waiting`).
+ */
 export interface WaitingItem {
-  /** A subagent of the session, or a session in another workspace that owes it a reply. */
-  kind: 'subagent' | 'session'
+  /**
+   * A subagent of the session, a session in another workspace that owes it
+   * a reply, or a background `shell` command of the session still running.
+   */
+  kind: 'subagent' | 'session' | 'command'
+  /** A command: the session it belongs to. */
   session_id: string
+  /** A command: its description, when the agent gave one. */
   title: string | null
-  /** A subagent's handle (`worker#1`), or the name of the workspace the session runs in. */
+  /** A subagent's handle (`worker#1`), the name of the workspace the session runs in, or the command. */
   label: string
-  /** Empty for a subagent: it runs in the session's own workspace. */
+  /** Empty for a subagent or a command: it runs in the session's own workspace. */
   workspace: string
-  /** `needs_input`: stopped on a question or a plan review. `idle`: not running. */
+  /** `needs_input`: stopped on a question or a plan review. `idle`: not running. A command is always `working`. */
   state: 'working' | 'needs_input' | 'idle'
+  /** A command: its number within the session. */
+  number?: number
+  /** A command: whether the session waits for its result. `false` for one that only keeps running (a server). */
+  waited?: boolean
+  /** A command: when it started, in Unix seconds. */
+  started_at?: number
 }
 
 export interface WaitingResponse {

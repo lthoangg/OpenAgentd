@@ -28,3 +28,19 @@ export function parseShellOutcome(result: string | undefined): ShellOutcome | nu
   const code = match[2].match(/exit(?: code)?\s*(-?\d+)/i)
   return { exitCode: code ? Number(code[1]) : null, timedOut: false, body }
 }
+
+const BACKGROUND_START = /^\[Started in the background: command (\d+)\]/
+
+/**
+ * A background call's result (`[Started in the background: command 3]`,
+ * then where its output goes): the command's number and the text after the
+ * status line. `null` for any other result. The server sends this result
+ * with the call, so a closed row can say "started · command 3"
+ * (``appv3_db::api::result_rides_inline``): change both together.
+ */
+export function parseBackgroundStart(result: string | undefined): { number: number; body: string } | null {
+  const match = result?.trimStart().match(BACKGROUND_START)
+  if (!result || !match) return null
+  const newline = result.indexOf('\n')
+  return { number: Number(match[1]), body: newline >= 0 ? result.slice(newline + 1).trimStart() : '' }
+}

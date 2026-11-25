@@ -2,6 +2,54 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## `grep` shows lines around a match and says when it was cut (v3.63.0)
+
+- **Tool.** `grep` takes `context` (integer, 0 to 50, default 0). With it,
+  the lines around each match read `file-<line>- text`, and `--` separates
+  groups that are not adjacent; match lines keep `file:<line>: text`. With
+  `context` 0 the output is unchanged.
+- **Result text.** A result that reaches `max_results` ends with a blank
+  line and a bracketed note: `[<shown> of <total> matching lines shown. The
+  other <n> are in …]`, naming up to five files with their counts. Past the
+  limit the search keeps counting for up to 2 s; if it stops first, the
+  total reads `at least <total>`. A result with `context` stops at 50,000
+  characters and its note says so.
+
+## Background `shell` commands report back (v3.63.0)
+
+- **Tool.** `shell` takes `wait` (boolean, with `background=true`). A
+  background call's result was `PID: <pid>`; it is now
+  `[Started in the background: command <n>]`, an `Output: <log path>` line,
+  then whether a message will come and how to end the command. Stored `PID:`
+  results render as before. The new result is sent with its call in history
+  and `tool_end` (`result_rides_inline`), so a closed row can name the
+  command it started.
+- **On disk.** A session's data folder gets `commands/<n>.log` (the command's
+  output, ANSI codes removed, cut back to its newest 10 MB when it reaches
+  20 MB) and `commands/<n>.json` (`number`, `pid`, `command`, `description`,
+  `wait`, `reports`, `started_at`, `state`, and once it ended `exit_code`,
+  `signal`, `ran_seconds`). `state` is `running`, how it ended (`exited`,
+  `timed_out`, `stopped_by_user`, `turn_stopped`, `session_deleted`,
+  `shutdown`), or `cut_off` once a later start has reported it. The folder
+  goes when the session is deleted.
+- **Messages.** A command's end is a user row with
+  `extra.from_agent = "shell"` and `extra.command_exit` (`number`, `command`,
+  `description`, `end`, `succeeded`, `exit_code`, `signal`, `ran_seconds`,
+  `lines`, `shown_lines`, `log_path`). The note a restart leaves has
+  `extra.commands_cut_off` (the numbers) instead. Compaction may add a hidden
+  note row with `extra.background_commands`.
+- **API.** `GET /api/agent/sessions/{id}/waiting` also lists the session's
+  running commands: `kind: "command"`, `number`, `title` (its description or
+  null), `label` (the command), `waited`, `started_at` (Unix seconds),
+  `state: "working"`, `session_id` (the session itself), `workspace: ""`. A
+  session row's `background_work` is true while it waits for a command.
+  New: `POST /api/agent/sessions/{id}/commands/{number}/stop` answers 204, or
+  404 `The command is not running.`
+- **Events.** The global feed publishes `command_status`
+  (`session_id`, `running`, `waited`, `ended`) when a command starts or ends.
+- **Modules.** A `commands` module ends every background command at
+  shutdown, after `subagents`.
+
 ## An agent name may not end in a newline (v3.63.0)
 
 The agent routes took a name whose last character was a line break

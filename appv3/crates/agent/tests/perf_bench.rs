@@ -1,7 +1,11 @@
-//! Backend microbenchmarks for the performance plan, written against APIs
-//! that exist unchanged at `fad35386` (before) and HEAD (after).
-//! `scripts/perf/run-backend.sh` copies this into `appv3/crates/agent/tests/`
-//! of each tree and runs it in release mode. Not part of the normal suite.
+//! Backend microbenchmarks: stream-store fan-out, `save_message`, turn-start
+//! heal, request-body build, provider stream parsing, Codex provider build.
+//!
+//! Ignored by default; it is a module of this binary so that every
+//! `make verify-v3` compiles it. `scripts/perf/run-backend.sh` runs it in
+//! release mode, and copies this file into an older checkout to compare.
+//!
+//!   cargo test --release -p appv3-agent --test integration perf_bench:: -- --ignored --nocapture
 //!
 //! Output: one `BENCH <name> median_ms=<x> min_ms=<y> runs=<n>` line each.
 
@@ -89,7 +93,10 @@ fn perf_bench() {
     std::env::set_var("OPENAGENTD_MODEL_REGISTRY_REFRESH", "false");
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(4).enable_all().build().unwrap();
     rt.block_on(async {
-        // Stream store: 20k token events with one attached client (3.2).
+        // Stream store: 20k token events with one attached client. Deltas
+        // are joined before they go out, so the client cannot count frames:
+        // each batch ends with a status event, which sends what is held,
+        // and the client reads up to it.
         let store: &'static StreamStore = Box::leak(Box::new(StreamStore::default()));
         let mut runs = vec![];
         for r in 0..7 {
@@ -101,16 +108,15 @@ fn perf_bench() {
                 for i in 0..1000 {
                     store.push_event(&sid, &events::message("lead", &format!("tok{batch}-{i} "), None), false);
                 }
-                for _ in 0..1000 {
-                    sub.next().await.unwrap();
-                }
+                store.push_event(&sid, &events::agent_status("lead", "working", None), false);
+                while sub.next().await.expect("the subscriber was dropped").event != "agent_status" {}
             }
             runs.push(elapsed_ms(t));
             store.clear(&sid);
         }
         report("stream_store_20k_tokens_1_client", runs);
 
-        // save_message: 1000 assistant rows with non-ASCII text (3.3).
+        // save_message: 1000 assistant rows with non-ASCII text.
         let pool = appv3_db::create_pool(root.path().join("bench.db")).await.unwrap();
         let mut runs = vec![];
         for _ in 0..5 {
@@ -123,7 +129,7 @@ fn perf_bench() {
         }
         report("save_message_x1000", runs);
 
-        // Turn start heal over a 300-row window with 50 KB tool outputs (3.4).
+        // Turn start heal over a 300-row window with 50 KB tool outputs.
         let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
         for i in 0..150 {
             let tc = serde_json::json!([{"id": format!("c{i}"), "type": "function", "function": {"name": "read", "arguments": "{}"}}]);
@@ -142,7 +148,7 @@ fn perf_bench() {
         }
         report("heal_window_300_rows_50kb_tools", runs);
 
-        // OpenAI request body for a 300-message transcript (3.8).
+        // OpenAI request body for a 300-message transcript.
         let p = OpenAiProvider::with_headers("gpt-4o", "http://127.0.0.1:9", vec![], Kwargs::new(), CompletionsDialect::OpenAi, false);
         let msgs = transcript(100, 20_000);
         let mut runs = vec![];
@@ -153,7 +159,7 @@ fn perf_bench() {
         }
         report("openai_build_request_300_msgs", runs);
 
-        // OpenAI stream: 20k small content deltas (3.9 choices borrow + lines).
+        // OpenAI stream: 20k small content deltas.
         let mut body = Vec::new();
         for i in 0..20_000 {
             body.extend_from_slice(format!("data: {{\"id\":\"c\",\"created\":0,\"model\":\"m\",\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"tok{i} \"}}}}]}}\n\n").as_bytes());
@@ -169,7 +175,7 @@ fn perf_bench() {
         }
         report("openai_stream_20k_deltas", runs);
 
-        // One 4 MB SSE data line delivered in 16 KB writes (3.9 LineBuf).
+        // One 4 MB SSE data line delivered in 16 KB writes.
         let big = format!("data: {{\"id\":\"c\",\"created\":0,\"model\":\"m\",\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"{}\"}}}}]}}\n\ndata: [DONE]\n\n", "z".repeat(4 << 20));
         let base = sse_server(std::sync::Arc::new(big.into_bytes())).await;
         let p = OpenAiProvider::with_headers("gpt-4o", &base, vec![], Kwargs::new(), CompletionsDialect::OpenAi, false);
@@ -181,14 +187,14 @@ fn perf_bench() {
         }
         report("openai_stream_one_4mb_line", runs);
 
-        // Anthropic stream: 20k text deltas into one block (3.1).
+        // Anthropic stream: 20k text deltas into one block.
         let mut body = String::from("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"model\":\"claude\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n");
         for i in 0..20_000 {
             body.push_str(&format!("event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"text_delta\",\"text\":\"tok{i} \"}}}}\n\n"));
         }
         body.push_str("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
         let base = sse_server(std::sync::Arc::new(body.into_bytes())).await;
-        let p = appv3_providers::anthropic::AnthropicProvider::new("k".into(), "claude-sonnet-4-5", &base, Kwargs::new()).unwrap();
+        let p = appv3_providers::anthropic::AnthropicProvider::new("k", "claude-sonnet-4-5", &base, Kwargs::new()).unwrap();
         let mut runs = vec![];
         for _ in 0..7 {
             let t = Instant::now();
@@ -197,10 +203,10 @@ fn perf_bench() {
         }
         report("anthropic_stream_20k_deltas", runs);
 
-        // Codex provider build with a valid token, on a runtime worker (3.6).
+        // Codex provider build with a valid stored token, on a runtime worker.
         let exp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() + 1e6;
-        let tok = serde_json::json!({"access_token": "a", "refresh_token": "r", "expires_at": exp, "account_id": "acc"});
-        std::fs::write(root.path().join("cache").join("codex_oauth.json"), tok.to_string()).unwrap();
+        let auth = appv3_providers::codex::CodexAuth { access_token: "bench".into(), refresh_token: "r".into(), expires_at: exp, account_id: Some("acc".into()) };
+        auth.save(&mut appv3_providers::codex::oauth_slot()).unwrap();
         let runs = tokio::spawn(async {
             let mut runs = vec![];
             for _ in 0..7 {

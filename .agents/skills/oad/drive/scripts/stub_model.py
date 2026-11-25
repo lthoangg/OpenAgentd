@@ -30,6 +30,9 @@ message:
 - a user message holding ``drive:read <JSON arguments>``: one ``read`` tool
   call with those arguments, e.g. ``{"path": "README.md"}`` (only when the
   request offers ``read``)
+- a user message holding ``drive:grep <JSON arguments>``: one ``grep`` tool
+  call with those arguments, e.g. ``{"pattern": "TODO", "context": 2}`` (only
+  when the request offers ``grep``)
 - ``drive:shell`` followed by a JSON object passes it as the ``shell`` call's
   arguments, e.g. ``{"command": "echo $K", "secrets": ["K"]}``
 - a user message holding ``drive:limit <seconds>``: HTTP 429 with that
@@ -37,7 +40,8 @@ message:
   usual answer for any other key, so a provider with several keys moves on
   to the next one and cools the first
 - any other user message: ``Stub reply (<protocol>): <the message>``, streamed
-  word by word
+  word by word; the first 200 characters of the message, or as many as
+  ``--reply-chars`` says (a benchmark streams a long answer)
 - a request without ``stream``: the title request's own ``<message>`` text,
   cut to 40 characters, so each session is titled after its first prompt;
   ``Drive session`` for any other such request
@@ -60,10 +64,12 @@ from typing import Any
 
 MODEL = "stub"
 # A directive names the tool to call; the rest of its line is the tool's input.
-DIRECTIVE = re.compile(r"drive:(shell|script|browser|secret|plan|read)\s+(.+)")
+DIRECTIVE = re.compile(r"drive:(shell|script|browser|secret|plan|read|grep)\s+(.+)")
 LIMIT = re.compile(r"drive:limit\s+(\d+)")
 LIMITED_KEY = "drive-limited"
 TITLE_MESSAGE = re.compile(r"<message>\s*(.*?)\s*</message>", re.S)
+# How much of a user message a reply echoes (`--reply-chars`).
+REPLY_CHARS = 200
 # Each tool call gets its own id, so a session with several calls can read
 # each result back by id (`/agent/<session>/tool-results/<id>`).
 _CALLS = itertools.count(1)
@@ -111,12 +117,12 @@ def plan(protocol: str, body: dict[str, Any]) -> tuple[str, str]:
     directive = DIRECTIVE.search(user)
     if directive and directive.group(1) in offered:
         return directive.group(1), directive.group(2).strip()
-    return "text", f"Stub reply ({protocol}): {user.strip()[:200]}"
+    return "text", f"Stub reply ({protocol}): {user.strip()[:REPLY_CHARS]}"
 
 
 def tool_arguments(kind: str, value: str) -> str:
     """The JSON arguments of the tool call a directive asks for."""
-    if kind in ("browser", "secret", "plan", "read") or (kind == "shell" and value.lstrip().startswith("{")):
+    if kind in ("browser", "secret", "plan", "read", "grep") or (kind == "shell" and value.lstrip().startswith("{")):
         return json.dumps(json.loads(value))
     return json.dumps({"command": value} if kind == "shell" else {"description": "Drive script", "code": value})
 
@@ -282,12 +288,19 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
-def main() -> int:
+def main_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--log", type=Path, help="append one JSON line per request")
-    args = parser.parse_args()
+    parser.add_argument("--reply-chars", type=int, default=REPLY_CHARS, help="how much of a message a reply echoes (default: 200)")
+    return parser.parse_args(argv)
+
+
+def main() -> int:
+    global REPLY_CHARS
+    args = main_args()
     Handler.log_path = args.log
+    REPLY_CHARS = args.reply_chars
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     try:
         server.serve_forever()

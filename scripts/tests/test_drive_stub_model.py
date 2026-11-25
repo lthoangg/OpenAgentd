@@ -106,6 +106,24 @@ READ_TOOL = {
 
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
+def test_the_grep_directive_becomes_a_grep_call_with_its_arguments(server: str, protocol: str) -> None:
+    prompt = 'drive:grep {"pattern": "needle", "context": 2}'
+    body = user_turn(protocol, prompt)
+    body["tools"] = body["tools"] + [GREP_TOOL[protocol]]
+    assert stub.plan(protocol, body) == ("grep", '{"pattern": "needle", "context": 2}')
+    assert stub.plan(protocol, user_turn(protocol, prompt))[0] == "text"
+    events = stream_events(post(server + PATHS[protocol], body))
+    assert tool_call(protocol, events) == ("grep", {"pattern": "needle", "context": 2})
+
+
+GREP_TOOL = {
+    "chat": {"type": "function", "function": {"name": "grep"}},
+    "responses": {"type": "function", "name": "grep"},
+    "messages": {"name": "grep", "input_schema": {}},
+}
+
+
+@pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_a_tool_result_ends_the_turn_instead_of_repeating_the_call(protocol: str) -> None:
     assert stub.plan(protocol, after_tool(protocol)) == ("text", f"Stub ({protocol}): the tool finished.")
 

@@ -2,6 +2,19 @@
 
 Part of the compatibility log. [`REPORT.md`](../REPORT.md) is its index and keeps the section numbers.
 
+## `grep` shows lines around a match and says when it was cut (v3.63.0)
+
+- **Tool.** `grep` takes `context` (integer, 0 to 50, default 0). With it,
+  the lines around each match read `file-<line>- text`, and `--` separates
+  groups that are not adjacent; match lines keep `file:<line>: text`. With
+  `context` 0 the output is unchanged.
+- **Result text.** A result that reaches `max_results` ends with a blank
+  line and a bracketed note: `[<shown> of <total> matching lines shown. The
+  other <n> are in …]`, naming up to five files with their counts. Past the
+  limit the search keeps counting for up to 2 s; if it stops first, the
+  total reads `at least <total>`. A result with `context` stops at 50,000
+  characters and its note says so.
+
 ## Background `shell` commands report back (v3.63.0)
 
 - **Tool.** `shell` takes `wait` (boolean, with `background=true`). A

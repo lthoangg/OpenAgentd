@@ -325,3 +325,11 @@ MCP.
   `grep`'s `include` filter understands `{ts,tsx}` braces as `glob` does, and
   a filter that names no file (a comma list, a path) says nothing was
   searched instead of answering "No matches" `[v3.63.0]`.
+- **Search answers in one step** `[v3.63.0]` — `grep` takes `context` (0 to
+  50 lines), so a search returns the lines around each match and the agent
+  no longer opens the file at that spot in a second call. A result cut at
+  `max_results` ends with a note: how many lines match in all and which files
+  hold the rest, so a full result is no longer mistaken for a complete one.
+  The search card in the transcript counts matches, shows the lines around
+  them in a quieter colour with a rule between groups, and shows the note
+  under the list.

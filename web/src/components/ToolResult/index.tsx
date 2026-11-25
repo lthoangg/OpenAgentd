@@ -16,7 +16,7 @@
 import type { ReactNode } from 'react'
 import { canonicalToolName } from '@/utils/tool-names'
 import { BackgroundProcessResult } from './BackgroundProcessResult'
-import { FileListResult, FileReadResult } from './FileResults'
+import { FileListResult, FileReadResult, SearchResult } from './FileResults'
 import { GenericResult } from './GenericResult'
 import { LspDiagnosticsView, parseLspDiagnostics } from './LspDiagnostics'
 import { LspNavigationResult } from './LspNavigationResult'
@@ -43,7 +43,10 @@ function ToolResultInner({ toolName: rawName, operation, result, headerAction, o
   if (toolName === 'shell') {
     return <ShellResult result={result} />
   }
-  if (toolName === 'glob' || toolName === 'grep') {
+  if (toolName === 'grep') {
+    return <SearchResult result={result} />
+  }
+  if (toolName === 'glob') {
     return <FileListResult result={result} />
   }
   if (toolName === 'read') {

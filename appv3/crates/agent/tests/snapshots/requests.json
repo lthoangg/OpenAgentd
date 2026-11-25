@@ -264,7 +264,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search file contents across the workspace by regex. Returns matches formatted as 'file:line: content'. Automatically skips binary files and dependency and cache directories (node_modules, .venv, …); gitignored files are searched after the rest, except large gitignored build directories (pass one as directory to search it).",
+          "description": "Search file contents across the workspace by regex. Returns matches formatted as 'file:line: content'; a result cut at max_results says how many more lines match and in which files. Automatically skips binary files and dependency and cache directories (node_modules, .venv, …); gitignored files are searched after the rest, except large gitignored build directories (pass one as directory to search it).",
           "parameters": {
             "type": "object",
             "properties": {
@@ -281,6 +281,13 @@
                 "default": "*",
                 "description": "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Restricting this significantly speeds up searches.",
                 "type": "string"
+              },
+              "context": {
+                "default": 0,
+                "description": "Lines shown before and after each match, as 'file-line- content'. Set it (e.g. 15) instead of reading the file at the match next.",
+                "maximum": 50,
+                "minimum": 0,
+                "type": "integer"
               },
               "max_results": {
                 "default": 100,
@@ -1082,7 +1089,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search file contents across the workspace by regex. Returns matches formatted as 'file:line: content'. Automatically skips binary files and dependency and cache directories (node_modules, .venv, …); gitignored files are searched after the rest, except large gitignored build directories (pass one as directory to search it).",
+          "description": "Search file contents across the workspace by regex. Returns matches formatted as 'file:line: content'; a result cut at max_results says how many more lines match and in which files. Automatically skips binary files and dependency and cache directories (node_modules, .venv, …); gitignored files are searched after the rest, except large gitignored build directories (pass one as directory to search it).",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1099,6 +1106,13 @@
                 "default": "*",
                 "description": "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Restricting this significantly speeds up searches.",
                 "type": "string"
+              },
+              "context": {
+                "default": 0,
+                "description": "Lines shown before and after each match, as 'file-line- content'. Set it (e.g. 15) instead of reading the file at the match next.",
+                "maximum": 50,
+                "minimum": 0,
+                "type": "integer"
               },
               "max_results": {
                 "default": 100,

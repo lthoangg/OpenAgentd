@@ -7,10 +7,12 @@ use crate::glob::expand_braces;
 pub use crate::ignores::Ignores;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
+use hits::{render, scan_file, FileHits, Found};
 use serde_json::Value;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+mod hits;
 
 pub const NOISE_DIR_NAMES: &[&str] = &[
     ".git",
@@ -33,6 +35,11 @@ pub const NOISE_DIR_NAMES: &[&str] = &[
 ];
 const MAX_PATTERN_LEN: usize = 500;
 const SCAN_TIMEOUT_S: u64 = 10;
+/// Once `max_results` matches are in, the search goes on only to count the
+/// rest, and for no longer than this: a wide search must not get much slower
+/// for the sake of its note.
+const COUNT_BUDGET_S: u64 = 2;
+const MAX_CONTEXT_LINES: i64 = 50;
 const BINARY_SNIFF_BYTES: usize = 4096;
 /// Files are read this much at a time (rounded to whole lines), so a large
 /// log costs ~1 MB per scanning thread instead of several times its size.
@@ -203,16 +210,6 @@ fn normalise_newlines(data: &[u8]) -> std::borrow::Cow<'_, [u8]> {
     std::borrow::Cow::Owned(out)
 }
 
-/// Search one file like v2 (`TextIOWrapper(errors="replace")` +
-/// `compiled.search(line)`, where `line` keeps its `\n`). Returns hits in
-/// line order, at most `max`.
-fn scan_file(m: &Matcher, fpath: &Path, display: &str, max: usize) -> Vec<String> {
-    match std::fs::File::open(fpath) {
-        Ok(f) => scan_reader(m, f, display, max, SCAN_CHUNK_BYTES),
-        Err(_) => vec![],
-    }
-}
-
 /// Where a chunk can end: after its last `\n`, or after a lone `\r` (one
 /// not at the very end, which may be the first half of `\r\n`). At EOF,
 /// everything left.
@@ -226,86 +223,22 @@ fn chunk_cut(buf: &[u8], eof: bool) -> Option<usize> {
     memchr::memrchr(b'\r', &buf[..buf.len().saturating_sub(1)]).map(|i| i + 1)
 }
 
-/// [`scan_file`] over any reader, `chunk` bytes at a time. Chunks hold whole
-/// lines, so the per-chunk prefilter and the line numbers match a scan of
-/// the whole file; reading stops at `max` hits.
-fn scan_reader(m: &Matcher, mut r: impl Read, display: &str, max: usize, chunk: usize) -> Vec<String> {
-    let mut hits = vec![];
-    let mut buf: Vec<u8> = Vec::new();
-    let mut line_no = 0usize;
-    let mut first = true;
-    let mut with_nl = String::new();
-    loop {
-        let want = if first { chunk.max(BINARY_SNIFF_BYTES) } else { chunk };
-        let n = match r.by_ref().take(want as u64).read_to_end(&mut buf) {
-            Ok(n) => n,
-            Err(_) => return hits,
-        };
-        if first {
-            if buf[..buf.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
-                return hits;
-            }
-            first = false;
-        }
-        let eof = n == 0;
-        let Some(cut) = chunk_cut(&buf, eof) else { continue };
-        let region = normalise_newlines(&buf[..cut]);
-        if !m.may_match_file(&region) {
-            line_no += memchr::memchr_iter(b'\n', &region).count() + usize::from(eof && !region.is_empty() && !region.ends_with(b"\n"));
-        } else {
-            let text = String::from_utf8_lossy(&region);
-            let ends_with_nl = text.ends_with('\n');
-            let mut lines: Vec<&str> = text.split('\n').collect();
-            if ends_with_nl || text.is_empty() {
-                lines.pop();
-            }
-            let last = lines.len().saturating_sub(1);
-            for (i, line) in lines.iter().enumerate() {
-                line_no += 1;
-                let has_nl = i < last || ends_with_nl;
-                // `$` in Python also matches before the final `\n`; patterns
-                // that consume the newline (`\s$`, `\n`) need the line with it.
-                let hit = m.is_match(line)
-                    || (has_nl && m.needs_trailing_newline() && {
-                        with_nl.clear();
-                        with_nl.push_str(line);
-                        with_nl.push('\n');
-                        m.is_match(&with_nl)
-                    });
-                if hit {
-                    let shown: String = line.trim_end().chars().take(200).collect();
-                    hits.push(format!("{display}:{line_no}: {shown}"));
-                    if hits.len() >= max {
-                        return hits;
-                    }
-                }
-            }
-        }
-        drop(region);
-        buf.drain(..cut);
-        if eof {
-            return hits;
-        }
-    }
-}
-
-/// Why a search stopped before walking everything.
-enum Stop {
-    Full,
-    TimedOut,
-}
+/// The search ran out of time before walking everything.
+struct TimedOut;
 
 /// One tree search: the files found so far wait in `pending` and are
-/// scanned in parallel `batch`es into `hits`.
+/// scanned in parallel `batch`es into `found`. `expired` is asked with
+/// whether `max` matches are already in.
 struct Scan<'a> {
     root: &'a Path,
     include: &'a regex::Regex,
     denied: &'a DeniedPaths,
     m: &'a Matcher,
     max: usize,
+    context: usize,
     batch: usize,
-    expired: &'a dyn Fn() -> bool,
-    hits: Vec<String>,
+    expired: &'a dyn Fn(bool) -> bool,
+    found: Found,
     pending: Vec<PathBuf>,
     /// Files whose name passed `include`, searched or not.
     named: usize,
@@ -320,14 +253,16 @@ impl Scan<'_> {
         }
     }
 
-    fn flush_if_ready(&mut self) -> Result<(), Stop> {
+    fn expired(&self) -> bool {
+        (self.expired)(self.found.kept >= self.max)
+    }
+
+    fn flush_if_ready(&mut self) -> Result<(), TimedOut> {
         if self.pending.len() >= self.batch {
-            if scan_batch(self.m, &self.pending, self.denied, self.max, &mut self.hits) {
-                return Err(Stop::Full);
-            }
+            scan_batch(self.m, &self.pending, self.denied, self.max, self.context, &mut self.found);
             self.pending.clear();
-            if (self.expired)() {
-                return Err(Stop::TimedOut);
+            if self.expired() {
+                return Err(TimedOut);
             }
         }
         Ok(())
@@ -341,11 +276,11 @@ impl Scan<'_> {
     /// subdirectories, depth first, names sorted). With `gi`, gitignored
     /// files and directories go to `ignored` (`true` for a directory) in
     /// walk order instead of being searched now.
-    fn walk(&mut self, start: &Path, gi: Option<&Ignores>, ignored: &mut Vec<(PathBuf, bool)>) -> Result<(), Stop> {
+    fn walk(&mut self, start: &Path, gi: Option<&Ignores>, ignored: &mut Vec<(PathBuf, bool)>) -> Result<(), TimedOut> {
         let mut stack = vec![start.to_path_buf()];
         while let Some(dir) = stack.pop() {
-            if (self.expired)() {
-                return Err(Stop::TimedOut);
+            if self.expired() {
+                return Err(TimedOut);
             }
             let Ok(rd) = std::fs::read_dir(&dir) else {
                 continue;
@@ -394,7 +329,7 @@ impl Scan<'_> {
 
     /// The visible tree first, then what it ignores: ignored files, and
     /// ignored directories small enough to be more than build output.
-    fn run(&mut self, gi: &Ignores) -> Result<(), Stop> {
+    fn run(&mut self, gi: &Ignores) -> Result<(), TimedOut> {
         let mut ignored = vec![];
         self.walk(self.root, Some(gi), &mut ignored)?;
         for (p, is_dir) in ignored {
@@ -411,61 +346,57 @@ impl Scan<'_> {
     }
 }
 
-/// What a tree search found: hits in walk order, whether it timed out (the
-/// hits so far are kept), how many file names passed the include filter, and
-/// the big gitignored directories it skipped.
+/// What a tree search found: the matches in walk order, whether it timed out
+/// (what it found so far is kept), how many file names passed the include
+/// filter, and the big gitignored directories it skipped.
 struct TreeHits {
-    hits: Vec<String>,
+    found: Found,
     timed_out: bool,
     named: usize,
     skipped: Vec<String>,
 }
 
 /// Search the tree under `root` in walk order, gitignored files after the
-/// rest (see [`Scan::run`]), with names sorted so the order — and which hits
-/// survive `max` — is the same on every OS. Files are scanned in parallel
-/// `batch`es as the walk finds them, so a search with early hits stops
-/// without walking the rest.
+/// rest (see [`Scan::run`]), with names sorted so the order — and which
+/// matches survive `max` — is the same on every OS. Files are scanned in
+/// parallel `batch`es as the walk finds them. Past `max` the walk goes on to
+/// count what is left out, until `expired` says stop.
 #[allow(clippy::too_many_arguments)]
-fn search_tree(root: &Path, include: &regex::Regex, gi: &Ignores, denied: &DeniedPaths, m: &Matcher, max: usize, batch: usize, expired: &dyn Fn() -> bool) -> TreeHits {
-    let mut s = Scan { root, include, denied, m, max, batch, expired, hits: vec![], pending: vec![], named: 0, skipped: vec![] };
+fn search_tree(
+    root: &Path,
+    include: &regex::Regex,
+    gi: &Ignores,
+    denied: &DeniedPaths,
+    m: &Matcher,
+    max: usize,
+    context: usize,
+    batch: usize,
+    expired: &dyn Fn(bool) -> bool,
+) -> TreeHits {
+    let mut s = Scan { root, include, denied, m, max, context, batch, expired, found: Found::default(), pending: vec![], named: 0, skipped: vec![] };
     let timed_out = match s.run(gi) {
         Ok(()) => {
-            scan_batch(m, &s.pending, denied, max, &mut s.hits);
+            scan_batch(m, &s.pending, denied, max, context, &mut s.found);
             false
         }
-        Err(Stop::Full) => false,
-        Err(Stop::TimedOut) => true,
+        Err(TimedOut) => true,
     };
-    TreeHits { hits: s.hits, timed_out, named: s.named, skipped: s.skipped }
+    TreeHits { found: s.found, timed_out, named: s.named, skipped: s.skipped }
 }
 
 fn timeout_error() -> ToolError {
     ToolError::Execution(format!("grep_files scan timed out after {SCAN_TIMEOUT_S}s — pattern may be too complex or directory too large"))
 }
 
-/// Scan `files` in parallel into `hits`, keeping their order. True once
-/// `max` hits are in.
-fn scan_batch(m: &Matcher, files: &[PathBuf], denied: &DeniedPaths, max: usize, hits: &mut Vec<String>) -> bool {
+/// Scan `files` in parallel into `found`, keeping their order. Once `max`
+/// matches are in, the rest are only counted.
+fn scan_batch(m: &Matcher, files: &[PathBuf], denied: &DeniedPaths, max: usize, context: usize, found: &mut Found) {
     use rayon::prelude::*;
-    let left = max - hits.len();
-    let per_file: Vec<Vec<String>> = files.par_iter().map(|fp| scan_file(m, fp, &denied.display_path(fp), left)).collect();
-    for line in per_file.into_iter().flatten() {
-        hits.push(line);
-        if hits.len() >= max {
-            return true;
-        }
+    let left = max.saturating_sub(found.kept);
+    let per_file: Vec<FileHits> = files.par_iter().map(|fp| scan_file(m, fp, &denied.display_path(fp), left, context)).collect();
+    for file in per_file {
+        found.add(file, max, context);
     }
-    false
-}
-
-/// The tool's text for `hits`, noting when the search stopped early.
-fn render_hits(hits: Vec<String>, timed_out: bool) -> String {
-    let mut out = hits.join("\n");
-    if timed_out {
-        out.push_str(&format!("\n\n[grep stopped after {SCAN_TIMEOUT_S}s: these results are partial. Narrow the directory or include pattern for a complete search.]"));
-    }
-    out
 }
 
 pub struct GrepTool;
@@ -481,6 +412,7 @@ impl Tool for GrepTool {
         let directory = a.str_or(&["directory", "dir", "path"], ".");
         let include = a.str_or(&["include", "glob", "file_pattern"], "*");
         let max_results = a.opt_int(&["max_results"], Some(1), None).unwrap_or(100) as usize;
+        let context = a.opt_int(&["context"], Some(0), Some(MAX_CONTEXT_LINES)).unwrap_or(0).clamp(0, MAX_CONTEXT_LINES) as usize;
         let compiled = compile_pattern(&pattern);
         if let Err(ToolError::Execution(e)) = &compiled {
             a.err("pattern", &format!("Value error, {e}"));
@@ -500,37 +432,50 @@ impl Tool for GrepTool {
             format!("No matches for pattern '{pattern}' in {shown_dir} (include={include} matched no file name, so nothing was searched; include is one glob over file names, not paths, e.g. '*.rs' or '*.{{ts,tsx}}')");
         let task = tokio::task::spawn_blocking(move || -> Result<TreeHits, ToolError> {
             if resolved.is_file() {
-                return Ok(TreeHits { hits: scan_file(&m, &resolved, &denied.display_path(&resolved), max_results), timed_out: false, named: 1, skipped: vec![] });
+                let mut found = Found::default();
+                found.add(scan_file(&m, &resolved, &denied.display_path(&resolved), max_results, context), max_results, context);
+                return Ok(TreeHits { found, timed_out: false, named: 1, skipped: vec![] });
             }
-            let deadline = Instant::now() + std::time::Duration::from_secs(SCAN_TIMEOUT_S);
+            let deadline = Instant::now() + Duration::from_secs(SCAN_TIMEOUT_S);
+            let full_since = std::cell::Cell::new(None::<Instant>);
+            let expired = |full: bool| {
+                let now = Instant::now();
+                let counting_since = full.then(|| {
+                    full_since.get().unwrap_or_else(|| {
+                        full_since.set(Some(now));
+                        now
+                    })
+                });
+                now > deadline || counting_since.is_some_and(|since| now > since + Duration::from_secs(COUNT_BUDGET_S))
+            };
             let gi = load_gitignore(&resolved);
             let inc = include_regex(&include).map_err(ToolError::exec)?;
             let batch = (rayon::current_num_threads() * 16).max(16);
-            Ok(search_tree(&resolved, &inc, &gi, &denied, &m, max_results, batch, &|| Instant::now() > deadline))
+            Ok(search_tree(&resolved, &inc, &gi, &denied, &m, max_results, context, batch, &expired))
         });
         // The walk keeps its own deadline and returns partial hits; this is
         // only a backstop for a single file that will not finish.
-        let TreeHits { hits, timed_out, named, skipped } = match tokio::time::timeout(std::time::Duration::from_secs(SCAN_TIMEOUT_S + 5), task).await {
+        let TreeHits { found, timed_out, named, skipped } = match tokio::time::timeout(Duration::from_secs(SCAN_TIMEOUT_S + 5), task).await {
             Ok(r) => r.map_err(ToolError::exec)??,
             Err(_) => return Err(timeout_error()),
         };
-        if hits.is_empty() {
+        if found.is_empty() {
             if timed_out {
                 return Err(timeout_error());
             }
             let said = if named == 0 { no_files } else { no_match };
             return Ok(ToolOutput::Text(said + &skipped_ignored_note(&skipped)));
         }
-        Ok(ToolOutput::Text(render_hits(hits, timed_out)))
+        Ok(ToolOutput::Text(render(&found, context, max_results, timed_out)))
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::Arc;
 
-    fn ctx(ws: &Path) -> ToolContext {
+    pub(crate) fn ctx(ws: &Path) -> ToolContext {
         ToolContext {
             session_id: None,
             agent_name: "t".into(),
@@ -543,7 +488,7 @@ mod tests {
         }
     }
 
-    async fn grep(ws: &Path, args: Value) -> String {
+    pub(crate) async fn grep(ws: &Path, args: Value) -> String {
         match GrepTool.run(&ctx(ws), args).await.unwrap() {
             ToolOutput::Text(t) => t,
             o => panic!("{o:?}"),
@@ -616,11 +561,14 @@ mod tests {
         for pattern in ["foo$", "foo\\s$", "^foo", "foo", "^$", "t$"] {
             let m = compile_pattern(pattern).unwrap();
             for data in contents {
-                let whole = scan_reader(&m, data, "f", 100, usize::MAX);
-                for chunk in [1, 2, 3, 5, 8, 64] {
-                    assert_eq!(scan_reader(&m, data, "f", 100, chunk), whole, "pattern {pattern:?} chunk {chunk} data {:?}", String::from_utf8_lossy(data));
+                for context in [0, 1, 3] {
+                    let whole = scan(&m, data, 100, context, usize::MAX);
+                    for chunk in [1, 2, 3, 5, 8, 64] {
+                        assert_eq!(scan(&m, data, 100, context, chunk), whole, "pattern {pattern:?} context {context} chunk {chunk} data {:?}", String::from_utf8_lossy(data));
+                    }
                 }
-                assert_eq!(scan_reader(&m, data, "f", 1, 2), whole.into_iter().take(1).collect::<Vec<_>>());
+                let whole = scan(&m, data, 100, 0, usize::MAX);
+                assert_eq!(scan(&m, data, 1, 0, 2), whole.into_iter().take(1).collect::<Vec<_>>());
             }
         }
     }
@@ -643,7 +591,7 @@ mod tests {
             assert!(matches!(fast, Matcher::Linear { needs_nl: false, .. }), "{pattern}");
             let Matcher::Linear { line, prefilter, .. } = compile_pattern(pattern).unwrap() else { unreachable!() };
             let always = Matcher::Linear { line, prefilter, needs_nl: true };
-            assert_eq!(scan_reader(&fast, data, "f", 100, 7), scan_reader(&always, data, "f", 100, 7), "{pattern}");
+            assert_eq!(scan(&fast, data, 100, 0, 7), scan(&always, data, 100, 0, 7), "{pattern}");
         }
     }
 
@@ -661,7 +609,9 @@ mod tests {
         // gitignored files; noise dirs skipped.
         assert_eq!(lines_of(&out), vec!["a.txt:1: hit", "b.txt:1: hit", "z.txt:1: hit", "y.txt:1: hit", "c.txt:1: hit"], "{out}");
         let out = grep(d.path(), serde_json::json!({"pattern": "hit", "max_results": 3})).await;
-        assert_eq!(lines_of(&out), vec!["a.txt:1: hit", "b.txt:1: hit", "z.txt:1: hit"], "{out}");
+        let (shown, note) = out.split_once("\n\n").expect("a note about the two left out");
+        assert_eq!(lines_of(shown), vec!["a.txt:1: hit", "b.txt:1: hit", "z.txt:1: hit"], "{out}");
+        assert!(note.starts_with("[3 of 5 matching lines shown. The other 2 are in: ") && note.contains("y.txt (1), c.txt (1)."), "{note}");
     }
 
     /// The `include` description gives `*.{ts,tsx}` as an example.
@@ -743,31 +693,38 @@ mod tests {
         d
     }
 
-    fn search(root: &Path, max: usize, batch: usize, expired: &dyn Fn() -> bool) -> (Vec<String>, bool) {
+    /// What a scan of `data` shows, one string per line.
+    fn scan(m: &Matcher, data: &[u8], keep: usize, context: usize, chunk: usize) -> Vec<String> {
+        let mut found = Found::default();
+        found.add(hits::scan_reader(m, data, "f", keep, context, chunk), keep, context);
+        render(&found, context, usize::MAX, false).lines().take_while(|l| !l.is_empty()).map(String::from).collect()
+    }
+
+    fn search(root: &Path, max: usize, batch: usize, expired: &dyn Fn(bool) -> bool) -> (Vec<String>, bool) {
         let denied = DeniedPaths::with(root, None, Some(vec![]), Some(vec![]));
         let inc = include_regex("*").unwrap();
-        let t = search_tree(root, &inc, &load_gitignore(root), &denied, &compile_pattern("hit").unwrap(), max, batch, expired);
-        (t.hits, t.timed_out)
+        let t = search_tree(root, &inc, &load_gitignore(root), &denied, &compile_pattern("hit").unwrap(), max, 0, batch, expired);
+        (render(&t.found, 0, max, false).lines().take_while(|l| !l.is_empty()).map(String::from).collect(), t.timed_out)
     }
 
     #[test]
     fn search_keeps_walk_order_for_any_batch_size() {
         let d = hit_tree();
-        let (all, timed_out) = search(d.path(), 100, 1000, &|| false);
+        let (all, timed_out) = search(d.path(), 100, 1000, &|_| false);
         assert!(!timed_out);
         assert_eq!(lines_of(&all.join("\n")), ["a.txt:1: hit", "b.txt:1: hit", "c.txt:1: hit", "d.txt:1: hit", "e.txt:1: hit", "f.txt:1: hit"]);
         for batch in [1, 2, 3] {
-            assert_eq!(search(d.path(), 100, batch, &|| false).0, all, "batch {batch}");
-            assert_eq!(search(d.path(), 4, batch, &|| false).0, all[..4], "batch {batch}");
+            assert_eq!(search(d.path(), 100, batch, &|_| false).0, all, "batch {batch}");
+            assert_eq!(search(d.path(), 4, batch, &|_| false).0, all[..4], "batch {batch}");
         }
     }
 
     #[test]
     fn a_timed_out_search_keeps_what_it_found() {
         let d = hit_tree();
-        let (all, _) = search(d.path(), 100, 1000, &|| false);
+        let (all, _) = search(d.path(), 100, 1000, &|_| false);
         let calls = std::cell::Cell::new(0);
-        let (partial, timed_out) = search(d.path(), 100, 1, &|| {
+        let (partial, timed_out) = search(d.path(), 100, 1, &|_| {
             calls.set(calls.get() + 1);
             calls.get() > 3
         });
@@ -778,8 +735,37 @@ mod tests {
 
     #[test]
     fn partial_results_say_so() {
-        assert_eq!(render_hits(vec!["a:1: x".into()], false), "a:1: x");
-        let out = render_hits(vec!["a:1: x".into(), "b:2: y".into()], true);
-        assert!(out.starts_with("a:1: x\nb:2: y\n\n") && out.contains("stopped after 10s"), "{out}");
+        let d = hit_tree();
+        let denied = DeniedPaths::with(d.path(), None, Some(vec![]), Some(vec![]));
+        let m = compile_pattern("hit").unwrap();
+        let tree = |max: usize, expired: &dyn Fn(bool) -> bool| search_tree(d.path(), &include_regex("*").unwrap(), &load_gitignore(d.path()), &denied, &m, max, 0, 1, expired);
+        // Out of time before the limit: the results are partial.
+        let calls = std::cell::Cell::new(0);
+        let early = tree(100, &|_| {
+            calls.set(calls.get() + 1);
+            calls.get() > 3
+        });
+        let out = render(&early.found, 0, 100, early.timed_out);
+        assert!(
+            out.contains("a.txt:1: hit\n")
+                && out.ends_with("\n\n[grep stopped after 10s: these results are partial. Narrow the directory or include pattern for a complete search.]"),
+            "{out}"
+        );
+        // Out of time while counting past the limit: the count is a floor.
+        let seen = std::cell::Cell::new(0);
+        let counting = tree(2, &|full| {
+            seen.set(seen.get() + usize::from(full));
+            seen.get() > 2
+        });
+        assert!(counting.timed_out);
+        let out = render(&counting.found, 0, 2, true);
+        let note = out.split_once("\n\n").expect(&out).1;
+        assert!(note.starts_with("[2 of at least ") && note.contains(" Counting stopped early, so there may be more. Narrow the pattern"), "{note}");
+        // Out of time the moment the limit is reached: nothing counted yet.
+        let at_once = tree(2, &|full| full);
+        assert_eq!(
+            render(&at_once.found, 0, 2, at_once.timed_out).split_once("\n\n").expect("a note").1,
+            "[2 matching lines shown. Counting the rest stopped early, so there may be more. Narrow the pattern, directory or include, or raise max_results.]"
+        );
     }
 }

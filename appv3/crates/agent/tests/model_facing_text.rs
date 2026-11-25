@@ -189,7 +189,11 @@ async fn every_tool_schema_reaches_every_provider_intact() {
 /// Raised by 441 for `shell`'s `wait` argument and the line that a
 /// background command saves its output and reports its exit: without it a
 /// model keeps polling (`sleep 45; tail log`), one request per poll.
-const LEAD_ALWAYS_ON_CHARS: usize = 46_715;
+/// Raised by 291 for `grep`'s `context` argument and the line that a result
+/// cut at `max_results` says how many more lines match: without the first a
+/// model spends a second request reading the file at the match, and without
+/// the second it cannot tell a full result from a cut one.
+const LEAD_ALWAYS_ON_CHARS: usize = 47_006;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coding_leads_always_on_text_stays_within_its_budget() {

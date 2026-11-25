@@ -1,4 +1,5 @@
 import { getPlatform } from '@/hooks/use-platform'
+import { reportSessionSeen } from '@/api/client/session-seen'
 import { isMobileApp } from '@/lib/mobile-app'
 // Type only: the tap bookkeeping loads with the first mobile notification,
 // outside the startup bundle.
@@ -199,6 +200,10 @@ export async function sendDesktopNotification(
     if (isMobileApp()) {
       // show_desktop_notification exists only in the desktop shell.
       await invoke('plugin:notification|notify', { options: await mobileNotificationOptions(payload) })
+      // The open phone just showed it: reported seen, its computer drops the
+      // push it holds for a minute, which would show the same event again
+      // once the phone is locked or on another computer (`cloud/letters.rs`).
+      if (payload.sessionId && PUSHED_KINDS.has(payload.kind) && appOpenOnScreen()) reportSessionSeen(payload.sessionId, { now: true })
     } else {
       const shown = await invoke<boolean | null>('show_desktop_notification', {
         payload: {

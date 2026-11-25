@@ -153,14 +153,16 @@ pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.webview_windows().into_values().find(|window| !is_overlay_window(window.label()))
 }
 
-/// The tray popup, the notch island, the desktop pet and the pages of the
-/// public web (`browser_view`): shell surfaces, never app windows that
-/// navigate, take commands, or hold a backend config.
+/// The tray popup, the notch island, the desktop pet, the pages of the
+/// public web (`browser_view`) and the agent's hidden pages
+/// (`agent_pages`): shell surfaces, never app windows that navigate, take
+/// commands, or hold a backend config.
 pub fn is_overlay_window(label: &str) -> bool {
     label == crate::tray_popup::TRAY_POPUP_WINDOW
         || label == crate::island::ISLAND_WINDOW
         || label == crate::pet::PET_WINDOW
         || crate::browser_view::is_browser_window(label)
+        || crate::agent_pages::is_agent_page_window(label)
 }
 
 pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
@@ -551,6 +553,8 @@ async fn build_app_window_sized(
     }
     win.show().context("show window")?;
     win.set_focus().ok();
+    // Its hidden frame takes over the agent's pages from the shell's copies.
+    crate::agent_pages::changed();
     log::info!("startup: window shown window={} theme={theme:?} at_ms={}", win.label(), crate::launch_ms());
     Ok(win)
 }

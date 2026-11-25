@@ -20,6 +20,7 @@ mod network_access;
 mod preview_relay;
 mod browser_cookies;
 mod browser_view;
+mod agent_pages;
 mod servers;
 mod shell_prefs;
 mod badge;
@@ -840,6 +841,7 @@ fn main() {
                 tauri::async_runtime::spawn(remote_update::run(app.handle().clone()));
             }
             island::start(app.handle());
+            agent_pages::start(app.handle());
             pet::start(app.handle());
             Ok(())
         })
@@ -880,6 +882,9 @@ fn main() {
                     if let Some(window) = app.get_webview_window(label.as_str()) {
                         let _ = save_window_state(app, &window);
                         window_session::window_closing(app, label.as_str());
+                        // Before the window goes: the agent's hidden pages
+                        // must not keep an app open that would quit.
+                        agent_pages::app_window_closing(app, label.as_str());
                         // Before the window goes: its pages are child windows of it.
                         browser_view::close_window(app, label.as_str());
                         let _ = window.destroy();

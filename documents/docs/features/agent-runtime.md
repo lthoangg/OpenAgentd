@@ -36,6 +36,17 @@ executes tools, manages its task list, and inspects workspace repositories.
   of "Subagent turn failed with error." One that can't reach its model (out of quota,
   or retrying for 2 minutes) tells the lead once, so the lead can stop it and go on.
   Stopped subagents show as `stopped` rather than `error`.
+  From `[v3.63.0]` a follow-up sent while the subagent works no longer swallows
+  its report: the lead receives the task's report first, then the reply to the
+  follow-up.
+- **Reading goes to an explorer** `[v3.63.0]` — when understanding something
+  takes more than about five files the lead will not edit, the lead sends an
+  explorer one precise question instead of reading them on its own, costlier
+  model; files it will edit or needs verbatim it still reads itself. Explorers
+  read the lines around a match rather than whole files. After 8 model steps in
+  a row that only read, search or list, the lead gets a note, once per turn,
+  that an explorer can take the rest. Nothing is forced, and subagents never
+  see the note.
 - **Finished subagents leave memory** `[v3.56.0]` — a subagent whose turn completed
   is unloaded 5 minutes after its report reached the lead; before, it stayed loaded
   until its lead was deleted. `team(action='list')` and the app still show it as

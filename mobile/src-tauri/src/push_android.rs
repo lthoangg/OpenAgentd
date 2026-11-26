@@ -1,27 +1,14 @@
 //! The Android push service's way into this library
 //! (`android-plugin/android/src/main/java/Letters.kt`): it opens a letter
 //! with the code the rest of the account uses ([`crate::push::open_letter`],
-//! tested against the contract's vectors in `native/cloud`), and asks which
-//! account computer the app is on, to skip a banner for the computer whose
-//! own notifications the app already shows (as `ForegroundPush.swift`).
-//!
-//! A push may start the process with no activity: then this library is
-//! loaded by `Letters.kt` alone, Tauri never runs, and [`APP`] stays empty.
-
-use std::sync::OnceLock;
+//! tested against the contract's vectors in `native/cloud`). A push may
+//! start the process with no activity: then this library is loaded by
+//! `Letters.kt` alone and Tauri never runs.
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
-use tauri::AppHandle;
 use zeroize::Zeroizing;
-
-static APP: OnceLock<AppHandle> = OnceLock::new();
-
-/// Called once from `setup`.
-pub fn install(app: &AppHandle) {
-    let _ = APP.set(app.clone());
-}
 
 fn read(env: &mut JNIEnv, s: &JString) -> Option<Zeroizing<String>> {
     if s.is_null() {
@@ -56,16 +43,4 @@ pub extern "system" fn Java_app_openagentd_shell_Letters_openNative<'l>(
     .ok()
     .flatten();
     answer(&mut env, opened)
-}
-
-/// `Letters.openDeviceNative()`: the account computer the app is on, or null.
-#[no_mangle]
-pub extern "system" fn Java_app_openagentd_shell_Letters_openDeviceNative<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-) -> jstring {
-    let device = std::panic::catch_unwind(|| APP.get().and_then(crate::open_account_device))
-        .ok()
-        .flatten();
-    answer(&mut env, device)
 }

@@ -32,9 +32,6 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
     private var taps: [[String: Any]] = []
     /// Told after each tap is queued (the shell emits an event to the page).
     var onTap: (@convention(c) () -> Void)?
-    /// Writes the account computer the app is on into the buffer and returns
-    /// its length (0: none). Asked by `willPresent`.
-    var openDevice: (@convention(c) (UnsafeMutablePointer<UInt8>?, Int) -> Int)?
 
     /// Taps kept until the web UI asks; older ones go first.
     private static let maxTaps = 8
@@ -83,14 +80,6 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
         return ["kind": "local", "id": id]
     }
 
-    private func currentOpenDevice() -> String? {
-        guard let openDevice else { return nil }
-        var buffer = [UInt8](repeating: 0, count: 256)
-        let n = buffer.withUnsafeMutableBufferPointer { openDevice($0.baseAddress, $0.count) }
-        guard n > 0, n <= buffer.count else { return nil }
-        return String(decoding: buffer[0..<n], as: UTF8.self)
-    }
-
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -121,7 +110,7 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
         let content = request.content
         let remote = request.trigger?.isKind(of: UNPushNotificationTrigger.self) == true
         let notice = (content.userInfo["t"] as? String) ?? (content.categoryIdentifier.isEmpty ? nil : content.categoryIdentifier)
-        if ForegroundPush.showsBanner(remote: remote, notice: notice, sender: content.userInfo["sender"] as? String, openDevice: remote ? currentOpenDevice() : nil) {
+        if ForegroundPush.showsBanner(remote: remote, notice: notice) {
             completionHandler([.banner, .list, .sound])
             return
         }
@@ -138,11 +127,9 @@ private final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate
 /// after each queued tap.
 @_cdecl("openagentd_notification_taps_install")
 public func openagentdNotificationTapsInstall(
-    _ onTap: (@convention(c) () -> Void)?,
-    _ openDevice: (@convention(c) (UnsafeMutablePointer<UInt8>?, Int) -> Int)?
+    _ onTap: (@convention(c) () -> Void)?
 ) {
     NotificationTaps.shared.onTap = onTap
-    NotificationTaps.shared.openDevice = openDevice
     // Synchronously during launch, so a tap that launched the app reaches it.
     if Thread.isMainThread {
         NotificationTaps.shared.install()

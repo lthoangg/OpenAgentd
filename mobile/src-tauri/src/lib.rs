@@ -365,14 +365,6 @@ fn app_backend_status(
     Ok(status)
 }
 
-/// The account computer the app is on now, by device id, or None on any
-/// other server (`taps.rs` asks, to show pushes from the other computers).
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-fn open_account_device(app: &AppHandle) -> Option<String> {
-    let base = app.try_state::<MobileBackendState>()?.active_base_url.lock().ok()?.clone()?;
-    cloud::account_device(&base).map(|d| d.device_id)
-}
-
 /// The status for a config and the runtime server. `bridge` names the
 /// account computer behind a bridge origin (`cloud::account_device`).
 fn backend_status(
@@ -795,7 +787,6 @@ pub fn run() {
             {
                 use tauri_plugin_openagentd_android::AndroidShellExt;
                 push::install(_app.android_shell().clone());
-                push_android::install(_app.handle());
             }
             taps::install(_app.handle());
             links::install(_app.handle());

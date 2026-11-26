@@ -28,10 +28,9 @@ integration for the mobile shell.
   the notification plugin's events. The web UI routes them all in
   `web/src/lib/notification-taps.ts`; on iOS the notification plugin's own
   tap events are not used.
-  It also answers the bridge's "which computer is the app on" (`open_device`):
-  while the app is open, a push from any other account computer shows as a
-  banner (`../ios-widget/App/ForegroundPush.swift`); the plugin alone would
-  hide every push.
+  While the app is open, every account push shows as a banner
+  (`../ios-widget/App/ForegroundPush.swift`); the plugin alone would hide
+  every push.
 - `src/links.rs`: `deep_link_sequence`, the count of links the app was
   opened with this run. The web UI remembers each handled link with it, so a
   reloaded page skips the link it already ran but runs the same link opened

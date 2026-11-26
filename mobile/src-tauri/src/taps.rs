@@ -82,37 +82,16 @@ extern "C" fn tapped() {
     }
 }
 
-/// Asked by the notification delegate when a push arrives while the app is
-/// open: the account computer the app is on, written into `out` (at most
-/// `cap` bytes). Returns its length, or 0 when the app is on no account
-/// computer. A push from any other computer is shown as a banner.
-#[cfg(target_os = "ios")]
-extern "C" fn open_device(out: *mut u8, cap: usize) -> usize {
-    let Some(id) = APP.get().and_then(crate::open_account_device) else {
-        return 0;
-    };
-    let bytes = id.as_bytes();
-    if out.is_null() || bytes.len() > cap {
-        return 0;
-    }
-    // SAFETY: the caller hands a buffer of `cap` bytes, checked above.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, bytes.len()) };
-    bytes.len()
-}
-
 /// Starts queueing taps. Call once from `setup`, after the notification
 /// plugin is registered.
 pub fn install(app: &AppHandle) {
     #[cfg(target_os = "ios")]
     {
         extern "C" {
-            fn openagentd_notification_taps_install(
-                on_tap: Option<extern "C" fn()>,
-                open_device: Option<extern "C" fn(*mut u8, usize) -> usize>,
-            );
+            fn openagentd_notification_taps_install(on_tap: Option<extern "C" fn()>);
         }
         let _ = APP.set(app.clone());
-        unsafe { openagentd_notification_taps_install(Some(tapped), Some(open_device)) };
+        unsafe { openagentd_notification_taps_install(Some(tapped)) };
     }
     #[cfg(not(target_os = "ios"))]
     let _ = app;

@@ -41,10 +41,9 @@ class OpenAgentdMessagingService : FirebaseMessagingService() {
         }
         val sealed = data["l"] ?: return
         val opened = Letters.open(this, sealed)
-        // The app shows the notifications of the computer it is on itself
-        // (it hears that computer's events); any other computer's push is
-        // shown even while the app is open (`ForegroundPush.swift`).
-        if (opened != null && ShellPlugin.inForeground && opened.sender == Letters.openDevice()) return
+        // Shown even while the app is open, from any computer: the app
+        // reports seen what it showed itself, so its computer drops that
+        // push (`ForegroundPush.swift`).
         AccountNotifications.letter(this, opened, data["i"])
     }
 }

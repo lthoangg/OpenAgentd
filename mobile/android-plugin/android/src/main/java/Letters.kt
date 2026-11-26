@@ -33,9 +33,6 @@ internal object Letters {
     @JvmStatic
     private external fun openNative(sealed: String, boxSeed: String, context: String): String?
 
-    @JvmStatic
-    private external fun openDeviceNative(): String?
-
     /** The letter's text and route, or null when it does not open. */
     fun open(context: Context, sealed: String): Opened? {
         if (!loaded) return null
@@ -59,12 +56,5 @@ internal object Letters {
         } catch (_: Exception) {
             null
         }
-    }
-
-    /** The account computer the app is on now, if it runs and is on one. */
-    fun openDevice(): String? = if (!loaded) null else try {
-        openDeviceNative()
-    } catch (_: Throwable) {
-        null
     }
 }

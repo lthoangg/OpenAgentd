@@ -44,14 +44,11 @@ struct SwiftChecks {
         let noSession = PreviewPolicy.fill(title: "Done", body: "", session: "", sender: "dev-mac", setting: .always)
         check(noSession.route == nil, "a letter without a session opens the app as it is")
 
-        // While the app is open on dev-mac: a push from another computer is a banner.
-        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: "studio", openDevice: "dev-mac"), "push from another computer: banner")
-        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: "studio", openDevice: nil), "push while on no account computer: banner")
-        check(!ForegroundPush.showsBanner(remote: true, notice: nil, sender: "dev-mac", openDevice: "dev-mac"), "push from the computer on screen: the app shows its own")
-        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: nil, openDevice: "dev-mac"), "a letter the extension could not open: banner, never lost")
-        check(ForegroundPush.showsBanner(remote: true, notice: nil, sender: "", openDevice: "dev-mac"), "an empty sender counts as unknown")
-        check(!ForegroundPush.showsBanner(remote: true, notice: "approval", sender: nil, openDevice: nil), "the approval notice keeps its handling")
-        check(!ForegroundPush.showsBanner(remote: false, notice: nil, sender: nil, openDevice: nil), "the app's own notifications go to the plugin")
-        print("swift checks: 18 passed")
+        // While the app is open, any computer's push is a banner, the one it is on included:
+        // the app reports seen what it showed, so a push that still arrives was shown nowhere.
+        check(ForegroundPush.showsBanner(remote: true, notice: nil), "a push while the app is open: banner, never lost")
+        check(!ForegroundPush.showsBanner(remote: true, notice: "approval"), "the approval notice keeps its handling")
+        check(!ForegroundPush.showsBanner(remote: false, notice: nil), "the app's own notifications go to the plugin")
+        print("swift checks: 14 passed")
     }
 }

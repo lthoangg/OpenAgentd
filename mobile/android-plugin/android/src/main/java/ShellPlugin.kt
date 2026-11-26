@@ -97,11 +97,6 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         @Volatile
         var webViewLoaded = false
             private set
-
-        /** The app is on screen (the push service skips some banners then). */
-        @Volatile
-        var inForeground = false
-            private set
     }
 
     private val secrets by lazy { KeystoreSecretStore(activity.applicationContext) }
@@ -232,16 +227,6 @@ class ShellPlugin(private val activity: Activity) : Plugin(activity) {
         webView?.post {
             webView?.evaluateJavascript("document.dispatchEvent(new Event('visibilitychange'))", null)
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        inForeground = true
-    }
-
-    override fun onPause() {
-        inForeground = false
-        super.onPause()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

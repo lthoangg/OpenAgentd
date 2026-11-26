@@ -54,6 +54,9 @@ mock.module('@tauri-apps/api/core', () => ({
   invoke: mockInvoke,
 }))
 
+const mockReportSeen = mock((..._args: unknown[]) => {})
+mock.module('@/api/client/session-seen', () => ({ reportSessionSeen: mockReportSeen }))
+
 import { listenForNotificationTaps, sendDesktopNotification } from '../../lib/desktop-notifications'
 import { phoneCloudPushRegister, resetPhonePushRegistration } from '../../api/phone-cloud'
 
@@ -85,6 +88,7 @@ beforeEach(() => {
   mockNotify.mockClear()
   mockInvoke.mockClear()
   mockPlay.mockClear()
+  mockReportSeen.mockClear()
   globalThis.Audio = mock(() => ({ play: mockPlay })) as unknown as typeof Audio
 })
 
@@ -310,6 +314,36 @@ describe('desktop notification worker', () => {
       const question = { ...payload, kind: 'input_needed' as const, title: 'Needs you · openagentd' }
       expect((await sendDesktopNotification(question, { force: true })).status).toBe('sent')
       expect(mockNotify).toHaveBeenCalledTimes(2)
+    })
+
+    // The banner on the open phone is the notification: reported seen, the
+    // computer drops the push it holds, which would otherwise show the same
+    // event again once the phone is locked (`cloud/letters.rs`).
+    it('a banner shown by the open app keeps the push for it away', async () => {
+      os = 'ios'
+      await withAccountPush()
+
+      expect((await sendDesktopNotification(payload)).status).toBe('sent')
+      expect(mockReportSeen.mock.calls).toEqual([['session-123', { now: true }]])
+
+      // Not reported: a kind the computer does not push, or no session.
+      mockReportSeen.mockClear()
+      expect((await sendDesktopNotification({ ...payload, kind: 'device_approval' })).status).toBe('sent')
+      expect((await sendDesktopNotification({ ...payload, sessionId: undefined })).status).toBe('sent')
+      expect(mockReportSeen).not.toHaveBeenCalled()
+    })
+
+    it('a banner shown while the app is hidden is not reported seen', async () => {
+      os = 'android'
+      setVisibility('hidden', true)
+      expect((await sendDesktopNotification(payload)).status).toBe('sent')
+      expect(mockReportSeen).not.toHaveBeenCalled()
+
+      // Desktop banners are not the phone's to report either.
+      os = 'macos'
+      setVisibility('visible', true)
+      expect((await sendDesktopNotification(payload)).status).toBe('sent')
+      expect(mockReportSeen).not.toHaveBeenCalled()
     })
 
     it('keeps kinds the computer does not push', async () => {

@@ -241,15 +241,17 @@ async fn phone_and_server_through_the_account() {
     let (s, _) = local_with(&app, "PUT", "/api/server/name", Some(json!({"name": "studio-mini"}))).await;
     assert_eq!(s, StatusCode::OK);
     // 4a. Seen on a screen: the phone is not told. The person looks at the
-    // session (a client reports it), so its letter is dropped after the wait.
+    // session, or the open phone shows its own banner for it, and that client
+    // reports it (here the phone, through the relay), so its letter is
+    // dropped after the wait.
     let seen_session = "0e6c5a0c-1f7e-4a3c-9a55-3b7a2c1d9e11";
     appv3_agent::broadcaster::publish(
         "desktop_notification",
         json!({"type": "desktop_notification", "notification_id": "n0", "kind": "assistant_done", "session_id": seen_session, "title": "Done · api", "body": "Seen at the desk."}),
     );
     tokio::time::sleep(Duration::from_millis(50)).await;
-    let (s, _) = local_with(&app, "POST", &format!("/api/agent/{seen_session}/seen"), None).await;
-    assert_eq!(s, StatusCode::OK);
+    let out = relayed(&tunnel, &format!("POST /api/agent/{seen_session}/seen HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")).await;
+    assert!(out.starts_with("HTTP/1.1 200"), "the phone reports a session seen through the relay: {out}");
     tokio::time::sleep(Duration::from_millis(1200)).await;
     assert!(phone.cloud.letters().await.unwrap().is_empty(), "a notification seen on a screen does not reach the phone");
 

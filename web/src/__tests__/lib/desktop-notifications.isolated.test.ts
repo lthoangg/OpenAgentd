@@ -95,6 +95,14 @@ describe('desktop notification library integration', () => {
     await runWorker('still notifies from the open app')
   })
 
+  it('reports the session seen when the open phone app shows its banner, so the push for it is dropped', async () => {
+    await runWorker('a banner shown by the open app keeps the push for it away')
+  })
+
+  it('does not report a banner shown by a hidden app or the desktop', async () => {
+    await runWorker('a banner shown while the app is hidden is not reported seen')
+  })
+
   it('keeps local notifications for kinds the computer does not push', async () => {
     await runWorker('keeps kinds the computer does not push')
   })

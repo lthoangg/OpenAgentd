@@ -87,6 +87,14 @@ Part of the [feature catalogue](../features.md), under *1. The desktop coding wo
   with it still gets you every unseen result. While the iPhone app is open
   on one computer, a push from another computer of the account now shows as
   a banner instead of only after switching to that computer.
+  A banner the open phone app shows itself counts as seen too `[v3.63.1]`,
+  so locking the phone or switching computers within that minute no longer
+  brings the same Done or Needs you a second time as a push.
+  No push is lost while the phone app is open `[v3.63.1]`: one from the
+  computer the app is on shows as a banner too (before, a session that
+  finished just before you unlocked the phone showed nowhere), and when
+  several sessions or computers finish within 30 seconds, each session gets
+  its Done push instead of only the newest one.
   One notification per session, gone once you have looked `[v3.62.0]`: on
   macOS and Linux a session's newer notification replaces its earlier one
   (Needs you followed by Done leaves one entry, not two), and a session you

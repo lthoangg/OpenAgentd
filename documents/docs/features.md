@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # Features
@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 built-in providers. Your keys.
 
-**Latest release:** v3.63.0 · November 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.63.0)
+**Latest release:** v3.63.1 · November 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.63.1)
 
 ---
 
